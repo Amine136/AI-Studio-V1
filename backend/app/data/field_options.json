@@ -1,0 +1,130 @@
+{
+  "caption": {
+    "platform": [
+      "Instagram (Post)",
+      "Instagram (Reel)",
+      "LinkedIn (Personal)",
+      "LinkedIn (Company Page)",
+      "Twitter / X (Thread)",
+      "Twitter / X (Short)",
+      "Facebook",
+      "TikTok (Description)",
+      "YouTube (Video Description)",
+      "Blog Post (Intro)",
+      "Email Newsletter"
+    ],
+    "goal": [
+      "Engagement (Comments)",
+      "Brand Awareness",
+      "Sales / Conversion",
+      "Education / Value",
+      "Entertainment / Viral",
+      "Storytelling",
+      "Inspiration"
+    ],
+    "brand_voice": [
+      "Professional & Authoritative",
+      "Witty & Sarcastic",
+      "Friendly & Approachable",
+      "Inspirational & Uplifting",
+      "Educational & Technical",
+      "Urgent / FOMO",
+      "Luxury & Elegant",
+      "Gen Z / Slang",
+      "Empathetic & Soft"
+    ],
+    "caption_length": [
+      "Very Short (Punchy 1-liner)",
+      "Short (2-3 sentences)",
+      "Medium (1 paragraph)",
+      "Long (Micro-blog / Story)",
+      "Bullet Points"
+    ],
+    "structure": [
+      "Standard",
+      "Hook -> Value -> Call to Action",
+      "Question First",
+      "Storytelling (Hero's Journey)",
+      "Listicle / Tips"
+    ],
+    "hashtag_density": [
+      "None",
+      "Minimal (1-3 key tags)",
+      "Standard (5-10 mixed)",
+      "Maxed Out (30 - Reach)"
+    ], 
+    "emoji_usage": [
+      "None",
+      "Minimal (1-2 relevant)",
+      "Moderate (3-5)",
+      "Heavy (6+ for emphasis)"
+    ]
+  },
+  "image": {
+    "aspect_ratio": [
+      "1:1 (Square)",
+      "16:9 (Cinematic / YouTube)",
+      "9:16 (Story / TikTok)",
+      "4:5 (Instagram Portrait)",
+      "3:2 (Classic Photo)",
+      "21:9 (Ultrawide)"
+    ],
+    "medium": [
+      "Photorealistic",
+      "3D Render (Unreal Engine 5)",
+      "Digital Illustration",
+      "Oil Painting",
+      "Anime / Manga",
+      "Vector Art / Flat Design",
+      "Concept Art",
+      "Polaroid / Vintage Photo",
+      "Cyberpunk / Neon",
+      "Watercolor",
+      "Charcoal Sketch",
+      "Claymation / Stop Motion",
+      "Low Poly"
+    ],
+    "lighting": [
+      "Natural / Golden Hour",
+      "Studio / Softbox",
+      "Neon / Cyberpunk",
+      "Cinematic / Dramatic",
+      "Volumetric / God Rays",
+      "Rembrandt (Moody)",
+      "Bioluminescent",
+      "Flat / High Key",
+      "Dark / Low Key"
+    ],
+    "camera_angle": [
+      "Wide Shot",
+      "Close-up / Portrait",
+      "Macro (Extreme Detail)",
+      "Low Angle (Hero Shot)",
+      "Bird's Eye View (Drone)",
+      "Dutch Angle (Tilted)",
+      "Fisheye",
+      "Telephoto (Bokeh Background)"
+    ],
+    "color_palette": [
+      "Vibrant & Saturated",
+      "Pastel & Soft",
+      "Black & White / Monochrome",
+      "Warm / Earth Tones",
+      "Cool / Blue Tones",
+      "Cyberpunk (Pink/Blue)",
+      "Vintage / Sepia",
+      "Dark & Moody"
+    ],
+    "art_style": [
+      "Minimalist",
+      "Futuristic / Sci-Fi",
+      "Retro / 80s Synthwave",
+      "Abstract",
+      "Noir",
+      "Surrealist",
+      "Steampunk",
+      "Gothic",
+      "Pop Art"
+    ]
+  }
+}

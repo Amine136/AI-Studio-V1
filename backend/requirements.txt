@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+python-dotenv
+pydantic
+
+# AI & Graph Logic
+langgraph
+google-generativeai
+openai
+
+# Utilities
+httpx
+
+google-generativeai

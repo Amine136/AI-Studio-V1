@@ -1,0 +1,18 @@
+{
+  "caption": {
+    "gemini-2.5-flash": {
+      "provider": "google",
+      "model_id": "gemini-2.0-flash",
+      "cost": "low",
+      "description": "Fast and efficient text generation"
+    }
+  },
+  "image": {
+    "cloudflare-sdxl": {
+      "provider": "cloudflare",
+      "model_id": "@cf/stabilityai/stable-diffusion-xl-base-1.0",
+      "cost": "low",
+      "description": "Stable Diffusion XL via Cloudflare"
+    }
+  }
+}
