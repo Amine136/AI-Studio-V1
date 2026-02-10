@@ -1,14 +1,14 @@
-fastapi
-uvicorn
-python-dotenv
-pydantic
+# Core
+fastapi==0.128.2
+uvicorn==0.40.0
+python-dotenv==1.2.1
+pydantic==2.12.5
+slowapi==0.1.9
 
 # AI & Graph Logic
-langgraph
-google-generativeai
-openai
+langgraph==1.0.7
+google-generativeai==0.8.6
+openai==2.17.0
 
 # Utilities
-httpx
-
-google-generativeai
+httpx==0.28.1

@@ -1,11 +1,23 @@
 import os
-from fastapi import FastAPI, HTTPException
+import re
+from pathlib import Path
+from fastapi import FastAPI, HTTPException, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles  # <--- NEW IMPORT
+from fastapi.responses import FileResponse
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 from app.config import settings
 from app.core.schema import GenerateRequest, GenerationResult, SystemConfig
 from app.graph.workflow import studio_graph_app
+from app.services.auth import verify_api_key
+
+# Rate Limiter (keyed by client IP)
+limiter = Limiter(key_func=get_remote_address)
+
+IMAGES_DIR = Path("generated_images")
+SAFE_FILENAME = re.compile(r'^[a-f0-9\-]{36}\.(jpg|png|webp)$')  # UUID filenames only
 
 # OpenAPI Tags for endpoint grouping
 tags_metadata = [
@@ -51,19 +63,21 @@ for social media marketing.
     },
 )
 
-# 1. Ensure the directory exists
-os.makedirs("generated_images", exist_ok=True)  # <--- NEW
+# Attach rate limiter to app
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# 2. Mount the directory to a URL path
-# This makes backend/generated_images accessible at http://localhost:8000/images/
-app.mount("/images", StaticFiles(directory="generated_images"), name="images") # <--- NEW
+# Ensure the images directory exists
+IMAGES_DIR.mkdir(exist_ok=True)
+
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "X-API-Key"],
 )
 
 @app.get(
@@ -79,13 +93,33 @@ def health_check():
 
 
 @app.get(
+    "/images/{filename}",
+    tags=["Generation"],
+    summary="Get Generated Image",
+    description="Retrieve a generated image by filename. Only valid UUID filenames are accepted."
+)
+def get_image(filename: str):
+    """Serves generated images with filename validation."""
+    # Block anything that isn't a UUID filename
+    if not SAFE_FILENAME.match(filename):
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    
+    filepath = IMAGES_DIR / filename
+    if not filepath.exists():
+        raise HTTPException(status_code=404, detail="Image not found")
+    
+    return FileResponse(filepath)
+
+
+@app.get(
     "/config",
     response_model=SystemConfig,
     tags=["Configuration"],
     summary="Get System Configuration",
     description="Retrieve the available field options and model catalog for the AI Studio."
 )
-def get_system_config():
+@limiter.limit("30/minute")
+def get_system_config(request: Request, _=Depends(verify_api_key)):
     """
     Fetch the current system configuration including:
     - **field_options**: Available options for platforms, styles, lighting, etc.
@@ -104,7 +138,8 @@ def get_system_config():
     summary="Generate AI Content",
     description="Submit a content generation request to create images, captions, or both."
 )
-def generate_content(payload: GenerateRequest):
+@limiter.limit("10/minute")
+def generate_content(request: Request, payload: GenerateRequest, _=Depends(verify_api_key)):
     """
     Main generation endpoint that orchestrates the AI workflow.
     
@@ -151,4 +186,4 @@ def generate_content(payload: GenerateRequest):
 
     except Exception as e:
         print(f"Server Error: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again later.")

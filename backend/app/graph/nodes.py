@@ -8,6 +8,7 @@ from app.config import settings
 from app.graph.plugins import PLUGIN_REGISTRY
 from app.services.llm_client import generate_text
 from app.services.image_client import generate_image_url
+from app.services.sanitizer import sanitize_user_text
 from app.core.schema import IntentAnalysis
 
 # Configure logger
@@ -40,6 +41,9 @@ def ingest_input(state: StudioState) -> StudioState:
     if not user_text:
         logger.warning("   └─ ⚠️ No text provided")
         return {"final_response": {"status": "error", "message": "No text provided"}}
+    
+    # Sanitize user input against prompt injection
+    user_text = sanitize_user_text(user_text)
     
     req_outputs = state.get("requested_outputs") or ["image", "caption"]
     user_prefs = state.get("user_preferences", {})

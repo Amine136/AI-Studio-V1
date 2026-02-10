@@ -11,7 +11,9 @@ class GenerateRequest(BaseModel):
     """Request payload for content generation."""
     user_text: str = Field(
         ...,
-        description="The main text prompt describing what content to generate",
+        min_length=3,
+        max_length=2000,
+        description="The main text prompt describing what content to generate (3-2000 characters)",
         json_schema_extra={"example": "A cozy coffee shop with warm lighting for Instagram"}
     )
     requested_outputs: List[OutputType] = Field(

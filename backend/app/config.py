@@ -26,6 +26,9 @@ class Config:
         self.fallback_llm_model = os.getenv("FALLBACK_LLM_MODEL", "gemini-2.5-flash-lite")
         self.default_mock_model = "mock-default"
 
+        # Authentication
+        self.api_key = os.getenv("API_KEY")
+
     def _load_json(self, filename: str) -> dict:
         filepath = self.DATA_DIR / filename
         if not filepath.exists():
