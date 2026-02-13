@@ -1,0 +1,63 @@
+"use client";
+
+interface StepIndicatorProps {
+    currentStep: "INPUT" | "REVIEW" | "RESULT";
+}
+
+const steps = [
+    { key: "INPUT", label: "Input", icon: "✦" },
+    { key: "REVIEW", label: "Review", icon: "◎" },
+    { key: "RESULT", label: "Result", icon: "✓" },
+] as const;
+
+export default function StepIndicator({ currentStep }: StepIndicatorProps) {
+    const currentIndex = steps.findIndex((s) => s.key === currentStep);
+
+    return (
+        <div className="flex items-center justify-center gap-0 mb-10">
+            {steps.map((step, i) => {
+                const isActive = step.key === currentStep;
+                const isCompleted = i < currentIndex;
+
+                return (
+                    <div key={step.key} className="flex items-center">
+                        {/* Step circle + label */}
+                        <div className="flex flex-col items-center gap-2">
+                            <div
+                                className={`
+                  w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold
+                  transition-all duration-300
+                  ${isActive
+                                        ? "bg-gradient-to-br from-blue-500 to-purple-500 text-white shadow-lg animate-pulse-glow"
+                                        : isCompleted
+                                            ? "bg-green-500/20 text-green-400 border border-green-500/30"
+                                            : "bg-white/5 text-gray-500 border border-white/10"
+                                    }
+                `}
+                            >
+                                {isCompleted ? "✓" : step.icon}
+                            </div>
+                            <span
+                                className={`text-xs font-medium tracking-wide transition-colors duration-300 ${isActive ? "text-white" : isCompleted ? "text-green-400" : "text-gray-500"
+                                    }`}
+                            >
+                                {step.label}
+                            </span>
+                        </div>
+
+                        {/* Connector line */}
+                        {i < steps.length - 1 && (
+                            <div className="w-16 sm:w-24 h-px mx-3 mb-6 relative">
+                                <div className="absolute inset-0 bg-white/10 rounded-full" />
+                                <div
+                                    className={`absolute inset-y-0 left-0 rounded-full transition-all duration-500 ${isCompleted ? "w-full bg-green-500/50" : "w-0"
+                                        }`}
+                                />
+                            </div>
+                        )}
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
