@@ -7,6 +7,8 @@ INSTRUCTIONS:
 2. Select the most appropriate 'platform' and 'brand_voice'.
 3. Suggest artistic settings (lighting, medium, camera_angle) that best match the mood.
 4. Strictly use the options provided in the schema context if they fit, otherwise infer the best match.
+5. Write a concise, optimized summary of the user's idea in 'summarize_the_user_idea' — this will be used as the actual prompt for content generation. Make it clear, descriptive, and actionable.
+6. Detect the most appropriate language for the content and set it in 'language'.
 
 Context (Available Options):
 {vocab_options}

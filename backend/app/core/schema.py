@@ -122,6 +122,12 @@ class AISuggestions(BaseModel):
     art_style: Optional[str] = Field(description="Artistic style")
     composition: Optional[str] = Field(description="Image composition")
 
+class HiddenParams(BaseModel):
+    """Internal params extracted by AI — never sent to frontend."""
+    summarize_the_user_idea: str = Field(description="A concise, optimized summary of the user's idea for content generation")
+    language: str = Field(description="The detected or appropriate language for the content (e.g., 'English', 'French')")
+
 class IntentAnalysis(BaseModel):
     obligatory: ObligatorySettings
     ai_suggestion: AISuggestions
+    hidden_params: HiddenParams

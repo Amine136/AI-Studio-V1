@@ -20,8 +20,11 @@ class Config:
 
         self.GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
         self.OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+        self.OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
         # System Model Settings (centralizes hardcoded values)
+        # Provider can be: google, openai, openrouter, or mock
+        self.system_llm_provider = os.getenv("SYSTEM_LLM_PROVIDER", "google")
         self.system_llm_model = os.getenv("SYSTEM_LLM_MODEL", "gemini-2.5-flash")
         self.fallback_llm_model = os.getenv("FALLBACK_LLM_MODEL", "gemini-2.5-flash-lite")
         self.default_mock_model = "mock-default"

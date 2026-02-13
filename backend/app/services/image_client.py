@@ -56,6 +56,7 @@ def _generate_via_cloudflare(model_id: str, prompt: str) -> str:
                 f.write(response.content)
 
         print(f"✅ Saved to: {save_path}")
+        print(f"image prompt: {prompt}")
         return f"http://127.0.0.1:8000/images/{filename}"
 
     except Exception as e:

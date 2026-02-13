@@ -33,12 +33,17 @@ class CaptionPlugin(OutputPlugin):
         )
 
     def build_requests(self, spec: ContentSpec) -> List[Dict[str, Any]]:
-        # 1. Build Constraints String
+        # 1. Build Constraints String from ALL spec fields (obligatory + ai_suggestion + hidden_params)
+        #    Excludes user_text (used as concept) and None values
         constraint_lines = []
-        for key in settings.field_options.get("caption", {}).keys():
-            if val := spec.get(key):
-                label = key.replace("_", " ").title()
-                constraint_lines.append(f"- {label}: {val}")
+        skip_keys = {"user_text", "summarize_the_user_idea", "main_subject"}
+        for key, val in spec.items():
+            if key in skip_keys:
+                continue
+            if val is None or val == "None":
+                continue
+            label = key.replace("_", " ").title()
+            constraint_lines.append(f"- {label}: {val}")
         
         constraints_str = "\n".join(constraint_lines)
 
@@ -72,7 +77,8 @@ class ImagePlugin(OutputPlugin):
         
         for key in image_config.keys():
             if key == "aspect_ratio": continue 
-            if val := spec.get(key):
+            val = spec.get(key)
+            if val and val != "None":
                 controls.append(val)
 
         technical_prefix = ", ".join(controls)

@@ -26,8 +26,15 @@ def compile_final_spec(state: StudioState) -> ContentSpec:
     if "ai_suggestion" in intent: spec.update(intent["ai_suggestion"])
     if state.get("user_corrections"):
         spec.update(state["user_corrections"])
-    if state.get("user_text"):
+    # Use the AI-summarized idea for generation instead of raw user text
+    hidden = intent.get("hidden_params", {})
+    if hidden.get("summarize_the_user_idea"):
+        spec["user_text"] = hidden["summarize_the_user_idea"]
+    elif state.get("user_text"):
         spec["user_text"] = state["user_text"]
+    # Inject language from hidden_params
+    if hidden.get("language"):
+        spec["language"] = hidden["language"]
     return spec
 
 # ---------------------------------------------------------
@@ -116,7 +123,7 @@ def analyze_intent(state: StudioState) -> StudioState:
     
     # CALL WITH SCHEMA ENFORCEMENT
     raw_response = generate_text(
-        "google", 
+        settings.system_llm_provider, 
         system_llm_model, 
         prompt, 
         response_schema=IntentAnalysis
@@ -155,10 +162,15 @@ def prepare_ui_for_review(state: StudioState) -> StudioState:
         all_fields = plugin.required_fields + plugin.optional_fields
         for key in all_fields:
             options = type_options.get(key, [])
+            category = "obligatory" if key in plugin.required_fields else "ai_suggestion"
+            # Add "None" option to AI suggestion fields so users can deselect
+            if category == "ai_suggestion" and "None" not in options:
+                options = ["None"] + options
             output_fields[key] = {
                 "label": key.replace("_", " ").title(),
                 "value": current_spec.get(key),
-                "options": options
+                "options": options,
+                "category": category
             }
         
         ui_schema[out] = output_fields

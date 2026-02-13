@@ -11,3 +11,4 @@ CRITICAL INSTRUCTIONS:
 2. Do NOT provide multiple options (e.g., "Option 1", "Option 2").
 3. Do NOT include any conversational filler (e.g., "Here is a caption for you").
 4. Start directly with the hook.
+5. Write the caption in the language specified in the constraints.
