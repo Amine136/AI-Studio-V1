@@ -1,17 +1,14 @@
-import type { Metadata } from "next";
+"use client";
+
 import { Inter } from "next/font/google";
 import "./globals.css";
+import { AuthProvider } from "../context/AuthContext";
 
 const inter = Inter({
   variable: "--font-inter",
   subsets: ["latin"],
   display: "swap",
 });
-
-export const metadata: Metadata = {
-  title: "NovaNode AI Studio — Create with AI",
-  description: "AI-powered creative studio for generating captions, images, and more.",
-};
 
 export default function RootLayout({
   children,
@@ -20,8 +17,14 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
+      <head>
+        <title>NovaNode AI Studio — Create with AI</title>
+        <meta name="description" content="AI-powered creative studio for generating captions, images, and more." />
+      </head>
       <body className={`${inter.variable} antialiased`}>
-        {children}
+        <AuthProvider>
+          {children}
+        </AuthProvider>
       </body>
     </html>
   );

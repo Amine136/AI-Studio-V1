@@ -18,12 +18,12 @@ export default function ReviewCard({ outputType, fields, onFieldChange }: Review
     const [showSuggestions, setShowSuggestions] = useState(false);
     const cfg = typeConfig[outputType] || { icon: "📦", accent: "text-gray-400", border: "border-white/10", accentBg: "bg-white/5" };
 
-    // Split fields into obligatory and AI suggestions
+    // Split fields into obligatory and AI suggestions, filtering out empty fields
     const obligatoryFields = Object.entries(fields).filter(
-        ([, item]) => item.category === "obligatory" || !item.category
+        ([, item]) => (item.category === "obligatory" || !item.category) && item.options && item.options.length > 0
     );
     const suggestionFields = Object.entries(fields).filter(
-        ([, item]) => item.category === "ai_suggestion"
+        ([, item]) => item.category === "ai_suggestion" && item.options && item.options.length > 0
     );
 
     return (

@@ -219,6 +219,7 @@ def execute_generation(state: StudioState) -> StudioState:
     logger.info("🚀 [Step 6/6] EXECUTE: Running AI generation...")
     
     generated = {}
+    total_cost = 0
     total_requests = len(state.get("model_requests", []))
     
     for idx, req in enumerate(state.get("model_requests", []), 1):
@@ -237,8 +238,9 @@ def execute_generation(state: StudioState) -> StudioState:
             
         provider = model_config.get("provider", "mock")
         model_id = model_config.get("model_id", "default")
+        model_cost = model_config.get("cost", 0)
         
-        logger.info(f"   ├─ [{idx}/{total_requests}] {task_type} via {provider}...")
+        logger.info(f"   ├─ [{idx}/{total_requests}] {task_type} via {provider} (cost: {model_cost})...")
 
         try:
             if task_type == "image":
@@ -247,6 +249,7 @@ def execute_generation(state: StudioState) -> StudioState:
                 result = generate_text(provider, model_id, prompt)
             
             generated[task_type] = result
+            total_cost += model_cost
             logger.info(f"   │  └─ ✅ Success")
             
         except Exception as e:
@@ -255,10 +258,11 @@ def execute_generation(state: StudioState) -> StudioState:
             traceback.print_exc()
             generated[task_type] = error_msg
 
-    logger.info(f"   └─ 🎉 Generation complete: {len(generated)} assets")
+    logger.info(f"   └─ 🎉 Generation complete: {len(generated)} assets | Total cost: {total_cost} credits")
     
     return {
         "generated_assets": generated,
+        "total_cost": total_cost,
         "status": "complete"
     }
 
@@ -272,7 +276,8 @@ def format_delivery(state: StudioState) -> StudioState:
             "status": "success",
             "results": state.get("generated_assets"),
             "meta": {
-                "settings_used": state.get("content_spec")
+                "settings_used": state.get("content_spec"),
+                "total_cost": state.get("total_cost", 0)
             }
         }
     }

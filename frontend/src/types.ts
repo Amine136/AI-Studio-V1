@@ -20,9 +20,14 @@ export interface UISchemaItem {
 }
 
 // Step 3: The Backend Response
+export interface GenerationMeta {
+  settings_used?: Record<string, any>;
+  total_cost?: number;
+}
+
 export interface GenerationResult {
   status: "success" | "awaiting_review" | "error";
   ui_schema?: Record<OutputType, Record<string, UISchemaItem>>; // Grouped by output type
   results?: Record<string, string>;         // Present if success
-  meta?: any;
+  meta?: GenerationMeta;
 }

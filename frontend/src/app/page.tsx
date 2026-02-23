@@ -1,9 +1,12 @@
 // frontend/src/app/page.tsx
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { api } from "../services/api";
 import { GenerateRequest, UISchemaItem, OutputType } from "../types";
+import { useAuth } from "../context/AuthContext";
+import { signOutUser } from "../lib/auth";
 
 import StepIndicator from "../components/StepIndicator";
 import OutputToggle from "../components/OutputToggle";
@@ -11,6 +14,9 @@ import ModelSelector from "../components/ModelSelector";
 import ReviewCard from "../components/ReviewCard";
 import ResultCard from "../components/ResultCard";
 import LoadingSpinner from "../components/LoadingSpinner";
+import CreditsDisplay from "../components/CreditsDisplay";
+import type { CreditsDisplayHandle } from "../components/CreditsDisplay";
+import { deductCredits } from "../lib/credits";
 
 type Step = "INPUT" | "REVIEW" | "RESULT";
 
@@ -20,6 +26,17 @@ interface Toast {
 }
 
 export default function Home() {
+  const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
+  const creditsRef = useRef<CreditsDisplayHandle>(null);
+
+  // --- Auth Gate ---
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.replace("/auth");
+    }
+  }, [authLoading, user, router]);
+
   // --- State ---
   const [step, setStep] = useState<Step>("INPUT");
   const [loading, setLoading] = useState(false);
@@ -36,6 +53,12 @@ export default function Home() {
   // Available Models (Loaded from Backend)
   const [imageModels, setImageModels] = useState<string[]>([]);
   const [captionModels, setCaptionModels] = useState<string[]>([]);
+
+  // Model Catalog (with costs)
+  const [modelCatalog, setModelCatalog] = useState<Record<string, Record<string, { cost?: number }>>>({});
+
+  // Current credit balance (synced from CreditsDisplay)
+  const [currentCredits, setCurrentCredits] = useState<number | null>(null);
 
   // Review & Result State
   const [uiSchema, setUiSchema] = useState<Record<string, Record<string, UISchemaItem>>>({});
@@ -57,9 +80,30 @@ export default function Home() {
       const capMods = Object.keys(cfg.model_catalog.caption || {});
       setCaptionModels(capMods);
       if (capMods.length > 0) setSelectedCaptionModel(capMods[0]);
+
+      // Store full catalog for cost lookup
+      setModelCatalog(cfg.model_catalog || {});
     }).catch(() => {
       showToast("Could not load configuration. Is the backend running?");
     });
+  }, []);
+
+  // --- Cost Calculation ---
+  const totalCost = useMemo(() => {
+    let cost = 0;
+    if (selectedOutputs.includes("caption") && selectedCaptionModel) {
+      cost += modelCatalog.caption?.[selectedCaptionModel]?.cost ?? 0;
+    }
+    if (selectedOutputs.includes("image") && selectedImageModel) {
+      cost += modelCatalog.image?.[selectedImageModel]?.cost ?? 0;
+    }
+    return parseFloat(cost.toFixed(2));
+  }, [selectedOutputs, selectedCaptionModel, selectedImageModel, modelCatalog]);
+
+  const insufficientCredits = currentCredits !== null && totalCost > currentCredits;
+
+  const handleCreditsChange = useCallback((credits: number | null) => {
+    setCurrentCredits(credits);
   }, []);
 
   // --- Helpers ---
@@ -122,6 +166,16 @@ export default function Home() {
       if (response.status === "success" && response.results) {
         setFinalResults(response.results);
         setStep("RESULT");
+
+        // Deduct credits based on total_cost from backend
+        const cost = response.meta?.total_cost ?? 0;
+        if (cost > 0 && user) {
+          const success = await deductCredits(user.uid, cost);
+          if (!success) {
+            showToast("Insufficient credits for this generation.");
+          }
+          creditsRef.current?.refresh();
+        }
       }
     } catch {
       showToast("Generation failed. Please try again.");
@@ -147,11 +201,30 @@ export default function Home() {
   };
 
   // --- Render ---
+  if (authLoading || !user) {
+    return (
+      <main className="min-h-screen flex items-center justify-center">
+        <div className="auth-loader" />
+      </main>
+    );
+  }
+
   return (
     <main className="min-h-screen flex items-start justify-center px-4 py-12 sm:py-20">
       <div className="w-full max-w-2xl">
         {/* Header */}
-        <div className="text-center mb-8 animate-fade-in">
+        <div className="text-center mb-8 animate-fade-in relative">
+          <button
+            onClick={async () => { await signOutUser(); router.replace("/auth"); }}
+            className="absolute right-0 top-2 flex items-center gap-1.5 text-sm text-gray-400 hover:text-red-400 transition-colors px-4 py-2 rounded-full border border-white/10 hover:border-red-500/30 bg-white/5 hover:bg-red-500/10"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
+            </svg>
+            Sign Out
+          </button>
           <h1 className="text-4xl sm:text-5xl font-extrabold gradient-text tracking-tight">
             NovaNode AI Studio
           </h1>
@@ -159,6 +232,9 @@ export default function Home() {
             Create stunning content with AI-powered generation
           </p>
         </div>
+
+        {/* Credits */}
+        <CreditsDisplay ref={creditsRef} uid={user.uid} onCreditsChange={handleCreditsChange} />
 
         {/* Step Indicator */}
         <StepIndicator currentStep={step} />
@@ -228,14 +304,29 @@ export default function Home() {
                 />
               </div>
 
+              {/* Insufficient Credits Warning */}
+              {insufficientCredits && (
+                <div className="flex items-start gap-3 p-4 rounded-xl bg-red-500/5 border border-red-500/20">
+                  <div className="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center text-red-400 text-sm flex-shrink-0 mt-0.5">
+                    ⚠
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-red-300">Insufficient Credits</h3>
+                    <p className="text-xs text-red-400/70 mt-0.5">
+                      This generation costs <strong>{totalCost.toFixed(2)}</strong> credits, but you only have <strong>{currentCredits?.toFixed(2)}</strong>. Please add more credits or select cheaper models.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* Submit Button */}
               <button
                 onClick={handleAnalyze}
-                disabled={loading || !userText.trim() || selectedOutputs.length === 0}
+                disabled={loading || !userText.trim() || selectedOutputs.length === 0 || insufficientCredits}
                 className="btn-primary w-full"
               >
                 <span>
-                  {loading ? <LoadingSpinner text="Analyzing Intent..." /> : "Start Creating →"}
+                  {loading ? <LoadingSpinner text="Analyzing Intent..." /> : insufficientCredits ? `Insufficient Credits (${totalCost.toFixed(2)} needed)` : `Start Creating → (${totalCost.toFixed(2)} credits)`}
                 </span>
               </button>
             </div>
@@ -314,7 +405,7 @@ export default function Home() {
 
         {/* Footer */}
         <p className="text-center text-[11px] text-gray-600 mt-6">
-          Powered by NovaNode AI Studio • Models are served via backend API
+          Powered by NovaNode
         </p>
       </div>
 

@@ -57,5 +57,8 @@ class StudioState(TypedDict, total=False):
     # Raw results from the providers (URLs, Text)
     generated_assets: Dict[str, Any]     
     
+    # Total credit cost accumulated during generation
+    total_cost: float
+
     # The final formatted response object
     final_response: Dict[str, Any]
