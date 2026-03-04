@@ -15,8 +15,10 @@ import ReviewCard from "../components/ReviewCard";
 import ResultCard from "../components/ResultCard";
 import LoadingSpinner from "../components/LoadingSpinner";
 import CreditsDisplay from "../components/CreditsDisplay";
+import HistoryGrid from "../components/HistoryGrid";
 import type { CreditsDisplayHandle } from "../components/CreditsDisplay";
 import { deductCredits } from "../lib/credits";
+import { addHistoryEntry, getHistory, HistoryEntry } from "../lib/history";
 
 type Step = "INPUT" | "REVIEW" | "RESULT";
 
@@ -63,6 +65,29 @@ export default function Home() {
   // Review & Result State
   const [uiSchema, setUiSchema] = useState<Record<string, Record<string, UISchemaItem>>>({});
   const [finalResults, setFinalResults] = useState<Record<string, string>>({});
+  const [contentPrompts, setContentPrompts] = useState<Record<string, string>>({});
+
+  // History State
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+
+  // Fetch history on auth
+  const fetchHistory = useCallback(async () => {
+    if (!user) return;
+    setHistoryLoading(true);
+    try {
+      const entries = await getHistory(user.uid);
+      setHistory(entries);
+    } catch (e) {
+      console.error("Failed to load history:", e);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (user) fetchHistory();
+  }, [user, fetchHistory]);
 
   // --- Toast helper ---
   const showToast = (message: string, type: "error" | "success" = "error") => {
@@ -131,6 +156,7 @@ export default function Home() {
 
       if (response.status === "awaiting_review" && response.ui_schema) {
         setUiSchema(response.ui_schema);
+        setContentPrompts(response.content_prompts || {});
         setStep("REVIEW");
       }
     } catch {
@@ -158,7 +184,11 @@ export default function Home() {
           image_model: selectedImageModel,
           caption_model: selectedCaptionModel,
         },
-        user_corrections: corrections,
+        user_corrections: {
+          ...corrections,
+          image_prompt: contentPrompts.image_prompt,
+          caption_prompt: contentPrompts.caption_prompt,
+        },
       };
 
       const response = await api.generate(payload);
@@ -175,6 +205,21 @@ export default function Home() {
             showToast("Insufficient credits for this generation.");
           }
           creditsRef.current?.refresh();
+        }
+
+        // Save to history
+        if (user) {
+          try {
+            await addHistoryEntry(user.uid, {
+              imageUrl: response.results.image || undefined,
+              caption: response.results.caption || undefined,
+              prompt: userText,
+              model: selectedImageModel || selectedCaptionModel,
+            });
+            fetchHistory();
+          } catch (e) {
+            console.error("Failed to save history:", e);
+          }
         }
       }
     } catch {
@@ -329,6 +374,9 @@ export default function Home() {
                   {loading ? <LoadingSpinner text="Analyzing Intent..." /> : insufficientCredits ? `Insufficient Credits (${totalCost.toFixed(2)} needed)` : `Start Creating → (${totalCost.toFixed(2)} credits)`}
                 </span>
               </button>
+
+              {/* Generation History */}
+              <HistoryGrid entries={history} loading={historyLoading} />
             </div>
           )}
 
@@ -348,15 +396,77 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Review Cards by Output Type */}
-              {Object.entries(uiSchema).map(([outputType, fields]) => (
-                <ReviewCard
-                  key={outputType}
-                  outputType={outputType}
-                  fields={fields}
-                  onFieldChange={(key, value) => handleSchemaChange(outputType, key, value)}
-                />
-              ))}
+              {/* ─── CAPTION SECTION ─── */}
+              {selectedOutputs.includes("caption") && (
+                <div className="rounded-2xl border border-blue-500/15 bg-blue-500/[0.02] p-1 space-y-1 animate-fade-in-up" style={{ borderLeft: "3px solid rgba(59, 130, 246, 0.5)" }}>
+                  {/* Caption Header */}
+                  <div className="flex items-center gap-2.5 px-4 pt-3 pb-1">
+                    <div className="w-7 h-7 rounded-lg bg-blue-500/15 flex items-center justify-center text-sm">📝</div>
+                    <h3 className="text-xs font-bold uppercase tracking-widest text-blue-400">Caption</h3>
+                    <div className="flex-1 h-px bg-blue-500/10" />
+                  </div>
+
+                  {/* Caption Prompt */}
+                  <div className="px-4 pb-2">
+                    <label className="block text-[11px] font-medium text-gray-500 mb-1.5">Generation Prompt</label>
+                    <textarea
+                      className="glass-input w-full p-3 text-sm leading-relaxed resize-none"
+                      rows={3}
+                      value={contentPrompts.caption_prompt || ""}
+                      onChange={(e) => setContentPrompts(prev => ({ ...prev, caption_prompt: e.target.value }))}
+                      placeholder="Marketing context for the caption..."
+                    />
+                    <p className="text-[10px] text-gray-600 mt-1">
+                      Includes marketing context, pricing, and call-to-action.
+                    </p>
+                  </div>
+
+                  {/* Caption Settings */}
+                  {uiSchema.caption && (
+                    <ReviewCard
+                      outputType="caption"
+                      fields={uiSchema.caption}
+                      onFieldChange={(key, value) => handleSchemaChange("caption", key, value)}
+                    />
+                  )}
+                </div>
+              )}
+
+              {/* ─── IMAGE SECTION ─── */}
+              {selectedOutputs.includes("image") && (
+                <div className="rounded-2xl border border-purple-500/15 bg-purple-500/[0.02] p-1 space-y-1 animate-fade-in-up" style={{ borderLeft: "3px solid rgba(168, 85, 247, 0.5)" }}>
+                  {/* Image Header */}
+                  <div className="flex items-center gap-2.5 px-4 pt-3 pb-1">
+                    <div className="w-7 h-7 rounded-lg bg-purple-500/15 flex items-center justify-center text-sm">🎨</div>
+                    <h3 className="text-xs font-bold uppercase tracking-widest text-purple-400">Image</h3>
+                    <div className="flex-1 h-px bg-purple-500/10" />
+                  </div>
+
+                  {/* Image Prompt */}
+                  <div className="px-4 pb-2">
+                    <label className="block text-[11px] font-medium text-gray-500 mb-1.5">Generation Prompt</label>
+                    <textarea
+                      className="glass-input w-full p-3 text-sm leading-relaxed resize-none"
+                      rows={3}
+                      value={contentPrompts.image_prompt || ""}
+                      onChange={(e) => setContentPrompts(prev => ({ ...prev, image_prompt: e.target.value }))}
+                      placeholder="Visual description for the image..."
+                    />
+                    <p className="text-[10px] text-gray-600 mt-1">
+                      Visual-only description. No prices, text, or marketing language.
+                    </p>
+                  </div>
+
+                  {/* Image Settings */}
+                  {uiSchema.image && (
+                    <ReviewCard
+                      outputType="image"
+                      fields={uiSchema.image}
+                      onFieldChange={(key, value) => handleSchemaChange("image", key, value)}
+                    />
+                  )}
+                </div>
+              )}
 
               {/* Action buttons */}
               <div className="flex gap-3 pt-4">

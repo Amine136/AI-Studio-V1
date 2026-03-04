@@ -26,12 +26,27 @@ def compile_final_spec(state: StudioState) -> ContentSpec:
     if "ai_suggestion" in intent: spec.update(intent["ai_suggestion"])
     if state.get("user_corrections"):
         spec.update(state["user_corrections"])
-    # Use the AI-summarized idea for generation instead of raw user text
+    
+    # Per-content prompts: user-edited > AI-generated > raw user text
     hidden = intent.get("hidden_params", {})
-    if hidden.get("summarize_the_user_idea"):
-        spec["user_text"] = hidden["summarize_the_user_idea"]
-    elif state.get("user_text"):
-        spec["user_text"] = state["user_text"]
+    corrections = state.get("user_corrections", {})
+    fallback_text = state.get("user_text", "")
+    
+    # Image prompt
+    spec["image_prompt"] = (
+        corrections.get("image_prompt")
+        or hidden.get("image_prompt")
+        or fallback_text
+    )
+    # Caption prompt
+    spec["caption_prompt"] = (
+        corrections.get("caption_prompt")
+        or hidden.get("caption_prompt")
+        or fallback_text
+    )
+    # Keep user_text for backward compat
+    spec["user_text"] = spec["caption_prompt"]
+    
     # Inject language from hidden_params
     if hidden.get("language"):
         spec["language"] = hidden["language"]
@@ -175,13 +190,22 @@ def prepare_ui_for_review(state: StudioState) -> StudioState:
         
         ui_schema[out] = output_fields
         logger.info(f"   ├─ {out}: {len(output_fields)} fields")
-        
+    
+    # Extract per-content AI prompts to send to frontend
+    intent = state.get("extracted_intent", {})
+    hidden = intent.get("hidden_params", {})
+    fallback = state.get("user_text", "")
+    content_prompts = {
+        "image_prompt": hidden.get("image_prompt", fallback),
+        "caption_prompt": hidden.get("caption_prompt", fallback),
+    }
+    
     if state.get("status") == "generating":
         logger.info("   └─ ✅ Proceeding to generation")
-        return {"ui_schema": ui_schema}
+        return {"ui_schema": ui_schema, "content_prompts": content_prompts}
     else:
         logger.info("   └─ ⏸️  Awaiting user review")
-        return {"ui_schema": ui_schema, "status": "awaiting_review"}
+        return {"ui_schema": ui_schema, "content_prompts": content_prompts, "status": "awaiting_review"}
 
 
 def build_generation_plan(state: StudioState) -> StudioState:
@@ -244,7 +268,9 @@ def execute_generation(state: StudioState) -> StudioState:
 
         try:
             if task_type == "image":
-                result = generate_image_url(provider, model_id, prompt)
+                model_type = model_config.get("type", "")
+                image_config = req.get("metadata", {})
+                result = generate_image_url(provider, model_id, prompt, model_type=model_type, image_config=image_config)
             else:
                 result = generate_text(provider, model_id, prompt)
             

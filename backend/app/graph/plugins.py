@@ -82,7 +82,7 @@ class ImagePlugin(OutputPlugin):
                 controls.append(val)
 
         technical_prefix = ", ".join(controls)
-        subject = spec.get('main_subject') or spec.get('user_text')
+        subject = spec.get('main_subject') or spec.get('image_prompt') or spec.get('user_text')
         
         # 1. Load & Format Template
         template = settings.prompts.get("image_gen", "{technical_prefix}. {subject}.")

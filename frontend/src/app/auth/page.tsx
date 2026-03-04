@@ -1,20 +1,14 @@
 "use client";
 
-import { useState, useEffect, FormEvent } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { signUp, signIn, signInWithGoogle } from "../../lib/auth";
+import { signInWithGoogle } from "../../lib/auth";
 import { useAuth } from "../../context/AuthContext";
-
-type AuthMode = "signin" | "signup";
 
 export default function AuthPage() {
     const router = useRouter();
     const { user, loading: authLoading } = useAuth();
 
-    const [mode, setMode] = useState<AuthMode>("signup");
-    const [email, setEmail] = useState("");
-    const [password, setPassword] = useState("");
-    const [confirmPassword, setConfirmPassword] = useState("");
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
 
@@ -32,54 +26,6 @@ export default function AuthPage() {
             </main>
         );
     }
-
-    const handleSubmit = async (e: FormEvent) => {
-        e.preventDefault();
-        setError("");
-
-        if (!email.trim() || !password.trim()) {
-            setError("Please fill in all fields.");
-            return;
-        }
-
-        if (mode === "signup" && password !== confirmPassword) {
-            setError("Passwords do not match.");
-            return;
-        }
-
-        if (password.length < 6) {
-            setError("Password must be at least 6 characters.");
-            return;
-        }
-
-        setLoading(true);
-        try {
-            if (mode === "signup") {
-                await signUp(email, password);
-            } else {
-                await signIn(email, password);
-            }
-            router.replace("/");
-        } catch (err: unknown) {
-            const firebaseError = err as { code?: string; message?: string };
-            const code = firebaseError.code || "";
-            if (code === "auth/email-already-in-use") {
-                setError("This email is already registered. Try signing in.");
-            } else if (code === "auth/invalid-email") {
-                setError("Invalid email address.");
-            } else if (code === "auth/wrong-password" || code === "auth/invalid-credential") {
-                setError("Invalid email or password.");
-            } else if (code === "auth/user-not-found") {
-                setError("No account found with this email.");
-            } else if (code === "auth/weak-password") {
-                setError("Password is too weak. Use at least 6 characters.");
-            } else {
-                setError(firebaseError.message || "An unexpected error occurred.");
-            }
-        } finally {
-            setLoading(false);
-        }
-    };
 
     const handleGoogleSignIn = async () => {
         setError("");
@@ -110,30 +56,12 @@ export default function AuthPage() {
                         NovaNode
                     </h1>
                     <p className="mt-2 text-sm text-gray-500">
-                        {mode === "signup" ? "Create your account to get started" : "Welcome back — sign in to continue"}
+                        Sign in or create an account to get started
                     </p>
                 </div>
 
                 {/* Auth Card */}
                 <div className="glass-card p-6 sm:p-8">
-
-                    {/* Mode Toggle */}
-                    <div className="auth-toggle-container mb-6">
-                        <button
-                            type="button"
-                            className={`auth-toggle-btn ${mode === "signup" ? "auth-toggle-active" : ""}`}
-                            onClick={() => { setMode("signup"); setError(""); }}
-                        >
-                            Sign Up
-                        </button>
-                        <button
-                            type="button"
-                            className={`auth-toggle-btn ${mode === "signin" ? "auth-toggle-active" : ""}`}
-                            onClick={() => { setMode("signin"); setError(""); }}
-                        >
-                            Sign In
-                        </button>
-                    </div>
 
                     {/* Error */}
                     {error && (
@@ -146,82 +74,6 @@ export default function AuthPage() {
                             <span>{error}</span>
                         </div>
                     )}
-
-                    {/* Form */}
-                    <form onSubmit={handleSubmit} className="space-y-4">
-                        {/* Email */}
-                        <div>
-                            <label className="block text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2">
-                                Email
-                            </label>
-                            <input
-                                id="auth-email"
-                                type="email"
-                                className="glass-input w-full p-3.5 text-sm"
-                                placeholder="you@example.com"
-                                value={email}
-                                onChange={(e) => setEmail(e.target.value)}
-                                autoComplete="email"
-                            />
-                        </div>
-
-                        {/* Password */}
-                        <div>
-                            <label className="block text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2">
-                                Password
-                            </label>
-                            <input
-                                id="auth-password"
-                                type="password"
-                                className="glass-input w-full p-3.5 text-sm"
-                                placeholder="••••••••"
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                                autoComplete={mode === "signup" ? "new-password" : "current-password"}
-                            />
-                        </div>
-
-                        {/* Confirm Password (signup only) */}
-                        {mode === "signup" && (
-                            <div className="animate-fade-in">
-                                <label className="block text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2">
-                                    Confirm Password
-                                </label>
-                                <input
-                                    id="auth-confirm-password"
-                                    type="password"
-                                    className="glass-input w-full p-3.5 text-sm"
-                                    placeholder="••••••••"
-                                    value={confirmPassword}
-                                    onChange={(e) => setConfirmPassword(e.target.value)}
-                                    autoComplete="new-password"
-                                />
-                            </div>
-                        )}
-
-                        {/* Submit */}
-                        <button
-                            type="submit"
-                            disabled={loading}
-                            className="btn-primary w-full mt-2"
-                        >
-                            <span>
-                                {loading ? (
-                                    <span className="flex items-center justify-center gap-2">
-                                        <span className="auth-spinner" />
-                                        {mode === "signup" ? "Creating Account..." : "Signing In..."}
-                                    </span>
-                                ) : (
-                                    mode === "signup" ? "Create Account" : "Sign In"
-                                )}
-                            </span>
-                        </button>
-                    </form>
-
-                    {/* Divider */}
-                    <div className="auth-divider my-6">
-                        <span>or</span>
-                    </div>
 
                     {/* Google Sign-In */}
                     <button

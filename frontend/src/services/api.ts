@@ -2,7 +2,7 @@
 import axios from 'axios';
 import { GenerateRequest, GenerationResult } from '../types';
 
-const API_BASE = 'http://127.0.0.1:8000';
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
 // Create axios instance with default headers
 const client = axios.create({

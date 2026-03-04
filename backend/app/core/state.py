@@ -57,6 +57,9 @@ class StudioState(TypedDict, total=False):
     # Raw results from the providers (URLs, Text)
     generated_assets: Dict[str, Any]     
     
+    # Per-content AI-generated prompts (editable by user)
+    content_prompts: Dict[str, str]
+
     # Total credit cost accumulated during generation
     total_cost: float
 

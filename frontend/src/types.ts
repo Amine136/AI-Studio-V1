@@ -28,6 +28,7 @@ export interface GenerationMeta {
 export interface GenerationResult {
   status: "success" | "awaiting_review" | "error";
   ui_schema?: Record<OutputType, Record<string, UISchemaItem>>; // Grouped by output type
+  content_prompts?: Record<string, string>;  // Per-content AI prompts: {image_prompt, caption_prompt}
   results?: Record<string, string>;         // Present if success
   meta?: GenerationMeta;
 }

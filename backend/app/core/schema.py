@@ -56,6 +56,10 @@ class GenerationResult(BaseModel):
         default=None,
         description="UI schema for review form when status is 'awaiting_review'"
     )
+    content_prompts: Optional[Dict[str, str]] = Field(
+        default=None,
+        description="Per-content-type AI-generated prompts, editable by user on review page (e.g. {image_prompt: ..., caption_prompt: ...})"
+    )
     results: Optional[Dict[str, Any]] = Field(
         default=None,
         description="Generated content including images and captions when status is 'success'"
@@ -124,7 +128,8 @@ class AISuggestions(BaseModel):
 
 class HiddenParams(BaseModel):
     """Internal params extracted by AI — never sent to frontend."""
-    summarize_the_user_idea: str = Field(description="A concise, optimized summary of the user's idea for content generation")
+    image_prompt: str = Field(description="A concise, visual-only prompt optimized for image generation. Describe only what should be SEEN in the image — no prices, no text, no marketing language.")
+    caption_prompt: str = Field(description="A concise summary of the user's idea optimized for caption/text generation, including marketing context, pricing, and call-to-action elements.")
     language: str = Field(description="The detected or appropriate language for the content (e.g., 'English', 'French')")
 
 class IntentAnalysis(BaseModel):

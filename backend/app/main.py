@@ -75,9 +75,10 @@ allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
+    allow_origin_regex=r"https://.*\.ngrok-free\.app",
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Content-Type", "X-API-Key"],
+    allow_headers=["Content-Type", "X-API-Key", "ngrok-skip-browser-warning"],
 )
 
 @app.get(
@@ -169,7 +170,8 @@ def generate_content(request: Request, payload: GenerateRequest, _=Depends(verif
         if final_state.get("status") == "awaiting_review":
             return GenerationResult(
                 status="awaiting_review",
-                ui_schema=final_state.get("ui_schema")
+                ui_schema=final_state.get("ui_schema"),
+                content_prompts=final_state.get("content_prompts")
             )
         elif final_state.get("status") == "complete":
             final_payload = final_state.get("final_response", {})

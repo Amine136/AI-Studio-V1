@@ -13,6 +13,48 @@
       "model_id": "@cf/stabilityai/stable-diffusion-xl-base-1.0",
       "cost": 0.1,
       "description": "Stable Diffusion XL via Cloudflare"
+    },
+    "gemini-2.5-flash-image": {
+      "provider": "google",
+      "model_id": "gemini-2.5-flash-preview-image-generation",
+      "type": "nanobanana",
+      "cost": 0.08,
+      "description": "Gemini 2.5 Flash image generation"
+    },
+    "gemini-3-pro-image": {
+      "provider": "google",
+      "model_id": "gemini-3-pro-image-preview",
+      "type": "nanobanana",
+      "cost": 0.12,
+      "description": "Gemini 3 Pro image generation"
+    },
+    "gemini-3.1-flash-image": {
+      "provider": "google",
+      "model_id": "gemini-3.1-flash-image-preview",
+      "type": "nanobanana",
+      "cost": 0.08,
+      "description": "Gemini 3.1 Flash image generation"
+    },
+    "imagen-4-fast": {
+      "provider": "google",
+      "model_id": "imagen-4.0-fast-generate-001",
+      "type": "imagen",
+      "cost": 0.10,
+      "description": "Imagen 4.0 Fast generation"
+    },
+    "imagen-4-ultra": {
+      "provider": "google",
+      "model_id": "imagen-4.0-ultra-generate-001",
+      "type": "imagen",
+      "cost": 0.20,
+      "description": "Imagen 4.0 Ultra quality generation"
+    },
+    "imagen-4": {
+      "provider": "google",
+      "model_id": "imagen-4.0-generate-001",
+      "type": "imagen",
+      "cost": 0.15,
+      "description": "Imagen 4.0 standard generation"
     }
   }
 }

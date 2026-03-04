@@ -1,9 +1,13 @@
 import urllib.parse
 import os
 import uuid
+import base64
 import httpx
 import time
 from pathlib import Path
+
+from google import genai
+from google.genai import types
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 IMAGES_DIR = BASE_DIR / "generated_images"
@@ -14,8 +18,29 @@ IMAGES_DIR.mkdir(exist_ok=True)
 CLOUDFLARE_API_URL = "https://mute-fog-5d03.ounimed019.workers.dev"
 CLOUDFLARE_AUTH_TOKEN = "12547854" 
 
-def generate_image_url(provider: str, model_id: str, prompt: str) -> str:
-    if provider == "cloudflare":
+# Maps display labels like "21:9 (Ultrawide)" to clean API ratios
+def _parse_aspect_ratio(raw: str) -> str:
+    """Extract clean aspect ratio from display label."""
+    if not raw:
+        return "1:1"
+    # Strip description in parentheses: "16:9 (Cinematic / YouTube)" -> "16:9"
+    clean = raw.split("(")[0].strip()
+    # Validate format
+    if ":" in clean:
+        return clean
+    return "1:1"
+
+
+def generate_image_url(provider: str, model_id: str, prompt: str, model_type: str = "", image_config: dict = None) -> str:
+    if image_config is None:
+        image_config = {}
+    
+    if provider == "google":
+        if model_type == "imagen":
+            return _generate_via_imagen(model_id, prompt, image_config)
+        else:
+            return _generate_via_nanobanana(model_id, prompt, image_config)
+    elif provider == "cloudflare":
         return _generate_via_cloudflare(model_id, prompt)
     elif provider == "pollinations":
         return _generate_via_pollinations(model_id, prompt)
@@ -103,3 +128,115 @@ def _generate_via_openai(model_id: str, prompt: str) -> str:
 
 def _generate_mock(model_id: str, prompt: str) -> str:
     return f"https://mock-backend.local/image?model={model_id}&prompt={urllib.parse.quote(prompt)}"
+
+
+# ---------------------------------------------------------
+# Google Nanobanana (Gemini image generation via generate_content)
+# ---------------------------------------------------------
+
+def _generate_via_nanobanana(model_id: str, prompt: str, image_config: dict = None) -> str:
+    """
+    Uses Gemini models that support image generation through generate_content.
+    Models: gemini-2.5-flash-image, gemini-3-pro-image-preview, gemini-3.1-flash-image-preview
+    """
+    if image_config is None:
+        image_config = {}
+
+    aspect_ratio = _parse_aspect_ratio(image_config.get("aspect_ratio", ""))
+    filename = f"{uuid.uuid4()}.png"
+    save_path = IMAGES_DIR / filename
+
+    print(f"🍌 Nanobanana: Generating '{prompt[:40]}...' with {model_id} | aspect={aspect_ratio}")
+
+    # Nanobanana models accept aspect ratio as part of the text prompt
+    aspect_prompt = f"{prompt}. Aspect ratio: {aspect_ratio}."
+
+    try:
+        api_key = os.getenv("GOOGLE_API_KEY")
+        if not api_key:
+            return "Error: No GOOGLE_API_KEY configured"
+
+        client = genai.Client(api_key=api_key)
+
+        response = client.models.generate_content(
+            model=model_id,
+            contents=[aspect_prompt],
+            config=types.GenerateContentConfig(
+                response_modalities=["IMAGE", "TEXT"],
+            ),
+        )
+
+        # Extract image from response parts
+        for part in response.candidates[0].content.parts:
+            if part.inline_data and part.inline_data.mime_type.startswith("image/"):
+                image_bytes = part.inline_data.data
+                with open(save_path, "wb") as f:
+                    f.write(image_bytes)
+
+                print(f"✅ Nanobanana saved to: {save_path}")
+                return f"http://127.0.0.1:8000/images/{filename}"
+
+        return "Error: No image data in Gemini response"
+
+    except Exception as e:
+        print(f"❌ Nanobanana Generation Failed: {e}")
+        return f"Error: {str(e)}"
+
+
+# ---------------------------------------------------------
+# Google Imagen (dedicated image generation via generate_images)
+# ---------------------------------------------------------
+
+# Imagen API only supports these aspect ratios
+IMAGEN_VALID_RATIOS = {"1:1", "3:4", "4:3", "9:16", "16:9"}
+
+def _generate_via_imagen(model_id: str, prompt: str, image_config: dict = None) -> str:
+    """
+    Uses Imagen models with the dedicated generate_images API.
+    Models: imagen-4.0-fast-generate-001, imagen-4.0-ultra-generate-001, imagen-4.0-generate-001
+    """
+    if image_config is None:
+        image_config = {}
+
+    aspect_ratio = _parse_aspect_ratio(image_config.get("aspect_ratio", ""))
+    
+    # Imagen API only supports specific ratios — fallback to closest match
+    if aspect_ratio not in IMAGEN_VALID_RATIOS:
+        print(f"⚠️ Imagen: '{aspect_ratio}' not supported, falling back to '16:9'")
+        aspect_ratio = "16:9"
+
+    filename = f"{uuid.uuid4()}.png"
+    save_path = IMAGES_DIR / filename
+
+    print(f"🖼️ Imagen: Generating '{prompt[:40]}...' with {model_id} | aspect={aspect_ratio}")
+
+    try:
+        api_key = os.getenv("GOOGLE_API_KEY")
+        if not api_key:
+            return "Error: No GOOGLE_API_KEY configured"
+
+        client = genai.Client(api_key=api_key)
+
+        response = client.models.generate_images(
+            model=model_id,
+            prompt=prompt,
+            config=types.GenerateImagesConfig(
+                number_of_images=1,
+                aspect_ratio=aspect_ratio,
+            ),
+        )
+
+        # Save the first generated image
+        if response.generated_images and len(response.generated_images) > 0:
+            image_data = response.generated_images[0].image.image_bytes
+            with open(save_path, "wb") as f:
+                f.write(image_data)
+
+            print(f"✅ Imagen saved to: {save_path}")
+            return f"http://127.0.0.1:8000/images/{filename}"
+
+        return "Error: No images returned from Imagen API"
+
+    except Exception as e:
+        print(f"❌ Imagen Generation Failed: {e}")
+        return f"Error: {str(e)}"
