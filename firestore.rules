@@ -1,9 +1,10 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Allow users to read and write their own data in the 'users' collection
-    match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+    // NovaNode no longer stores privileged application data in Firestore.
+    // Keep Firestore locked down unless a future server-managed use case is added.
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

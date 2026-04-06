@@ -7,6 +7,7 @@ interface ModelSelectorProps {
     onChange: (value: string) => void;
     disabled?: boolean;
     accent?: "blue" | "purple";
+    modelLabels?: Record<string, string>;
 }
 
 export default function ModelSelector({
@@ -16,6 +17,7 @@ export default function ModelSelector({
     onChange,
     disabled = false,
     accent = "blue",
+    modelLabels = {},
 }: ModelSelectorProps) {
     return (
         <div className={`transition-all duration-300 ${disabled ? "opacity-25 pointer-events-none" : "opacity-100"}`}>
@@ -31,7 +33,7 @@ export default function ModelSelector({
             >
                 {models.map((m) => (
                     <option key={m} value={m}>
-                        {m}
+                        {modelLabels[m] || m}
                     </option>
                 ))}
             </select>

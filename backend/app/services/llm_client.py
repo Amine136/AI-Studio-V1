@@ -1,22 +1,20 @@
 from typing import Any, Optional
-from app.services.llm.factory import LLMFactory
 
-# ---------------------------------------------------------
-# The Facade (Main Entry Point)
-# ---------------------------------------------------------
+from app.services.apikeymanager_client import generate_text_via_proxy
 
 def generate_text(
     provider: str, 
     model_id: str, 
     prompt: str, 
-    response_schema: Optional[Any] = None
+    response_schema: Optional[Any] = None,
+    input_image: Optional[dict[str, str]] = None,
 ) -> str:
     """
-    Routes the text generation request to the appropriate registered provider.
-    
-    This facade maintains backward compatibility with the rest of the application.
+    Sends text generation through ApiKeyManager.
+
+    This thin wrapper keeps the rest of the workflow code stable while the
+    actual provider routing is delegated to ApiKeyManager.
     """
-    provider_client = LLMFactory.get_provider(provider)
-    answer = provider_client.generate(model_id, prompt, response_schema)
+    answer = generate_text_via_proxy(provider, model_id, prompt, response_schema, input_image=input_image)
     print(f"llm answer: {answer}")
     return answer

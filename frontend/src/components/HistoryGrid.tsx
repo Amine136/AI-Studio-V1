@@ -94,8 +94,8 @@ export default function HistoryGrid({ entries, loading }: HistoryGridProps) {
                                     <p className="text-sm text-gray-300 mt-1 leading-relaxed whitespace-pre-wrap">{selectedEntry.caption}</p>
                                 </div>
                             )}
-                            <div className="flex items-center justify-between pt-2 border-t border-white/5">
-                                <div className="flex items-center gap-2">
+                            <div className="flex flex-col gap-3 pt-2 border-t border-white/5 sm:flex-row sm:items-center sm:justify-between">
+                                <div className="flex flex-wrap items-center gap-2">
                                     <span className="text-[10px] text-gray-600 bg-white/5 px-2 py-0.5 rounded-full">{selectedEntry.model}</span>
                                     <span className="text-[10px] text-gray-600">
                                         {selectedEntry.createdAt.toLocaleDateString()} {selectedEntry.createdAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
@@ -103,7 +103,7 @@ export default function HistoryGrid({ entries, loading }: HistoryGridProps) {
                                 </div>
                                 <button
                                     onClick={() => setSelectedEntry(null)}
-                                    className="text-xs text-gray-500 hover:text-white transition-colors px-3 py-1 rounded-lg hover:bg-white/5"
+                                    className="text-xs text-gray-500 hover:text-white transition-colors px-3 py-1 rounded-lg hover:bg-white/5 self-start sm:self-auto"
                                 >
                                     Close
                                 </button>

@@ -7,7 +7,7 @@ from app.core.state import StudioState, ContentSpec, OutputType
 from app.config import settings
 from app.graph.plugins import PLUGIN_REGISTRY
 from app.services.llm_client import generate_text
-from app.services.image_client import generate_image_url
+from app.services.image_client import generate_image_url, generate_image_and_text
 from app.services.sanitizer import sanitize_user_text
 from app.core.schema import IntentAnalysis
 
@@ -69,6 +69,7 @@ def ingest_input(state: StudioState) -> StudioState:
     
     req_outputs = state.get("requested_outputs") or ["image", "caption"]
     user_prefs = state.get("user_preferences", {})
+    input_image = state.get("input_image")
     
     # Status Logic
     current_status = state.get("status")
@@ -79,6 +80,7 @@ def ingest_input(state: StudioState) -> StudioState:
     return {
         "user_text": user_text,
         "requested_outputs": req_outputs,
+        "input_image": input_image,
         "user_preferences": user_prefs,
         "status": next_status
     }
@@ -122,6 +124,7 @@ def analyze_intent(state: StudioState) -> StudioState:
     logger.info("🧠 [Step 3/6] ANALYZE INTENT: Understanding user request...")
     
     user_text = state["user_text"]
+    input_image = state.get("input_image")
     system_llm_model = settings.system_llm_model 
     
     # We still pass the options so Gemini knows *what* values to pick
@@ -141,7 +144,8 @@ def analyze_intent(state: StudioState) -> StudioState:
         settings.system_llm_provider, 
         system_llm_model, 
         prompt, 
-        response_schema=IntentAnalysis
+        response_schema=IntentAnalysis,
+        input_image=input_image,
     )
     
     try:
@@ -245,6 +249,64 @@ def execute_generation(state: StudioState) -> StudioState:
     generated = {}
     total_cost = 0
     total_requests = len(state.get("model_requests", []))
+    input_image = state.get("input_image")
+    requested_outputs = state.get("requested_outputs", [])
+    assigned_models = state.get("assigned_models", {})
+    content_spec = state.get("content_spec", {})
+
+    shared_multimodal_model = (
+        input_image
+        and "caption" in requested_outputs
+        and "image" in requested_outputs
+        and assigned_models.get("caption")
+        and assigned_models.get("caption") == assigned_models.get("image")
+    )
+
+    if shared_multimodal_model:
+        model_name = assigned_models["image"]
+        model_config = settings.model_catalog.get("image", {}).get(model_name) or settings.model_catalog.get("caption", {}).get(model_name)
+        if not model_config:
+            return {
+                "generated_assets": {
+                    "caption": f"Error: Model {model_name} not found.",
+                    "image": f"Error: Model {model_name} not found.",
+                },
+                "total_cost": 0,
+                "status": "complete",
+            }
+
+        provider = model_config.get("provider", "mock")
+        model_id = model_config.get("model_id", "default")
+        model_cost = model_config.get("cost", 0)
+        multimodal_prompt = _build_shared_multimodal_prompt(content_spec)
+        logger.info(f"   ├─ [1/1] multimodal bundle via {provider} (cost: {model_cost})...")
+
+        try:
+            bundle = generate_image_and_text(
+                provider,
+                model_id,
+                multimodal_prompt,
+                image_config={"aspect_ratio": content_spec.get("aspect_ratio", "16:9")},
+                input_image=input_image,
+            )
+            generated["image"] = bundle.get("image", "")
+            generated["caption"] = bundle.get("text", "")
+            total_cost += model_cost
+            logger.info("   │  └─ ✅ Shared multimodal request succeeded")
+            return {
+                "generated_assets": generated,
+                "total_cost": total_cost,
+                "status": "complete",
+            }
+        except Exception as e:
+            error_msg = f"Generation Failed: {str(e)}"
+            logger.error(f"   │  └─ ❌ {error_msg}")
+            traceback.print_exc()
+            return {
+                "generated_assets": {"image": error_msg, "caption": error_msg},
+                "total_cost": 0,
+                "status": "complete",
+            }
     
     for idx, req in enumerate(state.get("model_requests", []), 1):
         task_type = req["output_key"]
@@ -270,9 +332,16 @@ def execute_generation(state: StudioState) -> StudioState:
             if task_type == "image":
                 model_type = model_config.get("type", "")
                 image_config = req.get("metadata", {})
-                result = generate_image_url(provider, model_id, prompt, model_type=model_type, image_config=image_config)
+                result = generate_image_url(
+                    provider,
+                    model_id,
+                    prompt,
+                    model_type=model_type,
+                    image_config=image_config,
+                    input_image=input_image,
+                )
             else:
-                result = generate_text(provider, model_id, prompt)
+                result = generate_text(provider, model_id, prompt, input_image=input_image)
             
             generated[task_type] = result
             total_cost += model_cost
@@ -291,6 +360,20 @@ def execute_generation(state: StudioState) -> StudioState:
         "total_cost": total_cost,
         "status": "complete"
     }
+
+
+def _build_shared_multimodal_prompt(content_spec: ContentSpec) -> str:
+    image_prompt = content_spec.get("image_prompt") or content_spec.get("user_text", "")
+    caption_prompt = content_spec.get("caption_prompt") or content_spec.get("user_text", "")
+    language = content_spec.get("language", "English")
+    return (
+        "Use the provided image and user instructions to produce both outputs in one pass.\n"
+        "1. Generate an edited/new image that follows this visual direction:\n"
+        f"{image_prompt}\n\n"
+        "2. Generate a social-media-ready caption that follows this writing direction:\n"
+        f"{caption_prompt}\n\n"
+        f"Write the caption in {language}. Return both the image and the caption text."
+    )
 
 
 def format_delivery(state: StudioState) -> StudioState:

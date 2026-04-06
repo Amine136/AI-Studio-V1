@@ -2,18 +2,15 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { getAllUsers, addCredits, deductCredits, UserRecord } from "../../lib/credits";
+import { getAllUsers, addCredits, deductCredits, getProfile, UserRecord } from "../../lib/credits";
 import { createCreditCode, getAllCreditCodes, CreditCode } from "../../lib/creditCodes";
-
-const ADMIN_PASSWORD = "novanode-admin";
-const ADMIN_KEY = "admin_authenticated";
+import { useAuth } from "../../context/AuthContext";
+import AnimatedLogo from "../../components/AnimatedLogo";
 
 export default function AdminPage() {
     const router = useRouter();
-
-    const [authenticated, setAuthenticated] = useState(false);
-    const [passwordInput, setPasswordInput] = useState("");
-    const [passwordError, setPasswordError] = useState("");
+    const { user, loading: authLoading } = useAuth();
+    const [authorized, setAuthorized] = useState<boolean | null>(null);
 
     const [users, setUsers] = useState<UserRecord[]>([]);
     const [loading, setLoading] = useState(true);
@@ -27,22 +24,11 @@ export default function AdminPage() {
     const [creatingCode, setCreatingCode] = useState(false);
     const [codeCreated, setCodeCreated] = useState<string | null>(null);
 
-    // Check sessionStorage on mount
     useEffect(() => {
-        if (typeof window !== "undefined" && sessionStorage.getItem(ADMIN_KEY) === "true") {
-            setAuthenticated(true);
+        if (!authLoading && !user) {
+            router.replace("/auth");
         }
-    }, []);
-
-    const handleAdminLogin = () => {
-        if (passwordInput === ADMIN_PASSWORD) {
-            sessionStorage.setItem(ADMIN_KEY, "true");
-            setAuthenticated(true);
-            setPasswordError("");
-        } else {
-            setPasswordError("Incorrect admin password.");
-        }
-    };
+    }, [authLoading, user, router]);
 
     const fetchUsers = useCallback(async () => {
         setLoading(true);
@@ -60,11 +46,28 @@ export default function AdminPage() {
     }, []);
 
     useEffect(() => {
-        if (authenticated) {
-            fetchUsers();
-            fetchCodes();
+        if (!user) return;
+        let cancelled = false;
+
+        const loadAccess = async () => {
+            try {
+                const profile = await getProfile();
+                if (cancelled) return;
+                setAuthorized(profile.isAdmin);
+                if (profile.isAdmin) {
+                    fetchUsers();
+                    fetchCodes();
+                }
+            } catch {
+                if (!cancelled) setAuthorized(false);
+            }
+        };
+
+        loadAccess();
+        return () => {
+            cancelled = true;
         }
-    }, [authenticated, fetchUsers, fetchCodes]);
+    }, [user, fetchUsers, fetchCodes]);
 
     const handleCreateCode = async () => {
         setCreatingCode(true);
@@ -93,40 +96,28 @@ export default function AdminPage() {
         setUpdating(null);
     };
 
-    // Admin password gate
-    if (!authenticated) {
+    if (authLoading || !user || authorized === null) {
+        return (
+            <main className="min-h-screen flex items-center justify-center">
+                <div className="auth-loader" />
+            </main>
+        );
+    }
+
+    if (!authorized) {
         return (
             <main className="min-h-screen flex items-center justify-center px-4">
-                <div className="w-full max-w-sm animate-fade-in-up">
-                    <div className="text-center mb-8">
-                        <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 mb-4 shadow-lg auth-logo-glow">
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                            </svg>
-                        </div>
-                        <h1 className="text-2xl font-extrabold gradient-text">Admin Access</h1>
-                        <p className="text-xs text-gray-500 mt-1">Enter admin password to continue</p>
-                    </div>
-                    <div className="glass-card p-6">
-                        {passwordError && (
-                            <div className="auth-error mb-4 animate-fade-in">
-                                <span>{passwordError}</span>
-                            </div>
-                        )}
-                        <input
-                            type="password"
-                            className="glass-input w-full p-3.5 text-sm mb-4"
-                            placeholder="Admin password"
-                            value={passwordInput}
-                            onChange={(e) => setPasswordInput(e.target.value)}
-                            onKeyDown={(e) => e.key === "Enter" && handleAdminLogin()}
-                            autoFocus
-                        />
-                        <button onClick={handleAdminLogin} className="btn-primary w-full">
-                            <span>Enter Admin Panel</span>
-                        </button>
-                    </div>
+                <div className="glass-card p-8 max-w-md w-full text-center">
+                    <h1 className="text-2xl font-extrabold gradient-text">Admin Access</h1>
+                    <p className="text-sm text-gray-400 mt-3">
+                        Your account is not authorized to access the admin panel.
+                    </p>
+                    <button
+                        onClick={() => router.push("/")}
+                        className="btn-primary mt-6 w-full"
+                    >
+                        <span>Back to Studio</span>
+                    </button>
                 </div>
             </main>
         );
@@ -141,20 +132,13 @@ export default function AdminPage() {
     const totalCredits = users.reduce((sum, u) => sum + u.credits, 0);
 
     return (
-        <main className="min-h-screen flex items-start justify-center px-4 py-10 sm:py-16">
+        <main className="min-h-screen flex items-start justify-center px-3 py-8 sm:px-4 sm:py-16">
             <div className="w-full max-w-5xl">
 
                 {/* Header Bar */}
                 <div className="admin-header animate-fade-in">
-                    <div className="flex items-center gap-4">
-                        <div className="admin-header-icon">
-                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M12 4.354a4 4 0 1 1 0 5.292" />
-                                <path d="M15 21H3v-1a6 6 0 0 1 12 0v1z" />
-                                <path d="M19 8v6" />
-                                <path d="M22 11h-6" />
-                            </svg>
-                        </div>
+                    <div className="flex items-center gap-4 min-w-0">
+                        <AnimatedLogo sizeClassName="h-20 w-20 flex-shrink-0" imageClassName="h-16 w-16" />
                         <div>
                             <h1 className="text-2xl sm:text-3xl font-extrabold gradient-text tracking-tight">
                                 Admin Panel
@@ -177,7 +161,7 @@ export default function AdminPage() {
                 </div>
 
                 {/* Stats Row */}
-                <div className="grid grid-cols-3 gap-4 mb-6 animate-fade-in-up" style={{ animationDelay: "80ms" }}>
+                <div className="grid grid-cols-1 gap-4 mb-6 sm:grid-cols-2 xl:grid-cols-3 animate-fade-in-up" style={{ animationDelay: "80ms" }}>
                     <div className="admin-stat-card">
                         <div className="admin-stat-icon admin-stat-icon-users">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -356,9 +340,9 @@ export default function AdminPage() {
                     </h2>
 
                     {/* Create Code Form */}
-                    <div className="glass-card p-5 mb-4">
+                    <div className="glass-card p-4 sm:p-5 mb-4">
                         <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">Generate New Code</p>
-                        <div className="flex flex-wrap items-end gap-4">
+                        <div className="flex flex-col items-stretch gap-4 sm:flex-row sm:flex-wrap sm:items-end">
                             <div className="flex-1 min-w-[140px]">
                                 <label className="block text-xs text-gray-500 mb-1.5">Credits (1–10)</label>
                                 <input
@@ -384,7 +368,7 @@ export default function AdminPage() {
                             <button
                                 onClick={handleCreateCode}
                                 disabled={creatingCode}
-                                className="btn-primary px-6 h-[46px] text-sm"
+                                className="btn-primary w-full sm:w-auto px-6 h-[46px] text-sm"
                             >
                                 <span>{creatingCode ? "Creating..." : "Generate Code"}</span>
                             </button>
@@ -416,7 +400,7 @@ export default function AdminPage() {
                                     </thead>
                                     <tbody>
                                         {codes.map((c) => {
-                                            const exhausted = c.claimedBy.length >= c.maxClaims;
+                                            const exhausted = c.claimedCount >= c.maxClaims;
                                             return (
                                                 <tr key={c.code}>
                                                     <td>
@@ -429,7 +413,7 @@ export default function AdminPage() {
                                                     </td>
                                                     <td>
                                                         <span className="text-sm text-gray-400">
-                                                            {c.claimedBy.length} / {c.maxClaims}
+                                                            {c.claimedCount} / {c.maxClaims}
                                                         </span>
                                                     </td>
                                                     <td>
@@ -449,7 +433,7 @@ export default function AdminPage() {
 
                 {/* Footer */}
                 <p className="text-center text-[11px] text-gray-600 mt-8">
-                    Powered by NovaNode
+                    Powered by Vibecraft
                 </p>
             </div>
         </main>

@@ -1,14 +1,9 @@
 "use client";
 
-import { Inter } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "../context/AuthContext";
 
-const inter = Inter({
-  variable: "--font-inter",
-  subsets: ["latin"],
-  display: "swap",
-});
+const LOGO_VERSION = "20260404-1846";
 
 export default function RootLayout({
   children,
@@ -18,10 +13,12 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
-        <title>NovaNode AI Studio — Create with AI</title>
-        <meta name="description" content="AI-powered creative studio for generating captions, images, and more." />
+        <title>Vibecraft — Create with AI</title>
+        <meta name="description" content="Vibecraft is an AI-powered creative studio for generating captions, images, and more." />
+        <link rel="icon" href={`/best-version/logo-192.png?v=${LOGO_VERSION}`} type="image/png" sizes="192x192" />
+        <link rel="apple-touch-icon" href={`/best-version/logo-192.png?v=${LOGO_VERSION}`} />
       </head>
-      <body className={`${inter.variable} antialiased`}>
+      <body className="antialiased">
         <AuthProvider>
           {children}
         </AuthProvider>

@@ -10,6 +10,13 @@ ContentSpec = Dict[str, Any]
 # The valid output types supported by the system
 OutputType = Literal["caption", "image"]
 
+
+class InputImage(TypedDict, total=False):
+    name: str
+    mime_type: str
+    data: str
+    url: str
+
 # ---------------------------
 # 2. The Graph State
 # ---------------------------
@@ -23,9 +30,10 @@ class StudioState(TypedDict, total=False):
     # --- Input Layer (From User) ---
     user_text: str                       # Raw input: "Futuristic city in rain"
     requested_outputs: List[OutputType]  # What to generate: ["image", "caption"]
+    input_image: Optional[InputImage]    # Optional uploaded image used as multimodal input
     
     # Official tracking of user model choices
-    user_preferences: Dict[str, str]     # e.g. {"image_model": "dalle-3"}
+    user_preferences: Dict[str, str]     # e.g. {"image_model": "imagen-4.0-fast-generate-001"}
     
     # --- Interaction Layer (UI Feedback) ---
     # Corrections from the "Smart Dropdowns" (e.g., {"lighting": "Natural"})
@@ -40,7 +48,7 @@ class StudioState(TypedDict, total=False):
     # --- Control Flow ---
     # processing: AI is analyzing text
     # awaiting_review: Paused for user to check dropdowns
-    # generating: User approved, running APIs
+    # generating: User approved, running generation requests through ApiKeyManager
     status: Literal["processing", "awaiting_review", "generating", "complete", "error"]
 
     # --- Execution Layer ---
@@ -54,7 +62,7 @@ class StudioState(TypedDict, total=False):
     model_requests: List[Dict[str, Any]] 
 
     # --- Output Layer ---
-    # Raw results from the providers (URLs, Text)
+    # Raw generation results (URLs, text)
     generated_assets: Dict[str, Any]     
     
     # Per-content AI-generated prompts (editable by user)

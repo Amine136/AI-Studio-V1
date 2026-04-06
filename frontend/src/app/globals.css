@@ -505,26 +505,161 @@ body {
   background: var(--border-subtle);
 }
 
+.auth-scene {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 18%, rgba(0, 191, 255, 0.05), transparent 28%),
+    #090f1d;
+}
+
+.auth-bg-glow {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 50% 18%, rgba(0, 191, 255, 0.08), transparent 18%),
+    radial-gradient(circle at 50% 24%, rgba(77, 184, 255, 0.04), transparent 32%);
+  filter: blur(10px);
+}
+
+.auth-particles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.auth-particles span {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(191, 239, 255, 0.7);
+  box-shadow: 0 0 10px rgba(0, 191, 255, 0.35);
+  animation: authFloat 11s ease-in-out infinite;
+}
+
+.auth-particles span:nth-child(1) {
+  top: 14%;
+  left: 22%;
+  animation-delay: 0s;
+}
+
+.auth-particles span:nth-child(2) {
+  top: 20%;
+  right: 24%;
+  width: 2px;
+  height: 2px;
+  animation-delay: -1.5s;
+}
+
+.auth-particles span:nth-child(3) {
+  top: 31%;
+  left: 16%;
+  animation-delay: -3s;
+}
+
+.auth-particles span:nth-child(4) {
+  top: 36%;
+  right: 18%;
+  width: 2px;
+  height: 2px;
+  animation-delay: -4.2s;
+}
+
+.auth-particles span:nth-child(5) {
+  bottom: 28%;
+  left: 19%;
+  animation-delay: -2.7s;
+}
+
+.auth-particles span:nth-child(6) {
+  bottom: 22%;
+  right: 21%;
+  animation-delay: -5s;
+}
+
+.auth-particles span:nth-child(7) {
+  top: 52%;
+  left: 10%;
+  width: 2px;
+  height: 2px;
+  animation-delay: -6.5s;
+}
+
+.auth-particles span:nth-child(8) {
+  top: 57%;
+  right: 11%;
+  animation-delay: -7.8s;
+}
+
+.auth-title {
+  text-shadow: 0 0 18px rgba(0, 191, 255, 0.18);
+}
+
+.app-logo {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.app-logo-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: conic-gradient(from 0deg, transparent 60%, rgba(56, 189, 248, 0.42) 100%);
+  filter: blur(8px);
+  animation: appLogoSpin 8s linear infinite;
+}
+
+.app-logo-glow {
+  position: absolute;
+  inset: 8px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(56, 189, 248, 0.18) 0%, transparent 70%);
+  animation: pulse 2.8s ease-in-out infinite;
+}
+
+.app-logo-image {
+  position: relative;
+  z-index: 1;
+  object-fit: contain;
+  filter: drop-shadow(0 0 20px rgba(56, 189, 248, 0.42));
+  animation: authFloat 3s ease-in-out infinite;
+}
+
 .auth-google-btn {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 12px;
   padding: 14px 24px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--border-default);
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: var(--radius-lg);
   color: var(--text-primary);
   font-size: 0.875rem;
   font-weight: 600;
   cursor: pointer;
-  transition: all var(--transition-fast);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast),
+    transform var(--transition-fast);
 }
 
 .auth-google-btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.15);
-  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(0, 191, 255, 0.22);
+  box-shadow:
+    0 0 0 1px rgba(0, 191, 255, 0.08),
+    0 12px 28px rgba(0, 0, 0, 0.25),
+    0 0 24px rgba(0, 191, 255, 0.12);
+  transform: translateY(-2px);
 }
 
 .auth-google-btn:disabled {
@@ -553,6 +688,26 @@ body {
 
 .auth-logo-glow {
   box-shadow: 0 0 30px rgba(59, 130, 246, 0.3), 0 0 60px rgba(139, 92, 246, 0.15);
+}
+
+@keyframes authFloat {
+  0%, 100% {
+    transform: translate3d(0, 0, 0);
+    opacity: 0.25;
+  }
+  50% {
+    transform: translate3d(0, -12px, 0);
+    opacity: 0.9;
+  }
+}
+
+@keyframes appLogoSpin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* ===== CREDITS WIDGET ===== */
@@ -1188,3 +1343,103 @@ body {
   color: #fca5a5;
 }
 
+@media (max-width: 640px) {
+  .btn-primary,
+  .btn-secondary,
+  .btn-generate,
+  .btn-dark {
+    width: 100%;
+    font-size: 0.95rem;
+    padding: 14px 20px;
+  }
+
+  .toast {
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    padding: 12px 14px;
+  }
+
+  .credits-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 14px;
+    padding: 14px 16px;
+  }
+
+  .credits-info {
+    width: 100%;
+  }
+
+  .credits-text {
+    flex-wrap: wrap;
+  }
+
+  .redeem-toggle-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .redeem-panel {
+    padding: 14px;
+  }
+
+  .redeem-input-row {
+    flex-direction: column;
+  }
+
+  .redeem-apply-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .redeem-result {
+    align-items: flex-start;
+    padding: 12px 14px;
+  }
+
+  .admin-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 16px;
+  }
+
+  .admin-back-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .admin-stat-card {
+    padding: 16px;
+  }
+
+  .admin-stat-value {
+    font-size: 1.25rem;
+  }
+
+  .admin-search-input {
+    padding: 13px 40px;
+  }
+
+  .admin-table {
+    min-width: 680px;
+  }
+
+  .admin-table th,
+  .admin-table td {
+    padding: 14px 16px;
+  }
+
+  .admin-user-name,
+  .admin-email {
+    word-break: break-word;
+  }
+
+  .admin-actions {
+    flex-wrap: wrap;
+  }
+
+  .admin-table-footer {
+    padding: 12px 16px;
+  }
+}

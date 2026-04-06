@@ -7,6 +7,26 @@ from pydantic import BaseModel, Field
 
 OutputType = Literal["image", "caption"]
 
+
+class InputImage(BaseModel):
+    """Base64-encoded image sent from the frontend."""
+    name: Optional[str] = Field(default=None, description="Original file name")
+    mime_type: Optional[str] = Field(
+        default=None,
+        description="MIME type of the uploaded image",
+        json_schema_extra={"example": "image/png"},
+    )
+    data: Optional[str] = Field(
+        default=None,
+        min_length=16,
+        description="Raw base64 image bytes without a data URL prefix",
+    )
+    url: Optional[str] = Field(
+        default=None,
+        description="Public image URL used for provider-side fetch",
+        json_schema_extra={"example": "https://aistudio.ouni.space/images/1234abcd.png"},
+    )
+
 class GenerateRequest(BaseModel):
     """Request payload for content generation."""
     user_text: str = Field(
@@ -19,6 +39,10 @@ class GenerateRequest(BaseModel):
     requested_outputs: List[OutputType] = Field(
         default=["image", "caption"],
         description="Types of content to generate. Can include 'image', 'caption', or both"
+    )
+    input_image: Optional[InputImage] = Field(
+        default=None,
+        description="Optional uploaded image used as multimodal input"
     )
     user_preferences: Optional[Dict[str, str]] = Field(
         default={},
@@ -40,6 +64,11 @@ class GenerateRequest(BaseModel):
                 {
                     "user_text": "A sleek tech product on a minimalist desk",
                     "requested_outputs": ["image", "caption"],
+                    "input_image": {
+                        "name": "reference.png",
+                        "mime_type": "image/png",
+                        "data": "iVBORw0KGgoAAAANSUhEUgAA..."
+                    },
                     "user_preferences": {"platform": "LinkedIn", "brand_voice": "Professional"}
                 }
             ]
@@ -91,6 +120,7 @@ class StudioState(BaseModel):
     user_text: str = ""
     requested_outputs: List[OutputType] = []
     status: str = "processing"
+    input_image: Optional[InputImage] = None
     
     # Context
     user_preferences: Dict[str, str] = {}

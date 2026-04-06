@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { signInWithGoogle } from "../../lib/auth";
 import { useAuth } from "../../context/AuthContext";
+import AnimatedLogo from "../../components/AnimatedLogo";
 
 export default function AuthPage() {
     const router = useRouter();
@@ -42,20 +43,27 @@ export default function AuthPage() {
     };
 
     return (
-        <main className="min-h-screen flex items-center justify-center px-4 py-12">
-            <div className="w-full max-w-md animate-fade-in-up">
+        <main className="auth-scene min-h-screen flex items-center justify-center px-4 py-12">
+            <div className="auth-bg-glow" aria-hidden="true" />
+            <div className="auth-particles" aria-hidden="true">
+                <span />
+                <span />
+                <span />
+                <span />
+                <span />
+                <span />
+                <span />
+                <span />
+            </div>
+            <div className="relative z-10 w-full max-w-md animate-fade-in-up">
 
                 {/* Branding */}
                 <div className="text-center mb-10">
-                    <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 mb-5 shadow-lg auth-logo-glow">
-                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-                        </svg>
-                    </div>
-                    <h1 className="text-3xl sm:text-4xl font-extrabold gradient-text tracking-tight">
-                        NovaNode
+                    <AnimatedLogo />
+                    <h1 className="auth-title text-4xl sm:text-5xl font-extrabold gradient-text tracking-tight">
+                        Vibecraft
                     </h1>
-                    <p className="mt-2 text-sm text-gray-500">
+                    <p className="mt-2 text-sm text-slate-400">
                         Sign in or create an account to get started
                     </p>
                 </div>
@@ -93,8 +101,8 @@ export default function AuthPage() {
                 </div>
 
                 {/* Footer */}
-                <p className="text-center text-[11px] text-gray-600 mt-6">
-                    Powered by NovaNode
+                <p className="mt-6 text-center text-[11px] text-slate-500">
+                    Powered by Vibecraft
                 </p>
             </div>
         </main>

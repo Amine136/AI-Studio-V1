@@ -1,11 +1,11 @@
-# AI Studio V1 - Backend
+# Vibecraft Backend
 
-A powerful AI-driven content generation API built with **FastAPI** and **LangGraph** for orchestrating multi-step AI workflows.
+A FastAPI + LangGraph backend that orchestrates multi-step content generation while delegating all model/provider calls to **ApiKeyManager**.
 
 ## 🚀 Features
 
-- **🎨 AI Image Generation** - Generate visuals using Cloudflare Stable Diffusion
-- **✍️ Caption Generation** - Create engaging captions with Google Gemini
+- **🎨 AI Image Generation** - Generate visuals via ApiKeyManager-managed providers
+- **✍️ Caption Generation** - Generate text via ApiKeyManager-managed providers
 - **🔄 LangGraph Workflows** - Multi-step AI orchestration with human-in-the-loop review
 - **🔌 Plugin Architecture** - Easily extensible for new output types (video, audio, etc.)
 - **📖 Auto-generated API Docs** - Swagger UI at `/docs`
@@ -25,8 +25,8 @@ backend/
 │   │   ├── nodes.py         # Workflow step implementations
 │   │   └── plugins.py       # Output type plugins (caption, image)
 │   ├── services/
-│   │   ├── llm_client.py    # LLM provider integrations
-│   │   └── image_client.py  # Image generation integrations
+│   │   ├── llm_client.py    # Text generation wrapper over ApiKeyManager
+│   │   └── image_client.py  # Image generation wrapper over ApiKeyManager
 │   └── data/
 │       ├── field_options.json   # UI dropdown options
 │       ├── model_catalog.json   # Available AI models
@@ -53,13 +53,13 @@ pip install -r requirements.txt
 Create a `.env` file:
 
 ```env
-GOOGLE_API_KEY=your_gemini_api_key
-CLOUDFLARE_ACCOUNT_ID=your_cf_account_id
-CLOUDFLARE_API_TOKEN=your_cf_api_token
+APIKEYMANAGER_BASE_URL=http://127.0.0.1:3000
+APIKEYMANAGER_TOKEN=your_apikeymanager_token
+APIKEYMANAGER_TIMEOUT=120
 
-# Optional: Override default models
-SYSTEM_LLM_MODEL=gemini-2.5-flash
-FALLBACK_LLM_MODEL=gemini-2.5-flash-lite
+# Optional: Override intent-analysis models
+SYSTEM_LLM_MODEL=gemini-3.1-flash-lite-preview
+FALLBACK_LLM_MODEL=gemini-3-flash-preview
 ```
 
 ### 3. Run the Server
@@ -100,6 +100,7 @@ The generation workflow uses LangGraph with 6 steps:
 ```
 
 
-## 📝 License
+## Notes
 
-Owned by NovaNode TN.
+This backend no longer calls provider SDKs directly. Provider authorization,
+key rotation, and model access are handled by ApiKeyManager.

@@ -1,56 +1,62 @@
 {
   "caption": {
     "gemini-2.5-flash": {
-      "provider": "google",
-      "model_id": "gemini-2.0-flash",
+      "provider": "google-gemini",
+      "model_id": "gemini-2.5-flash",
       "cost": 0.05,
       "description": "Fast and efficient text generation"
+    },
+    "gemini-3-flash-preview": {
+      "provider": "google-gemini",
+      "model_id": "gemini-3-flash-preview",
+      "cost": 0.07,
+      "description": "Gemini 3 Flash text generation"
+    },
+    "gemini-3.1-flash-lite-preview": {
+      "provider": "google-gemini",
+      "model_id": "gemini-3.1-flash-lite-preview",
+      "cost": 0.04,
+      "description": "Gemini 3.1 Flash Lite text generation"
     }
   },
   "image": {
-    "cloudflare-sdxl": {
-      "provider": "cloudflare",
-      "model_id": "@cf/stabilityai/stable-diffusion-xl-base-1.0",
-      "cost": 0.1,
-      "description": "Stable Diffusion XL via Cloudflare"
-    },
     "gemini-2.5-flash-image": {
-      "provider": "google",
-      "model_id": "gemini-2.5-flash-preview-image-generation",
-      "type": "nanobanana",
+      "provider": "google-gemini",
+      "model_id": "gemini-2.5-flash-image",
+      "type": "gemini-image",
       "cost": 0.08,
       "description": "Gemini 2.5 Flash image generation"
     },
-    "gemini-3-pro-image": {
-      "provider": "google",
+    "gemini-3-pro-image-preview": {
+      "provider": "google-gemini",
       "model_id": "gemini-3-pro-image-preview",
-      "type": "nanobanana",
+      "type": "gemini-image",
       "cost": 0.12,
       "description": "Gemini 3 Pro image generation"
     },
-    "gemini-3.1-flash-image": {
-      "provider": "google",
+    "gemini-3.1-flash-image-preview": {
+      "provider": "google-gemini",
       "model_id": "gemini-3.1-flash-image-preview",
-      "type": "nanobanana",
+      "type": "gemini-image",
       "cost": 0.08,
       "description": "Gemini 3.1 Flash image generation"
     },
-    "imagen-4-fast": {
-      "provider": "google",
+    "imagen-4.0-fast-generate-001": {
+      "provider": "google-imagen",
       "model_id": "imagen-4.0-fast-generate-001",
       "type": "imagen",
       "cost": 0.10,
       "description": "Imagen 4.0 Fast generation"
     },
-    "imagen-4-ultra": {
-      "provider": "google",
+    "imagen-4.0-ultra-generate-001": {
+      "provider": "google-imagen",
       "model_id": "imagen-4.0-ultra-generate-001",
       "type": "imagen",
       "cost": 0.20,
       "description": "Imagen 4.0 Ultra quality generation"
     },
-    "imagen-4": {
-      "provider": "google",
+    "imagen-4.0-generate-001": {
+      "provider": "google-imagen",
       "model_id": "imagen-4.0-generate-001",
       "type": "imagen",
       "cost": 0.15,
