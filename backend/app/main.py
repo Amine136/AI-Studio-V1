@@ -1,11 +1,14 @@
-import base64
 import os
 import re
-import uuid
+import secrets
+import json
+import base64
+import time
 from pathlib import Path
 from typing import Any, Dict
+from urllib.parse import urlparse
 
-from fastapi import FastAPI, HTTPException, Request, Depends
+from fastapi import FastAPI, HTTPException, Request, Depends, UploadFile, File, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -13,9 +16,10 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
 from app.config import settings
-from app.core.schema import GenerateRequest, GenerationResult, SystemConfig
+from app.core.schema import CatalogUpdateNotification, GenerateRequest, GenerationResult, SystemConfig
 from app.graph.workflow import studio_graph_app
 from app.services.auth import verify_admin_user, verify_api_key, verify_firebase_user
+from app.services.catalog_store import catalog_store
 from app.services.security_store import (
     add_history_entry,
     abandon_analyze_session,
@@ -26,16 +30,57 @@ from app.services.security_store import (
     create_credit_code,
     get_history,
     get_user,
+    hash_credit_code,
     list_credit_codes,
     list_users,
+    preload_firestore,
     redeem_credit_code,
 )
 
-# Rate Limiter (keyed by client IP)
-limiter = Limiter(key_func=get_remote_address)
+def _decode_bearer_uid(request: Request) -> str | None:
+    auth_header = request.headers.get("authorization", "")
+    if not auth_header.lower().startswith("bearer "):
+        return None
 
-IMAGES_DIR = Path("generated_images")
-SAFE_FILENAME = re.compile(r'^[a-f0-9\-]{36}\.(jpg|png|webp)$')  # UUID filenames only
+    token = auth_header.split(" ", 1)[1].strip()
+    if not token:
+        return None
+
+    parts = token.split(".")
+    if len(parts) != 3:
+        return None
+
+    payload = parts[1]
+    padding = "=" * (-len(payload) % 4)
+    try:
+        decoded = base64.urlsafe_b64decode(payload + padding)
+        claims = json.loads(decoded.decode("utf-8"))
+    except Exception:
+        return None
+
+    uid = claims.get("uid") or claims.get("user_id") or claims.get("sub")
+    if not uid:
+        return None
+    return str(uid)
+
+
+def rate_limit_key(request: Request) -> str:
+    uid = _decode_bearer_uid(request)
+    if uid:
+        return f"user:{uid}"
+    return f"ip:{get_remote_address(request)}"
+
+
+# Rate Limiter (keyed by authenticated user when possible, else client IP)
+limiter = Limiter(key_func=rate_limit_key)
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+IMAGES_DIR = BASE_DIR / "generated_images"
+UPLOADED_IMAGES_DIR = BASE_DIR / "uploaded_images"
+SAFE_GENERATED_FILENAME = re.compile(r'^[a-f0-9\-]{36}\.(jpg|png|webp)$')
+SAFE_UPLOADED_FILENAME = re.compile(r'^[a-f0-9]{32}\.(jpg|png|webp)$')
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+UPLOAD_RETENTION_SECONDS = 30 * 24 * 60 * 60
 
 # OpenAPI Tags for endpoint grouping
 tags_metadata = [
@@ -87,6 +132,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Ensure the images directory exists
 IMAGES_DIR.mkdir(exist_ok=True)
+UPLOADED_IMAGES_DIR.mkdir(exist_ok=True)
 
 allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
 
@@ -111,6 +157,13 @@ def health_check():
     return {"status": "ok"}
 
 
+@app.on_event("startup")
+def cleanup_uploaded_images_on_startup():
+    _cleanup_expired_uploaded_images()
+    catalog_store.initialize()
+    preload_firestore()
+
+
 @app.get(
     "/images/{filename}",
     tags=["Generation"],
@@ -119,15 +172,44 @@ def health_check():
 )
 def get_image(filename: str):
     """Serves generated images with filename validation."""
-    # Block anything that isn't a UUID filename
-    if not SAFE_FILENAME.match(filename):
+    is_generated = SAFE_GENERATED_FILENAME.match(filename)
+    is_uploaded = SAFE_UPLOADED_FILENAME.match(filename)
+    if not is_generated and not is_uploaded:
         raise HTTPException(status_code=400, detail="Invalid filename")
-    
-    filepath = IMAGES_DIR / filename
+
+    filepath = (IMAGES_DIR / filename) if is_generated else (UPLOADED_IMAGES_DIR / filename)
     if not filepath.exists():
         raise HTTPException(status_code=404, detail="Image not found")
     
     return FileResponse(filepath)
+
+
+@app.post("/uploads/image", tags=["Generation"], summary="Upload Input Image")
+@limiter.limit("20/minute")
+async def upload_input_image(
+    request: Request,
+    image: UploadFile = File(...),
+    user: Dict[str, Any] = Depends(verify_firebase_user),
+):
+    del user
+    if image.content_type not in {"image/png", "image/jpeg", "image/webp"}:
+        raise HTTPException(status_code=400, detail="Only PNG, JPEG, and WEBP images are supported")
+
+    image_bytes = await image.read()
+    if not image_bytes:
+        raise HTTPException(status_code=400, detail="Uploaded image is empty")
+    if len(image_bytes) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=400, detail="Uploaded image exceeds the 10 MB limit")
+
+    _cleanup_expired_uploaded_images()
+
+    filename = _save_uploaded_input_image_bytes(image.content_type, image_bytes)
+    return {
+        "name": image.filename or filename,
+        "mime_type": image.content_type,
+        "url": _uploaded_image_url_for_filename(filename),
+        "size": len(image_bytes),
+    }
 
 
 @app.get(
@@ -144,15 +226,52 @@ def get_system_config(request: Request, _=Depends(verify_api_key)):
     - **field_options**: Available options for platforms, styles, lighting, etc.
     - **model_catalog**: Available AI models for generation tasks
     """
-    model_catalog = settings.refresh_model_catalog()
+    model_catalog = catalog_store.get_catalog()
     return SystemConfig(
         field_options=settings.field_options,
         model_catalog=model_catalog
     )
 
 
+@app.post(
+    "/internal/catalog-updated",
+    tags=["Configuration"],
+    summary="Catalog Update Webhook",
+    description="Internal webhook used by ApiKeyManager to notify Vibecraft that a new model catalog version is available.",
+)
+def catalog_updated_webhook(
+    payload: CatalogUpdateNotification,
+    x_catalog_webhook_secret: str | None = Header(default=None),
+):
+    expected_secret = settings.catalog_webhook_secret
+    if not expected_secret:
+        raise HTTPException(status_code=503, detail="Catalog webhook secret is not configured")
+    if not x_catalog_webhook_secret or not secrets.compare_digest(x_catalog_webhook_secret, expected_secret):
+        raise HTTPException(status_code=403, detail="Invalid catalog webhook secret")
+
+    if not catalog_store.should_refresh(payload.version):
+        metadata = catalog_store.get_metadata()
+        return {
+            "status": "noop",
+            "version": metadata["version"],
+            "updated_at": metadata["updated_at"],
+        }
+
+    try:
+        result = catalog_store.refresh_from_source(payload.version)
+    except Exception as exc:
+        print(f"Catalog webhook refresh failed for version {payload.version}: {exc}")
+        raise HTTPException(status_code=502, detail="Failed to refresh catalog from ApiKeyManager") from exc
+
+    return {
+        "status": "updated" if result["updated"] else "noop",
+        "version": result["version"],
+        "updated_at": result["updated_at"],
+    }
+
+
 @app.get("/me", tags=["Configuration"], summary="Get Current User Profile")
-@limiter.limit("60/minute")
+@limiter.limit("5/minute")
 def get_current_user_profile(request: Request, user: Dict[str, Any] = Depends(verify_firebase_user)):
     profile = get_user(user["uid"])
     profile["isAdmin"] = user["is_admin"]
@@ -167,7 +286,7 @@ def get_user_history(request: Request, limit: int = 20, user: Dict[str, Any] = D
 
 
 @app.post("/history", tags=["Configuration"], summary="Add User History Entry")
-@limiter.limit("20/minute")
+@limiter.limit("30/minute")
 def create_user_history_entry(request: Request, payload: Dict[str, Any], user: Dict[str, Any] = Depends(verify_firebase_user)):
     entry = add_history_entry(
         user["uid"],
@@ -180,7 +299,7 @@ def create_user_history_entry(request: Request, payload: Dict[str, Any], user: D
 
 
 @app.post("/credits/redeem", tags=["Configuration"], summary="Redeem Credit Code")
-@limiter.limit("10/minute")
+@limiter.limit("5/minute")
 def redeem_user_credit_code(request: Request, payload: Dict[str, Any], user: Dict[str, Any] = Depends(verify_firebase_user)):
     code = str(payload.get("code", "")).strip()
     if not code:
@@ -188,6 +307,10 @@ def redeem_user_credit_code(request: Request, payload: Dict[str, Any], user: Dic
     rate_key = f"redeem:{user['uid']}:{get_remote_address(request)}"
     if not consume_rate_limit(rate_key, max_count=5, window_seconds=900):
         raise HTTPException(status_code=429, detail="Too many redemption attempts. Try again later.")
+    code_hash = hash_credit_code(code)
+    per_code_key = f"redeem_code:{code_hash}"
+    if not consume_rate_limit(per_code_key, max_count=20, window_seconds=900):
+        raise HTTPException(status_code=429, detail="Too many attempts for this code. Try again later.")
     return redeem_credit_code(code, user["uid"])
 
 
@@ -217,23 +340,11 @@ def admin_list_users(request: Request, _admin: Dict[str, Any] = Depends(verify_a
 @app.post("/admin/users/{uid}/credits", tags=["Configuration"], summary="Adjust Credits For Admin")
 @limiter.limit("20/minute")
 def admin_adjust_user_credits(request: Request, uid: str, payload: Dict[str, Any], admin: Dict[str, Any] = Depends(verify_admin_user)):
-    delta = float(payload.get("delta", 0))
-    if delta == 0:
-        raise HTTPException(status_code=400, detail="Delta must be non-zero")
-    reason = str(payload.get("reason", "admin_adjustment")).strip() or "admin_adjustment"
-    try:
-        profile = adjust_credits(
-            uid,
-            delta,
-            reason,
-            actor_uid=admin["uid"],
-            metadata={"admin_email": admin.get("email", "")},
-        )
-    except ValueError as exc:
-        if str(exc) == "INSUFFICIENT_CREDITS":
-            raise HTTPException(status_code=400, detail="User has insufficient credits") from exc
-        raise
-    return profile
+    del request, uid, payload, admin
+    raise HTTPException(
+        status_code=403,
+        detail="Manual credit adjustments are disabled. Account balances can only change through credit code redemption and system usage.",
+    )
 
 
 @app.get("/admin/codes", tags=["Configuration"], summary="List Credit Codes For Admin")
@@ -261,7 +372,7 @@ def admin_create_code(request: Request, payload: Dict[str, Any], admin: Dict[str
     summary="Generate AI Content",
     description="Submit a content generation request to create images, captions, or both."
 )
-@limiter.limit("10/minute")
+@limiter.limit("5/minute")
 def generate_content(request: Request, payload: GenerateRequest, user: Dict[str, Any] = Depends(verify_firebase_user)):
     """
     Main generation endpoint that orchestrates the AI workflow.
@@ -280,7 +391,7 @@ def generate_content(request: Request, payload: GenerateRequest, user: Dict[str,
     charged_cost = 0.0
     charged_applied = False
     try:
-        settings.refresh_model_catalog()
+        catalog_store.get_catalog()
         _validate_generate_request(payload)
 
         if payload.status != "generating":
@@ -426,6 +537,9 @@ def _validate_generate_request(payload: GenerateRequest) -> None:
     wants_caption = "caption" in requested
     wants_image = "image" in requested
 
+    _validate_selected_model_exists("caption", prefs, wants_caption)
+    _validate_selected_model_exists("image", prefs, wants_image)
+
     if wants_caption:
         caption_model = _resolve_model_choice("caption", prefs)
         if caption_model:
@@ -479,35 +593,33 @@ def _validate_generate_request(payload: GenerateRequest) -> None:
 def _resolve_model_choice(task: str, prefs: Dict[str, str]) -> str | None:
     valid_models = settings.model_catalog.get(task, {})
     user_choice = prefs.get(f"{task}_model") or prefs.get(task)
-    if user_choice and user_choice in valid_models:
-        return user_choice
+    if user_choice:
+        return user_choice if user_choice in valid_models else None
     return next(iter(valid_models), None)
+
+
+def _validate_selected_model_exists(task: str, prefs: Dict[str, str], is_requested: bool) -> None:
+    if not is_requested:
+        return
+
+    user_choice = (prefs.get(f"{task}_model") or prefs.get(task) or "").strip()
+    if not user_choice:
+        return
+
+    valid_models = settings.model_catalog.get(task, {})
+    if user_choice not in valid_models:
+        raise HTTPException(
+            status_code=400,
+            detail=f"The selected {task} model '{user_choice}' is no longer available. Refresh the model list and try again.",
+        )
 
 
 def _validate_input_image(input_image) -> None:
     if input_image.url:
-        if not input_image.url.startswith(("http://", "https://")):
-            raise HTTPException(status_code=400, detail="Uploaded image URL must be absolute")
+        _validate_uploaded_image_url(input_image.url)
         return
 
-    if not input_image.mime_type or not input_image.data:
-        raise HTTPException(status_code=400, detail="Uploaded image is missing mime type or data")
-
-    _validate_uploaded_image(input_image.mime_type, input_image.data)
-
-
-def _validate_uploaded_image(mime_type: str, base64_data: str) -> None:
-    allowed = {"image/png", "image/jpeg", "image/webp"}
-    if mime_type not in allowed:
-        raise HTTPException(status_code=400, detail="Only PNG, JPEG, and WEBP uploads are supported")
-
-    try:
-        decoded_size = len(base64.b64decode(base64_data, validate=True))
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail="Uploaded image is not valid base64 data") from exc
-
-    if decoded_size > 10 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="Uploaded image exceeds the 10 MB limit")
+    raise HTTPException(status_code=400, detail="Uploaded image URL is required")
 
 
 def _is_gemini_text_model(model_entry: Dict[str, Any]) -> bool:
@@ -535,26 +647,52 @@ def _prepare_input_image(input_image) -> Dict[str, str] | None:
         return None
 
     if input_image.url:
+        _validate_uploaded_image_url(input_image.url)
         return {"url": input_image.url, "mime_type": input_image.mime_type or ""}
 
-    if not input_image.mime_type or not input_image.data:
-        return None
-
-    filename = _save_uploaded_input_image(input_image.mime_type, input_image.data)
-    return {
-        "url": f"{settings.public_backend_base_url}/images/{filename}",
-        "mime_type": input_image.mime_type,
-    }
+    return None
 
 
-def _save_uploaded_input_image(mime_type: str, base64_data: str) -> str:
-    image_bytes = base64.b64decode(base64_data, validate=True)
+def _validate_uploaded_image_url(image_url: str) -> None:
+    prefix = _uploaded_image_url_prefix()
+    if not image_url.startswith(prefix):
+        raise HTTPException(status_code=400, detail="Only Vibecraft uploaded image URLs are allowed")
+
+    parsed = urlparse(image_url)
+    filename = Path(parsed.path).name
+    if not SAFE_UPLOADED_FILENAME.match(filename):
+        raise HTTPException(status_code=400, detail="Uploaded image URL is invalid")
+
+
+def _uploaded_image_url_prefix() -> str:
+    return f"{settings.public_backend_base_url}/images/"
+
+
+def _uploaded_image_url_for_filename(filename: str) -> str:
+    return f"{_uploaded_image_url_prefix()}{filename}"
+
+
+def _save_uploaded_input_image_bytes(mime_type: str, image_bytes: bytes) -> str:
     extension = _extension_for_mime_type(mime_type)
-    filename = f"{uuid.uuid4()}.{extension}"
-    save_path = IMAGES_DIR / filename
+    filename = f"{os.urandom(16).hex()}.{extension}"
+    save_path = UPLOADED_IMAGES_DIR / filename
     with open(save_path, "wb") as image_file:
         image_file.write(image_bytes)
     return filename
+
+
+def _cleanup_expired_uploaded_images() -> None:
+    cutoff = time.time() - UPLOAD_RETENTION_SECONDS
+    for file_path in UPLOADED_IMAGES_DIR.iterdir():
+        if not file_path.is_file():
+            continue
+        if not SAFE_UPLOADED_FILENAME.match(file_path.name):
+            continue
+        try:
+            if file_path.stat().st_mtime < cutoff:
+                file_path.unlink(missing_ok=True)
+        except FileNotFoundError:
+            continue
 
 
 def _extension_for_mime_type(mime_type: str) -> str:

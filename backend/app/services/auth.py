@@ -51,6 +51,12 @@ async def verify_firebase_user(
     email = claims.get("email", "")
     display_name = claims.get("name") or email or uid
     profile = ensure_user(uid, email, display_name)
+    if _is_suspended_profile(profile):
+        detail = "Your account is suspended."
+        reason = str(profile.get("suspensionReason") or "").strip()
+        if reason:
+            detail = f"Your account is suspended: {reason}"
+        raise HTTPException(status_code=403, detail=detail)
 
     return {
         "uid": uid,
@@ -66,3 +72,11 @@ async def verify_admin_user(user: Dict[str, Any] = Depends(verify_firebase_user)
     if not user.get("is_admin"):
         raise HTTPException(status_code=403, detail="Admin access required")
     return user
+
+
+def _is_suspended_profile(profile: Dict[str, Any]) -> bool:
+    return bool(
+        profile.get("isSuspended")
+        or profile.get("is_suspended")
+        or profile.get("suspended")
+    )

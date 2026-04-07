@@ -10,6 +10,7 @@ class Config:
         self.BASE_DIR = Path(__file__).resolve().parent 
         self.DATA_DIR = self.BASE_DIR / "data"
         self.PROMPTS_DIR = self.DATA_DIR / "prompts"
+        self.live_model_catalog_path = self.DATA_DIR / "model_catalog.live.json"
 
         # Load dynamic JSON configs
         self.field_options = self._load_json("field_options.json")
@@ -22,7 +23,11 @@ class Config:
         self.apikeymanager_token = os.getenv("APIKEYMANAGER_TOKEN", "")
         self.apikeymanager_timeout = float(os.getenv("APIKEYMANAGER_TIMEOUT", "120"))
         self.public_backend_base_url = os.getenv("PUBLIC_BACKEND_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
+        self.catalog_webhook_secret = os.getenv("CATALOG_WEBHOOK_SECRET", "").strip()
         self.firebase_project_id = os.getenv("FIREBASE_PROJECT_ID", "novanodetn").strip()
+        self.firestore_project_id = os.getenv("FIRESTORE_PROJECT_ID", self.firebase_project_id).strip()
+        self.firestore_database = os.getenv("FIRESTORE_DATABASE", "(default)").strip()
+        self.firebase_credentials_path = os.getenv("FIREBASE_CREDENTIALS_PATH", "").strip()
         self.admin_emails = {
             email.strip().lower()
             for email in os.getenv("ADMIN_EMAILS", "").split(",")

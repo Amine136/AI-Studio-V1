@@ -9,22 +9,17 @@ OutputType = Literal["image", "caption"]
 
 
 class InputImage(BaseModel):
-    """Base64-encoded image sent from the frontend."""
+    """Uploaded image reference used as multimodal input."""
     name: Optional[str] = Field(default=None, description="Original file name")
     mime_type: Optional[str] = Field(
         default=None,
         description="MIME type of the uploaded image",
         json_schema_extra={"example": "image/png"},
     )
-    data: Optional[str] = Field(
-        default=None,
-        min_length=16,
-        description="Raw base64 image bytes without a data URL prefix",
-    )
     url: Optional[str] = Field(
         default=None,
         description="Public image URL used for provider-side fetch",
-        json_schema_extra={"example": "https://aistudio.ouni.space/images/1234abcd.png"},
+        json_schema_extra={"example": "https://vibecraft.ouni.space/images/1234abcd.png"},
     )
 
 class GenerateRequest(BaseModel):
@@ -67,7 +62,7 @@ class GenerateRequest(BaseModel):
                     "input_image": {
                         "name": "reference.png",
                         "mime_type": "image/png",
-                        "data": "iVBORw0KGgoAAAANSUhEUgAA..."
+                        "url": "https://vibecraft.ouni.space/images/1234abcd.png"
                     },
                     "user_preferences": {"platform": "LinkedIn", "brand_voice": "Professional"}
                 }
@@ -107,6 +102,18 @@ class SystemConfig(BaseModel):
     model_catalog: Dict[str, Any] = Field(
         ...,
         description="Catalog of available AI models and their capabilities"
+    )
+
+
+class CatalogUpdateNotification(BaseModel):
+    version: str = Field(
+        ...,
+        min_length=1,
+        description="New catalog version announced by ApiKeyManager.",
+    )
+    updated_at: Optional[str] = Field(
+        default=None,
+        description="Optional timestamp from ApiKeyManager for the new catalog version.",
     )
 
 

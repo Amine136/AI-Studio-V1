@@ -60,12 +60,48 @@ APIKEYMANAGER_TIMEOUT=120
 # Optional: Override intent-analysis models
 SYSTEM_LLM_MODEL=gemini-3.1-flash-lite-preview
 FALLBACK_LLM_MODEL=gemini-3-flash-preview
+
+# Required for ApiKeyManager catalog update webhooks
+CATALOG_WEBHOOK_SECRET=replace_with_a_shared_secret
 ```
 
 ### 3. Run the Server
 
 ```bash
 uvicorn app.main:app --reload --port 8000
+```
+
+### Production Process Model
+
+The deployed backend should run behind `gunicorn` with multiple ASGI workers
+instead of a single `uvicorn` process:
+
+```bash
+gunicorn -k uvicorn.workers.UvicornWorker -w 4 -b 127.0.0.1:8010 app.main:app
+```
+
+When using PM2 in production, start it from the repository root with the
+checked-in ecosystem file:
+
+```bash
+pm2 start ecosystem.config.cjs --only ai-studio-backend
+pm2 save
+```
+
+### Catalog Sync Webhook
+
+ApiKeyManager should notify Vibecraft when a new model catalog version is available,
+then Vibecraft will immediately pull the latest catalog and persist it locally.
+
+- Endpoint: `POST /internal/catalog-updated`
+- Header: `X-Catalog-Webhook-Secret: <CATALOG_WEBHOOK_SECRET>`
+- JSON body:
+
+```json
+{
+  "version": "42",
+  "updated_at": "2026-04-07T11:00:00Z"
+}
 ```
 
 ## 📡 API Endpoints

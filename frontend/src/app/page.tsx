@@ -4,7 +4,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "../services/api";
-import { GenerateRequest, UISchemaItem, OutputType, ModelCatalogEntry } from "../types";
+import { GenerateRequest, UISchemaItem, OutputType, ModelCatalogEntry, SystemConfig } from "../types";
 import { useAuth } from "../context/AuthContext";
 import { signOutUser } from "../lib/auth";
 
@@ -30,7 +30,7 @@ interface Toast {
 interface UploadedImageState {
   name: string;
   mimeType: string;
-  data: string;
+  url: string;
   previewUrl: string;
   size: number;
 }
@@ -58,27 +58,6 @@ function isGeminiImageModel(model?: ModelCatalogEntry) {
 function isImageCapableModel(model?: ModelCatalogEntry) {
   const outputModalities = new Set(model?.output_modalities || []);
   return outputModalities.has("IMAGE");
-}
-
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result;
-      if (typeof result !== "string") {
-        reject(new Error("Could not read the selected file."));
-        return;
-      }
-      const base64 = result.split(",")[1];
-      if (!base64) {
-        reject(new Error("Could not parse the uploaded image."));
-        return;
-      }
-      resolve(base64);
-    };
-    reader.onerror = () => reject(new Error("Could not read the selected file."));
-    reader.readAsDataURL(file);
-  });
 }
 
 function loadImageFromUrl(src: string): Promise<HTMLImageElement> {
@@ -239,18 +218,44 @@ export default function Home() {
     setTimeout(() => setToast(null), 4000);
   };
 
+  const getErrorMessage = (error: unknown, fallback: string) => {
+    if (error instanceof Error && error.message) {
+      return error.message;
+    }
+    return fallback;
+  };
+
+  const applyConfig = useCallback((cfg: SystemConfig) => {
+    const nextCatalog = cfg.model_catalog || {};
+    setModelCatalog(nextCatalog);
+
+    const nextImageModels = Object.keys(nextCatalog.image || {});
+    const nextCaptionModels = Object.keys(nextCatalog.caption || {});
+
+    setSelectedImageModel((prev) => (
+      prev && nextImageModels.includes(prev) ? prev : (nextImageModels[0] || "")
+    ));
+    setSelectedCaptionModel((prev) => (
+      prev && nextCaptionModels.includes(prev) ? prev : (nextCaptionModels[0] || "")
+    ));
+
+    return {
+      imageModels: nextImageModels,
+      captionModels: nextCaptionModels,
+    };
+  }, []);
+
+  const refreshConfig = useCallback(async () => {
+    const cfg = await api.getConfig();
+    return applyConfig(cfg);
+  }, [applyConfig]);
+
   // --- Load Config on Mount ---
   useEffect(() => {
-    api.getConfig().then((cfg) => {
-      setModelCatalog(cfg.model_catalog || {});
-      const imgMods = Object.keys(cfg.model_catalog.image || {});
-      const capMods = Object.keys(cfg.model_catalog.caption || {});
-      if (imgMods.length > 0) setSelectedImageModel(imgMods[0]);
-      if (capMods.length > 0) setSelectedCaptionModel(capMods[0]);
-    }).catch(() => {
+    refreshConfig().catch(() => {
       showToast("Could not load configuration. Is the backend running?");
     });
-  }, []);
+  }, [refreshConfig]);
 
   useEffect(() => {
     return () => {
@@ -279,10 +284,11 @@ export default function Home() {
     const sessionId = pendingAnalyzeSessionRef.current;
     if (!sessionId || analyzeFinalizedRef.current) return;
     analyzeFinalizedRef.current = true;
+    const publicApiBase = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
     if (keepalive && typeof window !== "undefined" && user) {
       const token = await user.getIdToken();
-      fetch(`https://aistudio.ouni.space/api/analyze-sessions/${sessionId}/abandon`, {
+      fetch(`${publicApiBase}/analyze-sessions/${sessionId}/abandon`, {
         method: "POST",
         keepalive: true,
         headers: {
@@ -438,15 +444,15 @@ export default function Home() {
 
     try {
       const file = await normalizeUploadImage(originalFile);
-      const data = await fileToBase64(file);
+      const uploaded = await api.uploadInputImage(file);
       setInputImage((prev) => {
         if (prev?.previewUrl) URL.revokeObjectURL(prev.previewUrl);
         return {
-          name: file.name,
-          mimeType: file.type,
-          data,
+          name: uploaded.name || file.name,
+          mimeType: uploaded.mime_type || file.type,
+          url: uploaded.url,
           previewUrl: URL.createObjectURL(file),
-          size: file.size,
+          size: uploaded.size || file.size,
         };
       });
       if (file.size < originalFile.size) {
@@ -454,7 +460,7 @@ export default function Home() {
       }
     } catch (error) {
       console.error("Image upload error:", error);
-      showToast("Could not process that image.");
+      showToast(getErrorMessage(error, "Could not process that image."));
     } finally {
       event.target.value = "";
     }
@@ -477,17 +483,27 @@ export default function Home() {
 
     setLoading(true);
     try {
+      const { imageModels, captionModels } = await refreshConfig();
+      if (selectedOutputs.includes("image") && selectedImageModel && !imageModels.includes(selectedImageModel)) {
+        throw new Error(`The selected image model '${selectedImageModel}' is no longer available. Please choose another model.`);
+      }
+      if (selectedOutputs.includes("caption") && selectedCaptionModel && !captionModels.includes(selectedCaptionModel)) {
+        throw new Error(`The selected caption model '${selectedCaptionModel}' is no longer available. Please choose another model.`);
+      }
+      const effectiveImageModel = selectedImageModel || imageModels[0] || "";
+      const effectiveCaptionModel = selectedCaptionModel || captionModels[0] || "";
+
       const payload: GenerateRequest = {
         user_text: effectiveText,
         requested_outputs: selectedOutputs,
         input_image: inputImage ? {
           name: inputImage.name,
           mime_type: inputImage.mimeType,
-          data: inputImage.data,
+          url: inputImage.url,
         } : null,
         user_preferences: {
-          image_model: selectedImageModel,
-          caption_model: selectedCaptionModel,
+          image_model: effectiveImageModel,
+          caption_model: effectiveCaptionModel,
         },
         status: "processing",
       };
@@ -503,8 +519,8 @@ export default function Home() {
         setAnalyzeAbandonFee(response.meta?.analyze_abandon_fee || 0);
         setStep("REVIEW");
       }
-    } catch {
-      showToast("Error contacting backend. Please try again.");
+    } catch (error) {
+      showToast(getErrorMessage(error, "Error contacting backend. Please try again."));
     } finally {
       setLoading(false);
     }
@@ -513,6 +529,16 @@ export default function Home() {
   const handleGenerate = async () => {
     setLoading(true);
     try {
+      const { imageModels, captionModels } = await refreshConfig();
+      if (selectedOutputs.includes("image") && selectedImageModel && !imageModels.includes(selectedImageModel)) {
+        throw new Error(`The selected image model '${selectedImageModel}' is no longer available. Please choose another model.`);
+      }
+      if (selectedOutputs.includes("caption") && selectedCaptionModel && !captionModels.includes(selectedCaptionModel)) {
+        throw new Error(`The selected caption model '${selectedCaptionModel}' is no longer available. Please choose another model.`);
+      }
+      const effectiveImageModel = selectedImageModel || imageModels[0] || "";
+      const effectiveCaptionModel = selectedCaptionModel || captionModels[0] || "";
+
       if (pendingAnalyzeSessionRef.current) {
         await api.completeAnalyzeSession(pendingAnalyzeSessionRef.current);
         clearAnalyzeSession();
@@ -531,12 +557,12 @@ export default function Home() {
         input_image: inputImage ? {
           name: inputImage.name,
           mime_type: inputImage.mimeType,
-          data: inputImage.data,
+          url: inputImage.url,
         } : null,
         status: "generating",
         user_preferences: {
-          image_model: selectedImageModel,
-          caption_model: selectedCaptionModel,
+          image_model: effectiveImageModel,
+          caption_model: effectiveCaptionModel,
         },
         user_corrections: {
           ...corrections,
@@ -568,8 +594,8 @@ export default function Home() {
           }
         }
       }
-    } catch {
-      showToast("Generation failed. Please try again.");
+    } catch (error) {
+      showToast(getErrorMessage(error, "Generation failed. Please try again."));
     } finally {
       setLoading(false);
     }

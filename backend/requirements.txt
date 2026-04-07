@@ -1,5 +1,6 @@
 # Core
 fastapi==0.128.2
+gunicorn==23.0.0
 uvicorn==0.40.0
 python-dotenv==1.2.1
 pydantic==2.12.5
@@ -10,3 +11,5 @@ langgraph==1.0.7
 
 # Utilities
 httpx==0.28.1
+python-multipart==0.0.20
+google-cloud-firestore==2.21.0
