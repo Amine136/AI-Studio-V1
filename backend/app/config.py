@@ -1,13 +1,15 @@
 import json
 import os
 from pathlib import Path
+
 from dotenv import load_dotenv
 
 load_dotenv()
 
+
 class Config:
     def __init__(self):
-        self.BASE_DIR = Path(__file__).resolve().parent 
+        self.BASE_DIR = Path(__file__).resolve().parent
         self.DATA_DIR = self.BASE_DIR / "data"
         self.PROMPTS_DIR = self.DATA_DIR / "prompts"
         self.live_model_catalog_path = self.DATA_DIR / "model_catalog.live.json"
@@ -33,6 +35,12 @@ class Config:
             for email in os.getenv("ADMIN_EMAILS", "").split(",")
             if email.strip()
         }
+        self.database_url = os.getenv("DATABASE_URL", "").strip()
+        self.database_echo = os.getenv("DATABASE_ECHO", "false").strip().lower() in {"1", "true", "yes", "on"}
+        self.database_pool_size = int(os.getenv("DATABASE_POOL_SIZE", "5"))
+        self.database_max_overflow = int(os.getenv("DATABASE_MAX_OVERFLOW", "10"))
+        self.database_pool_pre_ping = os.getenv("DATABASE_POOL_PRE_PING", "true").strip().lower() not in {"0", "false", "no", "off"}
+        self.database_connect_timeout = int(os.getenv("DATABASE_CONNECT_TIMEOUT", "10"))
         self.security_db_path = os.getenv(
             "SECURITY_DB_PATH",
             str(self.DATA_DIR / "security.sqlite3"),
@@ -46,6 +54,10 @@ class Config:
 
         # Authentication
         self.api_key = os.getenv("API_KEY")
+
+    @property
+    def postgres_enabled(self) -> bool:
+        return bool(self.database_url)
 
     def refresh_model_catalog(self) -> dict:
         try:
@@ -79,12 +91,12 @@ class Config:
         for file in self.PROMPTS_DIR.glob("*.txt"):
             try:
                 # Key becomes 'analyze_intent' for 'analyze_intent.txt'
-                key = file.stem 
+                key = file.stem
                 with open(file, "r", encoding="utf-8") as f:
                     prompts[key] = f.read().strip()
             except Exception as e:
                 print(f"❌ Error loading prompt {file.name}: {e}")
-        
+
         return prompts
 
 settings = Config()

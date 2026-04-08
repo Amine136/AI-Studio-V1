@@ -4,8 +4,15 @@ export type OutputType = "caption" | "image";
 
 export interface InputImagePayload {
   name?: string;
+  mime_type?: string;
+  url: string;
+}
+
+export interface UploadedImageResult {
+  name: string;
   mime_type: string;
-  data: string;
+  url: string;
+  size: number;
 }
 
 // Step 1: What we send to start

@@ -14,7 +14,6 @@ OutputType = Literal["caption", "image"]
 class InputImage(TypedDict, total=False):
     name: str
     mime_type: str
-    data: str
     url: str
 
 # ---------------------------

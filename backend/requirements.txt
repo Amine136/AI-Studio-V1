@@ -13,3 +13,7 @@ langgraph==1.0.7
 httpx==0.28.1
 python-multipart==0.0.20
 google-cloud-firestore==2.21.0
+sqlalchemy==2.0.44
+alembic==1.16.5
+psycopg[binary]==3.2.12
+pytest==8.4.2

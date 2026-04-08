@@ -17,6 +17,10 @@ build/
 # Generated images (optional: remove if you want to commit samples)
 backend/generated_images/*
 !backend/generated_images/.gitkeep
+backend/uploaded_images/*
+!backend/uploaded_images/.gitkeep
+backend/app/data/*.sqlite3
+backend/app/data/model_catalog.live.json
 
 # =========================
 # Node.js (Frontend)
@@ -52,3 +56,4 @@ yarn-error.log*
 .env.local
 .env.*.local
 *.pem
+backend/.secrets/

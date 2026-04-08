@@ -1,6 +1,6 @@
 // frontend/src/services/api.ts
 import axios from 'axios';
-import { GenerateRequest, GenerationResult, SystemConfig } from '../types';
+import { GenerateRequest, GenerationResult, SystemConfig, UploadedImageResult } from '../types';
 import { auth } from '../lib/firebase';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
@@ -23,6 +23,17 @@ client.interceptors.request.use(async (config) => {
   }
   return config;
 });
+
+function extractErrorMessage(error: unknown): string | undefined {
+  if (!axios.isAxiosError(error)) return undefined;
+
+  const payload = error.response?.data;
+  if (typeof payload?.detail === 'string') return payload.detail;
+  if (typeof payload?.message === 'string') return payload.message;
+  if (typeof payload?.error === 'string') return payload.error;
+  if (typeof payload?.meta?.error_message === 'string') return payload.meta.error_message;
+  return undefined;
+}
 
 export const api = {
   /**
@@ -88,6 +99,36 @@ export const api = {
     return res.data;
   },
 
+  uploadInputImage: async (file: File): Promise<UploadedImageResult> => {
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+      const user = auth.currentUser;
+      const headers: Record<string, string> = {
+        'X-API-Key': process.env.NEXT_PUBLIC_API_KEY || '',
+      };
+      if (user) {
+        headers.Authorization = `Bearer ${await user.getIdToken()}`;
+      }
+
+      const res = await fetch(`${API_BASE}/uploads/image`, {
+        method: 'POST',
+        headers,
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        const detail = typeof data?.detail === 'string' ? data.detail : 'Upload failed';
+        throw new Error(detail);
+      }
+      return data;
+    } catch (error) {
+      console.error("Upload Error:", error);
+      throw error;
+    }
+  },
+
   /**
    * The Main Engine. 
    * Calls /generate. 
@@ -99,13 +140,9 @@ export const api = {
       return res.data;
     } catch (error) {
       console.error("API Error:", error);
-      if (axios.isAxiosError(error)) {
-        const detail = typeof error.response?.data?.detail === 'string'
-          ? error.response?.data?.detail
-          : undefined;
-        if (detail) {
-          throw new Error(detail);
-        }
+      const detail = extractErrorMessage(error);
+      if (detail) {
+        throw new Error(detail);
       }
       throw error;
     }

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { getAllUsers, addCredits, deductCredits, getProfile, UserRecord } from "../../lib/credits";
+import { getAllUsers, getProfile, UserRecord } from "../../lib/credits";
 import { createCreditCode, getAllCreditCodes, CreditCode } from "../../lib/creditCodes";
 import { useAuth } from "../../context/AuthContext";
 import AnimatedLogo from "../../components/AnimatedLogo";
@@ -14,7 +14,6 @@ export default function AdminPage() {
 
     const [users, setUsers] = useState<UserRecord[]>([]);
     const [loading, setLoading] = useState(true);
-    const [updating, setUpdating] = useState<string | null>(null);
     const [search, setSearch] = useState("");
 
     // Credit codes state
@@ -81,21 +80,6 @@ export default function AdminPage() {
         }
     };
 
-    const handleAddCredit = async (uid: string) => {
-        setUpdating(uid);
-        await addCredits(uid, 1);
-        await fetchUsers();
-        setUpdating(null);
-    };
-
-    const handleDeductCredit = async (uid: string, currentCredits: number) => {
-        if (currentCredits <= 0) return;
-        setUpdating(uid);
-        await deductCredits(uid, 1);
-        await fetchUsers();
-        setUpdating(null);
-    };
-
     if (authLoading || !user || authorized === null) {
         return (
             <main className="min-h-screen flex items-center justify-center">
@@ -144,7 +128,7 @@ export default function AdminPage() {
                                 Admin Panel
                             </h1>
                             <p className="text-xs text-gray-500 mt-0.5">
-                                Manage users & credits
+                                View users and issue redeemable credit codes
                             </p>
                         </div>
                     </div>
@@ -250,7 +234,6 @@ export default function AdminPage() {
                                         <th style={{ width: "35%" }}>User</th>
                                         <th style={{ width: "30%" }}>Email</th>
                                         <th style={{ width: "15%" }}>Credits</th>
-                                        <th style={{ width: "20%" }}>Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -284,34 +267,6 @@ export default function AdminPage() {
                                                     {parseFloat(u.credits.toFixed(2))}
                                                 </span>
                                             </td>
-                                            <td>
-                                                <div className="admin-actions">
-                                                    <button
-                                                        onClick={() => handleDeductCredit(u.uid, u.credits)}
-                                                        disabled={updating === u.uid || u.credits <= 0}
-                                                        className="admin-action-btn admin-action-minus"
-                                                        title="Remove 1 credit"
-                                                    >
-                                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                                            <line x1="5" y1="12" x2="19" y2="12" />
-                                                        </svg>
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleAddCredit(u.uid)}
-                                                        disabled={updating === u.uid}
-                                                        className="admin-action-btn admin-action-plus"
-                                                        title="Add 1 credit"
-                                                    >
-                                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                                            <line x1="12" y1="5" x2="12" y2="19" />
-                                                            <line x1="5" y1="12" x2="19" y2="12" />
-                                                        </svg>
-                                                    </button>
-                                                    {updating === u.uid && (
-                                                        <span className="admin-updating-badge">updating…</span>
-                                                    )}
-                                                </div>
-                                            </td>
                                         </tr>
                                     ))}
                                 </tbody>
@@ -342,6 +297,9 @@ export default function AdminPage() {
                     {/* Create Code Form */}
                     <div className="glass-card p-4 sm:p-5 mb-4">
                         <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">Generate New Code</p>
+                        <p className="text-sm text-gray-400 mb-4">
+                            Manual credit adjustments are disabled. Account balances change only through redeemable codes and system usage.
+                        </p>
                         <div className="flex flex-col items-stretch gap-4 sm:flex-row sm:flex-wrap sm:items-end">
                             <div className="flex-1 min-w-[140px]">
                                 <label className="block text-xs text-gray-500 mb-1.5">Credits (1–10)</label>

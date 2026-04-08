@@ -2,13 +2,13 @@ import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 
 const firebaseConfig = {
-    apiKey: "AIzaSyDCNd0eUooJ8wSlYoIC4W-MnNGM_rMsqeM",
-    authDomain: "novanodetn.firebaseapp.com",
-    projectId: "novanodetn",
-    storageBucket: "novanodetn.firebasestorage.app",
-    messagingSenderId: "973322616880",
-    appId: "1:973322616880:web:efd5953ad0e75301d42df5",
-    measurementId: "G-9DFZC010R8",
+    apiKey: "AIzaSyD_kNHn-n5LdyG8WESDN44dwn4pXmCr7Ew",
+    authDomain: "portfolio-645a8.firebaseapp.com",
+    projectId: "portfolio-645a8",
+    storageBucket: "portfolio-645a8.firebasestorage.app",
+    messagingSenderId: "634345037897",
+    appId: "1:634345037897:web:d64fa91357ed91aa055f98",
+    measurementId: "G-B2NVP25P7C",
 };
 
 // Initialize Firebase (SSR-safe: avoid double-init)

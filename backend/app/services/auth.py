@@ -7,7 +7,7 @@ from google.auth.transport.requests import Request as GoogleRequest
 from google.oauth2 import id_token
 
 from app.config import settings
-from app.services.security_store import ensure_user
+from app.services.security_backend import ensure_user
 
 # Header name the client must send
 API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)

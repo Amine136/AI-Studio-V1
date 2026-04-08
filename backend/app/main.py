@@ -20,21 +20,26 @@ from app.core.schema import CatalogUpdateNotification, GenerateRequest, Generati
 from app.graph.workflow import studio_graph_app
 from app.services.auth import verify_admin_user, verify_api_key, verify_firebase_user
 from app.services.catalog_store import catalog_store
-from app.services.security_store import (
+from app.services.security_backend import (
     add_history_entry,
     abandon_analyze_session,
+    capture_generation_credits,
     complete_analyze_session,
     consume_rate_limit,
     create_analyze_session,
     adjust_credits,
     create_credit_code,
+    create_generation_job,
     get_history,
     get_user,
     hash_credit_code,
     list_credit_codes,
     list_users,
-    preload_firestore,
+    mark_generation_job_awaiting_review,
+    preload_security_store,
     redeem_credit_code,
+    release_generation_credits,
+    reserve_generation_credits,
 )
 
 def _decode_bearer_uid(request: Request) -> str | None:
@@ -161,7 +166,7 @@ def health_check():
 def cleanup_uploaded_images_on_startup():
     _cleanup_expired_uploaded_images()
     catalog_store.initialize()
-    preload_firestore()
+    preload_security_store()
 
 
 @app.get(
@@ -390,6 +395,7 @@ def generate_content(request: Request, payload: GenerateRequest, user: Dict[str,
     """
     charged_cost = 0.0
     charged_applied = False
+    generation_job_id: str | None = None
     try:
         catalog_store.get_catalog()
         _validate_generate_request(payload)
@@ -401,23 +407,45 @@ def generate_content(request: Request, payload: GenerateRequest, user: Dict[str,
 
         if payload.status == "generating":
             charged_cost = _estimate_generation_cost(payload)
+            charge_metadata = {
+                "requested_outputs": payload.requested_outputs,
+                "image_model": (payload.user_preferences or {}).get("image_model"),
+                "caption_model": (payload.user_preferences or {}).get("caption_model"),
+            }
             try:
-                adjust_credits(
+                reservation = reserve_generation_credits(
                     user["uid"],
-                    -charged_cost,
-                    "generation_charge",
-                    actor_uid=user["uid"],
-                    metadata={
-                        "requested_outputs": payload.requested_outputs,
-                        "image_model": (payload.user_preferences or {}).get("image_model"),
-                        "caption_model": (payload.user_preferences or {}).get("caption_model"),
+                    payload.user_text,
+                    payload.requested_outputs,
+                    {
+                        "user_preferences": payload.user_preferences or {},
+                        "status": payload.status,
+                        "user_corrections": payload.user_corrections or {},
+                        "input_image": payload.input_image.model_dump() if payload.input_image else None,
+                        **charge_metadata,
                     },
+                    charged_cost,
                 )
-                charged_applied = True
+                generation_job_id = str((reservation.get("job") or {}).get("id") or "")
+                charged_applied = charged_cost > 0
             except ValueError as exc:
                 if str(exc) == "INSUFFICIENT_CREDITS":
                     raise HTTPException(status_code=402, detail="Insufficient credits") from exc
                 raise
+        else:
+            job = create_generation_job(
+                user["uid"],
+                payload.user_text,
+                payload.requested_outputs,
+                {
+                    "user_preferences": payload.user_preferences or {},
+                    "status": payload.status or "processing",
+                    "user_corrections": payload.user_corrections or {},
+                    "input_image": payload.input_image.model_dump() if payload.input_image else None,
+                },
+                status="processing",
+            )
+            generation_job_id = str(job.get("id") or "")
 
         input_image = _prepare_input_image(payload.input_image)
 
@@ -434,6 +462,8 @@ def generate_content(request: Request, payload: GenerateRequest, user: Dict[str,
         final_state = studio_graph_app.invoke(initial_state)
 
         if final_state.get("status") == "awaiting_review":
+            if generation_job_id:
+                mark_generation_job_awaiting_review(generation_job_id)
             analyze_session = create_analyze_session(
                 user["uid"],
                 payload.user_text,
@@ -450,6 +480,8 @@ def generate_content(request: Request, payload: GenerateRequest, user: Dict[str,
             )
         elif final_state.get("status") == "complete":
             final_payload = final_state.get("final_response", {})
+            if generation_job_id:
+                capture_generation_credits(generation_job_id)
             current_profile = get_user(user["uid"])
             return GenerationResult(
                 status="success",
@@ -462,14 +494,8 @@ def generate_content(request: Request, payload: GenerateRequest, user: Dict[str,
             )
         else:
             if charged_applied and charged_cost > 0:
-                adjust_credits(
-                    user["uid"],
-                    charged_cost,
-                    "generation_refund",
-                    actor_uid=user["uid"],
-                    metadata={"reason": "workflow_unexpected_status"},
-                    allow_negative=True,
-                )
+                if generation_job_id:
+                    release_generation_credits(generation_job_id, "workflow_unexpected_status")
             return GenerationResult(
                 status="error",
                 meta={"error_message": f"Workflow ended with unexpected status: {final_state.get('status')}"}
@@ -478,14 +504,8 @@ def generate_content(request: Request, payload: GenerateRequest, user: Dict[str,
     except ValueError as exc:
         if charged_applied and charged_cost > 0:
             try:
-                adjust_credits(
-                    user["uid"],
-                    charged_cost,
-                    "generation_refund",
-                    actor_uid=user["uid"],
-                    metadata={"reason": "validation_or_provider_rejection"},
-                    allow_negative=True,
-                )
+                if generation_job_id:
+                    release_generation_credits(generation_job_id, "validation_or_provider_rejection")
             except Exception:
                 pass
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -494,14 +514,8 @@ def generate_content(request: Request, payload: GenerateRequest, user: Dict[str,
     except Exception as e:
         if charged_applied and charged_cost > 0:
             try:
-                adjust_credits(
-                    user["uid"],
-                    charged_cost,
-                    "generation_refund",
-                    actor_uid=user["uid"],
-                    metadata={"reason": "exception"},
-                    allow_negative=True,
-                )
+                if generation_job_id:
+                    release_generation_credits(generation_job_id, "exception")
             except Exception:
                 pass
         print(f"Server Error: {str(e)}")

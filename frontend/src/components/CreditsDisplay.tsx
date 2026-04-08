@@ -121,11 +121,11 @@ const CreditsDisplay = forwardRef<CreditsDisplayHandle, CreditsDisplayProps>(
                             <input
                                 type="text"
                                 className="redeem-input"
-                                placeholder="NV-XXXXXX"
+                                placeholder="VC-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
                                 value={codeInput}
                                 onChange={(e) => setCodeInput(e.target.value.toUpperCase())}
                                 onKeyDown={(e) => e.key === "Enter" && handleRedeem()}
-                                maxLength={10}
+                                maxLength={33}
                                 autoFocus
                             />
                             <button
