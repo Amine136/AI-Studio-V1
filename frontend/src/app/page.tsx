@@ -35,9 +35,45 @@ interface UploadedImageState {
   size: number;
 }
 
+interface SuspensionState {
+  reason: string;
+  endsAt: string | null;
+  endsAtLabel: string | null;
+}
+
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 const MAX_PROXY_IMAGE_DIMENSION = 1536;
 const MAX_PROXY_IMAGE_BYTES = 1_800_000;
+
+function formatSuspensionEndsAt(value: string): string | null {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat("en-US", {
+    dateStyle: "long",
+    timeStyle: "short",
+    timeZone: "UTC",
+  }).format(date) + " UTC";
+}
+
+function parseSuspensionState(message: string): SuspensionState | null {
+  if (!message.toLowerCase().includes("your account is suspended")) {
+    return null;
+  }
+
+  const endsAtMatch = message.match(/Suspension ends at\s+([^.]+)\./i);
+  const endsAt = endsAtMatch?.[1]?.trim() || null;
+  const reasonText = message
+    .replace(/^Your account is suspended:\s*/i, "")
+    .replace(/^Your account is suspended\.?\s*/i, "")
+    .replace(/\s*Suspension ends at\s+([^.]+)\./i, "")
+    .trim();
+
+  return {
+    reason: reasonText || "Access to this account has been restricted.",
+    endsAt,
+    endsAtLabel: endsAt ? formatSuspensionEndsAt(endsAt) : null,
+  };
+}
 
 function isGeminiTextModel(model?: ModelCatalogEntry) {
   if (!model || model.provider !== "google-gemini") return false;
@@ -193,24 +229,8 @@ export default function Home() {
   // History State
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
-
-  // Fetch history on auth
-  const fetchHistory = useCallback(async () => {
-    if (!user) return;
-    setHistoryLoading(true);
-    try {
-      const entries = await getHistory(user.uid);
-      setHistory(entries);
-    } catch (e) {
-      console.error("Failed to load history:", e);
-    } finally {
-      setHistoryLoading(false);
-    }
-  }, [user]);
-
-  useEffect(() => {
-    if (user) fetchHistory();
-  }, [user, fetchHistory]);
+  const [accountReady, setAccountReady] = useState(false);
+  const [suspension, setSuspension] = useState<SuspensionState | null>(null);
 
   // --- Toast helper ---
   const showToast = (message: string, type: "error" | "success" = "error") => {
@@ -224,6 +244,72 @@ export default function Home() {
     }
     return fallback;
   };
+
+  const captureSuspension = useCallback((error: unknown): boolean => {
+    if (!(error instanceof Error)) return false;
+    const nextSuspension = parseSuspensionState(error.message);
+    if (!nextSuspension) return false;
+    setSuspension(nextSuspension);
+    setStep("INPUT");
+    setLoading(false);
+    setHistory([]);
+    setHistoryLoading(false);
+    return true;
+  }, []);
+
+  useEffect(() => {
+    if (!user) {
+      setAccountReady(false);
+      setSuspension(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    api.getProfile()
+      .then(() => {
+        if (cancelled) return;
+        setSuspension(null);
+        setAccountReady(true);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        if (captureSuspension(error)) {
+          setAccountReady(true);
+          return;
+        }
+        showToast(getErrorMessage(error, "Could not load your account."));
+        setAccountReady(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user, captureSuspension]);
+
+  // Fetch history on auth
+  const fetchHistory = useCallback(async () => {
+    if (!user || suspension) return;
+    setHistoryLoading(true);
+    try {
+      const entries = await getHistory(user.uid);
+      setHistory(entries);
+    } catch (error) {
+      if (captureSuspension(error)) {
+        return;
+      }
+      setHistory([]);
+      showToast(getErrorMessage(error, "Could not load history."), "error");
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [user, suspension, captureSuspension]);
+
+  useEffect(() => {
+    if (user && accountReady && !suspension) {
+      fetchHistory();
+    }
+  }, [user, accountReady, suspension, fetchHistory]);
 
   const applyConfig = useCallback((cfg: SystemConfig) => {
     const nextCatalog = cfg.model_catalog || {};
@@ -252,10 +338,16 @@ export default function Home() {
 
   // --- Load Config on Mount ---
   useEffect(() => {
-    refreshConfig().catch(() => {
+    if (!accountReady || suspension) {
+      return;
+    }
+    refreshConfig().catch((error) => {
+      if (captureSuspension(error)) {
+        return;
+      }
       showToast("Could not load configuration. Is the backend running?");
     });
-  }, [refreshConfig]);
+  }, [accountReady, suspension, refreshConfig, captureSuspension]);
 
   useEffect(() => {
     return () => {
@@ -638,6 +730,87 @@ export default function Home() {
     return (
       <main className="min-h-screen flex items-center justify-center">
         <div className="auth-loader" />
+      </main>
+    );
+  }
+
+  if (!accountReady) {
+    return (
+      <main className="min-h-screen flex items-center justify-center">
+        <div className="auth-loader" />
+      </main>
+    );
+  }
+
+  if (suspension) {
+    return (
+      <main className="min-h-screen flex items-start justify-center px-3 py-8 sm:px-4 sm:py-20">
+        <div className="w-full max-w-2xl">
+          <div className="mb-8 animate-fade-in">
+            <div className="flex justify-end mb-4 sm:mb-0">
+              <button
+                onClick={async () => { await signOutUser(); router.replace("/auth"); }}
+                className="inline-flex items-center gap-1.5 text-sm text-gray-400 hover:text-red-400 transition-colors px-4 py-2 rounded-full border border-white/10 hover:border-red-500/30 bg-white/5 hover:bg-red-500/10"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                  <polyline points="16 17 21 12 16 7" />
+                  <line x1="21" y1="12" x2="9" y2="12" />
+                </svg>
+                Sign Out
+              </button>
+            </div>
+            <div className="text-center">
+              <div className="mb-4 flex justify-center">
+                <AnimatedLogo sizeClassName="h-32 w-32" imageClassName="h-24 w-24" />
+              </div>
+              <h1 className="text-4xl sm:text-5xl font-extrabold gradient-text tracking-tight">
+                Vibecraft
+              </h1>
+            </div>
+          </div>
+
+          <div className="glass-card p-6 sm:p-10">
+            <div className="mx-auto max-w-xl text-center">
+              <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl border border-red-500/25 bg-red-500/10 text-red-300">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="8" x2="12" y2="12" />
+                  <line x1="12" y1="16" x2="12.01" y2="16" />
+                </svg>
+              </div>
+
+              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-red-300/80">
+                Account Restricted
+              </p>
+              <h2 className="mt-3 text-2xl font-bold text-white sm:text-3xl">
+                This account is currently suspended
+              </h2>
+              <p className="mt-4 text-sm leading-7 text-slate-300">
+                {suspension.reason}
+              </p>
+              {suspension.endsAtLabel ? (
+                <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] px-5 py-4 text-left">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+                    Access Restores
+                  </p>
+                  <p className="mt-2 text-base font-semibold text-white">
+                    {suspension.endsAtLabel}
+                  </p>
+                </div>
+              ) : (
+                <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] px-5 py-4 text-left">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+                    Status
+                  </p>
+                  <p className="mt-2 text-base font-semibold text-white">
+                    Suspended until admin review
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       </main>
     );
   }

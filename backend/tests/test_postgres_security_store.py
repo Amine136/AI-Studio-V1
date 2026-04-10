@@ -70,3 +70,159 @@ def test_consume_rate_limit_blocks_after_max_count(test_db):
     assert store.consume_rate_limit(key, max_count=2, window_seconds=60) is True
     assert store.consume_rate_limit(key, max_count=2, window_seconds=60) is True
     assert store.consume_rate_limit(key, max_count=2, window_seconds=60) is False
+
+
+def test_admin_audit_log_write_and_read(test_db):
+    store.ensure_user("admin-1", "admin@example.com", "Admin One")
+
+    created = store.add_admin_audit_log(
+        admin_uid="admin-1",
+        admin_email="admin@example.com",
+        action="user_suspend",
+        target_type="user",
+        target_id="user-42",
+        reason="abusive activity review",
+        metadata={"source": "admin_panel"},
+    )
+    logs = store.list_admin_audit_logs(limit=10)
+
+    assert created["action"] == "user_suspend"
+    assert created["targetType"] == "user"
+    assert created["targetId"] == "user-42"
+    assert created["reason"] == "abusive activity review"
+    assert logs[0]["id"] == created["id"]
+    assert logs[0]["adminEmail"] == "admin@example.com"
+
+
+def test_admin_audit_log_filters_by_admin_action_and_target(test_db):
+    store.add_admin_audit_log(
+        admin_uid="admin-a",
+        admin_email="a@example.com",
+        action="user_suspend",
+        target_type="user",
+        target_id="user-1",
+        reason="first action",
+        metadata={"scope": "alpha"},
+    )
+    store.add_admin_audit_log(
+        admin_uid="admin-b",
+        admin_email="b@example.com",
+        action="credit_code_disable",
+        target_type="credit_code",
+        target_id="code-1",
+        reason="second action",
+        metadata={"scope": "beta"},
+    )
+
+    by_admin = store.list_admin_audit_logs(limit=10, admin_uid="admin-a")
+    by_action = store.list_admin_audit_logs(limit=10, action="credit_code_disable")
+    by_target = store.list_admin_audit_logs(limit=10, target_type="user", target_id="user-1")
+
+    assert len(by_admin) == 1
+    assert by_admin[0]["adminUid"] == "admin-a"
+    assert by_admin[0]["action"] == "user_suspend"
+    assert len(by_action) == 1
+    assert by_action[0]["targetType"] == "credit_code"
+    assert by_action[0]["targetId"] == "code-1"
+    assert len(by_target) == 1
+    assert by_target[0]["reason"] == "first action"
+
+
+def test_search_users_filters_by_email_name_and_uid(test_db):
+    store.ensure_user("user-alpha", "alpha@example.com", "Alpha One")
+    store.ensure_user("user-beta", "beta@example.com", "Beta Two")
+
+    by_email = store.search_users("alpha@", limit=10)
+    by_name = store.search_users("beta two", limit=10)
+    by_uid = store.search_users("user-alpha", limit=10)
+
+    assert len(by_email) == 1
+    assert by_email[0]["uid"] == "user-alpha"
+    assert len(by_name) == 1
+    assert by_name[0]["uid"] == "user-beta"
+    assert len(by_uid) == 1
+    assert by_uid[0]["email"] == "alpha@example.com"
+
+
+def test_get_admin_user_detail_returns_none_for_missing_user(test_db):
+    store.ensure_user("user-detail", "detail@example.com", "Detail User")
+
+    found = store.get_admin_user_detail("user-detail")
+    missing = store.get_admin_user_detail("missing-user")
+
+    assert found is not None
+    assert found["uid"] == "user-detail"
+    assert found["email"] == "detail@example.com"
+    assert missing is None
+
+
+def test_suspend_and_unsuspend_user_write_audit_logs(test_db):
+    store.ensure_user("admin-2", "admin2@example.com", "Admin Two")
+    store.ensure_user("user-suspend", "target@example.com", "Target User")
+
+    suspended = store.suspend_user(
+        "user-suspend",
+        reason="terms of use violation",
+        admin_uid="admin-2",
+        admin_email="admin2@example.com",
+    )
+    unsuspended = store.unsuspend_user(
+        "user-suspend",
+        reason="appeal accepted",
+        admin_uid="admin-2",
+        admin_email="admin2@example.com",
+    )
+    logs = store.list_admin_audit_logs(limit=10)
+
+    assert suspended["isSuspended"] is True
+    assert suspended["suspensionReason"] == "terms of use violation"
+    assert unsuspended["isSuspended"] is False
+    assert unsuspended["suspensionReason"] == ""
+    assert logs[0]["action"] == "user_unsuspend"
+    assert logs[1]["action"] == "user_suspend"
+    assert logs[0]["targetId"] == "user-suspend"
+    assert logs[1]["targetId"] == "user-suspend"
+
+
+def test_disable_and_enable_credit_code_update_status_and_logs(test_db):
+    store.ensure_user("admin-3", "admin3@example.com", "Admin Three")
+    created = store.create_credit_code(credits=5, max_claims=2, created_by="admin-3")
+    code_hash = store.hash_credit_code(created["code"])
+
+    disabled = store.disable_credit_code(
+        code_hash,
+        reason="campaign paused",
+        admin_uid="admin-3",
+        admin_email="admin3@example.com",
+    )
+    enabled = store.enable_credit_code(
+        code_hash,
+        reason="campaign resumed",
+        admin_uid="admin-3",
+        admin_email="admin3@example.com",
+    )
+    logs = store.list_admin_audit_logs(limit=10)
+
+    assert disabled["isActive"] is False
+    assert disabled["status"] == "inactive"
+    assert enabled["isActive"] is True
+    assert enabled["status"] == "active"
+    assert logs[0]["action"] == "credit_code_enable"
+    assert logs[1]["action"] == "credit_code_disable"
+
+
+def test_list_admin_generation_jobs_filters_by_status(test_db):
+    store.ensure_user("user-jobs", "jobs@example.com", "Jobs User")
+    pending = store.create_generation_job("user-jobs", "prompt one", ["image"], {}, status="processing")
+    failed = store.create_generation_job("user-jobs", "prompt two", ["caption"], {}, status="failed")
+
+    processing_jobs = store.list_admin_generation_jobs("processing", limit=10)
+    all_jobs = store.list_admin_generation_jobs("", limit=10)
+    failed_job = store.get_admin_generation_job(failed["id"])
+
+    assert any(job["id"] == pending["id"] for job in processing_jobs)
+    assert all(job["status"] == "processing" for job in processing_jobs)
+    assert len(all_jobs) >= 2
+    assert failed_job is not None
+    assert failed_job["id"] == failed["id"]
+    assert failed_job["status"] == "failed"

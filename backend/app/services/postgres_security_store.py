@@ -3,14 +3,20 @@ from __future__ import annotations
 import hashlib
 import secrets
 import time
+import uuid
 from typing import Any
 
+from app.config import settings
 from app.db.repositories import SecurityRepository
 from app.db.session import session_scope
 
 CREDIT_SCALE = 100
 CODE_PREFIX = "VC-"
 CODE_BODY_LENGTH = 30
+INVALID_REDEEM_ATTEMPTS_RESET_AT = 4_102_444_800  # 2100-01-01 UTC
+INVALID_REDEEM_ATTEMPTS_PER_STAGE = 10
+REDEEM_BAN_STAGE_ONE_SECONDS = 60 * 60
+REDEEM_BAN_STAGE_TWO_SECONDS = 24 * 60 * 60
 
 
 def preload_postgres() -> None:
@@ -39,6 +45,164 @@ def list_users() -> list[dict[str, Any]]:
     with session_scope() as session:
         repo = SecurityRepository(session)
         return [_user_dict_from_model(user) for user in repo.list_users()]
+
+
+def search_users(query: str = "", limit: int = 100) -> list[dict[str, Any]]:
+    normalized_query = query.strip().lower()
+    bounded_limit = min(max(int(limit), 1), 200)
+    users = [_with_active_suspension_state(user) for user in list_users()]
+    if normalized_query:
+        users = [
+            user
+            for user in users
+            if normalized_query in str(user.get("email", "")).lower()
+            or normalized_query in str(user.get("displayName", "")).lower()
+            or normalized_query in str(user.get("uid", "")).lower()
+        ]
+    return users[:bounded_limit]
+
+
+def get_admin_user_detail(uid: str) -> dict[str, Any] | None:
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        user = repo.get_user(uid)
+        if user is None:
+            return None
+        return _with_active_suspension_state(_user_dict_from_model(user))
+
+
+def suspend_user(
+    uid: str,
+    *,
+    reason: str,
+    admin_uid: str | None,
+    admin_email: str,
+) -> dict[str, Any]:
+    normalized_reason = reason.strip()
+    if not normalized_reason:
+        raise ValueError("Reason is required")
+
+    now = int(time.time())
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        user = repo.get_user_for_update(uid)
+        if user is None:
+            raise ValueError("USER_NOT_FOUND")
+        if _is_admin_email(user.email):
+            raise ValueError("ADMIN_PROTECTED")
+
+        user.is_suspended = True
+        user.suspension_reason = normalized_reason
+        user.updated_at = now
+
+        repo.add_admin_audit_log(
+            admin_uid=admin_uid,
+            admin_email=admin_email.strip(),
+            action="user_suspend",
+            target_type="user",
+            target_id=uid,
+            reason=normalized_reason,
+            metadata_json={"suspension_reason": normalized_reason},
+            created_at=now,
+        )
+        session.flush()
+        return _user_dict_from_model(user)
+
+
+def unsuspend_user(
+    uid: str,
+    *,
+    reason: str,
+    admin_uid: str | None,
+    admin_email: str,
+) -> dict[str, Any]:
+    normalized_reason = reason.strip()
+    if not normalized_reason:
+        raise ValueError("Reason is required")
+
+    now = int(time.time())
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        user = repo.get_user_for_update(uid)
+        if user is None:
+            raise ValueError("USER_NOT_FOUND")
+        if _is_admin_email(user.email):
+            raise ValueError("ADMIN_PROTECTED")
+
+        previous_reason = user.suspension_reason or ""
+        user.is_suspended = False
+        user.suspension_reason = None
+        user.updated_at = now
+        repo.delete_rate_limit_bucket(_redeem_temp_suspension_key(uid))
+        repo.delete_rate_limit_bucket(_invalid_redeem_attempts_key(uid))
+
+        repo.add_admin_audit_log(
+            admin_uid=admin_uid,
+            admin_email=admin_email.strip(),
+            action="user_unsuspend",
+            target_type="user",
+            target_id=uid,
+            reason=normalized_reason,
+            metadata_json={"previous_suspension_reason": previous_reason},
+            created_at=now,
+        )
+        session.flush()
+        return _with_active_suspension_state(_user_dict_from_model(user))
+
+
+def add_admin_audit_log(
+    *,
+    admin_uid: str | None,
+    admin_email: str,
+    action: str,
+    target_type: str,
+    target_id: str,
+    reason: str,
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    normalized_reason = reason.strip()
+    if not normalized_reason:
+        raise ValueError("Reason is required")
+
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        entry = repo.add_admin_audit_log(
+            admin_uid=admin_uid,
+            admin_email=admin_email.strip(),
+            action=action.strip(),
+            target_type=target_type.strip(),
+            target_id=target_id.strip(),
+            reason=normalized_reason,
+            metadata_json=metadata or {},
+        )
+        return _admin_audit_log_dict_from_model(entry)
+
+
+def list_admin_audit_logs(
+    limit: int = 50,
+    *,
+    admin_uid: str = "",
+    action: str = "",
+    target_type: str = "",
+    target_id: str = "",
+) -> list[dict[str, Any]]:
+    bounded_limit = min(max(int(limit), 1), 200)
+    normalized_admin_uid = admin_uid.strip() or None
+    normalized_action = action.strip() or None
+    normalized_target_type = target_type.strip() or None
+    normalized_target_id = target_id.strip() or None
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        return [
+            _admin_audit_log_dict_from_model(entry)
+            for entry in repo.list_admin_audit_logs(
+                bounded_limit,
+                admin_uid=normalized_admin_uid,
+                action=normalized_action,
+                target_type=normalized_target_type,
+                target_id=normalized_target_id,
+            )
+        ]
 
 
 def adjust_credits(
@@ -104,10 +268,145 @@ def create_credit_code(credits: float, max_claims: int, created_by: str) -> dict
         }
 
 
+def create_credit_code_batch(quantity: int, credits: float, created_by: str) -> list[dict[str, Any]]:
+    return create_credit_code_batch_with_title(quantity, credits, created_by, "")
+
+
+def create_credit_code_batch_with_title(quantity: int, credits: float, created_by: str, title: str) -> list[dict[str, Any]]:
+    bounded_quantity = int(quantity)
+    credits_minor = _credits_to_minor(credits)
+    normalized_title = title.strip()
+    if bounded_quantity <= 0:
+        raise ValueError("Quantity must be positive")
+    if credits_minor <= 0:
+        raise ValueError("Credits must be positive")
+    batch_id = str(uuid.uuid4()) if normalized_title else None
+
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        created_codes: list[dict[str, Any]] = []
+        for _ in range(bounded_quantity):
+            raw_code = _generate_code()
+            code_hash = hash_credit_code(raw_code)
+            code_preview = _preview_code(raw_code)
+            code = repo.create_credit_code_with_batch(
+                code_hash,
+                code_preview,
+                credits_minor,
+                1,
+                created_by,
+                batch_id=batch_id,
+                batch_title=normalized_title or None,
+            )
+            created_codes.append(
+                {
+                    "code": raw_code,
+                    "codePreview": code.code_preview,
+                    "credits": _minor_to_credits(code.credits_minor),
+                    "maxClaims": code.max_claims,
+                    "claimedCount": code.claimed_count,
+                    "createdAt": code.created_at,
+                    "createdBy": code.created_by,
+                    "batchId": code.batch_id,
+                    "batchTitle": code.batch_title,
+                }
+            )
+        return created_codes
+
+
 def list_credit_codes() -> list[dict[str, Any]]:
     with session_scope() as session:
         repo = SecurityRepository(session)
         return [_credit_code_dict_from_model(code) for code in repo.list_credit_codes()]
+
+
+def list_gift_code_status_summaries() -> list[dict[str, Any]]:
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        rows = repo.summarize_gift_codes_by_status(int(time.time()))
+        return [
+            {
+                "status": str(row.get("status") or "active"),
+                "codeCount": int(row.get("code_count") or 0),
+                "totalCredits": _minor_to_credits(int(row.get("total_credits_minor") or 0)),
+                "averageCredits": _minor_to_credits(int(round(float(row.get("average_credits_minor") or 0)))),
+            }
+            for row in rows
+        ]
+
+
+def list_credit_code_batches() -> list[dict[str, Any]]:
+    batches: dict[str, dict[str, Any]] = {}
+    for code in list_credit_codes():
+        batch_id = str(code.get("batchId") or "").strip()
+        if not batch_id:
+            continue
+
+        batch = batches.get(batch_id)
+        if batch is None:
+            batch = {
+                "batchId": batch_id,
+                "title": code.get("batchTitle") or "Untitled batch",
+                "credits": code.get("credits", 0.0),
+                "totalCodes": 0,
+                "claimedCodes": 0,
+                "activeCodes": 0,
+                "status": "active",
+                "createdAt": code.get("createdAt"),
+            }
+            batches[batch_id] = batch
+
+        batch["totalCodes"] += 1
+        if int(code.get("claimedCount", 0)) > 0:
+            batch["claimedCodes"] += 1
+        if str(code.get("status", "")) == "active":
+            batch["activeCodes"] += 1
+        created_at = code.get("createdAt")
+        if batch["createdAt"] is None or (created_at is not None and int(created_at) < int(batch["createdAt"])):
+            batch["createdAt"] = created_at
+
+    for batch in batches.values():
+        if int(batch["claimedCodes"]) >= int(batch["totalCodes"]):
+            batch["status"] = "claimed"
+        elif int(batch["activeCodes"]) == 0:
+            batch["status"] = "inactive"
+        else:
+            batch["status"] = "active"
+
+    return sorted(batches.values(), key=lambda item: int(item.get("createdAt") or 0), reverse=True)
+
+
+def list_credit_code_batch_status_summaries() -> list[dict[str, Any]]:
+    summaries: dict[str, dict[str, Any]] = {}
+    for batch in list_credit_code_batches():
+        status = str(batch.get("status") or "active")
+        summary = summaries.get(status)
+        if summary is None:
+            summary = {
+                "status": status,
+                "codeCount": 0,
+                "totalCredits": 0.0,
+            }
+            summaries[status] = summary
+
+        batch_code_count = int(batch.get("totalCodes") or 0)
+        batch_credits = float(batch.get("credits") or 0.0)
+        summary["codeCount"] += batch_code_count
+        summary["totalCredits"] += batch_credits * batch_code_count
+
+    results: list[dict[str, Any]] = []
+    for status, summary in summaries.items():
+        code_count = int(summary.get("codeCount") or 0)
+        total_credits = float(summary.get("totalCredits") or 0.0)
+        results.append(
+            {
+                "status": status,
+                "codeCount": code_count,
+                "totalCredits": round(total_credits, 2),
+                "averageCredits": round(total_credits / code_count, 2) if code_count > 0 else 0.0,
+            }
+        )
+    return results
 
 
 def get_credit_code(code: str) -> dict[str, Any] | None:
@@ -119,6 +418,154 @@ def get_credit_code(code: str) -> dict[str, Any] | None:
         return _credit_code_dict_from_model(credit_code)
 
 
+def disable_credit_code(
+    code_hash: str,
+    *,
+    reason: str,
+    admin_uid: str | None,
+    admin_email: str,
+) -> dict[str, Any]:
+    normalized_reason = reason.strip()
+    if not normalized_reason:
+        raise ValueError("Reason is required")
+
+    now = int(time.time())
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        credit_code = repo.get_credit_code_for_update(code_hash)
+        if credit_code is None:
+            raise ValueError("CODE_NOT_FOUND")
+
+        credit_code.is_active = False
+        repo.add_admin_audit_log(
+            admin_uid=admin_uid,
+            admin_email=admin_email.strip(),
+            action="credit_code_disable",
+            target_type="credit_code",
+            target_id=code_hash,
+            reason=normalized_reason,
+            metadata_json={"code_preview": credit_code.code_preview},
+            created_at=now,
+        )
+        session.flush()
+        return _credit_code_dict_from_model(credit_code)
+
+
+def enable_credit_code(
+    code_hash: str,
+    *,
+    reason: str,
+    admin_uid: str | None,
+    admin_email: str,
+) -> dict[str, Any]:
+    normalized_reason = reason.strip()
+    if not normalized_reason:
+        raise ValueError("Reason is required")
+
+    now = int(time.time())
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        credit_code = repo.get_credit_code_for_update(code_hash)
+        if credit_code is None:
+            raise ValueError("CODE_NOT_FOUND")
+
+        credit_code.is_active = True
+        repo.add_admin_audit_log(
+            admin_uid=admin_uid,
+            admin_email=admin_email.strip(),
+            action="credit_code_enable",
+            target_type="credit_code",
+            target_id=code_hash,
+            reason=normalized_reason,
+            metadata_json={"code_preview": credit_code.code_preview},
+            created_at=now,
+        )
+        session.flush()
+        return _credit_code_dict_from_model(credit_code)
+
+
+def disable_credit_code_batch(
+    batch_id: str,
+    *,
+    reason: str,
+    admin_uid: str | None,
+    admin_email: str,
+) -> dict[str, Any]:
+    normalized_reason = reason.strip()
+    if not normalized_reason:
+        raise ValueError("Reason is required")
+
+    now = int(time.time())
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        credit_codes = repo.list_credit_codes_by_batch_for_update(batch_id)
+        if not credit_codes:
+            raise ValueError("BATCH_NOT_FOUND")
+
+        for credit_code in credit_codes:
+            credit_code.is_active = False
+
+        repo.add_admin_audit_log(
+            admin_uid=admin_uid,
+            admin_email=admin_email.strip(),
+            action="credit_code_batch_disable",
+            target_type="credit_code_batch",
+            target_id=batch_id,
+            reason=normalized_reason,
+            metadata_json={
+                "batch_title": credit_codes[0].batch_title,
+                "code_count": len(credit_codes),
+            },
+            created_at=now,
+        )
+        session.flush()
+    return next((batch for batch in list_credit_code_batches() if batch.get("batchId") == batch_id), {
+        "batchId": batch_id,
+        "status": "inactive",
+    })
+
+
+def enable_credit_code_batch(
+    batch_id: str,
+    *,
+    reason: str,
+    admin_uid: str | None,
+    admin_email: str,
+) -> dict[str, Any]:
+    normalized_reason = reason.strip()
+    if not normalized_reason:
+        raise ValueError("Reason is required")
+
+    now = int(time.time())
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        credit_codes = repo.list_credit_codes_by_batch_for_update(batch_id)
+        if not credit_codes:
+            raise ValueError("BATCH_NOT_FOUND")
+
+        for credit_code in credit_codes:
+            credit_code.is_active = True
+
+        repo.add_admin_audit_log(
+            admin_uid=admin_uid,
+            admin_email=admin_email.strip(),
+            action="credit_code_batch_enable",
+            target_type="credit_code_batch",
+            target_id=batch_id,
+            reason=normalized_reason,
+            metadata_json={
+                "batch_title": credit_codes[0].batch_title,
+                "code_count": len(credit_codes),
+            },
+            created_at=now,
+        )
+        session.flush()
+    return next((batch for batch in list_credit_code_batches() if batch.get("batchId") == batch_id), {
+        "batchId": batch_id,
+        "status": "active",
+    })
+
+
 def redeem_credit_code(code: str, uid: str) -> dict[str, Any]:
     normalized = code.strip().upper()
     code_hash = hash_credit_code(normalized)
@@ -128,15 +575,15 @@ def redeem_credit_code(code: str, uid: str) -> dict[str, Any]:
         repo = SecurityRepository(session)
         credit_code = repo.get_credit_code_for_update(code_hash)
         if credit_code is None:
-            return {"success": False, "message": "Invalid code. Please check and try again."}
+            return _handle_failed_redeem_attempt(repo, uid, now, "Invalid code. Please check and try again.")
         if not credit_code.is_active:
-            return {"success": False, "message": "This code is no longer active."}
+            return _handle_failed_redeem_attempt(repo, uid, now, "This code is no longer active.")
         if credit_code.expires_at is not None and int(credit_code.expires_at) <= now:
-            return {"success": False, "message": "This code has expired."}
+            return _handle_failed_redeem_attempt(repo, uid, now, "This code has expired.")
         if repo.get_credit_claim(code_hash, uid) is not None:
-            return {"success": False, "message": "You have already used this code."}
+            return _handle_failed_redeem_attempt(repo, uid, now, "You have already used this code.")
         if credit_code.claimed_count >= credit_code.max_claims:
-            return {"success": False, "message": "This code has expired (max claims reached)."}
+            return _handle_failed_redeem_attempt(repo, uid, now, "This code has expired (max claims reached).")
 
         user = repo.get_user_for_update(uid)
         if user is None:
@@ -166,6 +613,43 @@ def redeem_credit_code(code: str, uid: str) -> dict[str, Any]:
             "credits": credits,
             "balance": _minor_to_credits(user.credits_minor),
         }
+
+
+def get_active_suspension(uid: str) -> dict[str, Any] | None:
+    now = int(time.time())
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        user = repo.get_user(uid)
+        if user is not None and bool(user.is_suspended):
+            return {
+                "isPermanent": True,
+                "reason": user.suspension_reason or "Account suspended by system policy.",
+                "until": None,
+            }
+
+        temp_bucket = repo.get_rate_limit_bucket(_redeem_temp_suspension_key(uid))
+        if temp_bucket is None or int(temp_bucket.reset_at) <= now:
+            return None
+
+        return {
+            "isPermanent": False,
+            "reason": _temporary_redeem_ban_reason(int(temp_bucket.count)),
+            "until": int(temp_bucket.reset_at),
+        }
+
+
+def _with_active_suspension_state(user: dict[str, Any]) -> dict[str, Any]:
+    suspension = get_active_suspension(str(user.get("uid", "")))
+    if not suspension:
+        user["activeSuspensionUntil"] = None
+        user["activeSuspensionIsPermanent"] = False
+        return user
+
+    user["isSuspended"] = True
+    user["suspensionReason"] = str(suspension.get("reason") or user.get("suspensionReason") or "")
+    user["activeSuspensionUntil"] = suspension.get("until")
+    user["activeSuspensionIsPermanent"] = bool(suspension.get("isPermanent"))
+    return user
 
 
 def add_history_entry(uid: str, image_url: str | None, caption: str | None, prompt: str, model: str) -> dict[str, Any]:
@@ -293,6 +777,24 @@ def update_generation_job(
         return _generation_job_dict_from_model(job)
 
 
+def list_admin_generation_jobs(status: str = "", limit: int = 100) -> list[dict[str, Any]]:
+    normalized_status = status.strip().lower()
+    bounded_limit = min(max(int(limit), 1), 200)
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        jobs = repo.list_generation_jobs(normalized_status or None, bounded_limit)
+        return [_generation_job_dict_from_model(job) for job in jobs]
+
+
+def get_admin_generation_job(job_id: str) -> dict[str, Any] | None:
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        job = repo.get_generation_job(job_id)
+        if job is None:
+            return None
+        return _generation_job_dict_from_model(job)
+
+
 def consume_rate_limit(key: str, max_count: int, window_seconds: int) -> bool:
     now = int(time.time())
     reset_at = now + window_seconds
@@ -347,20 +849,40 @@ def _user_dict_from_model(user: Any) -> dict[str, Any]:
         "createdAt": user.created_at,
         "updatedAt": user.updated_at,
         "lastSeenAt": user.last_seen_at,
+        "isAdmin": _is_admin_email(user.email),
         "isSuspended": bool(user.is_suspended),
         "suspensionReason": user.suspension_reason or "",
     }
 
 
+def _is_admin_email(email: str | None) -> bool:
+    normalized = str(email or "").strip().lower()
+    return bool(normalized and normalized in settings.admin_emails)
+
+
 def _credit_code_dict_from_model(code: Any) -> dict[str, Any]:
+    now = int(time.time())
+    if not bool(code.is_active):
+        status = "inactive"
+    elif code.expires_at is not None and int(code.expires_at) <= now:
+        status = "expired"
+    elif int(code.claimed_count) >= int(code.max_claims):
+        status = "exhausted"
+    else:
+        status = "active"
     return {
-        "code": code.code_preview,
+        "code": code.code_hash,
         "codePreview": code.code_preview,
         "credits": _minor_to_credits(int(code.credits_minor)),
         "maxClaims": int(code.max_claims),
         "claimedCount": int(code.claimed_count),
         "createdAt": code.created_at,
         "createdBy": code.created_by,
+        "batchId": code.batch_id,
+        "batchTitle": code.batch_title,
+        "isActive": bool(code.is_active),
+        "expiresAt": code.expires_at,
+        "status": status,
     }
 
 
@@ -390,6 +912,88 @@ def _generation_job_dict_from_model(job: Any) -> dict[str, Any]:
         "updatedAt": job.updated_at,
         "completedAt": job.completed_at,
     }
+
+
+def _admin_audit_log_dict_from_model(entry: Any) -> dict[str, Any]:
+    return {
+        "id": entry.id,
+        "adminUid": entry.admin_uid,
+        "adminEmail": entry.admin_email,
+        "action": entry.action,
+        "targetType": entry.target_type,
+        "targetId": entry.target_id,
+        "reason": entry.reason,
+        "metadata": dict(entry.metadata_json or {}),
+        "createdAt": entry.created_at,
+    }
+
+
+def _handle_failed_redeem_attempt(
+    repo: SecurityRepository,
+    uid: str,
+    now: int,
+    base_message: str,
+) -> dict[str, Any]:
+    user = repo.get_user_for_update(uid)
+    if user is None:
+        user = repo.ensure_user(uid, "", "")
+
+    count_key = _invalid_redeem_attempts_key(uid)
+    attempts_bucket = repo.get_rate_limit_bucket_for_update(count_key)
+    attempts = 1 if attempts_bucket is None else int(attempts_bucket.count) + 1
+    repo.upsert_rate_limit_bucket(count_key, attempts, INVALID_REDEEM_ATTEMPTS_RESET_AT)
+
+    if attempts >= INVALID_REDEEM_ATTEMPTS_PER_STAGE * 3:
+        user.is_suspended = True
+        user.suspension_reason = (
+            "Permanent suspension due to repeated failed credit code redemption attempts. "
+            "Admin action is required to restore access."
+        )
+        user.updated_at = now
+        user.last_seen_at = now
+        return {
+            "success": False,
+            "message": (
+                f"{base_message} Your account has been suspended permanently due to repeated failed credit code attempts. "
+                "Please contact support."
+            ),
+        }
+
+    if attempts == INVALID_REDEEM_ATTEMPTS_PER_STAGE * 2:
+        until = now + REDEEM_BAN_STAGE_TWO_SECONDS
+        repo.upsert_rate_limit_bucket(_redeem_temp_suspension_key(uid), 2, until)
+        return {
+            "success": False,
+            "message": (
+                f"{base_message} Your account has been suspended for 24 hours due to repeated failed credit code attempts."
+            ),
+        }
+
+    if attempts == INVALID_REDEEM_ATTEMPTS_PER_STAGE:
+        until = now + REDEEM_BAN_STAGE_ONE_SECONDS
+        repo.upsert_rate_limit_bucket(_redeem_temp_suspension_key(uid), 1, until)
+        return {
+            "success": False,
+            "message": (
+                f"{base_message} Your account has been suspended for 1 hour due to repeated failed credit code attempts."
+            ),
+        }
+
+    return {"success": False, "message": base_message}
+
+
+def _invalid_redeem_attempts_key(uid: str) -> str:
+    return f"redeem_invalid_attempts:{uid}"
+
+
+def _redeem_temp_suspension_key(uid: str) -> str:
+    return f"redeem_temp_suspension:{uid}"
+
+
+def _temporary_redeem_ban_reason(stage: int) -> str:
+    if stage >= 2:
+        return "Account suspended for 24 hours due to repeated failed credit code redemption attempts."
+    return "Account suspended for 1 hour due to repeated failed credit code redemption attempts."
 
 
 def reserve_generation_credits(

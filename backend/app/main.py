@@ -16,30 +16,47 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
 from app.config import settings
-from app.core.schema import CatalogUpdateNotification, GenerateRequest, GenerationResult, SystemConfig
+from app.core.schema import AdminAuditLogListResponse, AdminCreditCodeBatchListResponse, AdminCreditCodeListResponse, AdminGenerationJobItem, AdminGenerationJobListResponse, AdminReasonRequest, AdminUserDetailResponse, AdminUserListResponse, CatalogUpdateNotification, GenerateRequest, GenerationResult, SystemConfig
 from app.graph.workflow import studio_graph_app
 from app.services.auth import verify_admin_user, verify_api_key, verify_firebase_user
 from app.services.catalog_store import catalog_store
 from app.services.security_backend import (
     add_history_entry,
     abandon_analyze_session,
+    add_admin_audit_log,
     capture_generation_credits,
     complete_analyze_session,
     consume_rate_limit,
     create_analyze_session,
     adjust_credits,
     create_credit_code,
+    create_credit_code_batch,
+    create_credit_code_batch_with_title,
     create_generation_job,
+    disable_credit_code_batch,
+    disable_credit_code,
+    enable_credit_code,
+    enable_credit_code_batch,
+    get_admin_generation_job,
+    get_admin_user_detail,
     get_history,
     get_user,
     hash_credit_code,
+    list_admin_audit_logs,
+    list_admin_generation_jobs,
+    list_credit_code_batches,
+    list_credit_code_batch_status_summaries,
     list_credit_codes,
+    list_gift_code_status_summaries,
     list_users,
+    search_users,
     mark_generation_job_awaiting_review,
     preload_security_store,
     redeem_credit_code,
     release_generation_credits,
     reserve_generation_credits,
+    suspend_user,
+    unsuspend_user,
 )
 
 def _decode_bearer_uid(request: Request) -> str | None:
@@ -276,7 +293,7 @@ def catalog_updated_webhook(
 
 
 @app.get("/me", tags=["Configuration"], summary="Get Current User Profile")
-@limiter.limit("5/minute")
+@limiter.limit("30/minute")
 def get_current_user_profile(request: Request, user: Dict[str, Any] = Depends(verify_firebase_user)):
     profile = get_user(user["uid"])
     profile["isAdmin"] = user["is_admin"]
@@ -336,10 +353,45 @@ def abandon_pending_analyze_session(request: Request, session_id: str, user: Dic
         raise HTTPException(status_code=404, detail="Analyze session not found") from exc
 
 
-@app.get("/admin/users", tags=["Configuration"], summary="List Users For Admin")
+@app.get(
+    "/admin/users",
+    response_model=AdminUserListResponse,
+    tags=["Configuration"],
+    summary="List Users For Admin",
+)
 @limiter.limit("20/minute")
-def admin_list_users(request: Request, _admin: Dict[str, Any] = Depends(verify_admin_user)):
-    return {"users": list_users()}
+def admin_list_users(
+    request: Request,
+    q: str = "",
+    limit: int = 100,
+    _admin: Dict[str, Any] = Depends(verify_admin_user),
+):
+    del request
+    users = search_users(q, limit)
+    return {
+        "users": users,
+        "total": len(users),
+        "search": q.strip(),
+    }
+
+
+@app.get(
+    "/admin/users/{uid}",
+    response_model=AdminUserDetailResponse,
+    tags=["Configuration"],
+    summary="Get User Detail For Admin",
+)
+@limiter.limit("30/minute")
+def admin_get_user_detail(
+    request: Request,
+    uid: str,
+    _admin: Dict[str, Any] = Depends(verify_admin_user),
+):
+    del request
+    user = get_admin_user_detail(uid)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
 
 
 @app.post("/admin/users/{uid}/credits", tags=["Configuration"], summary="Adjust Credits For Admin")
@@ -352,22 +404,305 @@ def admin_adjust_user_credits(request: Request, uid: str, payload: Dict[str, Any
     )
 
 
-@app.get("/admin/codes", tags=["Configuration"], summary="List Credit Codes For Admin")
+@app.post(
+    "/admin/users/{uid}/suspend",
+    response_model=AdminUserDetailResponse,
+    tags=["Configuration"],
+    summary="Suspend User For Admin",
+)
+@limiter.limit("20/minute")
+def admin_suspend_user(
+    request: Request,
+    uid: str,
+    payload: AdminReasonRequest,
+    admin: Dict[str, Any] = Depends(verify_admin_user),
+):
+    del request
+    try:
+        return suspend_user(
+            uid,
+            reason=payload.reason,
+            admin_uid=admin["uid"],
+            admin_email=admin["email"],
+        )
+    except ValueError as exc:
+        if str(exc) == "USER_NOT_FOUND":
+            raise HTTPException(status_code=404, detail="User not found") from exc
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post(
+    "/admin/users/{uid}/unsuspend",
+    response_model=AdminUserDetailResponse,
+    tags=["Configuration"],
+    summary="Unsuspend User For Admin",
+)
+@limiter.limit("20/minute")
+def admin_unsuspend_user(
+    request: Request,
+    uid: str,
+    payload: AdminReasonRequest,
+    admin: Dict[str, Any] = Depends(verify_admin_user),
+):
+    del request
+    try:
+        return unsuspend_user(
+            uid,
+            reason=payload.reason,
+            admin_uid=admin["uid"],
+            admin_email=admin["email"],
+        )
+    except ValueError as exc:
+        if str(exc) == "USER_NOT_FOUND":
+            raise HTTPException(status_code=404, detail="User not found") from exc
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get(
+    "/admin/codes",
+    response_model=AdminCreditCodeListResponse,
+    tags=["Configuration"],
+    summary="List Credit Codes For Admin",
+)
 @limiter.limit("20/minute")
 def admin_list_codes(request: Request, _admin: Dict[str, Any] = Depends(verify_admin_user)):
-    return {"codes": list_credit_codes()}
+    del request
+    codes = list_credit_codes()
+    summaries = list_gift_code_status_summaries()
+    return {"codes": codes, "total": len(codes), "summaries": summaries}
+
+
+@app.get(
+    "/admin/code-batches",
+    response_model=AdminCreditCodeBatchListResponse,
+    tags=["Configuration"],
+    summary="List Credit Code Batches For Admin",
+)
+@limiter.limit("20/minute")
+def admin_list_code_batches(request: Request, _admin: Dict[str, Any] = Depends(verify_admin_user)):
+    del request
+    batches = list_credit_code_batches()
+    summaries = list_credit_code_batch_status_summaries()
+    return {"batches": batches, "total": len(batches), "summaries": summaries}
 
 
 @app.post("/admin/codes", tags=["Configuration"], summary="Create Credit Code For Admin")
 @limiter.limit("10/minute")
 def admin_create_code(request: Request, payload: Dict[str, Any], admin: Dict[str, Any] = Depends(verify_admin_user)):
+    del request
     credits = float(payload.get("credits", 0))
     max_claims = int(payload.get("maxClaims", 0))
     try:
         code = create_credit_code(credits, max_claims, admin["uid"])
+        add_admin_audit_log(
+            admin_uid=admin["uid"],
+            admin_email=admin["email"],
+            action="credit_code_create",
+            target_type="credit_code",
+            target_id=str(code.get("codePreview") or "generated"),
+            reason=f"Generated gift code worth {credits} credits for up to {max_claims} claims.",
+            metadata={
+                "code_preview": code.get("codePreview"),
+                "credits": code.get("credits"),
+                "max_claims": code.get("maxClaims"),
+            },
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return code
+
+
+@app.post("/admin/codes/batch", tags=["Configuration"], summary="Create Batch Credit Codes For Admin")
+@limiter.limit("5/minute")
+def admin_create_code_batch(request: Request, payload: Dict[str, Any], admin: Dict[str, Any] = Depends(verify_admin_user)):
+    del request
+    quantity = int(payload.get("quantity", 0))
+    credits = float(payload.get("credits", 0))
+    title = str(payload.get("title", "")).strip()
+    try:
+        codes = create_credit_code_batch_with_title(quantity, credits, admin["uid"], title)
+        first_code = codes[0] if codes else {}
+        add_admin_audit_log(
+            admin_uid=admin["uid"],
+            admin_email=admin["email"],
+            action="credit_code_batch_create",
+            target_type="credit_code_batch",
+            target_id=str(first_code.get("batchId") or title or "generated-batch"),
+            reason=f"Generated {len(codes)} one-time codes titled '{title or 'Untitled batch'}' worth {credits} credits each.",
+            metadata={
+                "batch_id": first_code.get("batchId"),
+                "batch_title": title,
+                "quantity": len(codes),
+                "credits": credits,
+                "sample_preview": first_code.get("codePreview"),
+            },
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"codes": codes, "total": len(codes)}
+
+
+@app.post("/admin/codes/{code_hash}/disable", tags=["Configuration"], summary="Disable Credit Code For Admin")
+@limiter.limit("20/minute")
+def admin_disable_code(
+    request: Request,
+    code_hash: str,
+    payload: AdminReasonRequest,
+    admin: Dict[str, Any] = Depends(verify_admin_user),
+):
+    del request
+    try:
+        return disable_credit_code(
+            code_hash,
+            reason=payload.reason,
+            admin_uid=admin["uid"],
+            admin_email=admin["email"],
+        )
+    except ValueError as exc:
+        if str(exc) == "CODE_NOT_FOUND":
+            raise HTTPException(status_code=404, detail="Code not found") from exc
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/admin/codes/{code_hash}/enable", tags=["Configuration"], summary="Enable Credit Code For Admin")
+@limiter.limit("20/minute")
+def admin_enable_code(
+    request: Request,
+    code_hash: str,
+    payload: AdminReasonRequest,
+    admin: Dict[str, Any] = Depends(verify_admin_user),
+):
+    del request
+    try:
+        return enable_credit_code(
+            code_hash,
+            reason=payload.reason,
+            admin_uid=admin["uid"],
+            admin_email=admin["email"],
+        )
+    except ValueError as exc:
+        if str(exc) == "CODE_NOT_FOUND":
+            raise HTTPException(status_code=404, detail="Code not found") from exc
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/admin/code-batches/{batch_id}/disable", tags=["Configuration"], summary="Disable Credit Code Batch For Admin")
+@limiter.limit("20/minute")
+def admin_disable_code_batch(
+    request: Request,
+    batch_id: str,
+    payload: AdminReasonRequest,
+    admin: Dict[str, Any] = Depends(verify_admin_user),
+):
+    del request
+    try:
+        return disable_credit_code_batch(
+            batch_id,
+            reason=payload.reason,
+            admin_uid=admin["uid"],
+            admin_email=admin["email"],
+        )
+    except ValueError as exc:
+        if str(exc) == "BATCH_NOT_FOUND":
+            raise HTTPException(status_code=404, detail="Batch not found") from exc
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/admin/code-batches/{batch_id}/enable", tags=["Configuration"], summary="Enable Credit Code Batch For Admin")
+@limiter.limit("20/minute")
+def admin_enable_code_batch(
+    request: Request,
+    batch_id: str,
+    payload: AdminReasonRequest,
+    admin: Dict[str, Any] = Depends(verify_admin_user),
+):
+    del request
+    try:
+        return enable_credit_code_batch(
+            batch_id,
+            reason=payload.reason,
+            admin_uid=admin["uid"],
+            admin_email=admin["email"],
+        )
+    except ValueError as exc:
+        if str(exc) == "BATCH_NOT_FOUND":
+            raise HTTPException(status_code=404, detail="Batch not found") from exc
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get(
+    "/admin/jobs",
+    response_model=AdminGenerationJobListResponse,
+    tags=["Configuration"],
+    summary="List Generation Jobs For Admin",
+)
+@limiter.limit("20/minute")
+def admin_list_generation_jobs(
+    request: Request,
+    status: str = "",
+    limit: int = 100,
+    _admin: Dict[str, Any] = Depends(verify_admin_user),
+):
+    del request
+    jobs = list_admin_generation_jobs(status, limit)
+    return {
+        "jobs": jobs,
+        "total": len(jobs),
+        "status": status.strip().lower(),
+    }
+
+
+@app.get(
+    "/admin/jobs/{job_id}",
+    response_model=AdminGenerationJobItem,
+    tags=["Configuration"],
+    summary="Get Generation Job For Admin",
+)
+@limiter.limit("30/minute")
+def admin_get_generation_job(
+    request: Request,
+    job_id: str,
+    _admin: Dict[str, Any] = Depends(verify_admin_user),
+):
+    del request
+    job = get_admin_generation_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Generation job not found")
+    return job
+
+
+@app.get(
+    "/admin/logs",
+    response_model=AdminAuditLogListResponse,
+    tags=["Configuration"],
+    summary="List Admin Audit Logs",
+)
+@limiter.limit("20/minute")
+def admin_list_audit_logs(
+    request: Request,
+    limit: int = 100,
+    admin_uid: str = "",
+    action: str = "",
+    target_type: str = "",
+    target_id: str = "",
+    _admin: Dict[str, Any] = Depends(verify_admin_user),
+):
+    del request
+    logs = list_admin_audit_logs(
+        limit=limit,
+        admin_uid=admin_uid,
+        action=action,
+        target_type=target_type,
+        target_id=target_id,
+    )
+    return {
+        "logs": logs,
+        "total": len(logs),
+        "adminUid": admin_uid.strip(),
+        "action": action.strip(),
+        "targetType": target_type.strip(),
+        "targetId": target_id.strip(),
+    }
 
 
 @app.post(

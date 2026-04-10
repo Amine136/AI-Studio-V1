@@ -1,6 +1,16 @@
 // frontend/src/services/api.ts
 import axios from 'axios';
-import { GenerateRequest, GenerationResult, SystemConfig, UploadedImageResult } from '../types';
+import {
+  AdminAuditLogListResponse,
+  AdminCreditCodeBatchListResponse,
+  AdminCreditCodeListResponse,
+  AdminGenerationJobListResponse,
+  AdminUserListResponse,
+  GenerateRequest,
+  GenerationResult,
+  SystemConfig,
+  UploadedImageResult,
+} from '../types';
 import { auth } from '../lib/firebase';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
@@ -45,13 +55,29 @@ export const api = {
   },
 
   getProfile: async () => {
-    const res = await client.get('/me');
-    return res.data;
+    try {
+      const res = await client.get('/me');
+      return res.data;
+    } catch (error) {
+      const detail = extractErrorMessage(error);
+      if (detail) {
+        throw new Error(detail);
+      }
+      throw error;
+    }
   },
 
   getHistory: async (limit = 20) => {
-    const res = await client.get('/history', { params: { limit } });
-    return res.data;
+    try {
+      const res = await client.get('/history', { params: { limit } });
+      return res.data;
+    } catch (error) {
+      const detail = extractErrorMessage(error);
+      if (detail) {
+        throw new Error(detail);
+      }
+      throw error;
+    }
   },
 
   addHistoryEntry: async (payload: {
@@ -65,8 +91,16 @@ export const api = {
   },
 
   redeemCode: async (code: string) => {
-    const res = await client.post('/credits/redeem', { code });
-    return res.data;
+    try {
+      const res = await client.post('/credits/redeem', { code });
+      return res.data;
+    } catch (error) {
+      const detail = extractErrorMessage(error);
+      if (detail) {
+        throw new Error(detail);
+      }
+      throw error;
+    }
   },
 
   completeAnalyzeSession: async (sessionId: string) => {
@@ -79,9 +113,35 @@ export const api = {
     return res.data;
   },
 
-  getAdminUsers: async () => {
-    const res = await client.get('/admin/users');
+  getAdminUsers: async (params?: { q?: string; limit?: number }): Promise<AdminUserListResponse> => {
+    const res = await client.get('/admin/users', { params });
     return res.data;
+  },
+
+  suspendAdminUser: async (uid: string, reason: string) => {
+    try {
+      const res = await client.post(`/admin/users/${uid}/suspend`, { reason });
+      return res.data;
+    } catch (error) {
+      const detail = extractErrorMessage(error);
+      if (detail) {
+        throw new Error(detail);
+      }
+      throw error;
+    }
+  },
+
+  unsuspendAdminUser: async (uid: string, reason: string) => {
+    try {
+      const res = await client.post(`/admin/users/${uid}/unsuspend`, { reason });
+      return res.data;
+    } catch (error) {
+      const detail = extractErrorMessage(error);
+      if (detail) {
+        throw new Error(detail);
+      }
+      throw error;
+    }
   },
 
   adjustUserCredits: async (uid: string, delta: number, reason = 'admin_adjustment') => {
@@ -89,14 +149,100 @@ export const api = {
     return res.data;
   },
 
-  getAdminCodes: async () => {
+  getAdminCodes: async (): Promise<AdminCreditCodeListResponse> => {
     const res = await client.get('/admin/codes');
+    return res.data;
+  },
+
+  getAdminCodeBatches: async (): Promise<AdminCreditCodeBatchListResponse> => {
+    const res = await client.get('/admin/code-batches');
+    return res.data;
+  },
+
+  getAdminJobs: async (params?: { status?: string; limit?: number }): Promise<AdminGenerationJobListResponse> => {
+    const res = await client.get('/admin/jobs', { params });
+    return res.data;
+  },
+
+  getAdminLogs: async (params?: {
+    limit?: number;
+    admin_uid?: string;
+    action?: string;
+    target_type?: string;
+    target_id?: string;
+  }): Promise<AdminAuditLogListResponse> => {
+    const res = await client.get('/admin/logs', { params });
     return res.data;
   },
 
   createAdminCode: async (credits: number, maxClaims: number) => {
     const res = await client.post('/admin/codes', { credits, maxClaims });
     return res.data;
+  },
+
+  createAdminCodeBatch: async (quantity: number, credits: number, title: string) => {
+    try {
+      const res = await client.post('/admin/codes/batch', { quantity, credits, title });
+      return res.data;
+    } catch (error) {
+      const detail = extractErrorMessage(error);
+      if (detail) {
+        throw new Error(detail);
+      }
+      throw error;
+    }
+  },
+
+  disableAdminCode: async (codeHash: string, reason: string) => {
+    try {
+      const res = await client.post(`/admin/codes/${codeHash}/disable`, { reason });
+      return res.data;
+    } catch (error) {
+      const detail = extractErrorMessage(error);
+      if (detail) {
+        throw new Error(detail);
+      }
+      throw error;
+    }
+  },
+
+  enableAdminCode: async (codeHash: string, reason: string) => {
+    try {
+      const res = await client.post(`/admin/codes/${codeHash}/enable`, { reason });
+      return res.data;
+    } catch (error) {
+      const detail = extractErrorMessage(error);
+      if (detail) {
+        throw new Error(detail);
+      }
+      throw error;
+    }
+  },
+
+  disableAdminCodeBatch: async (batchId: string, reason: string) => {
+    try {
+      const res = await client.post(`/admin/code-batches/${batchId}/disable`, { reason });
+      return res.data;
+    } catch (error) {
+      const detail = extractErrorMessage(error);
+      if (detail) {
+        throw new Error(detail);
+      }
+      throw error;
+    }
+  },
+
+  enableAdminCodeBatch: async (batchId: string, reason: string) => {
+    try {
+      const res = await client.post(`/admin/code-batches/${batchId}/enable`, { reason });
+      return res.data;
+    } catch (error) {
+      const detail = extractErrorMessage(error);
+      if (detail) {
+        throw new Error(detail);
+      }
+      throw error;
+    }
   },
 
   uploadInputImage: async (file: File): Promise<UploadedImageResult> => {

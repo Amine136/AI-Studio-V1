@@ -66,3 +66,119 @@ export interface SystemConfig {
   field_options: Record<string, any>;
   model_catalog: Record<OutputType, Record<string, ModelCatalogEntry>>;
 }
+
+export interface AdminUserListItem {
+  uid: string;
+  email: string;
+  displayName: string;
+  credits: number;
+  reservedCredits: number;
+  totalCredits: number;
+  isAdmin: boolean;
+  isSuspended: boolean;
+  suspensionReason: string;
+  activeSuspensionUntil?: number | null;
+  activeSuspensionIsPermanent?: boolean;
+  lastSeenAt?: number | null;
+  createdAt?: number | null;
+}
+
+export interface AdminUserListResponse {
+  users: AdminUserListItem[];
+  total: number;
+  search: string;
+}
+
+export interface AdminCreditCodeItem {
+  code: string;
+  codePreview: string;
+  credits: number;
+  maxClaims: number;
+  claimedCount: number;
+  createdAt?: number | null;
+  createdBy?: string | null;
+  batchId?: string | null;
+  batchTitle?: string | null;
+  isActive: boolean;
+  expiresAt?: number | null;
+  status: string;
+}
+
+export interface AdminCreditCodeStatusSummaryItem {
+  status: string;
+  codeCount: number;
+  totalCredits: number;
+  averageCredits: number;
+}
+
+export interface AdminCreditCodeListResponse {
+  codes: AdminCreditCodeItem[];
+  total: number;
+  summaries: AdminCreditCodeStatusSummaryItem[];
+}
+
+export interface AdminCreditCodeBatchItem {
+  batchId: string;
+  title: string;
+  credits: number;
+  totalCodes: number;
+  claimedCodes: number;
+  activeCodes: number;
+  status: string;
+  createdAt?: number | null;
+}
+
+export interface AdminCreditCodeBatchStatusSummaryItem {
+  status: string;
+  codeCount: number;
+  totalCredits: number;
+  averageCredits: number;
+}
+
+export interface AdminCreditCodeBatchListResponse {
+  batches: AdminCreditCodeBatchItem[];
+  total: number;
+  summaries: AdminCreditCodeBatchStatusSummaryItem[];
+}
+
+export interface AdminGenerationJobItem {
+  id: string;
+  uid: string;
+  status: string;
+  prompt: string;
+  requestedOutputs: string[];
+  reservedCost: number;
+  capturedCost: number;
+  refundedCost: number;
+  failureReason?: string | null;
+  createdAt?: number | null;
+  updatedAt?: number | null;
+  completedAt?: number | null;
+}
+
+export interface AdminGenerationJobListResponse {
+  jobs: AdminGenerationJobItem[];
+  total: number;
+  status: string;
+}
+
+export interface AdminAuditLogItem {
+  id: string;
+  adminUid?: string | null;
+  adminEmail: string;
+  action: string;
+  targetType: string;
+  targetId: string;
+  reason: string;
+  metadata: Record<string, any>;
+  createdAt?: number | null;
+}
+
+export interface AdminAuditLogListResponse {
+  logs: AdminAuditLogItem[];
+  total: number;
+  adminUid: string;
+  action: string;
+  targetType: string;
+  targetId: string;
+}

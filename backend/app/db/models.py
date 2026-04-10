@@ -37,6 +37,7 @@ class User(Base):
     analyze_sessions: Mapped[list["AnalyzeSession"]] = relationship(back_populates="user")
     history_entries: Mapped[list["HistoryEntry"]] = relationship(back_populates="user")
     generation_jobs: Mapped[list["GenerationJob"]] = relationship(back_populates="user")
+    admin_audit_logs: Mapped[list["AdminAuditLog"]] = relationship(back_populates="admin_user")
 
     __table_args__ = (
         CheckConstraint("credits_minor >= 0", name="ck_users_credits_minor_nonnegative"),
@@ -56,6 +57,8 @@ class CreditCode(Base):
     claimed_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     created_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
     created_by: Mapped[str | None] = mapped_column(ForeignKey("users.uid", ondelete="SET NULL"), nullable=True)
+    batch_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    batch_title: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     expires_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
 
@@ -71,6 +74,7 @@ class CreditCode(Base):
         CheckConstraint("claimed_count >= 0", name="ck_credit_codes_claimed_count_nonnegative"),
         CheckConstraint("claimed_count <= max_claims", name="ck_credit_codes_claimed_count_within_limit"),
         Index("ix_credit_codes_created_at", "created_at"),
+        Index("ix_credit_codes_batch_id_created_at", "batch_id", "created_at"),
     )
 
 
@@ -208,4 +212,27 @@ class RateLimitBucket(Base):
     __table_args__ = (
         CheckConstraint("count >= 0", name="ck_rate_limit_buckets_count_nonnegative"),
         Index("ix_rate_limit_buckets_reset_at", "reset_at"),
+    )
+
+
+class AdminAuditLog(Base):
+    __tablename__ = "admin_audit_logs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    admin_uid: Mapped[str | None] = mapped_column(ForeignKey("users.uid", ondelete="SET NULL"), nullable=True)
+    admin_email: Mapped[str] = mapped_column(String(320), default="", nullable=False)
+    action: Mapped[str] = mapped_column(String(64), nullable=False)
+    target_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    target_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column("metadata", JSON, default=dict, nullable=False)
+    created_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+    admin_user: Mapped[User | None] = relationship(back_populates="admin_audit_logs")
+
+    __table_args__ = (
+        Index("ix_admin_audit_logs_created_at", "created_at"),
+        Index("ix_admin_audit_logs_admin_uid_created_at", "admin_uid", "created_at"),
+        Index("ix_admin_audit_logs_target_created_at", "target_type", "target_id", "created_at"),
+        Index("ix_admin_audit_logs_action_created_at", "action", "created_at"),
     )

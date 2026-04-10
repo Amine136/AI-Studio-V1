@@ -17,15 +17,26 @@ interface CreditsDisplayProps {
 const CreditsDisplay = forwardRef<CreditsDisplayHandle, CreditsDisplayProps>(
     function CreditsDisplay({ uid, onCreditsChange }, ref) {
         const [credits, setCredits] = useState<number | null>(null);
+        const [profileError, setProfileError] = useState<string | null>(null);
         const [codeInput, setCodeInput] = useState("");
         const [codeMessage, setCodeMessage] = useState<{ text: string; success: boolean; credits?: number } | null>(null);
         const [redeeming, setRedeeming] = useState(false);
         const [showCodeInput, setShowCodeInput] = useState(false);
 
         const fetchCredits = useCallback(async () => {
-            const c = await getCredits(uid);
-            setCredits(c);
-            onCreditsChange?.(c);
+            try {
+                const c = await getCredits(uid);
+                setCredits(c);
+                setProfileError(null);
+                onCreditsChange?.(c);
+            } catch (error) {
+                const message = error instanceof Error && error.message
+                    ? error.message
+                    : "Could not load your credit balance.";
+                setCredits(0);
+                setProfileError(message);
+                onCreditsChange?.(null);
+            }
         }, [uid, onCreditsChange]);
 
         useImperativeHandle(ref, () => ({
@@ -58,6 +69,12 @@ const CreditsDisplay = forwardRef<CreditsDisplayHandle, CreditsDisplayProps>(
                 } else {
                     setTimeout(() => setCodeMessage(null), 5000);
                 }
+            } catch (error) {
+                const message = error instanceof Error && error.message
+                    ? error.message
+                    : "Could not redeem this code right now.";
+                setCodeMessage({ text: message, success: false });
+                setTimeout(() => setCodeMessage(null), 5000);
             } finally {
                 setRedeeming(false);
             }
@@ -93,6 +110,7 @@ const CreditsDisplay = forwardRef<CreditsDisplayHandle, CreditsDisplayProps>(
 
                     <button
                         onClick={() => { setShowCodeInput(!showCodeInput); setCodeMessage(null); }}
+                        disabled={Boolean(profileError)}
                         className={`redeem-toggle-btn ${showCodeInput ? "redeem-toggle-active" : ""}`}
                     >
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -104,8 +122,19 @@ const CreditsDisplay = forwardRef<CreditsDisplayHandle, CreditsDisplayProps>(
                     </button>
                 </div>
 
+                {profileError && (
+                    <div className="redeem-result redeem-result-error animate-scale-in">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0">
+                            <circle cx="12" cy="12" r="10" />
+                            <line x1="15" y1="9" x2="9" y2="15" />
+                            <line x1="9" y1="9" x2="15" y2="15" />
+                        </svg>
+                        <span>{profileError}</span>
+                    </div>
+                )}
+
                 {/* Code Redemption Panel */}
-                {showCodeInput && (
+                {showCodeInput && !profileError && (
                     <div className="redeem-panel animate-fade-in">
                         <div className="redeem-panel-header">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

@@ -1,12 +1,7 @@
 import { api } from "../services/api";
+import type { AdminUserListItem } from "../types";
 
-export interface UserRecord {
-    uid: string;
-    email: string;
-    displayName: string;
-    credits: number;
-    lastSeenAt?: number;
-}
+export type UserRecord = AdminUserListItem;
 
 export interface CurrentUserProfile extends UserRecord {
     isAdmin: boolean;

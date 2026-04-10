@@ -1,13 +1,7 @@
 import { api } from "../services/api";
+import type { AdminCreditCodeItem } from "../types";
 
-export interface CreditCode {
-    code: string;
-    credits: number;
-    maxClaims: number;
-    claimedCount: number;
-    createdAt: number;
-    createdBy: string;
-}
+export type CreditCode = AdminCreditCodeItem;
 
 export async function createCreditCode(
     credits: number,

@@ -1,86 +1,117 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getAllUsers, getProfile, UserRecord } from "../../lib/credits";
-import { createCreditCode, getAllCreditCodes, CreditCode } from "../../lib/creditCodes";
-import { useAuth } from "../../context/AuthContext";
+
 import AnimatedLogo from "../../components/AnimatedLogo";
+import { useAuth } from "../../context/AuthContext";
+import { api } from "../../services/api";
+import {
+    AdminAuditLogItem,
+    AdminCreditCodeItem,
+    AdminUserListItem,
+} from "../../types";
 
 export default function AdminPage() {
     const router = useRouter();
     const { user, loading: authLoading } = useAuth();
+
     const [authorized, setAuthorized] = useState<boolean | null>(null);
-
-    const [users, setUsers] = useState<UserRecord[]>([]);
     const [loading, setLoading] = useState(true);
-    const [search, setSearch] = useState("");
-
-    // Credit codes state
-    const [codes, setCodes] = useState<CreditCode[]>([]);
-    const [newCodeCredits, setNewCodeCredits] = useState(1);
-    const [newCodeMaxClaims, setNewCodeMaxClaims] = useState(10);
-    const [creatingCode, setCreatingCode] = useState(false);
-    const [codeCreated, setCodeCreated] = useState<string | null>(null);
+    const [loadError, setLoadError] = useState("");
+    const [users, setUsers] = useState<AdminUserListItem[]>([]);
+    const [codes, setCodes] = useState<AdminCreditCodeItem[]>([]);
+    const [logs, setLogs] = useState<AdminAuditLogItem[]>([]);
 
     useEffect(() => {
         if (!authLoading && !user) {
             router.replace("/auth");
         }
-    }, [authLoading, user, router]);
-
-    const fetchUsers = useCallback(async () => {
-        setLoading(true);
-        try {
-            const all = await getAllUsers();
-            setUsers(all);
-        } finally {
-            setLoading(false);
-        }
-    }, []);
-
-    const fetchCodes = useCallback(async () => {
-        const all = await getAllCreditCodes();
-        setCodes(all);
-    }, []);
+    }, [authLoading, router, user]);
 
     useEffect(() => {
         if (!user) return;
         let cancelled = false;
 
-        const loadAccess = async () => {
+        const loadDashboard = async () => {
+            setLoading(true);
+            setLoadError("");
             try {
-                const profile = await getProfile();
+                const profile = await api.getProfile();
                 if (cancelled) return;
                 setAuthorized(profile.isAdmin);
-                if (profile.isAdmin) {
-                    fetchUsers();
-                    fetchCodes();
+                if (!profile.isAdmin) {
+                    setLoading(false);
+                    return;
                 }
-            } catch {
-                if (!cancelled) setAuthorized(false);
+
+                const [userResponse, codeResponse, logResponse] = await Promise.all([
+                    api.getAdminUsers({ limit: 6 }),
+                    api.getAdminCodes(),
+                    api.getAdminLogs({ limit: 4 }),
+                ]);
+
+                if (cancelled) return;
+                setUsers(userResponse.users ?? []);
+                setCodes(codeResponse.codes ?? []);
+                setLogs(logResponse.logs ?? []);
+            } catch (error) {
+                if (cancelled) return;
+                setLoadError(error instanceof Error ? error.message : "Unable to load admin overview.");
+            } finally {
+                if (!cancelled) {
+                    setLoading(false);
+                }
             }
         };
 
-        loadAccess();
+        void loadDashboard();
+
         return () => {
             cancelled = true;
-        }
-    }, [user, fetchUsers, fetchCodes]);
+        };
+    }, [user]);
 
-    const handleCreateCode = async () => {
-        setCreatingCode(true);
-        try {
-            const code = await createCreditCode(newCodeCredits, newCodeMaxClaims);
-            setCodeCreated(code.code);
-            await fetchCodes();
-            setTimeout(() => setCodeCreated(null), 5000);
-        } finally {
-            setCreatingCode(false);
-        }
-    };
+    const totalCredits = useMemo(
+        () => users.reduce((sum, item) => sum + (item.totalCredits || item.credits || 0), 0),
+        [users],
+    );
+    const activeCodes = useMemo(
+        () => codes.filter((code) => code.status === "active").length,
+        [codes],
+    );
+    const activeUsers = useMemo(
+        () => users.filter((item) => !item.isSuspended).length,
+        [users],
+    );
+    const fundedUsers = useMemo(
+        () => users.filter((item) => (item.totalCredits || item.credits || 0) > 0).length,
+        [users],
+    );
+    const userTrend = users.length ? `${Math.round((activeUsers / users.length) * 100)}% active` : "0% active";
+    const creditTrend = users.length ? `${Math.round((fundedUsers / users.length) * 100)}% funded` : "0% funded";
+    const codeTrend = codes.length ? `${Math.round((activeCodes / codes.length) * 100)}% redeemable` : "0% redeemable";
 
     if (authLoading || !user || authorized === null) {
+        if (!authLoading && user && !loading && loadError) {
+            return (
+                <main className="min-h-screen flex items-center justify-center px-4">
+                    <div className="glass-card p-8 max-w-md w-full text-center">
+                        <h1 className="text-2xl font-extrabold gradient-text">Admin Access</h1>
+                        <p className="text-sm text-gray-400 mt-3">
+                            Unable to verify admin access right now.
+                        </p>
+                        <p className="mt-2 text-sm text-amber-300">{loadError}</p>
+                        <button
+                            onClick={() => window.location.reload()}
+                            className="btn-primary mt-6 w-full"
+                        >
+                            <span>Retry</span>
+                        </button>
+                    </div>
+                </main>
+            );
+        }
         return (
             <main className="min-h-screen flex items-center justify-center">
                 <div className="auth-loader" />
@@ -96,6 +127,9 @@ export default function AdminPage() {
                     <p className="text-sm text-gray-400 mt-3">
                         Your account is not authorized to access the admin panel.
                     </p>
+                    {loadError ? (
+                        <p className="mt-2 text-sm text-amber-300">{loadError}</p>
+                    ) : null}
                     <button
                         onClick={() => router.push("/")}
                         className="btn-primary mt-6 w-full"
@@ -107,19 +141,9 @@ export default function AdminPage() {
         );
     }
 
-    const filteredUsers = users.filter(
-        (u) =>
-            u.email.toLowerCase().includes(search.toLowerCase()) ||
-            u.displayName.toLowerCase().includes(search.toLowerCase())
-    );
-
-    const totalCredits = users.reduce((sum, u) => sum + u.credits, 0);
-
     return (
         <main className="min-h-screen flex items-start justify-center px-3 py-8 sm:px-4 sm:py-16">
-            <div className="w-full max-w-5xl">
-
-                {/* Header Bar */}
+            <div className="w-full max-w-6xl">
                 <div className="admin-header animate-fade-in">
                     <div className="flex items-center gap-4 min-w-0">
                         <AnimatedLogo sizeClassName="h-20 w-20 flex-shrink-0" imageClassName="h-16 w-16" />
@@ -128,7 +152,7 @@ export default function AdminPage() {
                                 Admin Panel
                             </h1>
                             <p className="text-xs text-gray-500 mt-0.5">
-                                View users and issue redeemable credit codes
+                                Minimal overview for users, codes, jobs, and audit activity
                             </p>
                         </div>
                     </div>
@@ -144,256 +168,416 @@ export default function AdminPage() {
                     </button>
                 </div>
 
-                {/* Stats Row */}
                 <div className="grid grid-cols-1 gap-4 mb-6 sm:grid-cols-2 xl:grid-cols-3 animate-fade-in-up" style={{ animationDelay: "80ms" }}>
-                    <div className="admin-stat-card">
-                        <div className="admin-stat-icon admin-stat-icon-users">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <StatCard
+                        label="Total Users"
+                        value={String(users.length)}
+                        trend={userTrend}
+                        accent="blue"
+                        icon={
+                            <>
                                 <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
                                 <circle cx="9" cy="7" r="4" />
                                 <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
                                 <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                            </svg>
-                        </div>
-                        <div>
-                            <p className="admin-stat-label">Total Users</p>
-                            <p className="admin-stat-value">{users.length}</p>
-                        </div>
-                    </div>
-
-                    <div className="admin-stat-card">
-                        <div className="admin-stat-icon admin-stat-icon-credits">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            </>
+                        }
+                    />
+                    <StatCard
+                        label="Total Credits"
+                        value={parseFloat(totalCredits.toFixed(2)).toString()}
+                        trend={creditTrend}
+                        accent="green"
+                        icon={
+                            <>
                                 <circle cx="12" cy="12" r="10" />
                                 <path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8" />
                                 <path d="M12 18V6" />
-                            </svg>
-                        </div>
-                        <div>
-                            <p className="admin-stat-label">Total Credits</p>
-                            <p className="admin-stat-value">{parseFloat(totalCredits.toFixed(2))}</p>
-                        </div>
-                    </div>
-
-                    <div className="admin-stat-card">
-                        <div className="admin-stat-icon admin-stat-icon-avg">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <line x1="18" y1="20" x2="18" y2="10" />
-                                <line x1="12" y1="20" x2="12" y2="4" />
-                                <line x1="6" y1="20" x2="6" y2="14" />
-                            </svg>
-                        </div>
-                        <div>
-                            <p className="admin-stat-label">Avg / User</p>
-                            <p className="admin-stat-value">
-                                {users.length > 0 ? (totalCredits / users.length).toFixed(1) : "0"}
-                            </p>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Search Bar */}
-                <div className="admin-search-wrapper mb-5 animate-fade-in" style={{ animationDelay: "160ms" }}>
-                    <svg className="admin-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <circle cx="11" cy="11" r="8" />
-                        <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                    </svg>
-                    <input
-                        type="text"
-                        className="admin-search-input"
-                        placeholder="Search users by email or name..."
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
+                            </>
+                        }
                     />
-                    {search && (
-                        <button className="admin-search-clear" onClick={() => setSearch("")}>
-                            ✕
-                        </button>
-                    )}
-                </div>
-
-                {/* Users Table */}
-                <div className="glass-card overflow-hidden animate-fade-in-up" style={{ animationDelay: "240ms" }}>
-                    {loading ? (
-                        <div className="flex items-center justify-center py-20">
-                            <div className="auth-loader" />
-                        </div>
-                    ) : filteredUsers.length === 0 ? (
-                        <div className="admin-empty-state">
-                            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                                <circle cx="12" cy="12" r="10" />
-                                <line x1="8" y1="12" x2="16" y2="12" />
-                            </svg>
-                            <p>{search ? "No users match your search" : "No users found"}</p>
-                        </div>
-                    ) : (
-                        <div className="overflow-x-auto">
-                            <table className="admin-table">
-                                <thead>
-                                    <tr>
-                                        <th style={{ width: "35%" }}>User</th>
-                                        <th style={{ width: "30%" }}>Email</th>
-                                        <th style={{ width: "15%" }}>Credits</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {filteredUsers.map((u, i) => (
-                                        <tr key={u.uid} style={{ animationDelay: `${i * 40}ms` }}>
-                                            <td>
-                                                <div className="admin-user-cell">
-                                                    <div className="admin-avatar">
-                                                        {(u.displayName || u.email || "?").charAt(0).toUpperCase()}
-                                                    </div>
-                                                    <div className="admin-user-info">
-                                                        <span className="admin-user-name">
-                                                            {u.displayName || "Anonymous"}
-                                                        </span>
-                                                        <span className="admin-user-uid">
-                                                            {u.uid.substring(0, 12)}…
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            </td>
-                                            <td>
-                                                <span className="admin-email">{u.email || "—"}</span>
-                                            </td>
-                                            <td>
-                                                <span className={`admin-credits-badge ${u.credits > 0 ? "admin-credits-positive" : "admin-credits-zero"}`}>
-                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                                        <circle cx="12" cy="12" r="10" />
-                                                        <path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8" />
-                                                        <path d="M12 18V6" />
-                                                    </svg>
-                                                    {parseFloat(u.credits.toFixed(2))}
-                                                </span>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    )}
-
-                    {/* Table Footer */}
-                    {!loading && filteredUsers.length > 0 && (
-                        <div className="admin-table-footer">
-                            Showing {filteredUsers.length} of {users.length} user{users.length !== 1 ? "s" : ""}
-                        </div>
-                    )}
-                </div>
-
-                {/* ─── CREDIT CODES SECTION ─── */}
-                <div className="mt-8 animate-fade-in-up" style={{ animationDelay: "320ms" }}>
-                    <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-3">
-                        <div className="admin-stat-icon admin-stat-icon-credits" style={{ width: 36, height: 36 }}>
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <StatCard
+                        label="Active Codes"
+                        value={String(activeCodes)}
+                        trend={codeTrend}
+                        accent="purple"
+                        icon={
+                            <>
                                 <rect x="2" y="5" width="20" height="14" rx="2" />
                                 <line x1="2" y1="10" x2="22" y2="10" />
-                            </svg>
-                        </div>
-                        Credit Codes
-                    </h2>
+                            </>
+                        }
+                    />
+                </div>
 
-                    {/* Create Code Form */}
-                    <div className="glass-card p-4 sm:p-5 mb-4">
-                        <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">Generate New Code</p>
-                        <p className="text-sm text-gray-400 mb-4">
-                            Manual credit adjustments are disabled. Account balances change only through redeemable codes and system usage.
-                        </p>
-                        <div className="flex flex-col items-stretch gap-4 sm:flex-row sm:flex-wrap sm:items-end">
-                            <div className="flex-1 min-w-[140px]">
-                                <label className="block text-xs text-gray-500 mb-1.5">Credits (1–10)</label>
-                                <input
-                                    type="number"
-                                    min={1}
-                                    max={10}
-                                    value={newCodeCredits}
-                                    onChange={(e) => setNewCodeCredits(Math.min(10, Math.max(1, Number(e.target.value))))}
-                                    className="glass-input w-full p-3 text-sm"
-                                />
-                            </div>
-                            <div className="flex-1 min-w-[140px]">
-                                <label className="block text-xs text-gray-500 mb-1.5">Max Claims</label>
-                                <input
-                                    type="number"
-                                    min={1}
-                                    max={1000}
-                                    value={newCodeMaxClaims}
-                                    onChange={(e) => setNewCodeMaxClaims(Math.min(1000, Math.max(1, Number(e.target.value))))}
-                                    className="glass-input w-full p-3 text-sm"
-                                />
-                            </div>
-                            <button
-                                onClick={handleCreateCode}
-                                disabled={creatingCode}
-                                className="btn-primary w-full sm:w-auto px-6 h-[46px] text-sm"
-                            >
-                                <span>{creatingCode ? "Creating..." : "Generate Code"}</span>
-                            </button>
+                <div className="glass-card p-4 sm:p-5 mb-6 animate-fade-in" style={{ animationDelay: "140ms" }}>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-300">Quick Access</p>
                         </div>
-                        {codeCreated && (
-                            <div className="mt-4 p-3 rounded-lg bg-green-500/10 border border-green-500/20 flex items-center gap-3 animate-fade-in">
-                                <span className="text-green-400 text-sm font-semibold">✓ Code created:</span>
-                                <code className="text-green-300 font-mono text-sm font-bold bg-green-500/10 px-3 py-1 rounded">{codeCreated}</code>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Codes List */}
-                    <div className="glass-card overflow-hidden">
-                        {codes.length === 0 ? (
-                            <div className="admin-empty-state">
-                                <p>No credit codes created yet.</p>
-                            </div>
-                        ) : (
-                            <div className="overflow-x-auto">
-                                <table className="admin-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Code</th>
-                                            <th>Credits</th>
-                                            <th>Claims</th>
-                                            <th>Status</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {codes.map((c) => {
-                                            const exhausted = c.claimedCount >= c.maxClaims;
-                                            return (
-                                                <tr key={c.code}>
-                                                    <td>
-                                                        <code className="font-mono text-sm font-bold text-white">{c.code}</code>
-                                                    </td>
-                                                    <td>
-                                                        <span className="admin-credits-badge admin-credits-positive">
-                                                            {parseFloat(c.credits.toFixed(2))}
-                                                        </span>
-                                                    </td>
-                                                    <td>
-                                                        <span className="text-sm text-gray-400">
-                                                            {c.claimedCount} / {c.maxClaims}
-                                                        </span>
-                                                    </td>
-                                                    <td>
-                                                        <span className={`code-status-badge ${exhausted ? "code-status-expired" : "code-status-active"}`}>
-                                                            {exhausted ? "Expired" : "Active"}
-                                                        </span>
-                                                    </td>
-                                                </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                </table>
-                            </div>
-                        )}
+                        <div className="flex flex-wrap gap-2">
+                            <QuickAccessButton label="Users" onClick={() => router.push("/admin/users")} icon="users" />
+                            <QuickAccessButton label="Codes" onClick={() => router.push("/admin/codes")} icon="codes" />
+                            <QuickAccessButton label="Logs" onClick={() => router.push("/admin/logs")} icon="logs" />
+                        </div>
                     </div>
                 </div>
 
-                {/* Footer */}
-                <p className="text-center text-[11px] text-gray-600 mt-8">
-                    Powered by Vibecraft
-                </p>
+                <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+                    <OverviewTable
+                        title="Recent Users"
+                        subtitle="Latest accounts and balance state"
+                        meta={`${users.length} loaded`}
+                        action={
+                            <button onClick={() => router.push("/admin/users")} className="admin-gradient-btn">
+                                More details
+                            </button>
+                        }
+                        hasItems={users.length > 0}
+                        loading={loading}
+                        emptyText={loadError || "No users available"}
+                    >
+                        <table className="admin-table">
+                            <thead>
+                                <tr>
+                                    <th>User</th>
+                                    <th>Credits</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {users.map((item) => (
+                                    <tr key={item.uid} className="admin-dashboard-row">
+                                        <td>
+                                            <div className="admin-user-cell">
+                                                <div className="admin-avatar">
+                                                    {(item.displayName || item.email || "?").charAt(0).toUpperCase()}
+                                                </div>
+                                                <div className="admin-user-info">
+                                                    <span className="admin-user-name">{item.displayName || "Anonymous"}</span>
+                                                    <span className="admin-user-uid">{item.email || shortId(item.uid)}</span>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <CreditLevel value={item.totalCredits} />
+                                        </td>
+                                        <td>
+                                            <span className="text-sm text-slate-300">
+                                                {item.isSuspended ? "Suspended" : "Active"}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </OverviewTable>
+
+                    <OverviewPanel
+                        title="Recent Logs"
+                        subtitle="Audit trail for admin actions"
+                        meta={`${logs.length} entries`}
+                        action={
+                            <button onClick={() => router.push("/admin/logs")} className="admin-gradient-btn">
+                                More details
+                            </button>
+                        }
+                        hasItems={logs.length > 0}
+                        loading={loading}
+                        emptyText={loadError || "No recent admin actions"}
+                    >
+                        {logs.map((log) => (
+                            <div key={log.id} className="mx-5 my-4 rounded-2xl border border-white/6 bg-white/[0.02] p-4 transition-all duration-150 ease-in-out hover:bg-white/[0.03]">
+                                <div className="flex items-start justify-between gap-4">
+                                    <div className="min-w-0">
+                                        <p className="truncate text-sm font-medium text-slate-100">{log.adminEmail}</p>
+                                        <div className="mt-2">
+                                            <span className={getActionChipClassName(log.action)}>{humanizeAction(log.action)}</span>
+                                        </div>
+                                    </div>
+                                    <span className="shrink-0 text-xs text-slate-500">{formatTimestamp(log.createdAt)}</span>
+                                </div>
+                                <div className="mt-4 border-t border-white/6 pt-3">
+                                    <p className="text-sm text-slate-300">{log.reason}</p>
+                                </div>
+                            </div>
+                        ))}
+                    </OverviewPanel>
+                </div>
+
+                <div className="grid grid-cols-1 gap-6 mt-6">
+                    <OverviewTable
+                        title="Credit Codes"
+                        subtitle="Current code availability"
+                        meta={`${codes.length} total`}
+                        hasItems={codes.length > 0}
+                        loading={loading}
+                        emptyText={loadError || "No credit codes found"}
+                    >
+                        <table className="admin-table">
+                            <thead>
+                                <tr>
+                                    <th>Code</th>
+                                    <th>Credits</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {codes.slice(0, 6).map((code) => (
+                                    <tr key={code.code}>
+                                        <td>
+                                            <div className="admin-user-info">
+                                                <span className="admin-user-name">{code.codePreview}</span>
+                                                <span className="admin-user-uid">
+                                                    {code.claimedCount} / {code.maxClaims} claims
+                                                </span>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <span className="admin-credits-badge admin-credits-positive">{code.credits.toFixed(2)}</span>
+                                        </td>
+                                        <td>
+                                            <span className="text-sm text-slate-300">{code.status}</span>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </OverviewTable>
+                </div>
             </div>
         </main>
     );
+}
+
+function StatCard({
+    label,
+    value,
+    trend,
+    accent,
+    icon,
+}: {
+    label: string;
+    value: string;
+    trend: string;
+    accent: "blue" | "green" | "purple";
+    icon: ReactNode;
+}) {
+    const theme = {
+        blue: {
+            border: "border-l-sky-400",
+            bg: "bg-[linear-gradient(180deg,rgba(59,130,246,0.14),rgba(255,255,255,0.02))]",
+            icon: "border-sky-400/20 bg-sky-400/12 text-sky-300",
+        },
+        green: {
+            border: "border-l-emerald-400",
+            bg: "bg-[linear-gradient(180deg,rgba(16,185,129,0.14),rgba(255,255,255,0.02))]",
+            icon: "border-emerald-400/20 bg-emerald-400/12 text-emerald-300",
+        },
+        purple: {
+            border: "border-l-violet-400",
+            bg: "bg-[linear-gradient(180deg,rgba(139,92,246,0.14),rgba(255,255,255,0.02))]",
+            icon: "border-violet-400/20 bg-violet-400/12 text-violet-300",
+        },
+    }[accent];
+
+    return (
+        <div className={`admin-stat-card border-l-[3px] ${theme.border} ${theme.bg}`}>
+            <div className={`admin-stat-icon border ${theme.icon}`}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    {icon}
+                </svg>
+            </div>
+            <div>
+                <p className="admin-stat-label">{label}</p>
+                <p className="admin-stat-value">{value}</p>
+                <div className="mt-2 flex items-center gap-1 text-xs font-medium text-slate-400">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-300">
+                        <path d="m18 15-6-6-6 6" />
+                    </svg>
+                    <span>{trend}</span>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function QuickAccessButton({
+    label,
+    onClick,
+    icon,
+}: {
+    label: string;
+    onClick: () => void;
+    icon: "users" | "codes" | "logs";
+}) {
+    return (
+        <button
+            onClick={onClick}
+            className="inline-flex items-center gap-2 rounded-full border border-violet-400/25 bg-white/[0.02] px-4 py-2 text-sm font-medium text-slate-200 transition-all duration-150 ease-in-out hover:bg-[linear-gradient(135deg,rgba(124,58,237,0.16),rgba(59,130,246,0.16))] hover:text-white"
+        >
+            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white/6 text-violet-200">
+                {icon === "users" ? (
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                        <circle cx="9" cy="7" r="4" />
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                    </svg>
+                ) : icon === "codes" ? (
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="3" y="5" width="18" height="14" rx="2" />
+                        <path d="M7 10h10" />
+                        <path d="M7 14h6" />
+                    </svg>
+                ) : (
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                    </svg>
+                )}
+            </span>
+            <span>{label}</span>
+        </button>
+    );
+}
+
+function CreditLevel({ value }: { value: number }) {
+    const normalized = Math.max(0, Math.min(100, Math.round((value / 10) * 100)));
+    return (
+        <div className="min-w-[132px]">
+            <div className="h-2 overflow-hidden rounded-full bg-white/6">
+                <div
+                    className="h-full rounded-full bg-[linear-gradient(90deg,#22c55e,#3b82f6)] transition-all duration-150 ease-in-out"
+                    style={{ width: `${normalized}%` }}
+                />
+            </div>
+            <div className="mt-2 flex items-center justify-between gap-3">
+                <span className="text-[11px] uppercase tracking-wide text-slate-500">Credits</span>
+                <span className="text-sm font-semibold text-slate-100">{value.toFixed(2)}</span>
+            </div>
+        </div>
+    );
+}
+
+function OverviewTable({
+    title,
+    subtitle,
+    meta,
+    action,
+    hasItems,
+    loading,
+    emptyText,
+    children,
+}: {
+    title: string;
+    subtitle: string;
+    meta: string;
+    action?: ReactNode;
+    hasItems: boolean;
+    loading: boolean;
+    emptyText: string;
+    children: ReactNode;
+}) {
+    return (
+        <section className="glass-card relative overflow-hidden animate-fade-in-up">
+            <div className="absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,rgba(124,58,237,0.8),rgba(59,130,246,0.8))]" />
+            <div className="flex items-center justify-between border-b border-white/8 px-5 py-4">
+                <div>
+                    <h2 className="text-base font-semibold text-white">{title}</h2>
+                    <p className="text-xs text-slate-500">{subtitle}</p>
+                </div>
+                <div className="flex items-center gap-3">
+                    <span className="text-xs text-slate-500">{meta}</span>
+                    {action}
+                </div>
+            </div>
+            {loading ? (
+                <div className="flex items-center justify-center py-20">
+                    <div className="auth-loader" />
+                </div>
+            ) : !hasItems ? (
+                <div className="admin-empty-state">
+                    <p>{emptyText}</p>
+                </div>
+            ) : (
+                <div className="overflow-x-auto">{children}</div>
+            )}
+        </section>
+    );
+}
+
+function OverviewPanel({
+    title,
+    subtitle,
+    meta,
+    action,
+    hasItems,
+    loading,
+    emptyText,
+    children,
+}: {
+    title: string;
+    subtitle: string;
+    meta: string;
+    action?: ReactNode;
+    hasItems: boolean;
+    loading: boolean;
+    emptyText: string;
+    children: ReactNode;
+}) {
+    return (
+        <section className="glass-card relative overflow-hidden animate-fade-in-up">
+            <div className="absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,rgba(124,58,237,0.8),rgba(59,130,246,0.8))]" />
+            <div className="flex items-center justify-between border-b border-white/8 px-5 py-4">
+                <div>
+                    <h2 className="text-base font-semibold text-white">{title}</h2>
+                    <p className="text-xs text-slate-500">{subtitle}</p>
+                </div>
+                <div className="flex items-center gap-3">
+                    <span className="text-xs text-slate-500">{meta}</span>
+                    {action}
+                </div>
+            </div>
+            {loading ? (
+                <div className="flex items-center justify-center py-20">
+                    <div className="auth-loader" />
+                </div>
+            ) : !hasItems ? (
+                <div className="admin-empty-state">
+                    <p>{emptyText}</p>
+                </div>
+            ) : (
+                <div>{children}</div>
+            )}
+        </section>
+    );
+}
+
+function shortId(value: string): string {
+    if (!value) return "unknown";
+    return value.length > 10 ? `${value.slice(0, 10)}…` : value;
+}
+
+function humanizeAction(action: string): string {
+    return action
+        .split("_")
+        .filter(Boolean)
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" ");
+}
+
+function formatTimestamp(timestamp?: number | null): string {
+    if (!timestamp) return "unknown";
+    return new Date(timestamp * 1000).toLocaleString();
+}
+
+function getActionChipClassName(action: string): string {
+    const normalized = action.toLowerCase();
+    if (normalized.includes("disable") || normalized.includes("suspend")) {
+        return "inline-flex rounded-full border border-amber-400/25 bg-amber-400/10 px-2.5 py-1 text-[11px] font-semibold text-amber-200";
+    }
+    if (normalized.includes("create") || normalized.includes("enable")) {
+        return "inline-flex rounded-full border border-sky-400/25 bg-sky-400/10 px-2.5 py-1 text-[11px] font-semibold text-sky-200";
+    }
+    return "inline-flex rounded-full border border-violet-400/25 bg-violet-400/10 px-2.5 py-1 text-[11px] font-semibold text-violet-200";
 }

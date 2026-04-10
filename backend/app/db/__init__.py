@@ -2,6 +2,7 @@
 
 from app.db.base import Base
 from app.db.models import (
+    AdminAuditLog,
     AnalyzeSession,
     CreditCode,
     CreditCodeClaim,
@@ -23,6 +24,7 @@ from app.db.session import (
 
 __all__ = [
     "AnalyzeSession",
+    "AdminAuditLog",
     "Base",
     "CreditCode",
     "CreditCodeClaim",

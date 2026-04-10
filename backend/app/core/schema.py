@@ -117,6 +117,148 @@ class CatalogUpdateNotification(BaseModel):
     )
 
 
+class AdminUserListItem(BaseModel):
+    uid: str
+    email: str
+    displayName: str
+    credits: float
+    reservedCredits: float = 0.0
+    totalCredits: float = 0.0
+    isAdmin: bool = False
+    isSuspended: bool = False
+    suspensionReason: str = ""
+    activeSuspensionUntil: Optional[int] = None
+    activeSuspensionIsPermanent: bool = False
+    lastSeenAt: Optional[int] = None
+    createdAt: Optional[int] = None
+
+
+class AdminUserListResponse(BaseModel):
+    users: List[AdminUserListItem]
+    total: int
+    search: str = ""
+
+
+class AdminUserDetailResponse(BaseModel):
+    uid: str
+    email: str
+    displayName: str
+    credits: float
+    reservedCredits: float = 0.0
+    totalCredits: float = 0.0
+    isAdmin: bool = False
+    isSuspended: bool = False
+    suspensionReason: str = ""
+    activeSuspensionUntil: Optional[int] = None
+    activeSuspensionIsPermanent: bool = False
+    lastSeenAt: Optional[int] = None
+    createdAt: Optional[int] = None
+    updatedAt: Optional[int] = None
+
+
+class AdminReasonRequest(BaseModel):
+    reason: str = Field(
+        ...,
+        min_length=3,
+        max_length=500,
+        description="Required reason for sensitive admin actions.",
+    )
+
+
+class AdminCreditCodeItem(BaseModel):
+    code: str
+    codePreview: str
+    credits: float
+    maxClaims: int
+    claimedCount: int
+    createdAt: Optional[int] = None
+    createdBy: Optional[str] = None
+    batchId: Optional[str] = None
+    batchTitle: Optional[str] = None
+    isActive: bool = True
+    expiresAt: Optional[int] = None
+    status: str
+
+
+class AdminCreditCodeStatusSummaryItem(BaseModel):
+    status: str
+    codeCount: int
+    totalCredits: float = 0.0
+    averageCredits: float = 0.0
+
+
+class AdminCreditCodeListResponse(BaseModel):
+    codes: List[AdminCreditCodeItem]
+    total: int
+    summaries: List[AdminCreditCodeStatusSummaryItem] = Field(default_factory=list)
+
+
+class AdminCreditCodeBatchItem(BaseModel):
+    batchId: str
+    title: str
+    credits: float
+    totalCodes: int
+    claimedCodes: int
+    activeCodes: int
+    status: str
+    createdAt: Optional[int] = None
+
+
+class AdminCreditCodeBatchStatusSummaryItem(BaseModel):
+    status: str
+    codeCount: int
+    totalCredits: float = 0.0
+    averageCredits: float = 0.0
+
+
+class AdminCreditCodeBatchListResponse(BaseModel):
+    batches: List[AdminCreditCodeBatchItem]
+    total: int
+    summaries: List[AdminCreditCodeBatchStatusSummaryItem] = Field(default_factory=list)
+
+
+class AdminGenerationJobItem(BaseModel):
+    id: str
+    uid: str
+    status: str
+    prompt: str
+    requestedOutputs: List[str]
+    reservedCost: float = 0.0
+    capturedCost: float = 0.0
+    refundedCost: float = 0.0
+    failureReason: Optional[str] = None
+    createdAt: Optional[int] = None
+    updatedAt: Optional[int] = None
+    completedAt: Optional[int] = None
+
+
+class AdminGenerationJobListResponse(BaseModel):
+    jobs: List[AdminGenerationJobItem]
+    total: int
+    status: str = ""
+
+
+class AdminAuditLogItem(BaseModel):
+    id: str
+    adminUid: Optional[str] = None
+    adminEmail: str
+    action: str
+    targetType: str
+    targetId: str
+    reason: str
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+    createdAt: Optional[int] = None
+
+
+class AdminAuditLogListResponse(BaseModel):
+    logs: List[AdminAuditLogItem]
+    total: int
+    adminUid: str = ""
+    action: str = ""
+    targetType: str = ""
+    targetId: str = ""
+
+
 # ---------------------------------------------------------
 # State Management (Internal Graph State)
 # ---------------------------------------------------------

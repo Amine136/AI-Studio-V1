@@ -5,10 +5,11 @@ import time
 import uuid
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from app.db.models import AnalyzeSession, CreditCode, CreditCodeClaim, CreditLedgerEntry, GenerationJob, HistoryEntry, RateLimitBucket, User
+from app.db.models import AdminAuditLog, AnalyzeSession, CreditCode, CreditCodeClaim, CreditLedgerEntry, GenerationJob, HistoryEntry, RateLimitBucket, User
 
 
 class SecurityRepository:
@@ -62,6 +63,35 @@ class SecurityRepository:
             claimed_count=0,
             created_at=int(time.time()),
             created_by=created_by,
+            batch_id=None,
+            batch_title=None,
+            is_active=True,
+        )
+        self.session.add(code)
+        self.session.flush()
+        return code
+
+    def create_credit_code_with_batch(
+        self,
+        code_hash: str,
+        code_preview: str,
+        credits_minor: int,
+        max_claims: int,
+        created_by: str | None,
+        *,
+        batch_id: str | None,
+        batch_title: str | None,
+    ) -> CreditCode:
+        code = CreditCode(
+            code_hash=code_hash,
+            code_preview=code_preview,
+            credits_minor=credits_minor,
+            max_claims=max_claims,
+            claimed_count=0,
+            created_at=int(time.time()),
+            created_by=created_by,
+            batch_id=batch_id,
+            batch_title=batch_title,
             is_active=True,
         )
         self.session.add(code)
@@ -75,6 +105,33 @@ class SecurityRepository:
             ).scalars()
         )
 
+    def summarize_gift_codes_by_status(self, now: int) -> list[dict[str, Any]]:
+        status_expr = case(
+            (CreditCode.is_active.is_(False), "inactive"),
+            ((CreditCode.expires_at.is_not(None)) & (CreditCode.expires_at <= now), "expired"),
+            (CreditCode.claimed_count >= CreditCode.max_claims, "exhausted"),
+            else_="active",
+        )
+        rows = self.session.execute(
+            select(
+                status_expr.label("status"),
+                func.count(CreditCode.code_hash).label("code_count"),
+                func.coalesce(func.sum(CreditCode.credits_minor), 0).label("total_credits_minor"),
+                func.coalesce(func.avg(CreditCode.credits_minor), 0).label("average_credits_minor"),
+            )
+            .where(CreditCode.batch_id.is_(None))
+            .group_by(status_expr)
+        )
+        return [
+            {
+                "status": row.status,
+                "code_count": int(row.code_count or 0),
+                "total_credits_minor": int(row.total_credits_minor or 0),
+                "average_credits_minor": float(row.average_credits_minor or 0),
+            }
+            for row in rows
+        ]
+
     def get_credit_code(self, code_hash: str) -> CreditCode | None:
         return self.session.get(CreditCode, code_hash)
 
@@ -82,6 +139,16 @@ class SecurityRepository:
         return self.session.execute(
             select(CreditCode).where(CreditCode.code_hash == code_hash).with_for_update()
         ).scalar_one_or_none()
+
+    def list_credit_codes_by_batch_for_update(self, batch_id: str) -> list[CreditCode]:
+        return list(
+            self.session.execute(
+                select(CreditCode)
+                .where(CreditCode.batch_id == batch_id)
+                .order_by(CreditCode.created_at.desc())
+                .with_for_update()
+            ).scalars()
+        )
 
     def get_credit_claim(self, code_hash: str, uid: str) -> CreditCodeClaim | None:
         return self.session.execute(
@@ -203,6 +270,13 @@ class SecurityRepository:
     def get_generation_job(self, job_id: str) -> GenerationJob | None:
         return self.session.get(GenerationJob, job_id)
 
+    def list_generation_jobs(self, status: str | None = None, limit: int = 100) -> list[GenerationJob]:
+        stmt = select(GenerationJob)
+        if status:
+            stmt = stmt.where(GenerationJob.status == status)
+        stmt = stmt.order_by(GenerationJob.created_at.desc()).limit(limit)
+        return list(self.session.execute(stmt).scalars())
+
     def get_generation_job_for_update(self, job_id: str) -> GenerationJob | None:
         return self.session.execute(
             select(GenerationJob).where(GenerationJob.id == job_id).with_for_update()
@@ -238,23 +312,83 @@ class SecurityRepository:
             select(RateLimitBucket).where(RateLimitBucket.key_hash == key_hash).with_for_update()
         ).scalar_one_or_none()
 
+    def get_rate_limit_bucket(self, key: str) -> RateLimitBucket | None:
+        key_hash = hashlib.sha256(key.encode("utf-8")).hexdigest()
+        return self.session.get(RateLimitBucket, key_hash)
+
     def upsert_rate_limit_bucket(self, key: str, count: int, reset_at: int) -> RateLimitBucket:
         now = int(time.time())
         key_hash = hashlib.sha256(key.encode("utf-8")).hexdigest()
-        bucket = self.session.get(RateLimitBucket, key_hash)
-        if bucket is None:
-            bucket = RateLimitBucket(
-                key_hash=key_hash,
-                key_plaintext=key,
-                count=count,
-                reset_at=reset_at,
-                updated_at=now,
-            )
-            self.session.add(bucket)
-        else:
-            bucket.key_plaintext = key
-            bucket.count = count
-            bucket.reset_at = reset_at
-            bucket.updated_at = now
+        stmt = pg_insert(RateLimitBucket).values(
+            key_hash=key_hash,
+            key_plaintext=key,
+            count=count,
+            reset_at=reset_at,
+            updated_at=now,
+        )
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[RateLimitBucket.key_hash],
+            set_={
+                "key_plaintext": key,
+                "count": count,
+                "reset_at": reset_at,
+                "updated_at": now,
+            },
+        )
+        self.session.execute(stmt)
         self.session.flush()
-        return bucket
+        return self.session.get(RateLimitBucket, key_hash)
+
+    def delete_rate_limit_bucket(self, key: str) -> None:
+        bucket = self.get_rate_limit_bucket(key)
+        if bucket is not None:
+            self.session.delete(bucket)
+            self.session.flush()
+
+    def add_admin_audit_log(
+        self,
+        *,
+        admin_uid: str | None,
+        admin_email: str,
+        action: str,
+        target_type: str,
+        target_id: str,
+        reason: str,
+        metadata_json: dict[str, Any] | None = None,
+        created_at: int | None = None,
+    ) -> AdminAuditLog:
+        entry = AdminAuditLog(
+            id=str(uuid.uuid4()),
+            admin_uid=admin_uid,
+            admin_email=admin_email,
+            action=action,
+            target_type=target_type,
+            target_id=target_id,
+            reason=reason,
+            metadata_json=metadata_json or {},
+            created_at=created_at or int(time.time()),
+        )
+        self.session.add(entry)
+        self.session.flush()
+        return entry
+
+    def list_admin_audit_logs(
+        self,
+        limit: int = 50,
+        *,
+        admin_uid: str | None = None,
+        action: str | None = None,
+        target_type: str | None = None,
+        target_id: str | None = None,
+    ) -> list[AdminAuditLog]:
+        stmt = select(AdminAuditLog)
+        if admin_uid:
+            stmt = stmt.where(AdminAuditLog.admin_uid == admin_uid)
+        if action:
+            stmt = stmt.where(AdminAuditLog.action == action)
+        if target_type:
+            stmt = stmt.where(AdminAuditLog.target_type == target_type)
+        if target_id:
+            stmt = stmt.where(AdminAuditLog.target_id == target_id)
+        stmt = stmt.order_by(AdminAuditLog.created_at.desc()).limit(limit)
+        return list(self.session.execute(stmt).scalars())

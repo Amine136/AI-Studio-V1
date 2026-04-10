@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from typing import Any, Dict
 
 from fastapi import Depends, HTTPException, Security
@@ -7,7 +8,7 @@ from google.auth.transport.requests import Request as GoogleRequest
 from google.oauth2 import id_token
 
 from app.config import settings
-from app.services.security_backend import ensure_user
+from app.services.security_backend import ensure_user, get_active_suspension
 
 # Header name the client must send
 API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
@@ -51,11 +52,16 @@ async def verify_firebase_user(
     email = claims.get("email", "")
     display_name = claims.get("name") or email or uid
     profile = ensure_user(uid, email, display_name)
-    if _is_suspended_profile(profile):
+    suspension = get_active_suspension(uid)
+    if suspension:
         detail = "Your account is suspended."
-        reason = str(profile.get("suspensionReason") or "").strip()
+        reason = str(suspension.get("reason") or profile.get("suspensionReason") or "").strip()
+        until = suspension.get("until")
         if reason:
             detail = f"Your account is suspended: {reason}"
+        if until:
+            until_text = datetime.fromtimestamp(int(until), tz=timezone.utc).isoformat()
+            detail = f"{detail} Suspension ends at {until_text}."
         raise HTTPException(status_code=403, detail=detail)
 
     return {
@@ -72,11 +78,3 @@ async def verify_admin_user(user: Dict[str, Any] = Depends(verify_firebase_user)
     if not user.get("is_admin"):
         raise HTTPException(status_code=403, detail="Admin access required")
     return user
-
-
-def _is_suspended_profile(profile: Dict[str, Any]) -> bool:
-    return bool(
-        profile.get("isSuspended")
-        or profile.get("is_suspended")
-        or profile.get("suspended")
-    )
