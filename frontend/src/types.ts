@@ -67,6 +67,24 @@ export interface SystemConfig {
   model_catalog: Record<OutputType, Record<string, ModelCatalogEntry>>;
 }
 
+export interface AdminSessionAccount {
+  id: string;
+  username: string;
+  isActive: boolean;
+  createdAt: number;
+  updatedAt: number;
+  lastLoginAt: number | null;
+}
+
+export interface AdminSession {
+  sessionId: string;
+  username: string;
+  adminId: string;
+  createdAt: number;
+  expiresAt: number;
+  account: AdminSessionAccount;
+}
+
 export interface AdminUserListItem {
   uid: string;
   email: string;
@@ -74,7 +92,6 @@ export interface AdminUserListItem {
   credits: number;
   reservedCredits: number;
   totalCredits: number;
-  isAdmin: boolean;
   isSuspended: boolean;
   suspensionReason: string;
   activeSuspensionUntil?: number | null;

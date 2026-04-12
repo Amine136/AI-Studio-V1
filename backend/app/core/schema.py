@@ -117,6 +117,29 @@ class CatalogUpdateNotification(BaseModel):
     )
 
 
+class AdminLoginRequest(BaseModel):
+    username: str = Field(..., min_length=3, max_length=64)
+    password: str = Field(..., min_length=8, max_length=256)
+
+
+class AdminSessionAccount(BaseModel):
+    id: str
+    username: str
+    isActive: bool = True
+    createdAt: int
+    updatedAt: int
+    lastLoginAt: Optional[int] = None
+
+
+class AdminSessionResponse(BaseModel):
+    sessionId: str
+    username: str
+    adminId: str
+    createdAt: int
+    expiresAt: int
+    account: AdminSessionAccount
+
+
 class AdminUserListItem(BaseModel):
     uid: str
     email: str
@@ -124,7 +147,6 @@ class AdminUserListItem(BaseModel):
     credits: float
     reservedCredits: float = 0.0
     totalCredits: float = 0.0
-    isAdmin: bool = False
     isSuspended: bool = False
     suspensionReason: str = ""
     activeSuspensionUntil: Optional[int] = None
@@ -146,7 +168,6 @@ class AdminUserDetailResponse(BaseModel):
     credits: float
     reservedCredits: float = 0.0
     totalCredits: float = 0.0
-    isAdmin: bool = False
     isSuspended: bool = False
     suspensionReason: str = ""
     activeSuspensionUntil: Optional[int] = None

@@ -6,7 +6,7 @@ import AdminSubpage from "../_components/AdminSubpage";
 import { api } from "../../../services/api";
 import type { AdminUserListItem } from "../../../types";
 
-type StatusFilter = "all" | "active" | "suspended" | "admin";
+type StatusFilter = "all" | "active" | "suspended";
 
 export default function AdminUsersPage() {
     const [users, setUsers] = useState<AdminUserListItem[]>([]);
@@ -72,22 +72,13 @@ export default function AdminUsersPage() {
             const matchesFilter =
                 statusFilter === "all" ||
                 (statusFilter === "active" && !user.isSuspended) ||
-                (statusFilter === "suspended" && user.isSuspended) ||
-                (statusFilter === "admin" && user.isAdmin);
+                (statusFilter === "suspended" && user.isSuspended);
 
             return matchesQuery && matchesFilter;
         });
     }, [query, statusFilter, users]);
 
     const handleStatusChange = async (user: AdminUserListItem) => {
-        if (user.isAdmin) {
-            setFeedbackByUid((current) => ({
-                ...current,
-                [user.uid]: "Admin accounts cannot be suspended or unsuspended here.",
-            }));
-            return;
-        }
-
         const reason = (reasonByUid[user.uid] || "").trim();
         if (!reason) {
             setFeedbackByUid((current) => ({
@@ -202,7 +193,6 @@ export default function AdminUsersPage() {
                                 <option value="all">All users</option>
                                 <option value="active">Active</option>
                                 <option value="suspended">Suspended</option>
-                                <option value="admin">Admins</option>
                             </select>
                         </div>
                     </div>
@@ -234,7 +224,7 @@ export default function AdminUsersPage() {
                                         <td className="relative py-3 pl-6 before:absolute before:left-0 before:top-0 before:h-full before:w-[2px] before:bg-transparent before:transition-all before:duration-150 group-hover:before:bg-[rgba(124,58,237,0.7)]">
                                             <div className="admin-user-cell">
                                                 <div
-                                                    className={`admin-avatar text-white ${user.isAdmin ? "border border-violet-400/30" : ""}`}
+                                                    className="admin-avatar text-white"
                                                     style={{ background: avatarGradientForUser(user.uid || user.email || user.displayName || "?") }}
                                                 >
                                                     {(user.displayName || user.email || "?").charAt(0).toUpperCase()}
@@ -242,14 +232,6 @@ export default function AdminUsersPage() {
                                                 <div className="admin-user-info">
                                                     <div className="flex items-center gap-2">
                                                         <span className="admin-user-name">{user.displayName || "Anonymous"}</span>
-                                                        {user.isAdmin ? (
-                                                            <span className="inline-flex items-center gap-1 rounded-full bg-[linear-gradient(135deg,#7c3aed,#3b82f6)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-white">
-                                                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                                                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                                                                </svg>
-                                                                Admin
-                                                            </span>
-                                                        ) : null}
                                                     </div>
                                                     <span className="admin-user-uid">{user.email || user.uid}</span>
                                                 </div>
@@ -278,28 +260,17 @@ export default function AdminUsersPage() {
                                                         }
                                                         placeholder={user.isSuspended ? "Reason to unsuspend" : "Reason to suspend"}
                                                         className="min-w-0 flex-1 rounded-xl border border-white/8 bg-[#1a1d2e] px-3 py-2 text-sm text-white outline-none transition-all duration-200 ease-in-out placeholder:text-slate-500 focus:border-violet-400/40 focus:ring-2 focus:ring-violet-500/30"
-                                                        disabled={user.isAdmin}
                                                     />
                                                     <button
                                                         onClick={() => void handleStatusChange(user)}
-                                                        disabled={actingUid === user.uid || user.isAdmin}
+                                                        disabled={actingUid === user.uid}
                                                         className={
-                                                            user.isAdmin
-                                                                ? "inline-flex cursor-not-allowed items-center gap-2 rounded-xl border border-white/10 bg-white/[0.05] px-3 py-2 text-sm font-medium text-slate-500 opacity-70"
-                                                                : user.isSuspended
-                                                                    ? "inline-flex items-center justify-center rounded-xl border border-emerald-400/30 px-3 py-2 text-sm font-semibold text-emerald-300 transition-all duration-200 ease-in-out hover:bg-emerald-400/10"
-                                                                    : "inline-flex items-center justify-center rounded-[10px] bg-[linear-gradient(135deg,#dc2626,#b91c1c)] px-3 py-2 text-sm font-semibold text-white transition-all duration-200 ease-in-out hover:-translate-y-[1px] hover:shadow-[0_4px_15px_rgba(220,38,38,0.35)]"
+                                                            user.isSuspended
+                                                                ? "inline-flex items-center justify-center rounded-xl border border-emerald-400/30 px-3 py-2 text-sm font-semibold text-emerald-300 transition-all duration-200 ease-in-out hover:bg-emerald-400/10"
+                                                                : "inline-flex items-center justify-center rounded-[10px] bg-[linear-gradient(135deg,#dc2626,#b91c1c)] px-3 py-2 text-sm font-semibold text-white transition-all duration-200 ease-in-out hover:-translate-y-[1px] hover:shadow-[0_4px_15px_rgba(220,38,38,0.35)]"
                                                         }
                                                     >
-                                                        {user.isAdmin ? (
-                                                            <>
-                                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                                                    <rect x="3" y="11" width="18" height="11" rx="2" />
-                                                                    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                                                                </svg>
-                                                                Protected
-                                                            </>
-                                                        ) : actingUid === user.uid ? (
+                                                        {actingUid === user.uid ? (
                                                             "Saving..."
                                                         ) : user.isSuspended ? (
                                                             "Unsuspend"

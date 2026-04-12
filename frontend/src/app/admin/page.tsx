@@ -4,8 +4,8 @@ import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import AnimatedLogo from "../../components/AnimatedLogo";
-import { useAuth } from "../../context/AuthContext";
 import { api } from "../../services/api";
+import { useAdminSession } from "./_components/useAdminSession";
 import {
     AdminAuditLogItem,
     AdminCreditCodeItem,
@@ -14,9 +14,7 @@ import {
 
 export default function AdminPage() {
     const router = useRouter();
-    const { user, loading: authLoading } = useAuth();
-
-    const [authorized, setAuthorized] = useState<boolean | null>(null);
+    const { session, loading: sessionLoading, error: sessionError } = useAdminSession();
     const [loading, setLoading] = useState(true);
     const [loadError, setLoadError] = useState("");
     const [users, setUsers] = useState<AdminUserListItem[]>([]);
@@ -24,27 +22,13 @@ export default function AdminPage() {
     const [logs, setLogs] = useState<AdminAuditLogItem[]>([]);
 
     useEffect(() => {
-        if (!authLoading && !user) {
-            router.replace("/auth");
-        }
-    }, [authLoading, router, user]);
-
-    useEffect(() => {
-        if (!user) return;
+        if (!session) return;
         let cancelled = false;
 
         const loadDashboard = async () => {
             setLoading(true);
             setLoadError("");
             try {
-                const profile = await api.getProfile();
-                if (cancelled) return;
-                setAuthorized(profile.isAdmin);
-                if (!profile.isAdmin) {
-                    setLoading(false);
-                    return;
-                }
-
                 const [userResponse, codeResponse, logResponse] = await Promise.all([
                     api.getAdminUsers({ limit: 6 }),
                     api.getAdminCodes(),
@@ -70,7 +54,7 @@ export default function AdminPage() {
         return () => {
             cancelled = true;
         };
-    }, [user]);
+    }, [session]);
 
     const totalCredits = useMemo(
         () => users.reduce((sum, item) => sum + (item.totalCredits || item.credits || 0), 0),
@@ -92,8 +76,8 @@ export default function AdminPage() {
     const creditTrend = users.length ? `${Math.round((fundedUsers / users.length) * 100)}% funded` : "0% funded";
     const codeTrend = codes.length ? `${Math.round((activeCodes / codes.length) * 100)}% redeemable` : "0% redeemable";
 
-    if (authLoading || !user || authorized === null) {
-        if (!authLoading && user && !loading && loadError) {
+    if (sessionLoading || !session) {
+        if (!sessionLoading && sessionError) {
             return (
                 <main className="min-h-screen flex items-center justify-center px-4">
                     <div className="glass-card p-8 max-w-md w-full text-center">
@@ -101,7 +85,7 @@ export default function AdminPage() {
                         <p className="text-sm text-gray-400 mt-3">
                             Unable to verify admin access right now.
                         </p>
-                        <p className="mt-2 text-sm text-amber-300">{loadError}</p>
+                        <p className="mt-2 text-sm text-amber-300">{sessionError}</p>
                         <button
                             onClick={() => window.location.reload()}
                             className="btn-primary mt-6 w-full"
@@ -115,28 +99,6 @@ export default function AdminPage() {
         return (
             <main className="min-h-screen flex items-center justify-center">
                 <div className="auth-loader" />
-            </main>
-        );
-    }
-
-    if (!authorized) {
-        return (
-            <main className="min-h-screen flex items-center justify-center px-4">
-                <div className="glass-card p-8 max-w-md w-full text-center">
-                    <h1 className="text-2xl font-extrabold gradient-text">Admin Access</h1>
-                    <p className="text-sm text-gray-400 mt-3">
-                        Your account is not authorized to access the admin panel.
-                    </p>
-                    {loadError ? (
-                        <p className="mt-2 text-sm text-amber-300">{loadError}</p>
-                    ) : null}
-                    <button
-                        onClick={() => router.push("/")}
-                        className="btn-primary mt-6 w-full"
-                    >
-                        <span>Back to Studio</span>
-                    </button>
-                </div>
             </main>
         );
     }
@@ -156,16 +118,17 @@ export default function AdminPage() {
                             </p>
                         </div>
                     </div>
-                    <button
-                        onClick={() => router.push("/")}
-                        className="admin-back-btn"
-                    >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M19 12H5" />
-                            <polyline points="12 19 5 12 12 5" />
-                        </svg>
-                        Back to Studio
-                    </button>
+                    <div className="flex gap-2">
+                        <button
+                            onClick={async () => {
+                                await api.adminLogout();
+                                window.location.href = "/login";
+                            }}
+                            className="btn-secondary px-4 py-2 text-sm"
+                        >
+                            Sign Out
+                        </button>
+                    </div>
                 </div>
 
                 <div className="grid grid-cols-1 gap-4 mb-6 sm:grid-cols-2 xl:grid-cols-3 animate-fade-in-up" style={{ animationDelay: "80ms" }}>
@@ -216,9 +179,9 @@ export default function AdminPage() {
                             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-300">Quick Access</p>
                         </div>
                         <div className="flex flex-wrap gap-2">
-                            <QuickAccessButton label="Users" onClick={() => router.push("/admin/users")} icon="users" />
-                            <QuickAccessButton label="Codes" onClick={() => router.push("/admin/codes")} icon="codes" />
-                            <QuickAccessButton label="Logs" onClick={() => router.push("/admin/logs")} icon="logs" />
+                            <QuickAccessButton label="Users" onClick={() => router.push("/users")} icon="users" />
+                            <QuickAccessButton label="Codes" onClick={() => router.push("/codes")} icon="codes" />
+                            <QuickAccessButton label="Logs" onClick={() => router.push("/logs")} icon="logs" />
                         </div>
                     </div>
                 </div>
@@ -229,7 +192,7 @@ export default function AdminPage() {
                         subtitle="Latest accounts and balance state"
                         meta={`${users.length} loaded`}
                         action={
-                            <button onClick={() => router.push("/admin/users")} className="admin-gradient-btn">
+                            <button onClick={() => router.push("/users")} className="admin-gradient-btn">
                                 More details
                             </button>
                         }
@@ -278,7 +241,7 @@ export default function AdminPage() {
                         subtitle="Audit trail for admin actions"
                         meta={`${logs.length} entries`}
                         action={
-                            <button onClick={() => router.push("/admin/logs")} className="admin-gradient-btn">
+                            <button onClick={() => router.push("/logs")} className="admin-gradient-btn">
                                 More details
                             </button>
                         }

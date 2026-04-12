@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Dict
 from urllib.parse import urlparse
 
-from fastapi import FastAPI, HTTPException, Request, Depends, UploadFile, File, Header
+from fastapi import FastAPI, HTTPException, Request, Depends, UploadFile, File, Header, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -16,9 +16,10 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
 from app.config import settings
-from app.core.schema import AdminAuditLogListResponse, AdminCreditCodeBatchListResponse, AdminCreditCodeListResponse, AdminGenerationJobItem, AdminGenerationJobListResponse, AdminReasonRequest, AdminUserDetailResponse, AdminUserListResponse, CatalogUpdateNotification, GenerateRequest, GenerationResult, SystemConfig
+from app.core.schema import AdminAuditLogListResponse, AdminCreditCodeBatchListResponse, AdminCreditCodeListResponse, AdminGenerationJobItem, AdminGenerationJobListResponse, AdminLoginRequest, AdminReasonRequest, AdminSessionResponse, AdminUserDetailResponse, AdminUserListResponse, CatalogUpdateNotification, GenerateRequest, GenerationResult, SystemConfig
 from app.graph.workflow import studio_graph_app
-from app.services.auth import verify_admin_user, verify_api_key, verify_firebase_user
+from app.services.admin_auth import authenticate_admin, revoke_admin_session
+from app.services.auth import verify_admin_session, verify_api_key, verify_firebase_user
 from app.services.catalog_store import catalog_store
 from app.services.security_backend import (
     add_history_entry,
@@ -117,6 +118,10 @@ tags_metadata = [
     {
         "name": "Generation",
         "description": "Core AI content generation endpoints. Generate images, captions, and more.",
+    },
+    {
+        "name": "Admin Authentication",
+        "description": "Dedicated username/password authentication for the separate admin portal.",
     },
 ]
 
@@ -292,12 +297,55 @@ def catalog_updated_webhook(
     }
 
 
+@app.post("/admin-auth/login", response_model=AdminSessionResponse, tags=["Admin Authentication"], summary="Login To Admin Portal")
+@limiter.limit("10/minute")
+def admin_login(request: Request, payload: AdminLoginRequest, response: Response):
+    del request
+    try:
+        token, session = authenticate_admin(payload.username, payload.password)
+    except ValueError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    response.set_cookie(
+        key=settings.admin_session_cookie_name,
+        value=token,
+        httponly=True,
+        secure=settings.admin_cookie_secure,
+        samesite="lax",
+        max_age=settings.admin_session_ttl_seconds,
+        path="/",
+    )
+    return session
+
+
+@app.post("/admin-auth/logout", tags=["Admin Authentication"], summary="Logout From Admin Portal")
+def admin_logout(request: Request, response: Response):
+    token = request.cookies.get(settings.admin_session_cookie_name, "").strip()
+    if token:
+        try:
+            revoke_admin_session(token)
+        except RuntimeError:
+            pass
+    response.delete_cookie(
+        key=settings.admin_session_cookie_name,
+        path="/",
+        secure=settings.admin_cookie_secure,
+        samesite="lax",
+    )
+    return {"success": True}
+
+
+@app.get("/admin-auth/me", response_model=AdminSessionResponse, tags=["Admin Authentication"], summary="Get Current Admin Session")
+def admin_current_session(admin: Dict[str, Any] = Depends(verify_admin_session)):
+    return admin["session"]
+
+
 @app.get("/me", tags=["Configuration"], summary="Get Current User Profile")
 @limiter.limit("30/minute")
 def get_current_user_profile(request: Request, user: Dict[str, Any] = Depends(verify_firebase_user)):
-    profile = get_user(user["uid"])
-    profile["isAdmin"] = user["is_admin"]
-    return profile
+    return get_user(user["uid"])
 
 
 @app.get("/history", tags=["Configuration"], summary="Get User History")
@@ -364,7 +412,7 @@ def admin_list_users(
     request: Request,
     q: str = "",
     limit: int = 100,
-    _admin: Dict[str, Any] = Depends(verify_admin_user),
+    _admin: Dict[str, Any] = Depends(verify_admin_session),
 ):
     del request
     users = search_users(q, limit)
@@ -385,7 +433,7 @@ def admin_list_users(
 def admin_get_user_detail(
     request: Request,
     uid: str,
-    _admin: Dict[str, Any] = Depends(verify_admin_user),
+    _admin: Dict[str, Any] = Depends(verify_admin_session),
 ):
     del request
     user = get_admin_user_detail(uid)
@@ -396,7 +444,7 @@ def admin_get_user_detail(
 
 @app.post("/admin/users/{uid}/credits", tags=["Configuration"], summary="Adjust Credits For Admin")
 @limiter.limit("20/minute")
-def admin_adjust_user_credits(request: Request, uid: str, payload: Dict[str, Any], admin: Dict[str, Any] = Depends(verify_admin_user)):
+def admin_adjust_user_credits(request: Request, uid: str, payload: Dict[str, Any], admin: Dict[str, Any] = Depends(verify_admin_session)):
     del request, uid, payload, admin
     raise HTTPException(
         status_code=403,
@@ -415,7 +463,7 @@ def admin_suspend_user(
     request: Request,
     uid: str,
     payload: AdminReasonRequest,
-    admin: Dict[str, Any] = Depends(verify_admin_user),
+    admin: Dict[str, Any] = Depends(verify_admin_session),
 ):
     del request
     try:
@@ -442,7 +490,7 @@ def admin_unsuspend_user(
     request: Request,
     uid: str,
     payload: AdminReasonRequest,
-    admin: Dict[str, Any] = Depends(verify_admin_user),
+    admin: Dict[str, Any] = Depends(verify_admin_session),
 ):
     del request
     try:
@@ -465,7 +513,7 @@ def admin_unsuspend_user(
     summary="List Credit Codes For Admin",
 )
 @limiter.limit("20/minute")
-def admin_list_codes(request: Request, _admin: Dict[str, Any] = Depends(verify_admin_user)):
+def admin_list_codes(request: Request, _admin: Dict[str, Any] = Depends(verify_admin_session)):
     del request
     codes = list_credit_codes()
     summaries = list_gift_code_status_summaries()
@@ -479,7 +527,7 @@ def admin_list_codes(request: Request, _admin: Dict[str, Any] = Depends(verify_a
     summary="List Credit Code Batches For Admin",
 )
 @limiter.limit("20/minute")
-def admin_list_code_batches(request: Request, _admin: Dict[str, Any] = Depends(verify_admin_user)):
+def admin_list_code_batches(request: Request, _admin: Dict[str, Any] = Depends(verify_admin_session)):
     del request
     batches = list_credit_code_batches()
     summaries = list_credit_code_batch_status_summaries()
@@ -488,7 +536,7 @@ def admin_list_code_batches(request: Request, _admin: Dict[str, Any] = Depends(v
 
 @app.post("/admin/codes", tags=["Configuration"], summary="Create Credit Code For Admin")
 @limiter.limit("10/minute")
-def admin_create_code(request: Request, payload: Dict[str, Any], admin: Dict[str, Any] = Depends(verify_admin_user)):
+def admin_create_code(request: Request, payload: Dict[str, Any], admin: Dict[str, Any] = Depends(verify_admin_session)):
     del request
     credits = float(payload.get("credits", 0))
     max_claims = int(payload.get("maxClaims", 0))
@@ -514,7 +562,7 @@ def admin_create_code(request: Request, payload: Dict[str, Any], admin: Dict[str
 
 @app.post("/admin/codes/batch", tags=["Configuration"], summary="Create Batch Credit Codes For Admin")
 @limiter.limit("5/minute")
-def admin_create_code_batch(request: Request, payload: Dict[str, Any], admin: Dict[str, Any] = Depends(verify_admin_user)):
+def admin_create_code_batch(request: Request, payload: Dict[str, Any], admin: Dict[str, Any] = Depends(verify_admin_session)):
     del request
     quantity = int(payload.get("quantity", 0))
     credits = float(payload.get("credits", 0))
@@ -548,7 +596,7 @@ def admin_disable_code(
     request: Request,
     code_hash: str,
     payload: AdminReasonRequest,
-    admin: Dict[str, Any] = Depends(verify_admin_user),
+    admin: Dict[str, Any] = Depends(verify_admin_session),
 ):
     del request
     try:
@@ -570,7 +618,7 @@ def admin_enable_code(
     request: Request,
     code_hash: str,
     payload: AdminReasonRequest,
-    admin: Dict[str, Any] = Depends(verify_admin_user),
+    admin: Dict[str, Any] = Depends(verify_admin_session),
 ):
     del request
     try:
@@ -592,7 +640,7 @@ def admin_disable_code_batch(
     request: Request,
     batch_id: str,
     payload: AdminReasonRequest,
-    admin: Dict[str, Any] = Depends(verify_admin_user),
+    admin: Dict[str, Any] = Depends(verify_admin_session),
 ):
     del request
     try:
@@ -614,7 +662,7 @@ def admin_enable_code_batch(
     request: Request,
     batch_id: str,
     payload: AdminReasonRequest,
-    admin: Dict[str, Any] = Depends(verify_admin_user),
+    admin: Dict[str, Any] = Depends(verify_admin_session),
 ):
     del request
     try:
@@ -641,7 +689,7 @@ def admin_list_generation_jobs(
     request: Request,
     status: str = "",
     limit: int = 100,
-    _admin: Dict[str, Any] = Depends(verify_admin_user),
+    _admin: Dict[str, Any] = Depends(verify_admin_session),
 ):
     del request
     jobs = list_admin_generation_jobs(status, limit)
@@ -662,7 +710,7 @@ def admin_list_generation_jobs(
 def admin_get_generation_job(
     request: Request,
     job_id: str,
-    _admin: Dict[str, Any] = Depends(verify_admin_user),
+    _admin: Dict[str, Any] = Depends(verify_admin_session),
 ):
     del request
     job = get_admin_generation_job(job_id)
@@ -685,7 +733,7 @@ def admin_list_audit_logs(
     action: str = "",
     target_type: str = "",
     target_id: str = "",
-    _admin: Dict[str, Any] = Depends(verify_admin_user),
+    _admin: Dict[str, Any] = Depends(verify_admin_session),
 ):
     del request
     logs = list_admin_audit_logs(

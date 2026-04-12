@@ -88,8 +88,6 @@ def suspend_user(
         user = repo.get_user_for_update(uid)
         if user is None:
             raise ValueError("USER_NOT_FOUND")
-        if _is_admin_email(user.email):
-            raise ValueError("ADMIN_PROTECTED")
 
         user.is_suspended = True
         user.suspension_reason = normalized_reason
@@ -126,8 +124,6 @@ def unsuspend_user(
         user = repo.get_user_for_update(uid)
         if user is None:
             raise ValueError("USER_NOT_FOUND")
-        if _is_admin_email(user.email):
-            raise ValueError("ADMIN_PROTECTED")
 
         previous_reason = user.suspension_reason or ""
         user.is_suspended = False
@@ -147,7 +143,10 @@ def unsuspend_user(
             created_at=now,
         )
         session.flush()
-        return _with_active_suspension_state(_user_dict_from_model(user))
+        result = _user_dict_from_model(user)
+        result["activeSuspensionUntil"] = None
+        result["activeSuspensionIsPermanent"] = False
+        return result
 
 
 def add_admin_audit_log(
@@ -849,15 +848,9 @@ def _user_dict_from_model(user: Any) -> dict[str, Any]:
         "createdAt": user.created_at,
         "updatedAt": user.updated_at,
         "lastSeenAt": user.last_seen_at,
-        "isAdmin": _is_admin_email(user.email),
         "isSuspended": bool(user.is_suspended),
         "suspensionReason": user.suspension_reason or "",
     }
-
-
-def _is_admin_email(email: str | None) -> bool:
-    normalized = str(email or "").strip().lower()
-    return bool(normalized and normalized in settings.admin_emails)
 
 
 def _credit_code_dict_from_model(code: Any) -> dict[str, Any]:

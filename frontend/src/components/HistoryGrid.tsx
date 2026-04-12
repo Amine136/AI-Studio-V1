@@ -3,6 +3,11 @@
 import { useState, useEffect, useCallback } from "react";
 import { HistoryEntry } from "../lib/history";
 
+function isRenderableImageUrl(value?: string): boolean {
+    if (!value) return false;
+    return value.startsWith("http://") || value.startsWith("https://") || value.startsWith("/");
+}
+
 interface HistoryGridProps {
     entries: HistoryEntry[];
     loading: boolean;
@@ -48,7 +53,7 @@ export default function HistoryGrid({ entries, loading }: HistoryGridProps) {
                         onClick={() => setSelectedEntry(entry)}
                         className="group relative aspect-square rounded-xl overflow-hidden bg-white/[0.03] border border-white/5 hover:border-white/15 transition-all duration-300 cursor-pointer"
                     >
-                        {entry.imageUrl ? (
+                        {isRenderableImageUrl(entry.imageUrl) ? (
                             <img
                                 src={entry.imageUrl}
                                 alt={entry.prompt}
@@ -76,7 +81,7 @@ export default function HistoryGrid({ entries, loading }: HistoryGridProps) {
                         className="glass-card max-w-2xl w-full max-h-[90vh] overflow-y-auto p-0 animate-fade-in-up"
                         onClick={(e) => e.stopPropagation()}
                     >
-                        {selectedEntry.imageUrl && (
+                        {isRenderableImageUrl(selectedEntry.imageUrl) && (
                             <img
                                 src={selectedEntry.imageUrl}
                                 alt={selectedEntry.prompt}

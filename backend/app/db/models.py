@@ -47,6 +47,43 @@ class User(Base):
     )
 
 
+class AdminAccount(Base):
+    __tablename__ = "admin_accounts"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    username: Mapped[str] = mapped_column(String(64), nullable=False)
+    password_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    updated_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    last_login_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+
+    sessions: Mapped[list["AdminSession"]] = relationship(back_populates="admin_account")
+
+    __table_args__ = (
+        Index("ix_admin_accounts_username", "username", unique=True),
+    )
+
+
+class AdminSession(Base):
+    __tablename__ = "admin_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    admin_id: Mapped[str] = mapped_column(ForeignKey("admin_accounts.id", ondelete="CASCADE"), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    created_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    updated_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    expires_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    revoked_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+
+    admin_account: Mapped[AdminAccount] = relationship(back_populates="sessions")
+
+    __table_args__ = (
+        Index("ix_admin_sessions_admin_id_created_at", "admin_id", "created_at"),
+        Index("ix_admin_sessions_expires_at", "expires_at"),
+    )
+
+
 class CreditCode(Base):
     __tablename__ = "credit_codes"
 

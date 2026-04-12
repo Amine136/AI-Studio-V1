@@ -2,10 +2,7 @@ import { api } from "../services/api";
 import type { AdminUserListItem } from "../types";
 
 export type UserRecord = AdminUserListItem;
-
-export interface CurrentUserProfile extends UserRecord {
-    isAdmin: boolean;
-}
+export type CurrentUserProfile = UserRecord;
 
 export async function getProfile(): Promise<CurrentUserProfile> {
     return api.getProfile();

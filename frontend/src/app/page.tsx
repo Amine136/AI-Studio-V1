@@ -45,6 +45,11 @@ const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 const MAX_PROXY_IMAGE_DIMENSION = 1536;
 const MAX_PROXY_IMAGE_BYTES = 1_800_000;
 
+function isRenderableImageUrl(value?: string): boolean {
+  if (!value) return false;
+  return value.startsWith("http://") || value.startsWith("https://") || value.startsWith("/");
+}
+
 function formatSuspensionEndsAt(value: string): string | null {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
@@ -551,12 +556,15 @@ export default function Home() {
         showToast("Image optimized for upload.", "success");
       }
     } catch (error) {
+      if (captureSuspension(error)) {
+        return;
+      }
       console.error("Image upload error:", error);
       showToast(getErrorMessage(error, "Could not process that image."));
     } finally {
       event.target.value = "";
     }
-  }, []);
+  }, [captureSuspension]);
 
   const clearInputImage = useCallback(() => {
     setInputImage((prev) => {
@@ -612,6 +620,9 @@ export default function Home() {
         setStep("REVIEW");
       }
     } catch (error) {
+      if (captureSuspension(error)) {
+        return;
+      }
       showToast(getErrorMessage(error, "Error contacting backend. Please try again."));
     } finally {
       setLoading(false);
@@ -675,7 +686,7 @@ export default function Home() {
         if (user) {
           try {
             await addHistoryEntry(user.uid, {
-              imageUrl: response.results.image || undefined,
+              imageUrl: isRenderableImageUrl(response.results.image) ? response.results.image : undefined,
               caption: response.results.caption || undefined,
               prompt: userText,
               model: selectedImageModel || selectedCaptionModel,
@@ -687,6 +698,9 @@ export default function Home() {
         }
       }
     } catch (error) {
+      if (captureSuspension(error)) {
+        return;
+      }
       showToast(getErrorMessage(error, "Generation failed. Please try again."));
     } finally {
       setLoading(false);

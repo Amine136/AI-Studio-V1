@@ -30,11 +30,10 @@ class Config:
         self.firestore_project_id = os.getenv("FIRESTORE_PROJECT_ID", self.firebase_project_id).strip()
         self.firestore_database = os.getenv("FIRESTORE_DATABASE", "(default)").strip()
         self.firebase_credentials_path = os.getenv("FIREBASE_CREDENTIALS_PATH", "").strip()
-        self.admin_emails = {
-            email.strip().lower()
-            for email in os.getenv("ADMIN_EMAILS", "").split(",")
-            if email.strip()
-        }
+        self.admin_session_secret = os.getenv("ADMIN_SESSION_SECRET", "").strip()
+        self.admin_session_cookie_name = os.getenv("ADMIN_SESSION_COOKIE_NAME", "vibecraft_admin_session").strip() or "vibecraft_admin_session"
+        self.admin_session_ttl_seconds = int(os.getenv("ADMIN_SESSION_TTL_SECONDS", str(12 * 60 * 60)))
+        self.admin_cookie_secure = os.getenv("ADMIN_COOKIE_SECURE", "true").strip().lower() not in {"0", "false", "no", "off"}
         self.database_url = os.getenv("DATABASE_URL", "").strip()
         self.database_echo = os.getenv("DATABASE_ECHO", "false").strip().lower() in {"1", "true", "yes", "on"}
         self.database_pool_size = int(os.getenv("DATABASE_POOL_SIZE", "5"))

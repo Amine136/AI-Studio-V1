@@ -1,6 +1,7 @@
 // frontend/src/services/api.ts
 import axios from 'axios';
 import {
+  AdminSession,
   AdminAuditLogListResponse,
   AdminCreditCodeBatchListResponse,
   AdminCreditCodeListResponse,
@@ -13,11 +14,12 @@ import {
 } from '../types';
 import { auth } from '../lib/firebase';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
 // Create axios instance with default headers
 const client = axios.create({
   baseURL: API_BASE,
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
     'X-API-Key': process.env.NEXT_PUBLIC_API_KEY || '',
@@ -45,7 +47,44 @@ function extractErrorMessage(error: unknown): string | undefined {
   return undefined;
 }
 
+function shouldLogApiError(error: unknown): boolean {
+  if (!axios.isAxiosError(error)) return true;
+  const status = error.response?.status;
+  return status !== 401 && status !== 403;
+}
+
 export const api = {
+  adminLogin: async (username: string, password: string): Promise<AdminSession> => {
+    try {
+      const res = await client.post('/admin-auth/login', { username, password });
+      return res.data;
+    } catch (error) {
+      const detail = extractErrorMessage(error);
+      if (detail) {
+        throw new Error(detail);
+      }
+      throw error;
+    }
+  },
+
+  adminLogout: async () => {
+    const res = await client.post('/admin-auth/logout');
+    return res.data;
+  },
+
+  getAdminSession: async (): Promise<AdminSession> => {
+    try {
+      const res = await client.get('/admin-auth/me');
+      return res.data;
+    } catch (error) {
+      const detail = extractErrorMessage(error);
+      if (detail) {
+        throw new Error(detail);
+      }
+      throw error;
+    }
+  },
+
   /**
    * Fetches the valid models and options (for the "Cold Start" UI)
    */
@@ -270,7 +309,9 @@ export const api = {
       }
       return data;
     } catch (error) {
-      console.error("Upload Error:", error);
+      if (shouldLogApiError(error)) {
+        console.error("Upload Error:", error);
+      }
       throw error;
     }
   },
@@ -285,7 +326,9 @@ export const api = {
       const res = await client.post('/generate', payload);
       return res.data;
     } catch (error) {
-      console.error("API Error:", error);
+      if (shouldLogApiError(error)) {
+        console.error("API Error:", error);
+      }
       const detail = extractErrorMessage(error);
       if (detail) {
         throw new Error(detail);

@@ -63,6 +63,12 @@ FALLBACK_LLM_MODEL=gemini-3-flash-preview
 
 # Required for ApiKeyManager catalog update webhooks
 CATALOG_WEBHOOK_SECRET=replace_with_a_shared_secret
+
+# Required for dedicated admin portal sessions
+ADMIN_SESSION_SECRET=replace_with_a_long_random_secret
+ADMIN_SESSION_COOKIE_NAME=vibecraft_admin_session
+ADMIN_SESSION_TTL_SECONDS=43200
+ADMIN_COOKIE_SECURE=true
 ```
 
 ### 3. Run the Server
@@ -112,6 +118,9 @@ then Vibecraft will immediately pull the latest catalog and persist it locally.
 | GET | `/config` | Get available options & models |
 | POST | `/generate` | Generate content (images, captions) |
 | GET | `/images/{filename}` | Serve generated images |
+| POST | `/admin-auth/login` | Login to the dedicated admin portal |
+| POST | `/admin-auth/logout` | Logout from the dedicated admin portal |
+| GET | `/admin-auth/me` | Validate the current admin session |
 
 ### API Documentation
 
@@ -140,3 +149,11 @@ The generation workflow uses LangGraph with 6 steps:
 
 This backend no longer calls provider SDKs directly. Provider authorization,
 key rotation, and model access are handled by ApiKeyManager.
+
+### Admin Bootstrap
+
+Create the first admin credential with:
+
+```bash
+python scripts/create_admin_account.py <username>
+```

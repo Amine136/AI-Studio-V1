@@ -1,13 +1,14 @@
 from datetime import datetime, timezone
 from typing import Any, Dict
 
-from fastapi import Depends, HTTPException, Security
+from fastapi import Depends, HTTPException, Request, Security
 from fastapi.security import APIKeyHeader
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from google.auth.transport.requests import Request as GoogleRequest
 from google.oauth2 import id_token
 
 from app.config import settings
+from app.services.admin_auth import get_admin_session
 from app.services.security_backend import ensure_user, get_active_suspension
 
 # Header name the client must send
@@ -68,13 +69,36 @@ async def verify_firebase_user(
         "uid": uid,
         "email": email,
         "display_name": display_name,
-        "is_admin": bool(email and email.lower() in settings.admin_emails),
+        "is_admin": False,
         "claims": claims,
         "profile": profile,
     }
 
 
-async def verify_admin_user(user: Dict[str, Any] = Depends(verify_firebase_user)) -> Dict[str, Any]:
-    if not user.get("is_admin"):
-        raise HTTPException(status_code=403, detail="Admin access required")
-    return user
+async def verify_admin_session(request: Request) -> Dict[str, Any]:
+    cookie_name = settings.admin_session_cookie_name
+    token = request.cookies.get(cookie_name, "").strip()
+    if not token:
+        raise HTTPException(status_code=401, detail="Admin authentication required")
+
+    try:
+        session = get_admin_session(token)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    if not session:
+        raise HTTPException(status_code=401, detail="Invalid or expired admin session")
+
+    return {
+        "uid": None,
+        "email": session["username"],
+        "username": session["username"],
+        "session_id": session["sessionId"],
+        "admin_id": session["adminId"],
+        "session": session,
+        "is_admin": True,
+    }
+
+
+async def verify_admin_user(request: Request) -> Dict[str, Any]:
+    return await verify_admin_session(request)

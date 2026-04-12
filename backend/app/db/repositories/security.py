@@ -9,12 +9,88 @@ from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from app.db.models import AdminAuditLog, AnalyzeSession, CreditCode, CreditCodeClaim, CreditLedgerEntry, GenerationJob, HistoryEntry, RateLimitBucket, User
+from app.db.models import AdminAccount, AdminAuditLog, AdminSession, AnalyzeSession, CreditCode, CreditCodeClaim, CreditLedgerEntry, GenerationJob, HistoryEntry, RateLimitBucket, User
 
 
 class SecurityRepository:
     def __init__(self, session: Session):
         self.session = session
+
+    def get_admin_account_by_username(self, username: str) -> AdminAccount | None:
+        normalized = username.strip().lower()
+        if not normalized:
+            return None
+        return self.session.execute(
+            select(AdminAccount).where(AdminAccount.username == normalized)
+        ).scalar_one_or_none()
+
+    def get_admin_account_by_username_for_update(self, username: str) -> AdminAccount | None:
+        normalized = username.strip().lower()
+        if not normalized:
+            return None
+        return self.session.execute(
+            select(AdminAccount).where(AdminAccount.username == normalized).with_for_update()
+        ).scalar_one_or_none()
+
+    def create_admin_account(self, username: str, password_hash: str, *, account_id: str | None = None) -> AdminAccount:
+        now = int(time.time())
+        account = AdminAccount(
+            id=account_id or str(uuid.uuid4()),
+            username=username.strip().lower(),
+            password_hash=password_hash,
+            is_active=True,
+            created_at=now,
+            updated_at=now,
+            last_login_at=None,
+        )
+        self.session.add(account)
+        self.session.flush()
+        return account
+
+    def update_admin_account_password(self, account: AdminAccount, password_hash: str) -> AdminAccount:
+        now = int(time.time())
+        account.password_hash = password_hash
+        account.updated_at = now
+        self.session.flush()
+        return account
+
+    def create_admin_session(self, admin_id: str, token_hash: str, expires_at: int) -> AdminSession:
+        now = int(time.time())
+        entry = AdminSession(
+            id=str(uuid.uuid4()),
+            admin_id=admin_id,
+            token_hash=token_hash,
+            created_at=now,
+            updated_at=now,
+            expires_at=expires_at,
+            revoked_at=None,
+        )
+        self.session.add(entry)
+        self.session.flush()
+        return entry
+
+    def get_admin_session(self, token_hash: str) -> AdminSession | None:
+        return self.session.execute(
+            select(AdminSession).where(AdminSession.token_hash == token_hash)
+        ).scalar_one_or_none()
+
+    def get_admin_session_for_update(self, token_hash: str) -> AdminSession | None:
+        return self.session.execute(
+            select(AdminSession).where(AdminSession.token_hash == token_hash).with_for_update()
+        ).scalar_one_or_none()
+
+    def revoke_admin_session(self, entry: AdminSession, revoked_at: int | None = None) -> AdminSession:
+        now = revoked_at or int(time.time())
+        entry.revoked_at = now
+        entry.updated_at = now
+        self.session.flush()
+        return entry
+
+    def touch_admin_session(self, entry: AdminSession, *, refreshed_at: int | None = None) -> AdminSession:
+        now = refreshed_at or int(time.time())
+        entry.updated_at = now
+        self.session.flush()
+        return entry
 
     def ensure_user(self, uid: str, email: str, display_name: str) -> User:
         now = int(time.time())
