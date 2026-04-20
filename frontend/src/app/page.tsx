@@ -2,6 +2,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo, useCallback, type ChangeEvent } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { api } from "../services/api";
 import { GenerateRequest, UISchemaItem, OutputType, ModelCatalogEntry, SystemConfig } from "../types";
@@ -205,6 +206,8 @@ export default function Home() {
   const [step, setStep] = useState<Step>("INPUT");
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState<Toast | null>(null);
+  const [isModePickerOpen, setIsModePickerOpen] = useState(false);
+  const [selectedMode, setSelectedMode] = useState<"quick" | "smart">("quick");
 
   // Input State
   const [userText, setUserText] = useState("");
@@ -216,6 +219,7 @@ export default function Home() {
 
   // Model Catalog (with costs)
   const [modelCatalog, setModelCatalog] = useState<Record<string, Record<string, ModelCatalogEntry>>>({});
+  const [smartAnalysisFee, setSmartAnalysisFee] = useState<number>(0.05);
   const [inputImage, setInputImage] = useState<UploadedImageState | null>(null);
 
   // Current credit balance (synced from CreditsDisplay)
@@ -260,6 +264,16 @@ export default function Home() {
     setHistory([]);
     setHistoryLoading(false);
     return true;
+  }, []);
+
+  const handleSuspensionMessage = useCallback((message: string) => {
+    const nextSuspension = parseSuspensionState(message);
+    if (!nextSuspension) return;
+    setSuspension(nextSuspension);
+    setStep("INPUT");
+    setLoading(false);
+    setHistory([]);
+    setHistoryLoading(false);
   }, []);
 
   useEffect(() => {
@@ -319,6 +333,7 @@ export default function Home() {
   const applyConfig = useCallback((cfg: SystemConfig) => {
     const nextCatalog = cfg.model_catalog || {};
     setModelCatalog(nextCatalog);
+    setSmartAnalysisFee(Number((cfg.smart_analysis_fee ?? 0.05).toFixed(2)));
 
     const nextImageModels = Object.keys(nextCatalog.image || {});
     const nextCaptionModels = Object.keys(nextCatalog.caption || {});
@@ -433,6 +448,17 @@ export default function Home() {
     }
     return parseFloat(cost.toFixed(2));
   }, [selectedOutputs, selectedCaptionModel, selectedImageModel, modelCatalog]);
+
+  const selectedCaptionModelEntry = selectedCaptionModel ? modelCatalog.caption?.[selectedCaptionModel] : undefined;
+  const selectedImageModelEntry = selectedImageModel ? modelCatalog.image?.[selectedImageModel] : undefined;
+  const captionGenerationCost = selectedOutputs.includes("caption")
+    ? Number((selectedCaptionModelEntry?.cost ?? 0).toFixed(2))
+    : 0;
+  const imageGenerationCost = selectedOutputs.includes("image")
+    ? Number((selectedImageModelEntry?.cost ?? 0).toFixed(2))
+    : 0;
+  const smartTotalCost = Number((totalCost + smartAnalysisFee).toFixed(2));
+  const insufficientSmartCredits = currentCredits !== null && smartTotalCost > currentCredits;
 
   const insufficientCredits = currentCredits !== null && totalCost > currentCredits;
   const missingRequiredModel =
@@ -596,6 +622,7 @@ export default function Home() {
       const payload: GenerateRequest = {
         user_text: effectiveText,
         requested_outputs: selectedOutputs,
+        mode: "smart",
         input_image: inputImage ? {
           name: inputImage.name,
           mime_type: inputImage.mimeType,
@@ -657,6 +684,7 @@ export default function Home() {
       const payload: GenerateRequest = {
         user_text: userText,
         requested_outputs: selectedOutputs,
+        mode: "smart",
         input_image: inputImage ? {
           name: inputImage.name,
           mime_type: inputImage.mimeType,
@@ -719,6 +747,7 @@ export default function Home() {
 
   const handleReset = () => {
     clearAnalyzeSession();
+    setIsModePickerOpen(false);
     setStep("INPUT");
     setFinalResults({});
     setUserText("");
@@ -733,10 +762,109 @@ export default function Home() {
     if (!confirmed) return;
     await abandonAnalyzeSession(false);
     setStep("INPUT");
+    setIsModePickerOpen(true);
   };
 
   const handlePresetClick = (prompt: string) => {
     setUserText(prompt);
+  };
+
+  const getEffectiveModels = useCallback(async () => {
+    const { imageModels, captionModels } = await refreshConfig();
+    if (selectedOutputs.includes("image") && selectedImageModel && !imageModels.includes(selectedImageModel)) {
+      throw new Error(`The selected image model '${selectedImageModel}' is no longer available. Please choose another model.`);
+    }
+    if (selectedOutputs.includes("caption") && selectedCaptionModel && !captionModels.includes(selectedCaptionModel)) {
+      throw new Error(`The selected caption model '${selectedCaptionModel}' is no longer available. Please choose another model.`);
+    }
+
+    return {
+      imageModel: selectedImageModel || imageModels[0] || "",
+      captionModel: selectedCaptionModel || captionModels[0] || "",
+    };
+  }, [refreshConfig, selectedCaptionModel, selectedImageModel, selectedOutputs]);
+
+  const saveResultToHistory = useCallback(async (results: Record<string, string>, prompt: string) => {
+    if (!user) return;
+    try {
+      await addHistoryEntry(user.uid, {
+        imageUrl: isRenderableImageUrl(results.image) ? results.image : undefined,
+        caption: results.caption || undefined,
+        prompt,
+        model: selectedImageModel || selectedCaptionModel,
+      });
+      fetchHistory();
+    } catch (e) {
+      console.error("Failed to save history:", e);
+    }
+  }, [fetchHistory, selectedCaptionModel, selectedImageModel, user]);
+
+  const handleOpenModePicker = () => {
+    if (!userText.trim() || selectedOutputs.length === 0 || insufficientCredits || missingRequiredModel || loading) {
+      return;
+    }
+    setSelectedMode("quick");
+    setIsModePickerOpen(true);
+  };
+
+  const handleQuickGenerate = async () => {
+    const effectiveText = userText.trim();
+    if (!effectiveText) return;
+
+    setIsModePickerOpen(false);
+    setLoading(true);
+    try {
+      const { imageModel, captionModel } = await getEffectiveModels();
+
+      const payload: GenerateRequest = {
+        user_text: effectiveText,
+        requested_outputs: selectedOutputs,
+        mode: "quick",
+        input_image: inputImage ? {
+          name: inputImage.name,
+          mime_type: inputImage.mimeType,
+          url: inputImage.url,
+        } : null,
+        user_preferences: {
+          image_model: imageModel,
+          caption_model: captionModel,
+        },
+        status: "generating",
+      };
+
+      const response = await api.generate(payload);
+
+      if (response.status === "success" && response.results) {
+        setFinalResults(response.results);
+        setStep("RESULT");
+        creditsRef.current?.refresh();
+        await saveResultToHistory(response.results, effectiveText);
+      } else if (response.status === "awaiting_review") {
+        throw new Error("Quick mode unexpectedly entered review.");
+      } else {
+        throw new Error(response.meta?.error_message || "Generation failed. Please try again.");
+      }
+    } catch (error) {
+      if (captureSuspension(error)) {
+        return;
+      }
+      showToast(getErrorMessage(error, "Generation failed. Please try again."));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSmartStart = async () => {
+    setIsModePickerOpen(false);
+    await handleAnalyze();
+  };
+
+  const handleModeContinue = async () => {
+    if (selectedMode === "quick") {
+      await handleQuickGenerate();
+      return;
+    }
+    await handleSmartStart();
   };
 
   // --- Render ---
@@ -822,6 +950,14 @@ export default function Home() {
                   </p>
                 </div>
               )}
+              <div className="mt-6">
+                <Link
+                  href="/policy"
+                  className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300 transition hover:bg-white/10 hover:text-white"
+                >
+                  View Usage Policy
+                </Link>
+              </div>
             </div>
           </div>
         </div>
@@ -861,7 +997,12 @@ export default function Home() {
         </div>
 
         {/* Credits */}
-        <CreditsDisplay ref={creditsRef} uid={user.uid} onCreditsChange={handleCreditsChange} />
+        <CreditsDisplay
+          ref={creditsRef}
+          uid={user.uid}
+          onCreditsChange={handleCreditsChange}
+          onSuspensionDetected={handleSuspensionMessage}
+        />
 
         {/* Step Indicator */}
         <StepIndicator currentStep={step} />
@@ -1054,13 +1195,13 @@ export default function Home() {
 
               {/* Submit Button */}
               <button
-                onClick={() => handleAnalyze()}
+                onClick={handleOpenModePicker}
                 disabled={loading || !userText.trim() || selectedOutputs.length === 0 || insufficientCredits || missingRequiredModel}
                 className="btn-primary w-full"
               >
-                <span>
-                  {loading ? <LoadingSpinner text="Analyzing Intent..." /> : insufficientCredits ? `Insufficient Credits (${totalCost.toFixed(2)} needed)` : missingRequiredModel ? "Select a valid model to continue" : `Start Creating → (${totalCost.toFixed(2)} credits)`}
-                </span>
+                  <span>
+                  {loading ? <LoadingSpinner text="Preparing..." /> : insufficientCredits ? `Insufficient Credits (${totalCost.toFixed(2)} needed)` : missingRequiredModel ? "Select a valid model to continue" : "Next →"}
+                  </span>
               </button>
 
               {/* Generation History */}
@@ -1079,7 +1220,7 @@ export default function Home() {
                 <div>
                   <h2 className="text-sm font-bold text-blue-300">Optimization Check</h2>
                   <p className="text-xs text-blue-400/70 mt-0.5">
-                    The AI suggests these settings for your content. Adjust if needed.
+                    Smart mode prepared these settings for your content. Adjust anything before generating.
                   </p>
                 </div>
               </div>
@@ -1159,14 +1300,14 @@ export default function Home() {
               {/* Action buttons */}
               <div className="flex flex-col-reverse gap-3 pt-4 sm:flex-row">
                 <button onClick={handleBackFromReview} className="btn-secondary w-full sm:w-auto">
-                  ← Back
+                  ← Back To Modes
                 </button>
                 <button
                   onClick={handleGenerate}
                   disabled={loading}
                   className="btn-generate w-full flex-1"
                 >
-                  {loading ? <LoadingSpinner text="Generating Assets..." /> : "Confirm & Generate ✨"}
+                  {loading ? <LoadingSpinner text="Generating Assets..." /> : "Generate With Smart Mode ✨"}
                 </button>
               </div>
             </div>
@@ -1211,6 +1352,133 @@ export default function Home() {
       {toast && (
         <div className={`toast ${toast.type === "error" ? "toast-error" : "toast-success"}`}>
           {toast.message}
+        </div>
+      )}
+
+      {isModePickerOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#030712]/80 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-xl rounded-3xl border border-white/10 bg-[#07111f] p-5 shadow-2xl sm:p-7">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-2xl font-bold text-white">
+                  How do you want to create this?
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsModePickerOpen(false)}
+                className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:bg-white/10 hover:text-white"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => setSelectedMode("quick")}
+                disabled={loading}
+                className={`rounded-3xl border p-5 text-left transition disabled:opacity-50 ${
+                  selectedMode === "quick"
+                    ? "border-emerald-300/50 bg-emerald-400/[0.10] shadow-[0_0_0_1px_rgba(52,211,153,0.25)]"
+                    : "border-emerald-400/25 bg-emerald-400/[0.05] hover:border-emerald-300/40 hover:bg-emerald-400/[0.08]"
+                }`}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-lg font-bold text-white">Quick</span>
+                  <span className="rounded-full border border-emerald-300/20 bg-emerald-300/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-200">
+                    Recommended
+                  </span>
+                </div>
+                <p className="mt-3 text-sm leading-6 text-slate-300">
+                  Send your idea directly with Vibecraft prompt protection and get the result immediately.
+                </p>
+                <p className="mt-4 text-xs font-medium uppercase tracking-[0.18em] text-emerald-200/80">
+                  Fastest path · base generation cost
+                </p>
+                <p className="mt-3 text-sm font-semibold text-white">
+                  {totalCost.toFixed(2)} credits
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSelectedMode("smart")}
+                disabled={loading}
+                className={`rounded-3xl border p-5 text-left transition disabled:opacity-50 ${
+                  selectedMode === "smart"
+                    ? "border-cyan-300/50 bg-cyan-400/[0.10] shadow-[0_0_0_1px_rgba(103,232,249,0.25)]"
+                    : "border-cyan-400/25 bg-cyan-400/[0.05] hover:border-cyan-300/40 hover:bg-cyan-400/[0.08]"
+                }`}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-lg font-bold text-white">Smart</span>
+                  <span className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-200">
+                    Review
+                  </span>
+                </div>
+                <p className="mt-3 text-sm leading-6 text-slate-300">
+                  Analyze the intent, review suggested settings, then generate with more control.
+                </p>
+                <p className="mt-4 text-xs font-medium uppercase tracking-[0.18em] text-cyan-200/80">
+                  Better control · generation cost + optimization fee
+                </p>
+                <p className="mt-3 text-sm font-semibold text-white">
+                  {smartTotalCost.toFixed(2)} credits
+                </p>
+              </button>
+            </div>
+
+            <div className="mt-5 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-xs text-slate-400">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Estimated Cost
+              </p>
+              <div className="mt-3 space-y-2 text-sm">
+                {selectedOutputs.includes("caption") && (
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-slate-300">
+                      Text generation using {selectedCaptionModelEntry?.display_name || selectedCaptionModel || "selected model"}
+                    </span>
+                    <span className="font-semibold text-white">{captionGenerationCost.toFixed(2)} credits</span>
+                  </div>
+                )}
+                {selectedOutputs.includes("image") && (
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-slate-300">
+                      Image generation using {selectedImageModelEntry?.display_name || selectedImageModel || "selected model"}
+                    </span>
+                    <span className="font-semibold text-white">{imageGenerationCost.toFixed(2)} credits</span>
+                  </div>
+                )}
+                {selectedMode === "smart" && (
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-slate-300">Analyze and optimize</span>
+                    <span className="font-semibold text-white">{smartAnalysisFee.toFixed(2)} credits</span>
+                  </div>
+                )}
+              </div>
+              <div className="mt-3 flex items-center justify-between gap-3 border-t border-white/10 pt-3">
+                <span className="text-sm font-semibold text-slate-200">Total</span>
+                <span className="text-sm font-bold text-white">
+                  {selectedMode === "quick" ? totalCost.toFixed(2) : smartTotalCost.toFixed(2)} credits
+                </span>
+              </div>
+              {selectedMode === "smart" && insufficientSmartCredits && (
+                <p className="mt-3 leading-5 text-red-300">
+                  You need {smartTotalCost.toFixed(2)} credits for Smart mode.
+                </p>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={handleModeContinue}
+              disabled={loading || (selectedMode === "smart" && insufficientSmartCredits)}
+              className="btn-primary mt-5 w-full"
+            >
+              {loading ? <LoadingSpinner text="Preparing..." /> : selectedMode === "quick" ? "Continue With Quick →" : insufficientSmartCredits ? `Insufficient Credits (${smartTotalCost.toFixed(2)} needed)` : "Continue With Smart →"}
+            </button>
+          </div>
         </div>
       )}
     </main>

@@ -9,7 +9,7 @@ from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from app.db.models import AdminAccount, AdminAuditLog, AdminSession, AnalyzeSession, CreditCode, CreditCodeClaim, CreditLedgerEntry, GenerationJob, HistoryEntry, RateLimitBucket, User
+from app.db.models import AdminAccount, AdminAuditLog, AdminSession, AnalyzeSession, ChatConversation, ChatMessage, CreditCode, CreditCodeClaim, CreditLedgerEntry, GenerationJob, HistoryEntry, RateLimitBucket, User
 
 
 class SecurityRepository:
@@ -32,6 +32,13 @@ class SecurityRepository:
             select(AdminAccount).where(AdminAccount.username == normalized).with_for_update()
         ).scalar_one_or_none()
 
+    def list_admin_accounts(self) -> list[AdminAccount]:
+        return list(
+            self.session.execute(
+                select(AdminAccount).order_by(AdminAccount.username.asc())
+            ).scalars()
+        )
+
     def create_admin_account(self, username: str, password_hash: str, *, account_id: str | None = None) -> AdminAccount:
         now = int(time.time())
         account = AdminAccount(
@@ -50,6 +57,13 @@ class SecurityRepository:
     def update_admin_account_password(self, account: AdminAccount, password_hash: str) -> AdminAccount:
         now = int(time.time())
         account.password_hash = password_hash
+        account.updated_at = now
+        self.session.flush()
+        return account
+
+    def set_admin_account_active(self, account: AdminAccount, is_active: bool) -> AdminAccount:
+        now = int(time.time())
+        account.is_active = is_active
         account.updated_at = now
         self.session.flush()
         return account
@@ -85,6 +99,24 @@ class SecurityRepository:
         entry.updated_at = now
         self.session.flush()
         return entry
+
+    def revoke_admin_sessions_for_admin(self, admin_id: str, *, revoked_at: int | None = None) -> int:
+        now = revoked_at or int(time.time())
+        entries = list(
+            self.session.execute(
+                select(AdminSession)
+                .where(
+                    AdminSession.admin_id == admin_id,
+                    AdminSession.revoked_at.is_(None),
+                )
+                .with_for_update()
+            ).scalars()
+        )
+        for entry in entries:
+            entry.revoked_at = now
+            entry.updated_at = now
+        self.session.flush()
+        return len(entries)
 
     def touch_admin_session(self, entry: AdminSession, *, refreshed_at: int | None = None) -> AdminSession:
         now = refreshed_at or int(time.time())
@@ -234,6 +266,16 @@ class SecurityRepository:
             )
         ).scalar_one_or_none()
 
+    def count_credit_claims_since(self, uid: str, *, since_ts: int) -> int:
+        value = self.session.execute(
+            select(func.count(CreditCodeClaim.code_hash))
+            .where(
+                CreditCodeClaim.uid == uid,
+                CreditCodeClaim.claimed_at >= since_ts,
+            )
+        ).scalar_one()
+        return int(value or 0)
+
     def add_credit_claim(self, code_hash: str, uid: str, claimed_at: int | None = None) -> CreditCodeClaim:
         claim = CreditCodeClaim(
             code_hash=code_hash,
@@ -271,6 +313,32 @@ class SecurityRepository:
         self.session.flush()
         return entry
 
+    def sum_user_usage_minor(self, uid: str, *, since_ts: int, reasons: list[str]) -> int:
+        if not reasons:
+            return 0
+        value = self.session.execute(
+            select(func.coalesce(func.sum(-CreditLedgerEntry.delta_minor), 0))
+            .where(
+                CreditLedgerEntry.uid == uid,
+                CreditLedgerEntry.created_at >= since_ts,
+                CreditLedgerEntry.reason.in_(reasons),
+                CreditLedgerEntry.delta_minor < 0,
+            )
+        ).scalar_one()
+        return int(value or 0)
+
+    def sum_user_captured_generation_minor(self, uid: str, *, since_ts: int) -> int:
+        value = self.session.execute(
+            select(func.coalesce(func.sum(GenerationJob.captured_minor), 0))
+            .where(
+                GenerationJob.uid == uid,
+                GenerationJob.completed_at.is_not(None),
+                GenerationJob.completed_at >= since_ts,
+                GenerationJob.status == "completed",
+            )
+        ).scalar_one()
+        return int(value or 0)
+
     def create_analyze_session(self, uid: str, fee_minor: int, prompt: str) -> AnalyzeSession:
         now = int(time.time())
         analyze_session = AnalyzeSession(
@@ -290,6 +358,19 @@ class SecurityRepository:
         return self.session.execute(
             select(AnalyzeSession).where(AnalyzeSession.id == session_id).with_for_update()
         ).scalar_one_or_none()
+
+    def list_pending_analyze_sessions_for_update(self, uid: str) -> list[AnalyzeSession]:
+        return list(
+            self.session.execute(
+                select(AnalyzeSession)
+                .where(
+                    AnalyzeSession.uid == uid,
+                    AnalyzeSession.status == "pending",
+                )
+                .order_by(AnalyzeSession.created_at.asc())
+                .with_for_update()
+            ).scalars()
+        )
 
     def add_history_entry(self, uid: str, image_url: str | None, caption: str | None, prompt: str, model: str) -> HistoryEntry:
         entry = HistoryEntry(
@@ -311,6 +392,102 @@ class SecurityRepository:
                 select(HistoryEntry)
                 .where(HistoryEntry.uid == uid)
                 .order_by(HistoryEntry.created_at.desc())
+                .limit(max_items)
+            ).scalars()
+        )
+
+    def create_chat_conversation(self, uid: str, model: str, system_parts: list[dict[str, Any]]) -> ChatConversation:
+        now = int(time.time())
+        entry = ChatConversation(
+            id=str(uuid.uuid4()),
+            uid=uid,
+            model=model,
+            system_json=system_parts,
+            created_at=now,
+            updated_at=now,
+            last_message_at=None,
+            prompt_tokens_total=0,
+            completion_tokens_total=0,
+        )
+        self.session.add(entry)
+        self.session.flush()
+        return entry
+
+    def list_chat_conversations(self, uid: str, limit: int) -> list[ChatConversation]:
+        return list(
+            self.session.execute(
+                select(ChatConversation)
+                .where(ChatConversation.uid == uid)
+                .order_by(ChatConversation.updated_at.desc(), ChatConversation.created_at.desc())
+                .limit(limit)
+            ).scalars()
+        )
+
+    def get_chat_conversation(self, uid: str, conversation_id: str) -> ChatConversation | None:
+        return self.session.execute(
+            select(ChatConversation).where(
+                ChatConversation.id == conversation_id,
+                ChatConversation.uid == uid,
+            )
+        ).scalar_one_or_none()
+
+    def get_chat_conversation_for_update(self, uid: str, conversation_id: str) -> ChatConversation | None:
+        return self.session.execute(
+            select(ChatConversation)
+            .where(
+                ChatConversation.id == conversation_id,
+                ChatConversation.uid == uid,
+            )
+            .with_for_update()
+        ).scalar_one_or_none()
+
+    def touch_chat_conversation(
+        self,
+        conversation: ChatConversation,
+        *,
+        touched_at: int | None = None,
+        prompt_tokens_delta: int = 0,
+        completion_tokens_delta: int = 0,
+    ) -> ChatConversation:
+        now = touched_at or int(time.time())
+        conversation.updated_at = now
+        conversation.last_message_at = now
+        conversation.prompt_tokens_total = max(int(conversation.prompt_tokens_total or 0) + int(prompt_tokens_delta or 0), 0)
+        conversation.completion_tokens_total = max(int(conversation.completion_tokens_total or 0) + int(completion_tokens_delta or 0), 0)
+        self.session.flush()
+        return conversation
+
+    def add_chat_message(
+        self,
+        uid: str,
+        conversation_id: str,
+        role: str,
+        parts: list[dict[str, Any]],
+        *,
+        created_at: int | None = None,
+    ) -> ChatMessage:
+        now = created_at or int(time.time())
+        entry = ChatMessage(
+            id=str(uuid.uuid4()),
+            conversation_id=conversation_id,
+            uid=uid,
+            role=role,
+            parts_json=parts,
+            created_at=now,
+        )
+        self.session.add(entry)
+        self.session.flush()
+        return entry
+
+    def get_chat_messages(self, uid: str, conversation_id: str, max_items: int) -> list[ChatMessage]:
+        return list(
+            self.session.execute(
+                select(ChatMessage)
+                .where(
+                    ChatMessage.uid == uid,
+                    ChatMessage.conversation_id == conversation_id,
+                )
+                .order_by(ChatMessage.created_at.asc(), ChatMessage.id.asc())
                 .limit(max_items)
             ).scalars()
         )
@@ -421,6 +598,17 @@ class SecurityRepository:
             self.session.delete(bucket)
             self.session.flush()
 
+    def delete_rate_limit_buckets_by_prefix(self, prefix: str) -> int:
+        buckets = list(
+            self.session.execute(
+                select(RateLimitBucket).where(RateLimitBucket.key_plaintext.like(f"{prefix}%"))
+            ).scalars()
+        )
+        for bucket in buckets:
+            self.session.delete(bucket)
+        self.session.flush()
+        return len(buckets)
+
     def add_admin_audit_log(
         self,
         *,
@@ -456,6 +644,7 @@ class SecurityRepository:
         action: str | None = None,
         target_type: str | None = None,
         target_id: str | None = None,
+        exclude_admin_email: str | None = None,
     ) -> list[AdminAuditLog]:
         stmt = select(AdminAuditLog)
         if admin_uid:
@@ -466,5 +655,7 @@ class SecurityRepository:
             stmt = stmt.where(AdminAuditLog.target_type == target_type)
         if target_id:
             stmt = stmt.where(AdminAuditLog.target_id == target_id)
+        if exclude_admin_email:
+            stmt = stmt.where(AdminAuditLog.admin_email != exclude_admin_email)
         stmt = stmt.order_by(AdminAuditLog.created_at.desc()).limit(limit)
         return list(self.session.execute(stmt).scalars())

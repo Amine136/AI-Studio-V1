@@ -3,16 +3,25 @@ import axios from 'axios';
 import {
   AdminSession,
   AdminAuditLogListResponse,
+  AdminAuthFailureSummaryResponse,
   AdminCreditCodeBatchListResponse,
   AdminCreditCodeListResponse,
   AdminGenerationJobListResponse,
   AdminUserListResponse,
   GenerateRequest,
   GenerationResult,
+  PlainChatConversationCreateRequest,
+  PlainChatConversationItem,
+  PlainChatConversationListResponse,
+  PlainChatConversationMessageCreateRequest,
+  PlainChatConversationMessagesResponse,
+  PlainChatConversationTurnResponse,
+  PlainChatModelListResponse,
   SystemConfig,
   UploadedImageResult,
 } from '../types';
 import { auth } from '../lib/firebase';
+import { getAdminCsrfToken, isAdminHost } from '../lib/admin';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 
@@ -33,6 +42,14 @@ client.interceptors.request.use(async (config) => {
     config.headers = config.headers ?? {};
     config.headers.Authorization = `Bearer ${token}`;
   }
+  const method = (config.method || 'get').toLowerCase();
+  if (isAdminHost() && !['get', 'head', 'options'].includes(method)) {
+    const csrfToken = getAdminCsrfToken();
+    if (csrfToken) {
+      config.headers = config.headers ?? {};
+      config.headers['X-CSRF-Token'] = csrfToken;
+    }
+  }
   return config;
 });
 
@@ -50,7 +67,7 @@ function extractErrorMessage(error: unknown): string | undefined {
 function shouldLogApiError(error: unknown): boolean {
   if (!axios.isAxiosError(error)) return true;
   const status = error.response?.status;
-  return status !== 401 && status !== 403;
+  return status !== 401 && status !== 403 && status !== 429;
 }
 
 export const api = {
@@ -90,6 +107,39 @@ export const api = {
    */
   getConfig: async (): Promise<SystemConfig> => {
     const res = await client.get('/config');
+    return res.data;
+  },
+
+  getPlainChatModels: async (): Promise<PlainChatModelListResponse> => {
+    const res = await client.get('/chat/models');
+    return res.data;
+  },
+
+  getPlainChatConversations: async (limit = 20): Promise<PlainChatConversationListResponse> => {
+    const res = await client.get('/chat/conversations', { params: { limit } });
+    return res.data;
+  },
+
+  createPlainChatConversation: async (
+    payload: PlainChatConversationCreateRequest,
+  ): Promise<PlainChatConversationItem> => {
+    const res = await client.post('/chat/conversations', payload);
+    return res.data;
+  },
+
+  getPlainChatConversationMessages: async (
+    conversationId: string,
+    limit = 100,
+  ): Promise<PlainChatConversationMessagesResponse> => {
+    const res = await client.get(`/chat/conversations/${conversationId}/messages`, { params: { limit } });
+    return res.data;
+  },
+
+  sendPlainChatConversationMessage: async (
+    conversationId: string,
+    payload: PlainChatConversationMessageCreateRequest,
+  ): Promise<PlainChatConversationTurnResponse> => {
+    const res = await client.post(`/chat/conversations/${conversationId}/messages`, payload);
     return res.data;
   },
 
@@ -214,6 +264,11 @@ export const api = {
     return res.data;
   },
 
+  getAdminAuthFailureSummaries: async (): Promise<AdminAuthFailureSummaryResponse> => {
+    const res = await client.get('/admin/auth-failures');
+    return res.data;
+  },
+
   createAdminCode: async (credits: number, maxClaims: number) => {
     const res = await client.post('/admin/codes', { credits, maxClaims });
     return res.data;
@@ -317,9 +372,8 @@ export const api = {
   },
 
   /**
-   * The Main Engine. 
-   * Calls /generate. 
-   * Handles both "Analyze" (Step 1) and "Execute" (Step 2).
+   * Smart content-generation engine.
+   * Calls /generate for the create workflow only.
    */
   generate: async (payload: GenerateRequest): Promise<GenerationResult> => {
     try {

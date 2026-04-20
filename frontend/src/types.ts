@@ -1,6 +1,8 @@
 // frontend/src/types.ts
 
 export type OutputType = "caption" | "image";
+export type GenerationMode = "quick" | "smart";
+export type GenerationStatus = "processing" | "generating";
 
 export interface InputImagePayload {
   name?: string;
@@ -15,14 +17,94 @@ export interface UploadedImageResult {
   size: number;
 }
 
+export type PlainChatRole = "user" | "assistant";
+export type PlainChatPartType = "text" | "image_url";
+
+export interface PlainChatPart {
+  type: PlainChatPartType;
+  text?: string;
+  url?: string;
+  mimeType?: string;
+}
+
+export interface PlainChatMessage {
+  id: string;
+  conversationId: string;
+  uid: string;
+  role: PlainChatRole;
+  parts: PlainChatPart[];
+  createdAt: number;
+}
+
+export interface PlainChatModelItem {
+  id: string;
+  displayName: string;
+  description?: string;
+  provider: string;
+  cost: number;
+  supportsImageInput: boolean;
+}
+
+export interface PlainChatModelListResponse {
+  models: PlainChatModelItem[];
+}
+
+export interface PlainChatConversationItem {
+  id: string;
+  model: string;
+  system: PlainChatPart[];
+  createdAt: number;
+  updatedAt: number;
+  lastMessageAt?: number | null;
+  promptTokensTotal?: number;
+  completionTokensTotal?: number;
+  totalTokens?: number;
+}
+
+export interface PlainChatConversationListResponse {
+  conversations: PlainChatConversationItem[];
+}
+
+export interface PlainChatConversationCreateRequest {
+  model: string;
+  system?: PlainChatPart[];
+}
+
+export interface PlainChatConversationMessagesResponse {
+  conversation: PlainChatConversationItem;
+  messages: PlainChatMessage[];
+}
+
+export interface PlainChatOptions {
+  temperature?: number;
+  maxTokens?: number;
+  topP?: number;
+  promptCacheKey?: string;
+}
+
+export interface PlainChatConversationMessageCreateRequest {
+  parts: PlainChatPart[];
+  options?: PlainChatOptions;
+}
+
+export interface PlainChatConversationTurnResponse {
+  status: "success" | "error";
+  conversation?: PlainChatConversationItem;
+  userMessage?: PlainChatMessage;
+  assistantMessage?: PlainChatMessage;
+  usage?: Record<string, any>;
+  meta?: Record<string, any>;
+}
+
 // Step 1: What we send to start
 export interface GenerateRequest {
   user_text: string;
   requested_outputs: OutputType[];
+  mode?: GenerationMode;
   input_image?: InputImagePayload | null;
   user_preferences?: Record<string, string>; // e.g. { "image_model": "dalle-3" }
   user_corrections?: Record<string, any>;    // e.g. { "lighting": "Natural" }
-  status?: "processing" | "generating";
+  status?: GenerationStatus;
 }
 
 // Step 2: What the UI Dropdowns look like
@@ -39,8 +121,11 @@ export interface GenerationMeta {
   total_cost?: number;
   analyze_session_id?: string;
   analyze_abandon_fee?: number;
+  smart_analysis_fee?: number;
   charged_cost?: number;
   current_balance?: number;
+  mode?: GenerationMode;
+  error_message?: string;
 }
 
 export interface GenerationResult {
@@ -62,9 +147,23 @@ export interface ModelCatalogEntry {
   type?: string;
 }
 
+export interface CatalogWarningItem {
+  type: string;
+  task: string;
+  model: string;
+  display_name: string;
+  configured_cost: number;
+  minimum_cost: number;
+  message: string;
+}
+
 export interface SystemConfig {
   field_options: Record<string, any>;
   model_catalog: Record<OutputType, Record<string, ModelCatalogEntry>>;
+  smart_analysis_fee: number;
+  minimum_text_generation_cost: number;
+  minimum_image_generation_cost: number;
+  catalog_warnings: CatalogWarningItem[];
 }
 
 export interface AdminSessionAccount {
@@ -198,4 +297,19 @@ export interface AdminAuditLogListResponse {
   action: string;
   targetType: string;
   targetId: string;
+}
+
+export interface AdminAuthFailureSummaryItem {
+  username: string;
+  isActive: boolean;
+  wrongPasswordFailures: number;
+  windowSeconds: number;
+  lockoutThreshold: number;
+  deactivationThreshold: number;
+  isLockedOut: boolean;
+}
+
+export interface AdminAuthFailureSummaryResponse {
+  summaries: AdminAuthFailureSummaryItem[];
+  total: number;
 }

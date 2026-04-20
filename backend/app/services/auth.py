@@ -100,5 +100,12 @@ async def verify_admin_session(request: Request) -> Dict[str, Any]:
     }
 
 
+async def verify_admin_csrf(request: Request) -> None:
+    expected = request.cookies.get(settings.admin_csrf_cookie_name, "").strip()
+    provided = request.headers.get("X-CSRF-Token", "").strip()
+    if not expected or not provided or expected != provided:
+        raise HTTPException(status_code=403, detail="Invalid admin CSRF token")
+
+
 async def verify_admin_user(request: Request) -> Dict[str, Any]:
     return await verify_admin_session(request)

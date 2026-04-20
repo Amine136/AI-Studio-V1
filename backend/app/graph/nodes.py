@@ -247,6 +247,7 @@ def execute_generation(state: StudioState) -> StudioState:
     logger.info("🚀 [Step 6/6] EXECUTE: Running AI generation...")
     
     generated = {}
+    failures: list[str] = []
     total_cost = 0
     total_requests = len(state.get("model_requests", []))
     input_image = state.get("input_image")
@@ -299,13 +300,16 @@ def execute_generation(state: StudioState) -> StudioState:
                 "status": "complete",
             }
         except Exception as e:
-            error_msg = f"Generation Failed: {str(e)}"
-            logger.error(f"   │  └─ ❌ {error_msg}")
+            error_msg = str(e)
+            failures.append(f"multimodal bundle failed: {error_msg}")
+            logger.error(f"   │  └─ ❌ Generation failed: {error_msg}")
             traceback.print_exc()
             return {
-                "generated_assets": {"image": error_msg, "caption": error_msg},
+                "generated_assets": {},
                 "total_cost": 0,
-                "status": "complete",
+                "status": "error",
+                "error_message": "We couldn't deliver the generated result. No credits were charged.",
+                "failure_reason": "; ".join(failures),
             }
     
     for idx, req in enumerate(state.get("model_requests", []), 1):
@@ -318,8 +322,9 @@ def execute_generation(state: StudioState) -> StudioState:
         model_config = task_config.get(model_name)
         
         if not model_config:
-            logger.warning(f"   ├─ ⚠️ [{idx}/{total_requests}] {task_type}: Model config missing for {model_name}")
-            generated[task_type] = f"Error: Model {model_name} not found."
+            error_msg = f"Model config missing for {task_type}:{model_name}"
+            logger.warning(f"   ├─ ⚠️ [{idx}/{total_requests}] {error_msg}")
+            failures.append(error_msg)
             continue
             
         provider = model_config.get("provider", "mock")
@@ -348,10 +353,24 @@ def execute_generation(state: StudioState) -> StudioState:
             logger.info(f"   │  └─ ✅ Success")
             
         except Exception as e:
-            error_msg = f"Generation Failed: {str(e)}"
-            logger.error(f"   │  └─ ❌ {error_msg}")
+            error_msg = str(e)
+            failures.append(f"{task_type} generation failed: {error_msg}")
+            logger.error(f"   │  └─ ❌ Generation failed: {error_msg}")
             traceback.print_exc()
-            generated[task_type] = error_msg
+            continue
+
+    missing_outputs = [task for task in requested_outputs if not generated.get(task)]
+    if failures or missing_outputs:
+        if missing_outputs:
+            failures.append(f"missing outputs: {', '.join(missing_outputs)}")
+        logger.warning("   └─ ⚠️ Delivery failed before completion")
+        return {
+            "generated_assets": generated,
+            "total_cost": 0,
+            "status": "error",
+            "error_message": "We couldn't deliver the generated result. No credits were charged.",
+            "failure_reason": "; ".join(failures),
+        }
 
     logger.info(f"   └─ 🎉 Generation complete: {len(generated)} assets | Total cost: {total_cost} credits")
     
@@ -379,7 +398,19 @@ def _build_shared_multimodal_prompt(content_spec: ContentSpec) -> str:
 def format_delivery(state: StudioState) -> StudioState:
     logger.info("📦 DELIVER: Formatting final response...")
     logger.info("   └─ ✅ Done!")
-    
+
+    if state.get("status") == "error":
+        return {
+            "final_response": {
+                "status": "error",
+                "results": None,
+                "meta": {
+                    "error_message": state.get("error_message") or "We couldn't deliver the generated result. No credits were charged.",
+                    "failure_reason": state.get("failure_reason"),
+                },
+            }
+        }
+
     return {
         "final_response": {
             "status": "success",

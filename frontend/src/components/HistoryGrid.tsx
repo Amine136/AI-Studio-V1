@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { HistoryEntry } from "../lib/history";
 
+const DEFAULT_VISIBLE_HISTORY_COUNT = 10;
+
 function isRenderableImageUrl(value?: string): boolean {
     if (!value) return false;
     return value.startsWith("http://") || value.startsWith("https://") || value.startsWith("/");
@@ -15,6 +17,11 @@ interface HistoryGridProps {
 
 export default function HistoryGrid({ entries, loading }: HistoryGridProps) {
     const [selectedEntry, setSelectedEntry] = useState<HistoryEntry | null>(null);
+    const [showAll, setShowAll] = useState(false);
+
+    useEffect(() => {
+        setShowAll(false);
+    }, [entries]);
 
     if (loading) {
         return (
@@ -35,6 +42,9 @@ export default function HistoryGrid({ entries, loading }: HistoryGridProps) {
 
     if (entries.length === 0) return null;
 
+    const visibleEntries = showAll ? entries : entries.slice(0, DEFAULT_VISIBLE_HISTORY_COUNT);
+    const remainingCount = Math.max(entries.length - DEFAULT_VISIBLE_HISTORY_COUNT, 0);
+
     return (
         <div className="mt-8">
             {/* Header */}
@@ -47,7 +57,7 @@ export default function HistoryGrid({ entries, loading }: HistoryGridProps) {
 
             {/* Image Grid */}
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                {entries.map((entry) => (
+                {visibleEntries.map((entry) => (
                     <button
                         key={entry.id}
                         onClick={() => setSelectedEntry(entry)}
@@ -70,6 +80,16 @@ export default function HistoryGrid({ entries, loading }: HistoryGridProps) {
                     </button>
                 ))}
             </div>
+
+            {!showAll && remainingCount > 0 && (
+                <button
+                    type="button"
+                    onClick={() => setShowAll(true)}
+                    className="btn-secondary mt-4 w-full"
+                >
+                    Show {remainingCount} More
+                </button>
+            )}
 
             {/* Detail Modal */}
             {selectedEntry && (

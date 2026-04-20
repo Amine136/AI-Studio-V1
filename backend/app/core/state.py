@@ -72,3 +72,9 @@ class StudioState(TypedDict, total=False):
 
     # The final formatted response object
     final_response: Dict[str, Any]
+
+    # Friendly error surfaced back to the API layer/front-end
+    error_message: str
+
+    # Technical failure detail kept for debugging/job tracking
+    failure_reason: str

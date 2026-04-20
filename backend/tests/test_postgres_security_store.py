@@ -1,5 +1,13 @@
 from __future__ import annotations
 
+import time
+
+import pytest
+from sqlalchemy import select
+
+from app.db.models import CreditCodeClaim
+from app.db.repositories import SecurityRepository
+from app.db.session import session_scope
 from app.services import postgres_security_store as store
 
 
@@ -18,7 +26,164 @@ def test_credit_code_redeem_is_applied_once(test_db):
     assert profile["credits"] == 3.0
 
 
-def test_generation_reserve_then_capture_moves_credits_without_refund(test_db):
+def test_credit_code_redeem_daily_limit_is_enforced(test_db, monkeypatch):
+    monkeypatch.setattr(store.settings, "max_redeemed_codes_per_day", 4)
+    monkeypatch.setattr(store.settings, "max_redeemed_codes_per_week", 10)
+
+    store.ensure_user("user-redeem-day", "redeem-day@example.com", "Redeem Day")
+    for _ in range(4):
+        created = store.create_credit_code(credits=1, max_claims=1, created_by="user-redeem-day")
+        result = store.redeem_credit_code(created["code"], "user-redeem-day")
+        assert result["success"] is True
+
+    blocked = store.create_credit_code(credits=1, max_claims=1, created_by="user-redeem-day")
+    result = store.redeem_credit_code(blocked["code"], "user-redeem-day")
+
+    assert result["success"] is False
+    assert "daily credit-code redemption limit" in result["message"].lower()
+
+
+def test_credit_code_redeem_weekly_limit_is_enforced(test_db, monkeypatch):
+    monkeypatch.setattr(store.settings, "max_redeemed_codes_per_day", 20)
+    monkeypatch.setattr(store.settings, "max_redeemed_codes_per_week", 10)
+
+    store.ensure_user("user-redeem-week", "redeem-week@example.com", "Redeem Week")
+    claim_times: list[int] = []
+    for _ in range(10):
+        created = store.create_credit_code(credits=1, max_claims=1, created_by="user-redeem-week")
+        result = store.redeem_credit_code(created["code"], "user-redeem-week")
+        assert result["success"] is True
+        claim_times.append(int(time.time()) - (2 * 24 * 60 * 60))
+
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        claims = repo.session.execute(select(CreditCodeClaim).where(CreditCodeClaim.uid == "user-redeem-week")).scalars().all()
+        assert len(claims) == 10
+        for claim, claimed_at in zip(claims, claim_times):
+            claim.claimed_at = claimed_at
+        session.flush()
+
+    blocked = store.create_credit_code(credits=1, max_claims=1, created_by="user-redeem-week")
+    result = store.redeem_credit_code(blocked["code"], "user-redeem-week")
+
+    assert result["success"] is False
+    assert "weekly credit-code redemption limit" in result["message"].lower()
+
+
+def test_failed_redeem_five_times_triggers_redeem_cooldown_only(test_db, monkeypatch):
+    monkeypatch.setattr(store.settings, "redeem_failed_attempt_limit", 5)
+    monkeypatch.setattr(store.settings, "redeem_failed_attempt_window_seconds", 5 * 60)
+    monkeypatch.setattr(store.settings, "redeem_failed_cooldown_seconds", 5 * 60)
+    monkeypatch.setattr(store.settings, "redeem_consecutive_suspend_threshold", 10)
+    monkeypatch.setattr(store.settings, "redeem_consecutive_admin_threshold", 20)
+    monkeypatch.setattr(store.settings, "redeem_consecutive_window_seconds", 24 * 60 * 60)
+    monkeypatch.setattr(store.settings, "redeem_temp_suspension_seconds", 60 * 60)
+
+    store.ensure_user("user-redeem-cooldown", "cooldown@example.com", "Cooldown User")
+    for _ in range(4):
+        result = store.redeem_credit_code("INVALID-CODE", "user-redeem-cooldown")
+        assert result["success"] is False
+        assert "invalid code" in result["message"].lower()
+
+    fifth = store.redeem_credit_code("INVALID-CODE", "user-redeem-cooldown")
+    blocked = store.redeem_credit_code("INVALID-CODE", "user-redeem-cooldown")
+
+    assert "reached 5 failed credit code attempts" in fifth["message"].lower()
+    assert "review the usage policy" in blocked["message"].lower()
+    assert store.get_active_suspension("user-redeem-cooldown") is None
+
+
+def test_successful_redeem_resets_consecutive_failed_redeem_streak(test_db, monkeypatch):
+    monkeypatch.setattr(store.settings, "redeem_failed_attempt_limit", 50)
+    monkeypatch.setattr(store.settings, "redeem_consecutive_suspend_threshold", 5)
+    monkeypatch.setattr(store.settings, "redeem_consecutive_admin_threshold", 20)
+    monkeypatch.setattr(store.settings, "redeem_consecutive_window_seconds", 24 * 60 * 60)
+    monkeypatch.setattr(store.settings, "redeem_temp_suspension_seconds", 60 * 60)
+
+    store.ensure_user("user-redeem-reset", "reset@example.com", "Reset User")
+    for _ in range(3):
+        result = store.redeem_credit_code("INVALID-CODE", "user-redeem-reset")
+        assert result["success"] is False
+
+    created = store.create_credit_code(credits=1, max_claims=1, created_by="user-redeem-reset")
+    success = store.redeem_credit_code(created["code"], "user-redeem-reset")
+    assert success["success"] is True
+
+    for _ in range(4):
+        result = store.redeem_credit_code("INVALID-CODE-2", "user-redeem-reset")
+        assert result["success"] is False
+
+    assert store.get_active_suspension("user-redeem-reset") is None
+
+
+def test_ten_consecutive_failed_redeems_trigger_one_hour_suspension(test_db, monkeypatch):
+    monkeypatch.setattr(store.settings, "redeem_failed_attempt_limit", 5)
+    monkeypatch.setattr(store.settings, "redeem_failed_attempt_window_seconds", 5 * 60)
+    monkeypatch.setattr(store.settings, "redeem_failed_cooldown_seconds", 5 * 60)
+    monkeypatch.setattr(store.settings, "redeem_consecutive_suspend_threshold", 10)
+    monkeypatch.setattr(store.settings, "redeem_consecutive_admin_threshold", 20)
+    monkeypatch.setattr(store.settings, "redeem_consecutive_window_seconds", 24 * 60 * 60)
+    monkeypatch.setattr(store.settings, "redeem_temp_suspension_seconds", 60 * 60)
+
+    store.ensure_user("user-redeem-10", "redeem10@example.com", "Redeem Ten")
+    for attempt in range(10):
+        result = store.redeem_credit_code(f"INVALID-{attempt}", "user-redeem-10")
+        if attempt in {4}:
+            with session_scope() as session:
+                repo = SecurityRepository(session)
+                cooldown_bucket = repo.get_rate_limit_bucket(store._redeem_cooldown_key("user-redeem-10"))
+                assert cooldown_bucket is not None
+                cooldown_bucket.reset_at = int(time.time()) - 1
+                failed_window_bucket = repo.get_rate_limit_bucket(store._redeem_failed_window_key("user-redeem-10"))
+                assert failed_window_bucket is not None
+                failed_window_bucket.reset_at = int(time.time()) - 1
+                session.flush()
+
+    suspension = store.get_active_suspension("user-redeem-10")
+    logs = store.list_admin_audit_logs(limit=20, target_id="user-redeem-10")
+
+    assert suspension is not None
+    assert "1 hour" in (suspension.get("reason") or "").lower()
+    assert any(log["action"] == "user_auto_suspend" for log in logs)
+
+
+def test_twenty_consecutive_failed_redeems_trigger_admin_review_suspension(test_db, monkeypatch):
+    monkeypatch.setattr(store.settings, "redeem_failed_attempt_limit", 5)
+    monkeypatch.setattr(store.settings, "redeem_failed_attempt_window_seconds", 5 * 60)
+    monkeypatch.setattr(store.settings, "redeem_failed_cooldown_seconds", 5 * 60)
+    monkeypatch.setattr(store.settings, "redeem_consecutive_suspend_threshold", 10)
+    monkeypatch.setattr(store.settings, "redeem_consecutive_admin_threshold", 20)
+    monkeypatch.setattr(store.settings, "redeem_consecutive_window_seconds", 24 * 60 * 60)
+    monkeypatch.setattr(store.settings, "redeem_temp_suspension_seconds", 60 * 60)
+
+    store.ensure_user("user-redeem-20", "redeem20@example.com", "Redeem Twenty")
+    for attempt in range(20):
+        result = store.redeem_credit_code(f"INVALID-{attempt}", "user-redeem-20")
+        if attempt in {4, 9, 14}:
+            with session_scope() as session:
+                repo = SecurityRepository(session)
+                cooldown_bucket = repo.get_rate_limit_bucket(store._redeem_cooldown_key("user-redeem-20"))
+                if cooldown_bucket is not None:
+                    cooldown_bucket.reset_at = int(time.time()) - 1
+                failed_window_bucket = repo.get_rate_limit_bucket(store._redeem_failed_window_key("user-redeem-20"))
+                if failed_window_bucket is not None:
+                    failed_window_bucket.reset_at = int(time.time()) - 1
+                temp_suspension_bucket = repo.get_rate_limit_bucket(store._redeem_temp_suspension_key("user-redeem-20"))
+                if temp_suspension_bucket is not None:
+                    temp_suspension_bucket.reset_at = int(time.time()) - 1
+                session.flush()
+
+    profile = store.get_user("user-redeem-20")
+    logs = store.list_admin_audit_logs(limit=20, target_id="user-redeem-20")
+
+    assert profile["isSuspended"] is True
+    assert "admin review" in profile["suspensionReason"].lower()
+    assert any(log["action"] == "user_auto_suspend" for log in logs)
+
+
+def test_generation_reserve_then_capture_moves_credits_without_refund(test_db, monkeypatch):
+    monkeypatch.setattr(store.settings, "new_account_usage_cap_first_24h", 100.0)
+    monkeypatch.setattr(store.settings, "daily_usage_cap", 100.0)
     store.ensure_user("user-2", "user2@example.com", "User Two")
     store.adjust_credits("user-2", 10.0, "seed", actor_uid="system", allow_negative=True)
 
@@ -43,7 +208,9 @@ def test_generation_reserve_then_capture_moves_credits_without_refund(test_db):
     assert profile_after_capture["reservedCredits"] == 0.0
 
 
-def test_generation_release_returns_reserved_credits(test_db):
+def test_generation_release_returns_reserved_credits(test_db, monkeypatch):
+    monkeypatch.setattr(store.settings, "new_account_usage_cap_first_24h", 100.0)
+    monkeypatch.setattr(store.settings, "daily_usage_cap", 100.0)
     store.ensure_user("user-3", "user3@example.com", "User Three")
     store.adjust_credits("user-3", 8.0, "seed", actor_uid="system", allow_negative=True)
 
@@ -65,11 +232,97 @@ def test_generation_release_returns_reserved_credits(test_db):
     assert profile["reservedCredits"] == 0.0
 
 
+def test_new_account_first_day_usage_cap_blocks_additional_charge(test_db, monkeypatch):
+    monkeypatch.setattr(store.settings, "new_account_usage_cap_first_24h", 1.0)
+    monkeypatch.setattr(store.settings, "daily_usage_cap", 5.0)
+
+    store.ensure_user("user-cap-new", "new@example.com", "New User")
+    store.adjust_credits("user-cap-new", 5.0, "seed", actor_uid="system", allow_negative=True)
+    charged = store.create_analyze_session_with_charge("user-cap-new", "prompt", 0.2, 1.0)
+
+    assert charged["analysisFee"] == 1.0
+    with pytest.raises(ValueError, match="USAGE_CAP_REACHED"):
+        store.reserve_generation_credits(
+            "user-cap-new",
+            "prompt",
+            ["image"],
+            {"image_model": "x"},
+            estimated_cost=0.1,
+        )
+
+
+def test_daily_usage_cap_blocks_after_five_credits(test_db, monkeypatch):
+    monkeypatch.setattr(store.settings, "new_account_usage_cap_first_24h", 1.0)
+    monkeypatch.setattr(store.settings, "daily_usage_cap", 5.0)
+
+    store.ensure_user("user-cap-daily", "daily@example.com", "Daily User")
+    store.adjust_credits("user-cap-daily", 10.0, "seed", actor_uid="system", allow_negative=True)
+
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        user = repo.get_user_for_update("user-cap-daily")
+        assert user is not None
+        user.created_at = int(time.time()) - (2 * 24 * 60 * 60)
+        session.flush()
+
+    reservation = store.reserve_generation_credits(
+        "user-cap-daily",
+        "prompt",
+        ["image"],
+        {"image_model": "x"},
+        estimated_cost=5.0,
+    )
+    store.capture_generation_credits(reservation["job"]["id"])
+
+    with pytest.raises(ValueError, match="USAGE_CAP_REACHED"):
+        store.create_analyze_session_with_charge("user-cap-daily", "prompt-2", 0.2, 0.05)
+
+
 def test_consume_rate_limit_blocks_after_max_count(test_db):
     key = "user:test-rate-limit"
     assert store.consume_rate_limit(key, max_count=2, window_seconds=60) is True
     assert store.consume_rate_limit(key, max_count=2, window_seconds=60) is True
     assert store.consume_rate_limit(key, max_count=2, window_seconds=60) is False
+
+
+def test_analyze_sessions_are_capped_per_user(test_db, monkeypatch):
+    monkeypatch.setattr(store.settings, "max_pending_analyze_sessions_per_user", 2)
+    monkeypatch.setattr(store.settings, "pending_analyze_session_ttl_seconds", 900)
+
+    store.ensure_user("user-analyze-cap", "cap@example.com", "Cap User")
+    first = store.create_analyze_session("user-analyze-cap", "prompt 1", 0.2)
+    second = store.create_analyze_session("user-analyze-cap", "prompt 2", 0.2)
+
+    assert first["status"] == "pending"
+    assert second["status"] == "pending"
+    with pytest.raises(ValueError, match="TOO_MANY_PENDING_ANALYZE_SESSIONS"):
+        store.create_analyze_session("user-analyze-cap", "prompt 3", 0.2)
+
+
+def test_stale_pending_analyze_sessions_are_expired_before_new_one(test_db, monkeypatch):
+    monkeypatch.setattr(store.settings, "max_pending_analyze_sessions_per_user", 1)
+    monkeypatch.setattr(store.settings, "pending_analyze_session_ttl_seconds", 60)
+
+    store.ensure_user("user-analyze-stale", "stale@example.com", "Stale User")
+    created = store.create_analyze_session("user-analyze-stale", "prompt 1", 0.2)
+    stale_created_at = int(time.time()) - 120
+
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        analyze_session = repo.get_analyze_session_for_update(created["id"])
+        assert analyze_session is not None
+        analyze_session.created_at = stale_created_at
+        session.flush()
+
+    next_session = store.create_analyze_session("user-analyze-stale", "prompt 2", 0.2)
+
+    assert next_session["status"] == "pending"
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        expired_session = repo.get_analyze_session_for_update(created["id"])
+        assert expired_session is not None
+        assert expired_session.status == "failed"
+        assert expired_session.resolved_at is not None
 
 
 def test_admin_audit_log_write_and_read(test_db):

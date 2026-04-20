@@ -13,10 +13,9 @@ from app.db.session import session_scope
 CREDIT_SCALE = 100
 CODE_PREFIX = "VC-"
 CODE_BODY_LENGTH = 30
-INVALID_REDEEM_ATTEMPTS_RESET_AT = 4_102_444_800  # 2100-01-01 UTC
-INVALID_REDEEM_ATTEMPTS_PER_STAGE = 10
-REDEEM_BAN_STAGE_ONE_SECONDS = 60 * 60
-REDEEM_BAN_STAGE_TWO_SECONDS = 24 * 60 * 60
+SYSTEM_AUDIT_EMAIL = "system@vibecraft.local"
+AUTO_SUSPEND_AUDIT_EMAIL = "policy@vibecraft.local"
+USAGE_CAP_REASONS = ["smart_analysis_charge"]
 
 
 def preload_postgres() -> None:
@@ -130,7 +129,9 @@ def unsuspend_user(
         user.suspension_reason = None
         user.updated_at = now
         repo.delete_rate_limit_bucket(_redeem_temp_suspension_key(uid))
-        repo.delete_rate_limit_bucket(_invalid_redeem_attempts_key(uid))
+        repo.delete_rate_limit_bucket(_redeem_failed_window_key(uid))
+        repo.delete_rate_limit_bucket(_redeem_cooldown_key(uid))
+        repo.delete_rate_limit_bucket(_redeem_consecutive_failures_key(uid))
 
         repo.add_admin_audit_log(
             admin_uid=admin_uid,
@@ -200,6 +201,7 @@ def list_admin_audit_logs(
                 action=normalized_action,
                 target_type=normalized_target_type,
                 target_id=normalized_target_id,
+                exclude_admin_email=SYSTEM_AUDIT_EMAIL,
             )
         ]
 
@@ -572,6 +574,16 @@ def redeem_credit_code(code: str, uid: str) -> dict[str, Any]:
 
     with session_scope() as session:
         repo = SecurityRepository(session)
+        cooldown_bucket = repo.get_rate_limit_bucket(_redeem_cooldown_key(uid))
+        if cooldown_bucket is not None and int(cooldown_bucket.reset_at) > now:
+            return {
+                "success": False,
+                "message": (
+                    f"This account reached {settings.redeem_failed_attempt_limit} failed credit code attempts in "
+                    f"{_minutes_label(settings.redeem_failed_attempt_window_seconds)}. Please wait about "
+                    f"{_minutes_label(settings.redeem_failed_cooldown_seconds)} before trying again and review the usage policy."
+                ),
+            }
         credit_code = repo.get_credit_code_for_update(code_hash)
         if credit_code is None:
             return _handle_failed_redeem_attempt(repo, uid, now, "Invalid code. Please check and try again.")
@@ -583,6 +595,18 @@ def redeem_credit_code(code: str, uid: str) -> dict[str, Any]:
             return _handle_failed_redeem_attempt(repo, uid, now, "You have already used this code.")
         if credit_code.claimed_count >= credit_code.max_claims:
             return _handle_failed_redeem_attempt(repo, uid, now, "This code has expired (max claims reached).")
+        day_claims = repo.count_credit_claims_since(uid, since_ts=now - (24 * 60 * 60))
+        if day_claims >= settings.max_redeemed_codes_per_day:
+            return {
+                "success": False,
+                "message": "This account reached the daily credit-code redemption limit. Please try again tomorrow.",
+            }
+        week_claims = repo.count_credit_claims_since(uid, since_ts=now - (7 * 24 * 60 * 60))
+        if week_claims >= settings.max_redeemed_codes_per_week:
+            return {
+                "success": False,
+                "message": "This account reached the weekly credit-code redemption limit. Please try again later.",
+            }
 
         user = repo.get_user_for_update(uid)
         if user is None:
@@ -603,6 +627,9 @@ def redeem_credit_code(code: str, uid: str) -> dict[str, Any]:
             code_hash=code_hash,
             created_at=now,
         )
+        repo.delete_rate_limit_bucket(_redeem_failed_window_key(uid))
+        repo.delete_rate_limit_bucket(_redeem_cooldown_key(uid))
+        repo.delete_rate_limit_bucket(_redeem_consecutive_failures_key(uid))
         session.flush()
 
         credits = _minor_to_credits(credit_code.credits_minor)
@@ -664,16 +691,197 @@ def get_history(uid: str, max_items: int = 20) -> list[dict[str, Any]]:
         return [_history_dict_from_model(entry) for entry in repo.get_history(uid, max_items)]
 
 
+def create_chat_conversation(uid: str, model: str, system_parts: list[dict[str, Any]]) -> dict[str, Any]:
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        entry = repo.create_chat_conversation(uid, model, system_parts)
+        return _chat_conversation_dict_from_model(entry)
+
+
+def list_chat_conversations(uid: str, max_items: int = 20) -> list[dict[str, Any]]:
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        return [_chat_conversation_dict_from_model(entry) for entry in repo.list_chat_conversations(uid, max_items)]
+
+
+def get_chat_conversation(uid: str, conversation_id: str) -> dict[str, Any] | None:
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        entry = repo.get_chat_conversation(uid, conversation_id)
+        if entry is None:
+            return None
+        return _chat_conversation_dict_from_model(entry)
+
+
+def add_chat_message(uid: str, conversation_id: str, role: str, parts: list[dict[str, Any]]) -> dict[str, Any]:
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        conversation = repo.get_chat_conversation_for_update(uid, conversation_id)
+        if conversation is None:
+            raise ValueError("CHAT_CONVERSATION_NOT_FOUND")
+        created_at = int(time.time())
+        entry = repo.add_chat_message(uid, conversation_id, role, parts, created_at=created_at)
+        repo.touch_chat_conversation(conversation, touched_at=created_at)
+        return _chat_message_dict_from_model(entry)
+
+
+def add_chat_turn(
+    uid: str,
+    conversation_id: str,
+    *,
+    user_parts: list[dict[str, Any]],
+    assistant_parts: list[dict[str, Any]],
+    prompt_tokens: int = 0,
+    completion_tokens: int = 0,
+) -> dict[str, dict[str, Any]]:
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        conversation = repo.get_chat_conversation_for_update(uid, conversation_id)
+        if conversation is None:
+            raise ValueError("CHAT_CONVERSATION_NOT_FOUND")
+        created_at = int(time.time())
+        user_entry = repo.add_chat_message(uid, conversation_id, "user", user_parts, created_at=created_at)
+        assistant_entry = repo.add_chat_message(uid, conversation_id, "assistant", assistant_parts, created_at=created_at)
+        repo.touch_chat_conversation(
+            conversation,
+            touched_at=created_at,
+            prompt_tokens_delta=prompt_tokens,
+            completion_tokens_delta=completion_tokens,
+        )
+        return {
+            "user": _chat_message_dict_from_model(user_entry),
+            "assistant": _chat_message_dict_from_model(assistant_entry),
+        }
+
+
+def get_chat_messages(uid: str, conversation_id: str, max_items: int = 100) -> list[dict[str, Any]]:
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        conversation = repo.get_chat_conversation(uid, conversation_id)
+        if conversation is None:
+            raise ValueError("CHAT_CONVERSATION_NOT_FOUND")
+        return [_chat_message_dict_from_model(entry) for entry in repo.get_chat_messages(uid, conversation_id, max_items)]
+
+
+def _expire_stale_pending_analyze_sessions(repo: SecurityRepository, uid: str, *, now: int) -> int:
+    ttl_seconds = max(int(settings.pending_analyze_session_ttl_seconds), 0)
+    if ttl_seconds <= 0:
+        return 0
+
+    expired_count = 0
+    cutoff = now - ttl_seconds
+    for analyze_session in repo.list_pending_analyze_sessions_for_update(uid):
+        if int(analyze_session.created_at) > cutoff:
+            continue
+        analyze_session.status = "failed"
+        analyze_session.resolved_at = now
+        expired_count += 1
+    if expired_count:
+        repo.session.flush()
+    return expired_count
+
+
+def _enforce_pending_analyze_session_limit(repo: SecurityRepository, uid: str, *, now: int) -> None:
+    _expire_stale_pending_analyze_sessions(repo, uid, now=now)
+    max_pending = max(int(settings.max_pending_analyze_sessions_per_user), 1)
+    pending_sessions = repo.list_pending_analyze_sessions_for_update(uid)
+    if len(pending_sessions) >= max_pending:
+        raise ValueError("TOO_MANY_PENDING_ANALYZE_SESSIONS")
+
+
+def _current_usage_cap_minor(user_created_at: int, *, now: int) -> tuple[int, int]:
+    first_24h_window_end = int(user_created_at) + (24 * 60 * 60)
+    if now < first_24h_window_end:
+        return _credits_to_minor(settings.new_account_usage_cap_first_24h), int(user_created_at)
+    return _credits_to_minor(settings.daily_usage_cap), now - (24 * 60 * 60)
+
+
+def _enforce_usage_cap(repo: SecurityRepository, user: Any, *, projected_charge_minor: int, now: int) -> None:
+    if projected_charge_minor <= 0:
+        return
+    cap_minor, since_ts = _current_usage_cap_minor(int(user.created_at), now=now)
+    consumed_minor = repo.sum_user_usage_minor(user.uid, since_ts=since_ts, reasons=USAGE_CAP_REASONS)
+    consumed_minor += repo.sum_user_captured_generation_minor(user.uid, since_ts=since_ts)
+    if consumed_minor + projected_charge_minor > cap_minor:
+        raise ValueError("USAGE_CAP_REACHED")
+
+
 def create_analyze_session(uid: str, prompt: str, fee: float) -> dict[str, Any]:
     fee_minor = _credits_to_minor(fee)
     with session_scope() as session:
         repo = SecurityRepository(session)
+        user = repo.get_user_for_update(uid)
+        if user is None:
+            user = repo.ensure_user(uid, "", "")
+            session.flush()
+        _enforce_pending_analyze_session_limit(repo, uid, now=int(time.time()))
         analyze_session = repo.create_analyze_session(uid, fee_minor, prompt)
         return {
             "id": analyze_session.id,
             "fee": _minor_to_credits(analyze_session.fee_minor),
             "status": analyze_session.status,
             "createdAt": analyze_session.created_at,
+        }
+
+
+def create_analyze_session_with_charge(uid: str, prompt: str, fee: float, analysis_fee: float) -> dict[str, Any]:
+    fee_minor = _credits_to_minor(fee)
+    analysis_fee_minor = _credits_to_minor(analysis_fee)
+    now = int(time.time())
+
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        user = repo.get_user_for_update(uid)
+        if user is None:
+            user = repo.ensure_user(uid, "", "")
+            session.flush()
+        _enforce_pending_analyze_session_limit(repo, uid, now=now)
+        _enforce_usage_cap(repo, user, projected_charge_minor=analysis_fee_minor, now=now)
+
+        if analysis_fee_minor < 0:
+            raise ValueError("Analysis fee must be non-negative")
+        if user.credits_minor < analysis_fee_minor:
+            raise ValueError("INSUFFICIENT_CREDITS")
+
+        analyze_session = repo.create_analyze_session(uid, fee_minor, prompt)
+
+        if analysis_fee_minor > 0:
+            user.credits_minor -= analysis_fee_minor
+            user.updated_at = now
+            user.last_seen_at = now
+            repo.add_ledger_entry(
+                uid=uid,
+                delta_minor=-analysis_fee_minor,
+                reason="smart_analysis_charge",
+                actor_uid=uid,
+                metadata_json={"analyze_session_id": analyze_session.id},
+                analyze_session_id=analyze_session.id,
+                created_at=now,
+            )
+            repo.add_admin_audit_log(
+                admin_uid=None,
+                admin_email=SYSTEM_AUDIT_EMAIL,
+                action="smart_analysis_charge",
+                target_type="user",
+                target_id=uid,
+                reason=f"Smart analysis charged {_minor_to_credits(analysis_fee_minor):.2f} credits.",
+                metadata_json={
+                    "uid": uid,
+                    "analyze_session_id": analyze_session.id,
+                    "charged_credits": _minor_to_credits(analysis_fee_minor),
+                    "remaining_balance": _minor_to_credits(user.credits_minor),
+                },
+                created_at=now,
+            )
+
+        session.flush()
+        return {
+            "id": analyze_session.id,
+            "fee": _minor_to_credits(analyze_session.fee_minor),
+            "analysisFee": _minor_to_credits(analysis_fee_minor),
+            "status": analyze_session.status,
+            "createdAt": analyze_session.created_at,
+            "balance": _minor_to_credits(user.credits_minor),
         }
 
 
@@ -890,6 +1098,32 @@ def _history_dict_from_model(entry: Any) -> dict[str, Any]:
     }
 
 
+def _chat_conversation_dict_from_model(entry: Any) -> dict[str, Any]:
+    return {
+        "id": entry.id,
+        "uid": entry.uid,
+        "model": entry.model,
+        "system": list(entry.system_json or []),
+        "createdAt": int(entry.created_at),
+        "updatedAt": int(entry.updated_at),
+        "lastMessageAt": int(entry.last_message_at) if entry.last_message_at is not None else None,
+        "promptTokensTotal": int(entry.prompt_tokens_total or 0),
+        "completionTokensTotal": int(entry.completion_tokens_total or 0),
+        "totalTokens": int(entry.prompt_tokens_total or 0) + int(entry.completion_tokens_total or 0),
+    }
+
+
+def _chat_message_dict_from_model(entry: Any) -> dict[str, Any]:
+    return {
+        "id": entry.id,
+        "conversationId": entry.conversation_id,
+        "uid": entry.uid,
+        "role": entry.role,
+        "parts": list(entry.parts_json or []),
+        "createdAt": int(entry.created_at),
+    }
+
+
 def _generation_job_dict_from_model(job: Any) -> dict[str, Any]:
     return {
         "id": job.id,
@@ -931,52 +1165,104 @@ def _handle_failed_redeem_attempt(
     if user is None:
         user = repo.ensure_user(uid, "", "")
 
-    count_key = _invalid_redeem_attempts_key(uid)
-    attempts_bucket = repo.get_rate_limit_bucket_for_update(count_key)
-    attempts = 1 if attempts_bucket is None else int(attempts_bucket.count) + 1
-    repo.upsert_rate_limit_bucket(count_key, attempts, INVALID_REDEEM_ATTEMPTS_RESET_AT)
+    short_window_attempts = _increment_bucket(
+        repo,
+        _redeem_failed_window_key(uid),
+        now=now,
+        window_seconds=settings.redeem_failed_attempt_window_seconds,
+    )
+    consecutive_attempts = _increment_bucket(
+        repo,
+        _redeem_consecutive_failures_key(uid),
+        now=now,
+        window_seconds=settings.redeem_consecutive_window_seconds,
+    )
 
-    if attempts >= INVALID_REDEEM_ATTEMPTS_PER_STAGE * 3:
+    if consecutive_attempts >= settings.redeem_consecutive_admin_threshold:
         user.is_suspended = True
         user.suspension_reason = (
-            "Permanent suspension due to repeated failed credit code redemption attempts. "
-            "Admin action is required to restore access."
+            "Automatic suspension due to 20 consecutive failed credit code redemption attempts within 24 hours. "
+            "Admin review is required to restore access."
         )
         user.updated_at = now
         user.last_seen_at = now
+        repo.add_admin_audit_log(
+            admin_uid=None,
+            admin_email=AUTO_SUSPEND_AUDIT_EMAIL,
+            action="user_auto_suspend",
+            target_type="user",
+            target_id=uid,
+            reason=user.suspension_reason,
+            metadata_json={
+                "uid": uid,
+                "category": "credit_code_abuse",
+                "suspension_type": "admin_review",
+                "consecutive_failed_redeems": consecutive_attempts,
+                "window_seconds": settings.redeem_consecutive_window_seconds,
+            },
+            created_at=now,
+        )
         return {
             "success": False,
             "message": (
-                f"{base_message} Your account has been suspended permanently due to repeated failed credit code attempts. "
-                "Please contact support."
+                f"{base_message} Your account has been suspended pending admin review due to repeated failed credit code attempts. "
+                "Please contact support and review the usage policy."
             ),
         }
 
-    if attempts == INVALID_REDEEM_ATTEMPTS_PER_STAGE * 2:
-        until = now + REDEEM_BAN_STAGE_TWO_SECONDS
-        repo.upsert_rate_limit_bucket(_redeem_temp_suspension_key(uid), 2, until)
-        return {
-            "success": False,
-            "message": (
-                f"{base_message} Your account has been suspended for 24 hours due to repeated failed credit code attempts."
-            ),
-        }
-
-    if attempts == INVALID_REDEEM_ATTEMPTS_PER_STAGE:
-        until = now + REDEEM_BAN_STAGE_ONE_SECONDS
+    if consecutive_attempts >= settings.redeem_consecutive_suspend_threshold:
+        until = now + settings.redeem_temp_suspension_seconds
         repo.upsert_rate_limit_bucket(_redeem_temp_suspension_key(uid), 1, until)
+        repo.add_admin_audit_log(
+            admin_uid=None,
+            admin_email=AUTO_SUSPEND_AUDIT_EMAIL,
+            action="user_auto_suspend",
+            target_type="user",
+            target_id=uid,
+            reason="Automatic suspension for 1 hour due to 10 consecutive failed credit code redemption attempts.",
+            metadata_json={
+                "uid": uid,
+                "category": "credit_code_abuse",
+                "suspension_type": "temporary",
+                "suspension_seconds": settings.redeem_temp_suspension_seconds,
+                "consecutive_failed_redeems": consecutive_attempts,
+                "window_seconds": settings.redeem_consecutive_window_seconds,
+            },
+            created_at=now,
+        )
         return {
             "success": False,
             "message": (
-                f"{base_message} Your account has been suspended for 1 hour due to repeated failed credit code attempts."
+                f"{base_message} Your account has been suspended for 1 hour due to repeated failed credit code attempts. "
+                "Please review the usage policy."
+            ),
+        }
+
+    if short_window_attempts >= settings.redeem_failed_attempt_limit:
+        until = now + settings.redeem_failed_cooldown_seconds
+        repo.upsert_rate_limit_bucket(_redeem_cooldown_key(uid), short_window_attempts, until)
+        return {
+            "success": False,
+            "message": (
+                f"{base_message} This account reached {settings.redeem_failed_attempt_limit} failed credit code attempts in "
+                f"{_minutes_label(settings.redeem_failed_attempt_window_seconds)}. Please wait about "
+                f"{_minutes_label(settings.redeem_failed_cooldown_seconds)} before trying again and review the usage policy."
             ),
         }
 
     return {"success": False, "message": base_message}
 
 
-def _invalid_redeem_attempts_key(uid: str) -> str:
-    return f"redeem_invalid_attempts:{uid}"
+def _redeem_failed_window_key(uid: str) -> str:
+    return f"redeem_failed_window:{uid}"
+
+
+def _redeem_cooldown_key(uid: str) -> str:
+    return f"redeem_cooldown:{uid}"
+
+
+def _redeem_consecutive_failures_key(uid: str) -> str:
+    return f"redeem_consecutive_failures:{uid}"
 
 
 def _redeem_temp_suspension_key(uid: str) -> str:
@@ -984,9 +1270,26 @@ def _redeem_temp_suspension_key(uid: str) -> str:
 
 
 def _temporary_redeem_ban_reason(stage: int) -> str:
-    if stage >= 2:
-        return "Account suspended for 24 hours due to repeated failed credit code redemption attempts."
     return "Account suspended for 1 hour due to repeated failed credit code redemption attempts."
+
+
+def _increment_bucket(repo: SecurityRepository, key: str, *, now: int, window_seconds: int) -> int:
+    bucket = repo.get_rate_limit_bucket_for_update(key)
+    if bucket is None or int(bucket.reset_at) <= now:
+        repo.upsert_rate_limit_bucket(key, 1, now + window_seconds)
+        return 1
+
+    bucket.count += 1
+    bucket.updated_at = now
+    repo.session.flush()
+    return int(bucket.count)
+
+
+def _minutes_label(window_seconds: int) -> str:
+    minutes = max(1, round(window_seconds / 60))
+    if minutes == 1:
+        return "1 minute"
+    return f"{minutes} minutes"
 
 
 def reserve_generation_credits(
@@ -1007,6 +1310,7 @@ def reserve_generation_credits(
 
         if reserved_minor < 0:
             raise ValueError("Estimated cost must be non-negative")
+        _enforce_usage_cap(repo, user, projected_charge_minor=reserved_minor, now=now)
         if user.credits_minor < reserved_minor:
             raise ValueError("INSUFFICIENT_CREDITS")
 
@@ -1089,6 +1393,23 @@ def capture_generation_credits(job_id: str) -> dict[str, Any]:
             },
             created_at=now,
         )
+        repo.add_admin_audit_log(
+            admin_uid=None,
+            admin_email=SYSTEM_AUDIT_EMAIL,
+            action="generation_charge",
+            target_type="user",
+            target_id=user.uid,
+            reason=f"Generation charged {_minor_to_credits(job.reserved_minor):.2f} credits.",
+            metadata_json={
+                "uid": user.uid,
+                "generation_job_id": job.id,
+                "charged_credits": _minor_to_credits(job.reserved_minor),
+                "remaining_balance": _minor_to_credits(user.credits_minor),
+                "requested_outputs": list(job.requested_outputs_json or []),
+                "job_status": "completed",
+            },
+            created_at=now,
+        )
         repo.update_generation_job(
             job,
             status="completed",
@@ -1139,6 +1460,26 @@ def release_generation_credits(job_id: str, failure_reason: str | None = None, c
                 "generation_job_id": job.id,
                 "failure_reason": failure_reason,
                 "released_minor": job.reserved_minor,
+            },
+            created_at=now,
+        )
+        repo.add_admin_audit_log(
+            admin_uid=None,
+            admin_email=SYSTEM_AUDIT_EMAIL,
+            action="generation_delivery_failed",
+            target_type="user",
+            target_id=user.uid,
+            reason=(
+                f"Generation delivery failed and {_minor_to_credits(job.reserved_minor):.2f} credits were refunded."
+            ),
+            metadata_json={
+                "uid": user.uid,
+                "generation_job_id": job.id,
+                "mode": (job.request_payload_json or {}).get("mode"),
+                "requested_outputs": list(job.requested_outputs_json or []),
+                "failure_reason": failure_reason,
+                "refunded_credits": _minor_to_credits(job.reserved_minor),
+                "job_status": "cancelled" if cancelled else "failed",
             },
             created_at=now,
         )

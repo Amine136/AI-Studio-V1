@@ -13,6 +13,40 @@ IMAGES_DIR = BASE_DIR / "generated_images"
 IMAGES_DIR.mkdir(exist_ok=True)
 
 IMAGEN_VALID_RATIOS = {"1:1", "3:4", "4:3", "9:16", "16:9"}
+RETRYABLE_APIKEYMANAGER_ERROR_TYPES = {"timeout", "network_error", "provider_internal_error"}
+
+
+class ApiKeyManagerProxyError(RuntimeError):
+    def __init__(
+        self,
+        *,
+        error_type: str,
+        code: str,
+        message: str,
+        retryable: bool,
+        provider: str | None = None,
+        upstream_status: int | None = None,
+        http_status: int | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.error_type = error_type
+        self.code = code
+        self.message = message
+        self.retryable = retryable
+        self.provider = provider
+        self.upstream_status = upstream_status
+        self.http_status = http_status
+
+    def to_metadata(self) -> dict[str, Any]:
+        return {
+            "error_type": self.error_type,
+            "error_code": self.code,
+            "retryable": self.retryable,
+            "provider": self.provider,
+            "upstream_status": self.upstream_status,
+            "http_status": self.http_status,
+            "message": self.message,
+        }
 
 
 def _parse_aspect_ratio(raw: str) -> str:
@@ -42,24 +76,99 @@ def _build_headers() -> Dict[str, str]:
     }
 
 
-def _post_proxy(payload: Dict[str, Any]) -> Dict[str, Any]:
-    url = f"{settings.apikeymanager_base_url}/api/v1/proxy"
-    with httpx.Client(timeout=settings.apikeymanager_timeout) as client:
-        response = client.post(url, json=payload, headers=_build_headers())
+def _post_apikeymanager(path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    url = f"{settings.apikeymanager_base_url}{path}"
+    last_error: ApiKeyManagerProxyError | None = None
+
+    for attempt in range(2):
+        try:
+            with httpx.Client(timeout=settings.apikeymanager_timeout) as client:
+                response = client.post(url, json=payload, headers=_build_headers())
+        except httpx.TimeoutException as exc:
+            last_error = ApiKeyManagerProxyError(
+                error_type="timeout",
+                code="PROVIDER_TIMEOUT",
+                message="Provider request timed out",
+                retryable=True,
+            )
+            if attempt == 0:
+                continue
+            raise last_error from exc
+        except httpx.RequestError as exc:
+            last_error = ApiKeyManagerProxyError(
+                error_type="network_error",
+                code="PROVIDER_NETWORK_ERROR",
+                message="Provider network request failed",
+                retryable=True,
+            )
+            if attempt == 0:
+                continue
+            raise last_error from exc
+
         try:
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
-            detail = _extract_error_detail(exc.response)
-            if exc.response.status_code == 413:
-                raise ValueError(detail or "Uploaded image is too large for the current model request") from exc
-            if exc.response.status_code == 403:
-                raise ValueError(detail or "The selected model is not authorized on ApiKeyManager") from exc
-            raise RuntimeError(detail or f"ApiKeyManager request failed with HTTP {exc.response.status_code}") from exc
+            proxy_error = _build_proxy_error(exc.response)
+            if attempt == 0 and proxy_error.retryable and proxy_error.error_type in RETRYABLE_APIKEYMANAGER_ERROR_TYPES:
+                last_error = proxy_error
+                continue
+            raise proxy_error from exc
 
-    data = response.json()
-    if data.get("status") != "success":
-        raise RuntimeError(data.get("message") or data.get("error") or "ApiKeyManager request failed")
-    return data
+        data = response.json()
+        if data.get("status") != "success":
+            proxy_error = _build_proxy_error(response, payload=data)
+            if attempt == 0 and proxy_error.retryable and proxy_error.error_type in RETRYABLE_APIKEYMANAGER_ERROR_TYPES:
+                last_error = proxy_error
+                continue
+            raise proxy_error
+        return data
+
+    if last_error is not None:
+        raise last_error
+    raise ApiKeyManagerProxyError(
+        error_type="provider_internal_error",
+        code="PROVIDER_REQUEST_FAILED",
+        message="ApiKeyManager request failed",
+        retryable=False,
+    )
+
+
+def _post_proxy(payload: Dict[str, Any]) -> Dict[str, Any]:
+    return _post_apikeymanager("/api/v1/proxy", payload)
+
+
+def _post_chat(payload: Dict[str, Any]) -> Dict[str, Any]:
+    return _post_apikeymanager("/api/v1/chat", payload)
+
+
+def check_apikeymanager_ready() -> dict[str, Any]:
+    url = f"{settings.apikeymanager_base_url}/health/ready"
+    try:
+        with httpx.Client(timeout=min(settings.apikeymanager_timeout, 10.0)) as client:
+            response = client.get(url, headers=_build_headers())
+            response.raise_for_status()
+    except httpx.TimeoutException as exc:
+        raise ApiKeyManagerProxyError(
+            error_type="timeout",
+            code="APIKEYMANAGER_READY_TIMEOUT",
+            message="ApiKeyManager readiness check timed out",
+            retryable=True,
+        ) from exc
+    except httpx.RequestError as exc:
+        raise ApiKeyManagerProxyError(
+            error_type="network_error",
+            code="APIKEYMANAGER_READY_NETWORK_ERROR",
+            message="ApiKeyManager readiness check failed",
+            retryable=True,
+        ) from exc
+    except httpx.HTTPStatusError as exc:
+        raise _build_proxy_error(exc.response) from exc
+
+    payload = response.json()
+    status = str(payload.get("status") or "").lower()
+    if status not in {"ok", "ready", "success"}:
+        raise _build_proxy_error(response, payload=payload)
+    return payload
 
 
 def fetch_model_catalog() -> Dict[str, Dict[str, Dict[str, Any]]]:
@@ -97,6 +206,11 @@ def generate_text_via_proxy(
     data = _post_proxy(payload)
     outputs = data.get("data", {}).get("outputs") or {}
     return outputs.get("text") or data.get("data", {}).get("response") or ""
+
+
+def generate_chat_via_proxy(payload: Dict[str, Any]) -> Dict[str, Any]:
+    data = _post_chat(payload)
+    return data.get("data") or {}
 
 
 def generate_image_via_proxy(
@@ -292,3 +406,70 @@ def _extract_error_detail(response: httpx.Response) -> str:
             or ""
         )
     return ""
+
+
+def _build_proxy_error(response: httpx.Response, payload: dict[str, Any] | None = None) -> ApiKeyManagerProxyError:
+    payload = payload or _safe_json(response)
+    error_payload = payload.get("error") if isinstance(payload, dict) else {}
+    error_payload = error_payload if isinstance(error_payload, dict) else {}
+
+    message = (
+        error_payload.get("message")
+        or (payload.get("message") if isinstance(payload, dict) else None)
+        or _extract_error_detail(response)
+        or f"ApiKeyManager request failed with HTTP {response.status_code}"
+    )
+    error_type = str(error_payload.get("type") or _fallback_error_type_for_status(response.status_code))
+    code = str(error_payload.get("code") or _fallback_error_code_for_type(error_type))
+    retryable = bool(error_payload.get("retryable")) if "retryable" in error_payload else error_type in RETRYABLE_APIKEYMANAGER_ERROR_TYPES
+    provider = error_payload.get("provider")
+    upstream_status = error_payload.get("upstreamStatus")
+    try:
+        upstream_status = int(upstream_status) if upstream_status is not None else None
+    except (TypeError, ValueError):
+        upstream_status = None
+
+    return ApiKeyManagerProxyError(
+        error_type=error_type,
+        code=code,
+        message=str(message),
+        retryable=retryable,
+        provider=str(provider) if provider else None,
+        upstream_status=upstream_status,
+        http_status=int(response.status_code),
+    )
+
+
+def _safe_json(response: httpx.Response) -> dict[str, Any]:
+    try:
+        payload = response.json()
+        return payload if isinstance(payload, dict) else {}
+    except Exception:
+        return {}
+
+
+def _fallback_error_type_for_status(status_code: int) -> str:
+    if status_code == 400:
+        return "bad_request"
+    if status_code in {401, 403}:
+        return "auth_error"
+    if status_code == 408:
+        return "timeout"
+    if status_code == 429:
+        return "rate_limit"
+    if 500 <= status_code <= 599:
+        return "provider_internal_error"
+    return "provider_internal_error"
+
+
+def _fallback_error_code_for_type(error_type: str) -> str:
+    mapping = {
+        "timeout": "PROVIDER_TIMEOUT",
+        "network_error": "PROVIDER_NETWORK_ERROR",
+        "provider_internal_error": "PROVIDER_INTERNAL_ERROR",
+        "invalid_output": "PROVIDER_INVALID_OUTPUT",
+        "rate_limit": "PROVIDER_RATE_LIMIT",
+        "auth_error": "PROVIDER_AUTH_ERROR",
+        "bad_request": "PROVIDER_BAD_REQUEST",
+    }
+    return mapping.get(error_type, "PROVIDER_REQUEST_FAILED")

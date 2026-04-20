@@ -5,8 +5,8 @@ interface StepIndicatorProps {
 }
 
 const steps = [
-    { key: "INPUT", label: "Input", icon: "✦" },
-    { key: "REVIEW", label: "Review", icon: "◎" },
+    { key: "INPUT", label: "Idea", icon: "✦" },
+    { key: "REVIEW", label: "Optimize", icon: "◎" },
     { key: "RESULT", label: "Result", icon: "✓" },
 ] as const;
 

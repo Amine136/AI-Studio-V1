@@ -72,6 +72,18 @@ export default function AdminLogsPage() {
                                     <span className="text-xs text-slate-500">{formatTimestamp(log.createdAt)}</span>
                                 </div>
                                 <p className="mt-2 text-sm text-slate-300">{log.reason}</p>
+                                {log.metadata && Object.keys(log.metadata).length > 0 && (
+                                    <div className="mt-3 flex flex-wrap gap-2">
+                                        {Object.entries(log.metadata).map(([key, value]) => (
+                                            <span
+                                                key={`${log.id}-${key}`}
+                                                className="rounded-full border border-white/8 bg-white/[0.03] px-2.5 py-1 text-[10px] text-slate-400"
+                                            >
+                                                {key}: {formatMetadataValue(value)}
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                         ))}
                     </div>
@@ -92,4 +104,20 @@ function humanizeAction(action: string): string {
         .filter(Boolean)
         .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
         .join(" ");
+}
+
+function formatMetadataValue(value: unknown): string {
+    if (Array.isArray(value)) {
+        return value.join(", ");
+    }
+    if (typeof value === "number") {
+        return Number.isInteger(value) ? String(value) : value.toFixed(2);
+    }
+    if (typeof value === "boolean") {
+        return value ? "true" : "false";
+    }
+    if (value == null) {
+        return "null";
+    }
+    return String(value);
 }
