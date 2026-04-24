@@ -54,5 +54,10 @@ A premium, AI-powered creative studio for generating high-engagement social medi
 │   │   └── services/       # API client
 ```
 
+## 📚 Policy Docs
+
+- [Platform Policy](docs/platform-policy.md)
+- [MVP Rules](docs/mvp-rules.md)
+
 ## 📜 License
 © 2026 NovaNode. All rights reserved.

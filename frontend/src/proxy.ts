@@ -9,6 +9,7 @@ const ADMIN_REDIRECTS = new Map<string, string>([
   ["/users", "/admin/users"],
   ["/codes", "/admin/codes"],
   ["/logs", "/admin/logs"],
+  ["/warnings", "/admin/warnings"],
 ]);
 
 export function proxy(request: NextRequest) {

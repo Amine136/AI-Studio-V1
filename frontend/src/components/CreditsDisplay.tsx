@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useEffect, useCallback, useImperativeHandle, forwardRef } from "react";
 import { getCredits } from "../lib/credits";
 import { redeemCode } from "../lib/creditCodes";
@@ -12,16 +13,19 @@ export interface CreditsDisplayHandle {
 interface CreditsDisplayProps {
     uid: string;
     onCreditsChange?: (credits: number | null) => void;
+    onSuspensionDetected?: (message: string) => void;
 }
 
 const CreditsDisplay = forwardRef<CreditsDisplayHandle, CreditsDisplayProps>(
-    function CreditsDisplay({ uid, onCreditsChange }, ref) {
+    function CreditsDisplay({ uid, onCreditsChange, onSuspensionDetected }, ref) {
+        const redeemCooldownStorageKey = `vibecraft:redeemCooldownUntil:${uid}`;
         const [credits, setCredits] = useState<number | null>(null);
         const [profileError, setProfileError] = useState<string | null>(null);
         const [codeInput, setCodeInput] = useState("");
-        const [codeMessage, setCodeMessage] = useState<{ text: string; success: boolean; credits?: number } | null>(null);
+        const [codeMessage, setCodeMessage] = useState<{ text: string; success: boolean; credits?: number; showPolicyLink?: boolean } | null>(null);
         const [redeeming, setRedeeming] = useState(false);
         const [showCodeInput, setShowCodeInput] = useState(false);
+        const [redeemBlockedUntil, setRedeemBlockedUntil] = useState<number | null>(null);
 
         const fetchCredits = useCallback(async () => {
             try {
@@ -48,8 +52,67 @@ const CreditsDisplay = forwardRef<CreditsDisplayHandle, CreditsDisplayProps>(
             fetchCredits();
         }, [fetchCredits]);
 
+        useEffect(() => {
+            if (typeof window === "undefined") return;
+            const raw = window.localStorage.getItem(redeemCooldownStorageKey);
+            if (!raw) return;
+            const parsed = Number(raw);
+            if (!Number.isFinite(parsed) || parsed <= Date.now()) {
+                window.localStorage.removeItem(redeemCooldownStorageKey);
+                return;
+            }
+            setRedeemBlockedUntil(parsed);
+        }, [redeemCooldownStorageKey]);
+
+        const shouldShowPolicyLink = (message: string) =>
+            /usage policy|failed credit code attempts|failed credit-code attempts|suspended/i.test(message);
+
+        const isRedeemCooldownMessage = (message: string) =>
+            /reached 5 failed credit code attempts in 5 minutes/i.test(message);
+
+        const activateRedeemCooldown = useCallback((message: string) => {
+            const blockedUntil = Date.now() + (5 * 60 * 1000);
+            setRedeemBlockedUntil(blockedUntil);
+            if (typeof window !== "undefined") {
+                window.localStorage.setItem(redeemCooldownStorageKey, String(blockedUntil));
+            }
+            setCodeMessage({
+                text: message,
+                success: false,
+                showPolicyLink: true,
+            });
+        }, [redeemCooldownStorageKey]);
+
+        useEffect(() => {
+            if (!redeemBlockedUntil) return;
+            if (redeemBlockedUntil <= Date.now()) {
+                setRedeemBlockedUntil(null);
+                if (typeof window !== "undefined") {
+                    window.localStorage.removeItem(redeemCooldownStorageKey);
+                }
+                return;
+            }
+
+            const timeout = window.setTimeout(() => {
+                setRedeemBlockedUntil(null);
+                if (typeof window !== "undefined") {
+                    window.localStorage.removeItem(redeemCooldownStorageKey);
+                }
+            }, redeemBlockedUntil - Date.now());
+
+            return () => window.clearTimeout(timeout);
+        }, [redeemBlockedUntil, redeemCooldownStorageKey]);
+
         const handleRedeem = async () => {
             if (!codeInput.trim()) return;
+            if (redeemBlockedUntil && redeemBlockedUntil > Date.now()) {
+                setCodeMessage({
+                    text: "This account reached 5 failed credit code attempts in 5 minutes. Please wait about 5 minutes before trying again and review the usage policy.",
+                    success: false,
+                    showPolicyLink: true,
+                });
+                return;
+            }
             setRedeeming(true);
             setCodeMessage(null);
             try {
@@ -57,9 +120,26 @@ const CreditsDisplay = forwardRef<CreditsDisplayHandle, CreditsDisplayProps>(
                 // Extract credits number from message for the success animation
                 const creditsMatch = result.message.match(/\+(\d+)/);
                 const creditsAdded = creditsMatch ? parseInt(creditsMatch[1]) : undefined;
-                setCodeMessage({ text: result.message, success: result.success, credits: creditsAdded });
+                setCodeMessage({
+                    text: result.message,
+                    success: result.success,
+                    credits: creditsAdded,
+                    showPolicyLink: !result.success && shouldShowPolicyLink(result.message),
+                });
+                if (!result.success && /suspended/i.test(result.message)) {
+                    onSuspensionDetected?.(`Your account is suspended: ${result.message}`);
+                    return;
+                }
+                if (!result.success && isRedeemCooldownMessage(result.message)) {
+                    activateRedeemCooldown(result.message);
+                    return;
+                }
                 if (result.success) {
                     setCodeInput("");
+                    setRedeemBlockedUntil(null);
+                    if (typeof window !== "undefined") {
+                        window.localStorage.removeItem(redeemCooldownStorageKey);
+                    }
                     await fetchCredits();
                     // Auto-collapse after success
                     setTimeout(() => {
@@ -67,14 +147,26 @@ const CreditsDisplay = forwardRef<CreditsDisplayHandle, CreditsDisplayProps>(
                         setCodeMessage(null);
                     }, 4000);
                 } else {
-                    setTimeout(() => setCodeMessage(null), 5000);
+                    if (!shouldShowPolicyLink(result.message)) {
+                        setTimeout(() => setCodeMessage(null), 5000);
+                    }
                 }
             } catch (error) {
                 const message = error instanceof Error && error.message
                     ? error.message
                     : "Could not redeem this code right now.";
-                setCodeMessage({ text: message, success: false });
-                setTimeout(() => setCodeMessage(null), 5000);
+                setCodeMessage({ text: message, success: false, showPolicyLink: shouldShowPolicyLink(message) });
+                if (/your account is suspended|account is suspended|suspended/i.test(message)) {
+                    onSuspensionDetected?.(message.startsWith("Your account is suspended") ? message : `Your account is suspended: ${message}`);
+                    return;
+                }
+                if (isRedeemCooldownMessage(message)) {
+                    activateRedeemCooldown(message);
+                    return;
+                }
+                if (!shouldShowPolicyLink(message)) {
+                    setTimeout(() => setCodeMessage(null), 5000);
+                }
             } finally {
                 setRedeeming(false);
             }
@@ -155,11 +247,12 @@ const CreditsDisplay = forwardRef<CreditsDisplayHandle, CreditsDisplayProps>(
                                 onChange={(e) => setCodeInput(e.target.value.toUpperCase())}
                                 onKeyDown={(e) => e.key === "Enter" && handleRedeem()}
                                 maxLength={33}
+                                disabled={Boolean(redeemBlockedUntil && redeemBlockedUntil > Date.now())}
                                 autoFocus
                             />
                             <button
                                 onClick={handleRedeem}
-                                disabled={redeeming || !codeInput.trim()}
+                                disabled={redeeming || !codeInput.trim() || Boolean(redeemBlockedUntil && redeemBlockedUntil > Date.now())}
                                 className="redeem-apply-btn"
                             >
                                 {redeeming ? (
@@ -197,11 +290,24 @@ const CreditsDisplay = forwardRef<CreditsDisplayHandle, CreditsDisplayProps>(
                                             <line x1="15" y1="9" x2="9" y2="15" />
                                             <line x1="9" y1="9" x2="15" y2="15" />
                                         </svg>
-                                        <span>{codeMessage.text}</span>
+                                        <div className="flex min-w-0 flex-col gap-2">
+                                            <span>{codeMessage.text}</span>
+                                            {codeMessage.showPolicyLink ? (
+                                                <Link href="/policy" className="text-xs text-slate-300 underline underline-offset-4 transition-colors hover:text-white">
+                                                    View usage policy
+                                                </Link>
+                                            ) : null}
+                                        </div>
                                     </>
                                 )}
                             </div>
                         )}
+
+                        <div className="mt-4 flex justify-end">
+                            <Link href="/policy" className="text-xs text-slate-500 transition-colors hover:text-slate-300">
+                                View usage policy
+                            </Link>
+                        </div>
                     </div>
                 )}
             </div>

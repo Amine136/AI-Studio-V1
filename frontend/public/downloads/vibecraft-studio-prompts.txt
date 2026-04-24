@@ -1,0 +1,39 @@
+Vibecraft Studio Prompt Inventory
+Generated: 2026-04-19 UTC
+
+This file reflects the current studio architecture after the plain-chat split.
+
+==================================================
+1. PLAIN CHAT
+
+Plain chat no longer builds a transcript prompt in the frontend.
+
+Current flow:
+- frontend creates or loads a persisted conversation
+- frontend sends structured message parts to:
+  /chat/conversations/{conversation_id}/messages
+- backend loads recent stored messages from the database
+- backend assembles a bounded context window
+- backend sends canonical messages[] to ApiKeyManager /api/v1/chat
+
+Important note:
+- frontend plain chat no longer uses /generate
+- frontend plain chat no longer sends requested_outputs: ["caption"]
+- frontend plain chat no longer uses buildConversationPrompt(...)
+
+==================================================
+2. SMART CONTENT CREATION
+
+Smart content creation still uses the generation workflow:
+- /generate
+- requested_outputs
+- mode: smart or quick
+- backend prompt templates for analyze/caption/image generation
+
+==================================================
+3. MAIN FILE REFERENCES
+
+- /home/ouni/AI-Studio-V1-staging/frontend/src/app/studio/chat/page.tsx
+- /home/ouni/AI-Studio-V1-staging/frontend/src/services/api.ts
+- /home/ouni/AI-Studio-V1-staging/backend/app/main.py
+- /home/ouni/AI-Studio-V1-staging/backend/app/services/chat_service.py

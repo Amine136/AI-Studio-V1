@@ -37,6 +37,8 @@ class User(Base):
     analyze_sessions: Mapped[list["AnalyzeSession"]] = relationship(back_populates="user")
     history_entries: Mapped[list["HistoryEntry"]] = relationship(back_populates="user")
     generation_jobs: Mapped[list["GenerationJob"]] = relationship(back_populates="user")
+    chat_conversations: Mapped[list["ChatConversation"]] = relationship(back_populates="user")
+    chat_messages: Mapped[list["ChatMessage"]] = relationship(back_populates="user")
     admin_audit_logs: Mapped[list["AdminAuditLog"]] = relationship(back_populates="admin_user")
 
     __table_args__ = (
@@ -202,6 +204,53 @@ class HistoryEntry(Base):
 
     __table_args__ = (
         Index("ix_history_entries_uid_created_at", "uid", "created_at"),
+    )
+
+
+class ChatConversation(Base):
+    __tablename__ = "chat_conversations"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    uid: Mapped[str] = mapped_column(ForeignKey("users.uid", ondelete="CASCADE"), nullable=False)
+    model: Mapped[str] = mapped_column(String(255), nullable=False)
+    system_json: Mapped[list[dict[str, Any]]] = mapped_column("system", JSON, default=list, nullable=False)
+    created_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    updated_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    last_message_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    prompt_tokens_total: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    completion_tokens_total: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    user: Mapped[User] = relationship(back_populates="chat_conversations")
+    messages: Mapped[list["ChatMessage"]] = relationship(
+        back_populates="conversation",
+        cascade="all, delete-orphan",
+    )
+
+    __table_args__ = (
+        CheckConstraint("prompt_tokens_total >= 0", name="ck_chat_conversations_prompt_tokens_total_nonnegative"),
+        CheckConstraint("completion_tokens_total >= 0", name="ck_chat_conversations_completion_tokens_total_nonnegative"),
+        Index("ix_chat_conversations_uid_updated_at", "uid", "updated_at"),
+        Index("ix_chat_conversations_uid_last_message_at", "uid", "last_message_at"),
+    )
+
+
+class ChatMessage(Base):
+    __tablename__ = "chat_messages"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    conversation_id: Mapped[str] = mapped_column(ForeignKey("chat_conversations.id", ondelete="CASCADE"), nullable=False)
+    uid: Mapped[str] = mapped_column(ForeignKey("users.uid", ondelete="CASCADE"), nullable=False)
+    role: Mapped[str] = mapped_column(String(32), nullable=False)
+    parts_json: Mapped[list[dict[str, Any]]] = mapped_column("parts", JSON, default=list, nullable=False)
+    created_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+    conversation: Mapped[ChatConversation] = relationship(back_populates="messages")
+    user: Mapped[User] = relationship(back_populates="chat_messages")
+
+    __table_args__ = (
+        CheckConstraint("role IN ('user', 'assistant')", name="ck_chat_messages_role_valid"),
+        Index("ix_chat_messages_conversation_id_created_at", "conversation_id", "created_at"),
+        Index("ix_chat_messages_uid_created_at", "uid", "created_at"),
     )
 
 

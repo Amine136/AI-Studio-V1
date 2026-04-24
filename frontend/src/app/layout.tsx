@@ -17,6 +17,10 @@ export default function RootLayout({
         <meta name="description" content="Vibecraft is an AI-powered creative studio for generating captions, images, and more." />
         <link rel="icon" href={`/best-version/logo-192.png?v=${LOGO_VERSION}`} type="image/png" sizes="192x192" />
         <link rel="apple-touch-icon" href={`/best-version/logo-192.png?v=${LOGO_VERSION}`} />
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200"
+        />
       </head>
       <body className="antialiased">
         <AuthProvider>

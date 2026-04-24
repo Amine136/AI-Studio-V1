@@ -6,14 +6,33 @@ from typing import Dict, Any, List
 from app.core.state import StudioState, ContentSpec, OutputType
 from app.config import settings
 from app.graph.plugins import PLUGIN_REGISTRY
-from app.services.llm_client import generate_text
-from app.services.image_client import generate_image_url, generate_image_and_text
+from app.services.llm_client import generate_text, generate_text_payload
+from app.services.image_client import generate_image_url, generate_image_and_text, generate_image_and_text_payload, generate_image_payload
 from app.services.sanitizer import sanitize_user_text
 from app.core.schema import IntentAnalysis
 
 # Configure logger
 logger = logging.getLogger("studio.workflow")
 logger.setLevel(logging.INFO)
+
+GENERATE_PARAMETER_OPTION_KEY_MAP = {
+    "temperature": "temperature",
+    "topP": "topP",
+    "maxOutputTokens": "maxTokens",
+    "thinkingBudget": "thinkingBudget",
+    "thinkingLevel": "thinkingLevel",
+    "presencePenalty": "presencePenalty",
+    "frequencyPenalty": "frequencyPenalty",
+    "mediaResolution": "mediaResolution",
+    "imageSize": "imageSize",
+    "sampleImageSize": "sampleImageSize",
+    "aspectRatio": "aspectRatio",
+    "sampleCount": "sampleCount",
+    "seed": "seed",
+    "addWatermark": "addWatermark",
+    "enhancePrompt": "enhancePrompt",
+    "outputMimeType": "outputMimeType",
+}
 
 # ---------------------------------------------------------
 # Helper: Merging Logic
@@ -70,6 +89,7 @@ def ingest_input(state: StudioState) -> StudioState:
     req_outputs = state.get("requested_outputs") or ["image", "caption"]
     user_prefs = state.get("user_preferences", {})
     input_image = state.get("input_image")
+    model_parameters = state.get("model_parameters", {})
     
     # Status Logic
     current_status = state.get("status")
@@ -82,6 +102,7 @@ def ingest_input(state: StudioState) -> StudioState:
         "requested_outputs": req_outputs,
         "input_image": input_image,
         "user_preferences": user_prefs,
+        "model_parameters": model_parameters,
         "status": next_status
     }
 
@@ -247,12 +268,15 @@ def execute_generation(state: StudioState) -> StudioState:
     logger.info("🚀 [Step 6/6] EXECUTE: Running AI generation...")
     
     generated = {}
-    total_cost = 0
+    failures: list[str] = []
+    total_cost = 0.0
+    billing_components: list[dict[str, Any]] = []
     total_requests = len(state.get("model_requests", []))
     input_image = state.get("input_image")
     requested_outputs = state.get("requested_outputs", [])
     assigned_models = state.get("assigned_models", {})
     content_spec = state.get("content_spec", {})
+    model_parameters = state.get("model_parameters", {})
 
     shared_multimodal_model = (
         input_image
@@ -277,35 +301,106 @@ def execute_generation(state: StudioState) -> StudioState:
 
         provider = model_config.get("provider", "mock")
         model_id = model_config.get("model_id", "default")
-        model_cost = model_config.get("cost", 0)
         multimodal_prompt = _build_shared_multimodal_prompt(content_spec)
-        logger.info(f"   ├─ [1/1] multimodal bundle via {provider} (cost: {model_cost})...")
+        logger.info(f"   ├─ [1/1] multimodal bundle via {provider}...")
 
         try:
-            bundle = generate_image_and_text(
+            image_params = _normalize_generation_model_parameters(
+                "image",
+                model_name,
+                model_config,
+                model_parameters.get("image"),
+            )
+            caption_params = _normalize_generation_model_parameters(
+                "caption",
+                model_name,
+                model_config,
+                model_parameters.get("caption"),
+            )
+            merged_options = {
+                **image_params.get("options", {}),
+                **caption_params.get("options", {}),
+            }
+            merged_image_config = {
+                **image_params.get("image_config", {}),
+                **caption_params.get("image_config", {}),
+            }
+            bundle = generate_image_and_text_payload(
                 provider,
                 model_id,
                 multimodal_prompt,
-                image_config={"aspect_ratio": content_spec.get("aspect_ratio", "16:9")},
+                image_config={
+                    "aspect_ratio": content_spec.get("aspect_ratio", "16:9"),
+                    **merged_image_config,
+                },
                 input_image=input_image,
+                options=merged_options,
             )
             generated["image"] = bundle.get("image", "")
             generated["caption"] = bundle.get("text", "")
-            total_cost += model_cost
+            request_cost = _parse_resolved_cost(bundle.get("resolvedCost"))
+            total_cost += request_cost
+            billing_components.append(
+                {
+                    "task": "multimodal_bundle",
+                    "provider": bundle.get("provider") or provider,
+                    "model": bundle.get("model") or model_id,
+                    "billingMode": bundle.get("billingMode"),
+                    "resolvedCost": request_cost,
+                    "usage": bundle.get("usage") or {},
+                    "billing": bundle.get("billing") or {},
+                }
+            )
+            if "caption" in requested_outputs and not str(generated.get("caption") or "").strip() and str(generated.get("image") or "").strip():
+                logger.info("   │  ├─ Shared multimodal returned no text; requesting fallback caption from generated image...")
+                fallback_prompt = str(content_spec.get("caption_prompt") or "").strip() or (
+                    "Write a concise description of the generated image."
+                )
+                fallback_prompt = (
+                    f"{fallback_prompt}\n\n"
+                    "Base the caption on the generated image itself. "
+                    "Return only the final caption text."
+                )
+                fallback_caption = generate_text_payload(
+                    provider,
+                    model_id,
+                    fallback_prompt,
+                    input_image={"url": generated["image"]},
+                    options=caption_params.get("options") or {},
+                )
+                generated["caption"] = fallback_caption.get("text", "")
+                fallback_cost = _parse_resolved_cost(fallback_caption.get("resolvedCost"))
+                total_cost += fallback_cost
+                billing_components.append(
+                    {
+                        "task": "caption_fallback",
+                        "provider": fallback_caption.get("provider") or provider,
+                        "model": fallback_caption.get("model") or model_id,
+                        "billingMode": fallback_caption.get("billingMode"),
+                        "resolvedCost": fallback_cost,
+                        "usage": fallback_caption.get("usage") or {},
+                        "billing": fallback_caption.get("billing") or {},
+                    }
+                )
+                logger.info("   │  └─ ✅ Fallback caption request succeeded")
             logger.info("   │  └─ ✅ Shared multimodal request succeeded")
             return {
                 "generated_assets": generated,
                 "total_cost": total_cost,
+                "billing_components": billing_components,
                 "status": "complete",
             }
         except Exception as e:
-            error_msg = f"Generation Failed: {str(e)}"
-            logger.error(f"   │  └─ ❌ {error_msg}")
+            error_msg = str(e)
+            failures.append(f"multimodal bundle failed: {error_msg}")
+            logger.error(f"   │  └─ ❌ Generation failed: {error_msg}")
             traceback.print_exc()
             return {
-                "generated_assets": {"image": error_msg, "caption": error_msg},
+                "generated_assets": {},
                 "total_cost": 0,
-                "status": "complete",
+                "status": "error",
+                "error_message": "We couldn't deliver the generated result. No credits were charged.",
+                "failure_reason": "; ".join(failures),
             }
     
     for idx, req in enumerate(state.get("model_requests", []), 1):
@@ -318,48 +413,106 @@ def execute_generation(state: StudioState) -> StudioState:
         model_config = task_config.get(model_name)
         
         if not model_config:
-            logger.warning(f"   ├─ ⚠️ [{idx}/{total_requests}] {task_type}: Model config missing for {model_name}")
-            generated[task_type] = f"Error: Model {model_name} not found."
+            error_msg = f"Model config missing for {task_type}:{model_name}"
+            logger.warning(f"   ├─ ⚠️ [{idx}/{total_requests}] {error_msg}")
+            failures.append(error_msg)
             continue
             
         provider = model_config.get("provider", "mock")
         model_id = model_config.get("model_id", "default")
-        model_cost = model_config.get("cost", 0)
         
-        logger.info(f"   ├─ [{idx}/{total_requests}] {task_type} via {provider} (cost: {model_cost})...")
+        logger.info(f"   ├─ [{idx}/{total_requests}] {task_type} via {provider}...")
 
         try:
             if task_type == "image":
                 model_type = model_config.get("type", "")
-                image_config = req.get("metadata", {})
-                result = generate_image_url(
+                param_config = _normalize_generation_model_parameters(
+                    task_type,
+                    model_name,
+                    model_config,
+                    model_parameters.get(task_type),
+                )
+                image_config = {
+                    **req.get("metadata", {}),
+                    **param_config.get("image_config", {}),
+                }
+                result_payload = generate_image_payload(
                     provider,
                     model_id,
                     prompt,
                     model_type=model_type,
                     image_config=image_config,
                     input_image=input_image,
+                    options=param_config.get("options"),
                 )
+                result = result_payload.get("image", "")
             else:
-                result = generate_text(provider, model_id, prompt, input_image=input_image)
+                param_config = _normalize_generation_model_parameters(
+                    task_type,
+                    model_name,
+                    model_config,
+                    model_parameters.get(task_type),
+                )
+                result_payload = generate_text_payload(
+                    provider,
+                    model_id,
+                    prompt,
+                    input_image=input_image,
+                    options=param_config.get("options"),
+                )
+                result = result_payload.get("text", "")
             
             generated[task_type] = result
-            total_cost += model_cost
+            request_cost = _parse_resolved_cost(result_payload.get("resolvedCost"))
+            total_cost += request_cost
+            billing_components.append(
+                {
+                    "task": task_type,
+                    "provider": result_payload.get("provider") or provider,
+                    "model": result_payload.get("model") or model_id,
+                    "billingMode": result_payload.get("billingMode"),
+                    "resolvedCost": request_cost,
+                    "usage": result_payload.get("usage") or {},
+                    "billing": result_payload.get("billing") or {},
+                }
+            )
             logger.info(f"   │  └─ ✅ Success")
             
         except Exception as e:
-            error_msg = f"Generation Failed: {str(e)}"
-            logger.error(f"   │  └─ ❌ {error_msg}")
+            error_msg = str(e)
+            failures.append(f"{task_type} generation failed: {error_msg}")
+            logger.error(f"   │  └─ ❌ Generation failed: {error_msg}")
             traceback.print_exc()
-            generated[task_type] = error_msg
+            continue
+
+    missing_outputs = [task for task in requested_outputs if not generated.get(task)]
+    if failures or missing_outputs:
+        if missing_outputs:
+            failures.append(f"missing outputs: {', '.join(missing_outputs)}")
+        logger.warning("   └─ ⚠️ Delivery failed before completion")
+        return {
+            "generated_assets": generated,
+            "total_cost": 0,
+            "status": "error",
+            "error_message": "We couldn't deliver the generated result. No credits were charged.",
+            "failure_reason": "; ".join(failures),
+        }
 
     logger.info(f"   └─ 🎉 Generation complete: {len(generated)} assets | Total cost: {total_cost} credits")
     
     return {
         "generated_assets": generated,
         "total_cost": total_cost,
+        "billing_components": billing_components,
         "status": "complete"
     }
+
+
+def _parse_resolved_cost(raw_cost: Any) -> float:
+    try:
+        return round(float(raw_cost or 0), 6)
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def _build_shared_multimodal_prompt(content_spec: ContentSpec) -> str:
@@ -376,17 +529,74 @@ def _build_shared_multimodal_prompt(content_spec: ContentSpec) -> str:
     )
 
 
+def _normalize_generation_model_parameters(
+    task_name: str,
+    model_name: str,
+    model_entry: Dict[str, Any],
+    raw_params: Dict[str, Any] | None,
+) -> Dict[str, Dict[str, Any]]:
+    del task_name
+    params = raw_params or {}
+    if not isinstance(params, dict) or not params:
+        return {"options": {}, "image_config": {}}
+
+    parameter_schema = settings.get_model_parameter_schema(model_name, model_entry)
+    normalized_options: Dict[str, Any] = {}
+    normalized_image_config: Dict[str, Any] = {}
+
+    for schema_key, raw_value in params.items():
+        if schema_key not in parameter_schema:
+            continue
+        option_key = GENERATE_PARAMETER_OPTION_KEY_MAP.get(schema_key)
+        if not option_key:
+            continue
+
+        if option_key == "maxTokens":
+            normalized_options[option_key] = int(raw_value)
+        elif option_key in {"temperature", "topP", "presencePenalty", "frequencyPenalty"}:
+            normalized_options[option_key] = float(raw_value)
+        elif option_key in {"thinkingBudget", "sampleCount", "seed"}:
+            normalized_options[option_key] = int(raw_value)
+        elif option_key in {"addWatermark", "enhancePrompt"}:
+            normalized_options[option_key] = bool(raw_value)
+        elif option_key == "thinkingLevel":
+            normalized_options[option_key] = str(raw_value).strip().upper()
+        elif option_key == "mediaResolution":
+            normalized_options[option_key] = str(raw_value).strip().lower()
+        else:
+            normalized_options[option_key] = str(raw_value).strip()
+
+    aspect_ratio = normalized_options.get("aspectRatio")
+    if isinstance(aspect_ratio, str) and aspect_ratio:
+        normalized_image_config["aspect_ratio"] = aspect_ratio
+
+    return {"options": normalized_options, "image_config": normalized_image_config}
+
+
 def format_delivery(state: StudioState) -> StudioState:
     logger.info("📦 DELIVER: Formatting final response...")
     logger.info("   └─ ✅ Done!")
-    
-    return {
-        "final_response": {
-            "status": "success",
-            "results": state.get("generated_assets"),
-            "meta": {
-                "settings_used": state.get("content_spec"),
-                "total_cost": state.get("total_cost", 0)
+
+    if state.get("status") == "error":
+        return {
+            "final_response": {
+                "status": "error",
+                "results": None,
+                "meta": {
+                    "error_message": state.get("error_message") or "We couldn't deliver the generated result. No credits were charged.",
+                    "failure_reason": state.get("failure_reason"),
+                },
             }
         }
-    }
+
+    return {
+            "final_response": {
+                "status": "success",
+                "results": state.get("generated_assets"),
+                "meta": {
+                    "settings_used": state.get("content_spec"),
+                    "total_cost": state.get("total_cost", 0),
+                    "billing_components": state.get("billing_components", []),
+                }
+            }
+        }

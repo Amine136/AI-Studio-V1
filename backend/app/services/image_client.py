@@ -1,4 +1,9 @@
-from app.services.apikeymanager_client import generate_image_via_proxy, generate_text_and_image_via_proxy
+from app.services.apikeymanager_client import (
+    generate_image_payload_via_proxy,
+    generate_image_via_proxy,
+    generate_text_and_image_payload_via_proxy,
+    generate_text_and_image_via_proxy,
+)
 
 
 def generate_image_url(
@@ -8,9 +13,17 @@ def generate_image_url(
     model_type: str = "",
     image_config: dict = None,
     input_image: dict | None = None,
+    options: dict | None = None,
 ) -> str:
     """Sends image generation through ApiKeyManager."""
-    return generate_image_via_proxy(provider, model_id, prompt, image_config=image_config, input_image=input_image)
+    return generate_image_via_proxy(
+        provider,
+        model_id,
+        prompt,
+        image_config=image_config,
+        input_image=input_image,
+        options=options,
+    )
 
 
 def generate_image_and_text(
@@ -19,6 +32,7 @@ def generate_image_and_text(
     prompt: str,
     image_config: dict = None,
     input_image: dict | None = None,
+    options: dict | None = None,
 ) -> dict[str, str]:
     """Sends a single multimodal generation request through ApiKeyManager."""
     return generate_text_and_image_via_proxy(
@@ -27,4 +41,43 @@ def generate_image_and_text(
         prompt,
         image_config=image_config,
         input_image=input_image,
+        options=options,
+    )
+
+
+def generate_image_payload(
+    provider: str,
+    model_id: str,
+    prompt: str,
+    model_type: str = "",
+    image_config: dict = None,
+    input_image: dict | None = None,
+    options: dict | None = None,
+) -> dict:
+    del model_type
+    return generate_image_payload_via_proxy(
+        provider,
+        model_id,
+        prompt,
+        image_config=image_config,
+        input_image=input_image,
+        options=options,
+    )
+
+
+def generate_image_and_text_payload(
+    provider: str,
+    model_id: str,
+    prompt: str,
+    image_config: dict = None,
+    input_image: dict | None = None,
+    options: dict | None = None,
+) -> dict:
+    return generate_text_and_image_payload_via_proxy(
+        provider,
+        model_id,
+        prompt,
+        image_config=image_config,
+        input_image=input_image,
+        options=options,
     )

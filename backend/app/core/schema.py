@@ -1,11 +1,13 @@
 from typing import List, Dict, Any, Optional, Literal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 # ---------------------------------------------------------
 # Frontend <-> Backend Types
 # ---------------------------------------------------------
 
 OutputType = Literal["image", "caption"]
+GenerationMode = Literal["quick", "smart"]
+GenerationStatus = Literal["processing", "generating"]
 
 
 class InputImage(BaseModel):
@@ -22,6 +24,153 @@ class InputImage(BaseModel):
         json_schema_extra={"example": "https://vibecraft.ouni.space/images/1234abcd.png"},
     )
 
+
+ChatPartType = Literal["text", "image_url"]
+ChatRole = Literal["user", "assistant"]
+
+
+class ChatMessagePart(BaseModel):
+    type: ChatPartType = Field(..., description="Structured chat content part type.")
+    text: Optional[str] = Field(default=None, max_length=15000, description="Text content for text parts.")
+    url: Optional[str] = Field(default=None, max_length=2048, description="Image URL for image_url parts.")
+    mime_type: Optional[str] = Field(
+        default=None,
+        alias="mimeType",
+        max_length=128,
+        description="Optional MIME type for image parts.",
+    )
+
+    model_config = {"populate_by_name": True}
+
+
+class ChatMessage(BaseModel):
+    role: ChatRole = Field(..., description="Chat speaker role.")
+    parts: List[ChatMessagePart] = Field(
+        ...,
+        min_length=1,
+        max_length=16,
+        description="Ordered content parts for one chat message.",
+    )
+
+
+class PlainChatOptions(BaseModel):
+    temperature: Optional[float] = Field(default=None, ge=0, le=2)
+    max_tokens: Optional[int] = Field(default=None, alias="maxTokens", ge=10, le=15000)
+    top_p: Optional[float] = Field(default=None, alias="topP", gt=0, le=1)
+    thinking_budget: Optional[int] = Field(default=None, alias="thinkingBudget", ge=1, le=1_000_000)
+    thinking_level: Optional[Literal["MINIMAL", "LOW", "MEDIUM", "HIGH"]] = Field(default=None, alias="thinkingLevel")
+    presence_penalty: Optional[float] = Field(default=None, alias="presencePenalty", ge=-2, le=2)
+    frequency_penalty: Optional[float] = Field(default=None, alias="frequencyPenalty", ge=-2, le=2)
+    candidate_count: Optional[int] = Field(default=None, alias="candidateCount", ge=1, le=16)
+    media_resolution: Optional[Literal["low", "medium", "high", "ultra_high", "LOW", "MEDIUM", "HIGH", "ULTRA_HIGH"]] = Field(default=None, alias="mediaResolution")
+    image_size: Optional[str] = Field(default=None, alias="imageSize", max_length=20)
+    sample_image_size: Optional[str] = Field(default=None, alias="sampleImageSize", max_length=20)
+    aspect_ratio: Optional[str] = Field(default=None, alias="aspectRatio", max_length=20)
+    sample_count: Optional[int] = Field(default=None, alias="sampleCount", ge=1, le=32)
+    seed: Optional[int] = Field(default=None, ge=1, le=2_147_483_647)
+    add_watermark: Optional[bool] = Field(default=None, alias="addWatermark")
+    enhance_prompt: Optional[bool] = Field(default=None, alias="enhancePrompt")
+    output_mime_type: Optional[str] = Field(default=None, alias="outputMimeType", max_length=120)
+    prompt_cache_key: Optional[str] = Field(default=None, alias="promptCacheKey", max_length=255)
+
+    model_config = {"populate_by_name": True, "extra": "forbid"}
+
+    @field_validator("thinking_level", mode="before")
+    @classmethod
+    def normalize_thinking_level(cls, value):
+        if value is None:
+            return None
+        if isinstance(value, str):
+            normalized = value.strip().upper()
+            return normalized or None
+        return value
+
+    @field_validator("media_resolution", mode="before")
+    @classmethod
+    def normalize_media_resolution(cls, value):
+        if value is None:
+            return None
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            return normalized or None
+        return value
+
+
+class PlainChatRequest(BaseModel):
+    model: str = Field(..., min_length=1, max_length=255, description="Selected chat model ID.")
+    system: List[ChatMessagePart] = Field(
+        default_factory=list,
+        max_length=8,
+        description="Optional system prompt parts stored separately from the conversation messages.",
+    )
+    messages: List[ChatMessage] = Field(
+        ...,
+        min_length=1,
+        max_length=50,
+        description="Conversation turns in canonical chat format.",
+    )
+    options: Optional[PlainChatOptions] = Field(default=None, description="Optional chat generation settings.")
+
+
+class PlainChatModelItem(BaseModel):
+    id: str
+    display_name: str = Field(alias="displayName")
+    description: str = ""
+    provider: str
+    cost: float = 0.0
+    supports_image_input: bool = Field(default=False, alias="supportsImageInput")
+    parameter_schema: Dict[str, Any] = Field(default_factory=dict, alias="parameterSchema")
+
+    model_config = {"populate_by_name": True}
+
+
+class PlainChatModelListResponse(BaseModel):
+    models: List[PlainChatModelItem] = Field(default_factory=list)
+
+
+class PlainChatConversationCreateRequest(BaseModel):
+    model: str = Field(..., min_length=1, max_length=255, description="Selected chat model ID.")
+    system: List[ChatMessagePart] = Field(default_factory=list, max_length=8)
+
+
+class PlainChatConversationItem(BaseModel):
+    id: str
+    model: str
+    system: List[ChatMessagePart] = Field(default_factory=list)
+    created_at: int = Field(alias="createdAt")
+    updated_at: int = Field(alias="updatedAt")
+    last_message_at: Optional[int] = Field(default=None, alias="lastMessageAt")
+    prompt_tokens_total: int = Field(default=0, alias="promptTokensTotal")
+    completion_tokens_total: int = Field(default=0, alias="completionTokensTotal")
+    total_tokens: int = Field(default=0, alias="totalTokens")
+
+    model_config = {"populate_by_name": True}
+
+
+class PlainChatConversationListResponse(BaseModel):
+    conversations: List[PlainChatConversationItem] = Field(default_factory=list)
+
+
+class PlainChatConversationMessagesResponse(BaseModel):
+    conversation: PlainChatConversationItem
+    messages: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class PlainChatConversationMessageCreateRequest(BaseModel):
+    parts: List[ChatMessagePart] = Field(..., min_length=1, max_length=16)
+    options: Optional[PlainChatOptions] = None
+
+
+class PlainChatConversationTurnResponse(BaseModel):
+    status: str = Field(..., description="Result status: 'success' or 'error'.")
+    conversation: Optional[PlainChatConversationItem] = None
+    user_message: Optional[Dict[str, Any]] = Field(default=None, alias="userMessage")
+    assistant_message: Optional[Dict[str, Any]] = Field(default=None, alias="assistantMessage")
+    usage: Optional[Dict[str, Any]] = Field(default=None)
+    meta: Optional[Dict[str, Any]] = Field(default=None)
+
+    model_config = {"populate_by_name": True}
+
 class GenerateRequest(BaseModel):
     """Request payload for content generation."""
     user_text: str = Field(
@@ -34,6 +183,10 @@ class GenerateRequest(BaseModel):
     requested_outputs: List[OutputType] = Field(
         default=["image", "caption"],
         description="Types of content to generate. Can include 'image', 'caption', or both"
+    )
+    mode: GenerationMode = Field(
+        default="smart",
+        description="Workflow mode. 'quick' generates directly, 'smart' runs analyze then review before generation."
     )
     input_image: Optional[InputImage] = Field(
         default=None,
@@ -48,9 +201,13 @@ class GenerateRequest(BaseModel):
         default={},
         description="Corrections or overrides for AI-suggested values during review"
     )
-    status: Optional[str] = Field(
+    model_parameters: Optional[Dict[str, Dict[str, Any]]] = Field(
+        default={},
+        description="Optional per-output model parameters selected during review, e.g. {image: {...}, caption: {...}}",
+    )
+    status: GenerationStatus = Field(
         default="processing",
-        description="Current processing status. Typically 'processing' for new requests"
+        description="Current workflow stage. 'processing' starts analysis, 'generating' executes final generation."
     )
 
     model_config = {
@@ -59,6 +216,7 @@ class GenerateRequest(BaseModel):
                 {
                     "user_text": "A sleek tech product on a minimalist desk",
                     "requested_outputs": ["image", "caption"],
+                    "mode": "smart",
                     "input_image": {
                         "name": "reference.png",
                         "mime_type": "image/png",
@@ -102,6 +260,22 @@ class SystemConfig(BaseModel):
     model_catalog: Dict[str, Any] = Field(
         ...,
         description="Catalog of available AI models and their capabilities"
+    )
+    smart_analysis_fee: float = Field(
+        default=0.05,
+        description="Fixed fee charged when Smart mode starts the analysis/review step."
+    )
+    minimum_text_generation_cost: float = Field(
+        default=0.01,
+        description="Minimum effective cost applied to text generation models."
+    )
+    minimum_image_generation_cost: float = Field(
+        default=0.10,
+        description="Minimum effective cost applied to image generation models."
+    )
+    catalog_warnings: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="Warnings for catalog entries priced below the enforced backend cost floors."
     )
 
 
@@ -278,6 +452,21 @@ class AdminAuditLogListResponse(BaseModel):
     action: str = ""
     targetType: str = ""
     targetId: str = ""
+
+
+class AdminAuthFailureSummaryItem(BaseModel):
+    username: str
+    isActive: bool = True
+    wrongPasswordFailures: int = 0
+    windowSeconds: int = 0
+    lockoutThreshold: int = 0
+    deactivationThreshold: int = 0
+    isLockedOut: bool = False
+
+
+class AdminAuthFailureSummaryResponse(BaseModel):
+    summaries: List[AdminAuthFailureSummaryItem]
+    total: int
 
 
 # ---------------------------------------------------------

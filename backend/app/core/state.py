@@ -33,6 +33,7 @@ class StudioState(TypedDict, total=False):
     
     # Official tracking of user model choices
     user_preferences: Dict[str, str]     # e.g. {"image_model": "imagen-4.0-fast-generate-001"}
+    model_parameters: Dict[str, Dict[str, Any]]  # e.g. {"image": {"aspectRatio": "16:9"}}
     
     # --- Interaction Layer (UI Feedback) ---
     # Corrections from the "Smart Dropdowns" (e.g., {"lighting": "Natural"})
@@ -72,3 +73,9 @@ class StudioState(TypedDict, total=False):
 
     # The final formatted response object
     final_response: Dict[str, Any]
+
+    # Friendly error surfaced back to the API layer/front-end
+    error_message: str
+
+    # Technical failure detail kept for debugging/job tracking
+    failure_reason: str

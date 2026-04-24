@@ -10,6 +10,7 @@ import {
     AdminAuditLogItem,
     AdminCreditCodeItem,
     AdminUserListItem,
+    CatalogWarningItem,
 } from "../../types";
 
 export default function AdminPage() {
@@ -20,6 +21,7 @@ export default function AdminPage() {
     const [users, setUsers] = useState<AdminUserListItem[]>([]);
     const [codes, setCodes] = useState<AdminCreditCodeItem[]>([]);
     const [logs, setLogs] = useState<AdminAuditLogItem[]>([]);
+    const [warnings, setWarnings] = useState<CatalogWarningItem[]>([]);
 
     useEffect(() => {
         if (!session) return;
@@ -29,16 +31,18 @@ export default function AdminPage() {
             setLoading(true);
             setLoadError("");
             try {
-                const [userResponse, codeResponse, logResponse] = await Promise.all([
+                const [userResponse, codeResponse, logResponse, configResponse] = await Promise.all([
                     api.getAdminUsers({ limit: 6 }),
                     api.getAdminCodes(),
                     api.getAdminLogs({ limit: 4 }),
+                    api.getConfig(),
                 ]);
 
                 if (cancelled) return;
                 setUsers(userResponse.users ?? []);
                 setCodes(codeResponse.codes ?? []);
                 setLogs(logResponse.logs ?? []);
+                setWarnings(configResponse.catalog_warnings ?? []);
             } catch (error) {
                 if (cancelled) return;
                 setLoadError(error instanceof Error ? error.message : "Unable to load admin overview.");
@@ -182,6 +186,7 @@ export default function AdminPage() {
                             <QuickAccessButton label="Users" onClick={() => router.push("/users")} icon="users" />
                             <QuickAccessButton label="Codes" onClick={() => router.push("/codes")} icon="codes" />
                             <QuickAccessButton label="Logs" onClick={() => router.push("/logs")} icon="logs" />
+                            <QuickAccessButton label="Warnings" onClick={() => router.push("/warnings")} icon="warnings" />
                         </div>
                     </div>
                 </div>
@@ -265,6 +270,47 @@ export default function AdminPage() {
                                 </div>
                             </div>
                         ))}
+                    </OverviewPanel>
+                </div>
+
+                <div className="grid grid-cols-1 gap-6 mt-6">
+                    <OverviewPanel
+                        title="Warnings"
+                        subtitle="Catalog pricing below enforced backend floors"
+                        meta={`${warnings.length} active`}
+                        action={
+                            <button onClick={() => router.push("/warnings")} className="admin-gradient-btn">
+                                More details
+                            </button>
+                        }
+                        hasItems={warnings.length > 0}
+                        loading={loading}
+                        emptyText={loadError || "No catalog warnings detected"}
+                    >
+                        <div id="catalog-warnings" className="space-y-3 px-5 py-5">
+                            {warnings.map((warning) => (
+                                <div key={`${warning.task}-${warning.model}`} className="rounded-2xl border border-amber-400/20 bg-amber-400/[0.06] p-4">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-200">
+                                            {warning.task}
+                                        </span>
+                                        <span className="text-sm font-semibold text-white">{warning.display_name}</span>
+                                    </div>
+                                    <p className="mt-2 text-sm text-slate-200">{warning.message}</p>
+                                    <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-300">
+                                        <span className="rounded-full border border-white/8 bg-white/[0.03] px-2.5 py-1">
+                                            Configured: {warning.configured_cost.toFixed(2)}
+                                        </span>
+                                        <span className="rounded-full border border-white/8 bg-white/[0.03] px-2.5 py-1">
+                                            Minimum: {warning.minimum_cost.toFixed(2)}
+                                        </span>
+                                        <span className="rounded-full border border-white/8 bg-white/[0.03] px-2.5 py-1">
+                                            Model: {warning.model}
+                                        </span>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
                     </OverviewPanel>
                 </div>
 
@@ -372,7 +418,7 @@ function QuickAccessButton({
 }: {
     label: string;
     onClick: () => void;
-    icon: "users" | "codes" | "logs";
+    icon: "users" | "codes" | "logs" | "warnings";
 }) {
     return (
         <button
@@ -392,6 +438,12 @@ function QuickAccessButton({
                         <rect x="3" y="5" width="18" height="14" rx="2" />
                         <path d="M7 10h10" />
                         <path d="M7 14h6" />
+                    </svg>
+                ) : icon === "warnings" ? (
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                        <line x1="12" y1="9" x2="12" y2="13" />
+                        <line x1="12" y1="17" x2="12.01" y2="17" />
                     </svg>
                 ) : (
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
