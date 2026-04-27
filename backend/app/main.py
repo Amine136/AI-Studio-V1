@@ -18,7 +18,7 @@ from slowapi.errors import RateLimitExceeded
 from sqlalchemy import text
 
 from app.config import settings
-from app.core.schema import AdminAuditLogListResponse, AdminAuthFailureSummaryResponse, AdminCreditCodeBatchListResponse, AdminCreditCodeListResponse, AdminGenerationJobItem, AdminGenerationJobListResponse, AdminLoginRequest, AdminReasonRequest, AdminSessionResponse, AdminUserDetailResponse, AdminUserListResponse, CatalogUpdateNotification, GenerateRequest, GenerationResult, PlainChatConversationCreateRequest, PlainChatConversationItem, PlainChatConversationListResponse, PlainChatConversationMessageCreateRequest, PlainChatConversationMessagesResponse, PlainChatConversationTurnResponse, PlainChatModelListResponse, SystemConfig
+from app.core.schema import AdminAuditLogListResponse, AdminAuthFailureSummaryResponse, AdminCreditCodeBatchListResponse, AdminCreditCodeListResponse, AdminGenerationJobItem, AdminGenerationJobListResponse, AdminLoginRequest, AdminReasonRequest, AdminSessionResponse, AdminUserDetailResponse, AdminUserListResponse, CatalogUpdateNotification, GenerateRequest, GenerationResult, PlainChatConversationCreateRequest, PlainChatConversationItem, PlainChatConversationListResponse, PlainChatConversationMessageCreateRequest, PlainChatConversationMessagesResponse, PlainChatConversationTurnResponse, PlainChatConversationUpdateRequest, PlainChatModelListResponse, SystemConfig
 from app.db.session import session_scope
 from app.graph.workflow import studio_graph_app
 from app.services.admin_auth import AdminAuthRateLimitError, authenticate_admin, list_admin_auth_failure_summaries, revoke_admin_session
@@ -42,6 +42,7 @@ from app.services.security_backend import (
     create_credit_code_batch,
     create_credit_code_batch_with_title,
     create_generation_job,
+    delete_chat_conversation,
     disable_credit_code_batch,
     disable_credit_code,
     enable_credit_code,
@@ -56,6 +57,7 @@ from app.services.security_backend import (
     list_admin_audit_logs,
     list_admin_generation_jobs,
     list_chat_conversations,
+    update_chat_conversation_title,
     list_credit_code_batches,
     list_credit_code_batch_status_summaries,
     list_credit_codes,
@@ -72,6 +74,9 @@ from app.services.security_backend import (
 )
 
 SYSTEM_AUDIT_EMAIL = "system@vibecraft.local"
+DEFAULT_PLAIN_CHAT_TITLE = "New Chat"
+PLAIN_CHAT_TITLE_UPDATE_LIMIT = 20
+PLAIN_CHAT_TITLE_UPDATE_WINDOW_SECONDS = 15 * 60
 
 def _decode_bearer_uid(request: Request) -> str | None:
     auth_header = request.headers.get("authorization", "")
@@ -353,6 +358,10 @@ limiter = Limiter(key_func=rate_limit_key)
 BASE_DIR = Path(__file__).resolve().parent.parent
 IMAGES_DIR = BASE_DIR / "generated_images"
 UPLOADED_IMAGES_DIR = BASE_DIR / "uploaded_images"
+APIKEYMANAGER_GENERATED_IMAGE_DIRS = (
+    Path("/var/www/apikeymanager/backend/generated_images"),
+    Path("/home/ouni/ApiKeyManager/backend/generated_images"),
+)
 SAFE_GENERATED_FILENAME = re.compile(r'^[a-f0-9\-]{36}\.(jpg|png|webp)$')
 SAFE_UPLOADED_FILENAME = re.compile(r'^[a-f0-9]{32}\.(jpg|png|webp)$')
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
@@ -592,9 +601,9 @@ def get_system_config(request: Request, _=Depends(verify_api_key)):
         field_options=settings.field_options,
         model_catalog=model_catalog,
         smart_analysis_fee=settings.smart_analysis_fee,
-        minimum_text_generation_cost=0.05,
+        minimum_text_generation_cost=round(settings.minimum_text_generation_cost, 3),
         minimum_image_generation_cost=round(settings.minimum_image_generation_cost, 2),
-        catalog_warnings=[],
+        catalog_warnings=_collect_catalog_cost_warnings(model_catalog),
     )
 
 
@@ -654,8 +663,69 @@ def create_plain_chat_conversation(
         user["uid"],
         payload.model,
         normalized_system,
+        _normalize_plain_chat_title(payload.title),
     )
     return PlainChatConversationItem.model_validate(conversation)
+
+
+@app.patch(
+    "/chat/conversations/{conversation_id}",
+    response_model=PlainChatConversationItem,
+    tags=["Chat"],
+    summary="Update Plain Chat Conversation",
+    description="Update metadata for a stored plain-chat conversation.",
+)
+@limiter.limit("30/minute")
+def update_plain_chat_conversation_item(
+    request: Request,
+    conversation_id: str,
+    payload: PlainChatConversationUpdateRequest,
+    user: Dict[str, Any] = Depends(verify_firebase_user),
+):
+    del request
+    existing_conversation = get_chat_conversation(user["uid"], conversation_id)
+    if existing_conversation is None:
+        raise HTTPException(status_code=404, detail="Chat conversation not found")
+
+    normalized_title = _normalize_plain_chat_title(payload.title)
+    if normalized_title == _normalize_plain_chat_title(str(existing_conversation.get("title") or DEFAULT_PLAIN_CHAT_TITLE)):
+        return PlainChatConversationItem.model_validate(existing_conversation)
+
+    if not _allow_plain_chat_title_update(user["uid"]):
+        return PlainChatConversationItem.model_validate(existing_conversation)
+
+    conversation = update_chat_conversation_title(
+        user["uid"],
+        conversation_id,
+        normalized_title,
+    )
+    return PlainChatConversationItem.model_validate(conversation)
+
+
+@app.delete(
+    "/chat/conversations/{conversation_id}",
+    status_code=204,
+    tags=["Chat"],
+    summary="Delete Plain Chat Conversation",
+    description="Delete one stored plain-chat conversation and its messages for the current user.",
+)
+@limiter.limit("20/minute")
+def delete_plain_chat_conversation_item(
+    request: Request,
+    conversation_id: str,
+    user: Dict[str, Any] = Depends(verify_firebase_user),
+):
+    del request
+    conversation = get_chat_conversation(user["uid"], conversation_id)
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="Chat conversation not found")
+    existing_messages = get_chat_messages(user["uid"], conversation_id, 500)
+    image_urls = _collect_chat_message_image_urls(existing_messages)
+    deleted = delete_chat_conversation(user["uid"], conversation_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Chat conversation not found")
+    _delete_chat_conversation_images(image_urls)
+    return Response(status_code=204)
 
 
 @app.get(
@@ -712,6 +782,10 @@ def create_plain_chat_conversation_message(
 
         existing_messages = get_chat_messages(user["uid"], conversation_id, 200)
         user_parts = serialize_plain_chat_parts(payload.parts)
+        auto_title = None
+        existing_title = _normalize_plain_chat_title(str(conversation.get("title") or DEFAULT_PLAIN_CHAT_TITLE))
+        if len(existing_messages) == 0 and existing_title == DEFAULT_PLAIN_CHAT_TITLE:
+            auto_title = _derive_plain_chat_title_from_parts(user_parts)
         assembled_messages = assemble_plain_chat_context(
             existing_messages=existing_messages,
             next_user_parts=user_parts,
@@ -761,8 +835,10 @@ def create_plain_chat_conversation_message(
             conversation_id,
             user_parts=user_parts,
             assistant_parts=list(assistant_message.get("parts") or []),
+            title=_normalize_plain_chat_title(auto_title) if auto_title else None,
             prompt_tokens=int((result.get("usage") or {}).get("promptTokens") or 0),
             completion_tokens=int((result.get("usage") or {}).get("completionTokens") or 0),
+            charged_cost=charged_cost,
         )
         persisted_user_message = persisted_turn["user"]
         persisted_assistant_message = persisted_turn["assistant"]
@@ -825,6 +901,36 @@ def _enforce_plain_chat_request_size(request: Request) -> None:
         return
     if request_bytes > int(settings.plain_chat_max_request_bytes):
         raise ValueError("CHAT_REQUEST_TOO_LARGE")
+
+
+def _normalize_plain_chat_title(value: str | None) -> str:
+    normalized = re.sub(r"\s+", " ", (value or "").strip())
+    if not normalized:
+        return DEFAULT_PLAIN_CHAT_TITLE
+    if len(normalized) > 120:
+        normalized = normalized[:117].rstrip() + "..."
+    return normalized
+
+
+def _derive_plain_chat_title_from_parts(parts: list[dict[str, Any]]) -> str | None:
+    for part in parts:
+        if str(part.get("type") or "") != "text":
+            continue
+        text = re.sub(r"\s+", " ", str(part.get("text") or "").strip())
+        if not text:
+            continue
+        if len(text) > 72:
+            text = text[:69].rstrip() + "..."
+        return text
+    return None
+
+
+def _allow_plain_chat_title_update(uid: str) -> bool:
+    return consume_rate_limit(
+        f"chat:title:user:{uid}",
+        max_count=PLAIN_CHAT_TITLE_UPDATE_LIMIT,
+        window_seconds=PLAIN_CHAT_TITLE_UPDATE_WINDOW_SECONDS,
+    )
 
 
 @app.post(
@@ -1699,9 +1805,14 @@ def _is_valid_generated_image_result(value: Any) -> bool:
     if image_url.startswith(uploaded_prefix):
         return (IMAGES_DIR / filename).exists()
 
-    generated_prefix = f"{settings.apikeymanager_public_base_url}/generated-images/" if settings.apikeymanager_public_base_url else ""
-    if generated_prefix and image_url.startswith(generated_prefix):
-        return True
+    generated_prefixes: list[str] = []
+    if settings.public_backend_base_url:
+        generated_prefixes.append(f"{settings.public_backend_base_url}/generated-images/")
+    if settings.apikeymanager_public_base_url:
+        generated_prefixes.append(f"{settings.apikeymanager_public_base_url}/generated-images/")
+    for generated_prefix in generated_prefixes:
+        if image_url.startswith(generated_prefix):
+            return True
 
     return False
 
@@ -1777,27 +1888,42 @@ def _plain_chat_error_message(error_code: str) -> str:
     return error_code
 
 
-def _effective_model_cost(task: str, model_config: dict[str, Any] | None) -> float:
-    raw_cost = float((model_config or {}).get("cost", 0) or 0)
-    floor = _minimum_generation_cost_for_task(task)
-    return round(max(raw_cost, floor), 2)
-
-
 def _minimum_generation_cost_for_task(task: str) -> float:
     if task == "image":
-        return round(settings.minimum_image_generation_cost, 2)
-    return round(settings.minimum_text_generation_cost, 2)
+        return round(settings.minimum_image_generation_cost, 4)
+    return round(settings.minimum_text_generation_cost, 4)
 
 
-def _catalog_with_effective_costs(model_catalog: dict[str, Any]) -> dict[str, Any]:
-    adjusted: dict[str, Any] = {}
-    for task, models in (model_catalog or {}).items():
-        adjusted[task] = {}
-        for model_name, model_config in (models or {}).items():
-            next_config = dict(model_config or {})
-            next_config["cost"] = _effective_model_cost(task, next_config)
-            adjusted[task][model_name] = next_config
-    return adjusted
+def _format_credit_amount(value: float) -> str:
+    if value > 0 and value < 0.01:
+        return f"{value:.3f}"
+    return f"{value:.2f}"
+
+def _raw_model_pricing_minimum(task: str, model_config: dict[str, Any] | None) -> float:
+    config = dict(model_config or {})
+    if task == "caption":
+        return round(settings.minimum_text_generation_cost, 4)
+
+    billing = config.get("billing") if isinstance(config.get("billing"), dict) else {}
+    fixed_config = billing.get("fixed") if isinstance(billing.get("fixed"), dict) else {}
+    fixed_amount = _parse_billing_float(fixed_config.get("amount"))
+    image_config = billing.get("image") if isinstance(billing.get("image"), dict) else {}
+    image_size_prices = image_config.get("imageSizePrices") if isinstance(image_config.get("imageSizePrices"), dict) else {}
+    sample_image_size_prices = image_config.get("sampleImageSizePrices") if isinstance(image_config.get("sampleImageSizePrices"), dict) else {}
+    base_price = _parse_billing_float(image_config.get("basePrice"))
+
+    candidates: list[float] = []
+    if fixed_amount is not None:
+        candidates.append(fixed_amount)
+    if base_price is not None:
+        candidates.append(base_price)
+    candidates.extend(
+        parsed for raw in image_size_prices.values() if (parsed := _parse_billing_float(raw)) is not None
+    )
+    candidates.extend(
+        parsed for raw in sample_image_size_prices.values() if (parsed := _parse_billing_float(raw)) is not None
+    )
+    return round(min(candidates), 4) if candidates else 0.0
 
 
 def _collect_catalog_cost_warnings(model_catalog: dict[str, Any]) -> list[dict[str, Any]]:
@@ -1805,7 +1931,7 @@ def _collect_catalog_cost_warnings(model_catalog: dict[str, Any]) -> list[dict[s
     for task, models in (model_catalog or {}).items():
         floor = _minimum_generation_cost_for_task(task)
         for model_name, model_config in (models or {}).items():
-            configured_cost = float((model_config or {}).get("cost", 0) or 0)
+            configured_cost = _raw_model_pricing_minimum(task, model_config)
             if configured_cost >= floor:
                 continue
             display_name = str((model_config or {}).get("display_name") or model_name)
@@ -1815,11 +1941,11 @@ def _collect_catalog_cost_warnings(model_catalog: dict[str, Any]) -> list[dict[s
                     "task": task,
                     "model": model_name,
                     "display_name": display_name,
-                    "configured_cost": round(configured_cost, 2),
+                    "configured_cost": round(configured_cost, 4),
                     "minimum_cost": floor,
                     "message": (
-                        f"{display_name} is priced at {configured_cost:.2f} credits, below the enforced "
-                        f"{task} floor of {floor:.2f}."
+                        f"{display_name} is priced at {_format_credit_amount(configured_cost)} credits, below the enforced "
+                        f"{task} floor of {_format_credit_amount(floor)}."
                     ),
                 }
             )
@@ -1961,16 +2087,19 @@ def _parse_billing_float(value: Any) -> float | None:
 def _derive_model_pricing_summary(task: str, model_name: str, model_config: dict[str, Any] | None) -> dict[str, Any]:
     config = dict(model_config or {})
     if task == "caption":
+        floor = round(settings.minimum_text_generation_cost, 4)
         return {
-            "minimum": 0.05,
+            "minimum": floor,
             "expected": {
-                "type": "fixed",
-                "amount": 0.05,
+                "type": "usage_based",
+                "amount": floor,
                 "label": "Estimated text floor",
             },
         }
 
     billing = config.get("billing") if isinstance(config.get("billing"), dict) else {}
+    fixed_config = billing.get("fixed") if isinstance(billing.get("fixed"), dict) else {}
+    fixed_amount = _parse_billing_float(fixed_config.get("amount"))
     image_config = billing.get("image") if isinstance(billing.get("image"), dict) else {}
     image_size_prices = image_config.get("imageSizePrices") if isinstance(image_config.get("imageSizePrices"), dict) else {}
     sample_image_size_prices = image_config.get("sampleImageSizePrices") if isinstance(image_config.get("sampleImageSizePrices"), dict) else {}
@@ -1988,18 +2117,28 @@ def _derive_model_pricing_summary(task: str, model_name: str, model_config: dict
     }
 
     candidates: list[float] = []
+    if fixed_amount is not None:
+        candidates.append(fixed_amount)
     if base_price is not None:
         candidates.append(base_price)
     candidates.extend(normalized_image_size_prices.values())
     candidates.extend(normalized_sample_image_size_prices.values())
+    floor = round(settings.minimum_image_generation_cost, 4)
+    raw_minimum = round(min(candidates), 4) if candidates else 0.0
+    minimum = round(max(raw_minimum, floor), 4)
 
-    fallback_cost = _parse_billing_float(config.get("cost"))
-    minimum = round(min(candidates), 4) if candidates else round(fallback_cost or settings.minimum_image_generation_cost or 0, 4)
-
-    expected: dict[str, Any] = {
-        "type": "image_variant" if (normalized_image_size_prices or normalized_sample_image_size_prices) else "fixed",
-        "label": "Expected image variants",
-    }
+    expected: dict[str, Any]
+    if fixed_amount is not None and not normalized_image_size_prices and not normalized_sample_image_size_prices and base_price is None:
+        expected = {
+            "type": "fixed",
+            "label": "Fixed image billing",
+            "amount": round(fixed_amount, 4),
+        }
+    else:
+        expected = {
+            "type": "image_variant" if (normalized_image_size_prices or normalized_sample_image_size_prices) else "fixed",
+            "label": "Expected image variants",
+        }
     if base_price is not None:
         expected["basePrice"] = round(base_price, 4)
     if normalized_image_size_prices:
@@ -2314,12 +2453,17 @@ def _validate_uploaded_image_url(image_url: str) -> None:
     parsed = urlparse(image_url)
     filename = Path(parsed.path).name
     uploaded_prefix = _uploaded_image_url_prefix()
-    generated_prefix = f"{settings.apikeymanager_public_base_url}/generated-images/" if settings.apikeymanager_public_base_url else ""
+    generated_prefixes: list[str] = []
+    if settings.public_backend_base_url:
+        generated_prefixes.append(f"{settings.public_backend_base_url}/generated-images/")
+    if settings.apikeymanager_public_base_url:
+        generated_prefixes.append(f"{settings.apikeymanager_public_base_url}/generated-images/")
 
     if image_url.startswith(uploaded_prefix) and SAFE_UPLOADED_FILENAME.match(filename):
         return
-    if generated_prefix and image_url.startswith(generated_prefix) and re.fullmatch(r"^[0-9a-f-]{36}\.(png|jpg|webp)$", filename):
-        return
+    for generated_prefix in generated_prefixes:
+        if image_url.startswith(generated_prefix) and re.fullmatch(r"^[0-9a-f-]{36}\.(png|jpg|webp)$", filename):
+            return
 
     raise HTTPException(status_code=400, detail="Only Vibecraft or ApiKeyManager generated image URLs are allowed")
 
@@ -2330,6 +2474,52 @@ def _uploaded_image_url_prefix() -> str:
 
 def _uploaded_image_url_for_filename(filename: str) -> str:
     return f"{_uploaded_image_url_prefix()}{filename}"
+
+
+def _generated_image_url_prefixes() -> list[str]:
+    prefixes: list[str] = []
+    if settings.public_backend_base_url:
+        prefixes.append(f"{settings.public_backend_base_url}/generated-images/")
+    if settings.apikeymanager_public_base_url:
+        prefixes.append(f"{settings.apikeymanager_public_base_url}/generated-images/")
+    return prefixes
+
+
+def _collect_chat_message_image_urls(messages: list[dict[str, Any]]) -> set[str]:
+    image_urls: set[str] = set()
+    for message in messages:
+        for part in list(message.get("parts") or []):
+            if str(part.get("type") or "") != "image_url":
+                continue
+            image_url = str(part.get("url") or "").strip()
+            if image_url:
+                image_urls.add(image_url)
+    return image_urls
+
+
+def _delete_chat_conversation_images(image_urls: set[str]) -> None:
+    uploaded_prefix = _uploaded_image_url_prefix()
+    generated_prefixes = _generated_image_url_prefixes()
+
+    for image_url in image_urls:
+        parsed = urlparse(image_url)
+        filename = Path(parsed.path).name
+        if not filename:
+            continue
+
+        if image_url.startswith(uploaded_prefix) and SAFE_UPLOADED_FILENAME.match(filename):
+            try:
+                (UPLOADED_IMAGES_DIR / filename).unlink(missing_ok=True)
+            except OSError:
+                pass
+            continue
+
+        if any(image_url.startswith(prefix) for prefix in generated_prefixes) and re.fullmatch(r"^[0-9a-f-]{36}\.(png|jpg|webp)$", filename):
+            for directory in (IMAGES_DIR, *APIKEYMANAGER_GENERATED_IMAGE_DIRS):
+                try:
+                    (directory / filename).unlink(missing_ok=True)
+                except OSError:
+                    continue
 
 
 def _save_uploaded_input_image_bytes(mime_type: str, image_bytes: bytes) -> str:

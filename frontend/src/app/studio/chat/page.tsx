@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Fragment, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import { useAuth } from "../../../context/AuthContext";
 import { api } from "../../../services/api";
-import type { BillingBreakdown, BillingUsage, PlainChatModelItem, PlainChatParameterSchemaEntry, PlainChatPart, PlainChatTurnMeta, UploadedImageResult } from "../../../types";
+import type { BillingBreakdown, BillingUsage, ModelPricingSummary, PlainChatModelItem, PlainChatParameterSchemaEntry, PlainChatPart, PlainChatTurnMeta, UploadedImageResult } from "../../../types";
 
 type ChatRole = "user" | "assistant";
 type ChatPhase = "select" | "chat";
@@ -32,6 +32,7 @@ interface ChatModelOption {
   provider: string;
   supportsImageInput: boolean;
   parameterSchema: Record<string, PlainChatParameterSchemaEntry>;
+  pricing?: ModelPricingSummary;
 }
 
 interface ProviderGroup {
@@ -44,6 +45,7 @@ const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 const MAX_PROXY_IMAGE_DIMENSION = 1536;
 const MAX_PROXY_IMAGE_BYTES = 1_800_000;
 const MAX_CHAT_TEXT_CHARS = 4000;
+const DEFAULT_CONVERSATION_TITLE = "New Chat";
 const CHAT_PARAMETER_KEY_MAP = {
   temperature: "temperature",
   topP: "topP",
@@ -66,6 +68,11 @@ const CHAT_PARAMETER_KEY_MAP = {
 
 type ParameterValue = string | number | boolean;
 type ParameterState = Record<string, ParameterValue>;
+
+function normalizeConversationTitle(value?: string | null): string {
+  const normalized = (value || "").trim();
+  return normalized || DEFAULT_CONVERSATION_TITLE;
+}
 
 function renderInlineMarkdown(text: string): ReactNode[] {
   const nodes: ReactNode[] = [];
@@ -312,6 +319,15 @@ function toProviderLabel(provider?: string) {
     .join(" ");
 }
 
+function getProviderIcon(provider: string) {
+  const normalized = provider.toLowerCase();
+  if (normalized.includes("openai")) return "psychology";
+  if (normalized.includes("google")) return "auto_awesome";
+  if (normalized.includes("anthropic")) return "bolt";
+  if (normalized.includes("meta")) return "language";
+  return "hub";
+}
+
 function toChatModelOption(model: PlainChatModelItem): ChatModelOption {
   return {
     id: model.id,
@@ -320,7 +336,26 @@ function toChatModelOption(model: PlainChatModelItem): ChatModelOption {
     provider: toProviderLabel(model.provider),
     supportsImageInput: Boolean(model.supportsImageInput),
     parameterSchema: model.parameterSchema || {},
+    pricing: model.pricing,
   };
+}
+
+function getChatParamPricingHint(model: ChatModelOption | null, key: string) {
+  const expected = model?.pricing?.expected;
+  if (!expected || typeof expected !== "object") return null;
+
+  let priceMap: Record<string, number> | undefined;
+  if (key === "imageSize" && expected.imageSizePrices && typeof expected.imageSizePrices === "object") {
+    priceMap = expected.imageSizePrices;
+  } else if (key === "sampleImageSize" && expected.sampleImageSizePrices && typeof expected.sampleImageSizePrices === "object") {
+    priceMap = expected.sampleImageSizePrices;
+  }
+
+  if (!priceMap || Object.keys(priceMap).length === 0) return null;
+
+  return Object.entries(priceMap)
+    .map(([label, value]) => `${label}: ${Number(value).toFixed(2)} credits`)
+    .join("\n");
 }
 
 function toParameterLabel(key: string) {
@@ -380,6 +415,12 @@ function getNumericBounds(entry: PlainChatParameterSchemaEntry) {
 }
 
 function getDefaultParameterValue(entry: PlainChatParameterSchemaEntry): ParameterValue | null {
+  if (entry.key === "imageSize" || entry.key === "sampleImageSize") {
+    const enumValues = Array.isArray(entry.values) ? entry.values.map((value) => String(value).trim().toUpperCase()) : [];
+    if (enumValues.includes("1K")) {
+      return "1K";
+    }
+  }
   if (entry.recommendedDefault !== undefined) {
     return entry.recommendedDefault;
   }
@@ -533,8 +574,9 @@ async function normalizeUploadImage(file: File): Promise<File> {
 }
 
 export default function StudioChatPage() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [phase, setPhase] = useState<ChatPhase>("select");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -543,6 +585,9 @@ export default function StudioChatPage() {
   const [selectedModel, setSelectedModel] = useState("");
   const [lockedModelId, setLockedModelId] = useState("");
   const [conversationId, setConversationId] = useState("");
+  const [conversationTitle, setConversationTitle] = useState(DEFAULT_CONVERSATION_TITLE);
+  const [editingConversationTitle, setEditingConversationTitle] = useState(false);
+  const [conversationTitleDraft, setConversationTitleDraft] = useState(DEFAULT_CONVERSATION_TITLE);
   const [loadingConfig, setLoadingConfig] = useState(true);
   const [loadingReply, setLoadingReply] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -550,10 +595,14 @@ export default function StudioChatPage() {
   const [inputImage, setInputImage] = useState<UploadedImageState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [currentCredits, setCurrentCredits] = useState<number | null>(null);
-  const [conversationTokens, setConversationTokens] = useState(0);
+  const [conversationPromptTokens, setConversationPromptTokens] = useState(0);
+  const [conversationCompletionTokens, setConversationCompletionTokens] = useState(0);
+  const [conversationCostTotal, setConversationCostTotal] = useState(0);
   const [lastUsage, setLastUsage] = useState<BillingUsage | null>(null);
   const [lastBillingMeta, setLastBillingMeta] = useState<PlainChatTurnMeta | null>(null);
   const [parameterValues, setParameterValues] = useState<ParameterState>({});
+  const [providerSearch, setProviderSearch] = useState("");
+  const [modelSearch, setModelSearch] = useState("");
 
   useEffect(() => {
     const forceNewSession = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("new") === "1";
@@ -568,10 +617,15 @@ export default function StudioChatPage() {
       setSelectedModel("");
       setLockedModelId("");
       setConversationId("");
+      setConversationTitle(DEFAULT_CONVERSATION_TITLE);
+      setConversationTitleDraft(DEFAULT_CONVERSATION_TITLE);
+      setEditingConversationTitle(false);
       setInput("");
       setInputImage(null);
       setError(null);
-      setConversationTokens(0);
+      setConversationPromptTokens(0);
+      setConversationCompletionTokens(0);
+      setConversationCostTotal(0);
       setLastUsage(null);
       setLastBillingMeta(null);
       return;
@@ -584,10 +638,15 @@ export default function StudioChatPage() {
       setSelectedModel("");
       setLockedModelId("");
       setConversationId(requestedConversationId);
+      setConversationTitle(DEFAULT_CONVERSATION_TITLE);
+      setConversationTitleDraft(DEFAULT_CONVERSATION_TITLE);
+      setEditingConversationTitle(false);
       setInput("");
       setInputImage(null);
       setError(null);
-      setConversationTokens(0);
+      setConversationPromptTokens(0);
+      setConversationCompletionTokens(0);
+      setConversationCostTotal(0);
       setLastUsage(null);
       setLastBillingMeta(null);
       return;
@@ -603,6 +662,7 @@ export default function StudioChatPage() {
         selectedModel?: string;
         lockedModelId?: string;
         conversationId?: string;
+        conversationTitle?: string;
         parameterValues?: ParameterState;
       };
       setPhase(parsed.phase || "select");
@@ -611,6 +671,8 @@ export default function StudioChatPage() {
       setSelectedModel(parsed.selectedModel || "");
       setLockedModelId(parsed.lockedModelId || "");
       setConversationId(parsed.conversationId || "");
+      setConversationTitle(normalizeConversationTitle(parsed.conversationTitle));
+      setConversationTitleDraft(normalizeConversationTitle(parsed.conversationTitle));
       setParameterValues(parsed.parameterValues || {});
     } catch {
       sessionStorage.removeItem(STORAGE_KEY);
@@ -620,9 +682,9 @@ export default function StudioChatPage() {
   useEffect(() => {
     sessionStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ phase, messages, selectedProvider, selectedModel, lockedModelId, conversationId, parameterValues }),
+      JSON.stringify({ phase, messages, selectedProvider, selectedModel, lockedModelId, conversationId, conversationTitle, parameterValues }),
     );
-  }, [phase, messages, selectedProvider, selectedModel, lockedModelId, conversationId, parameterValues]);
+  }, [phase, messages, selectedProvider, selectedModel, lockedModelId, conversationId, conversationTitle, parameterValues]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !conversationId) return;
@@ -634,6 +696,20 @@ export default function StudioChatPage() {
 
   useEffect(() => {
     let cancelled = false;
+
+    if (authLoading) {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    if (!user) {
+      setLoadingConfig(false);
+      setProviderGroups([]);
+      return () => {
+        cancelled = true;
+      };
+    }
 
     async function loadProfile() {
       try {
@@ -683,9 +759,14 @@ export default function StudioChatPage() {
           if (lockedModelId && !nextGroups.some((group) => group.models.some((model) => model.id === lockedModelId))) {
             setLockedModelId("");
             setConversationId("");
+            setConversationTitle(DEFAULT_CONVERSATION_TITLE);
+            setConversationTitleDraft(DEFAULT_CONVERSATION_TITLE);
+            setEditingConversationTitle(false);
             setPhase("select");
             setMessages([]);
-            setConversationTokens(0);
+            setConversationPromptTokens(0);
+            setConversationCompletionTokens(0);
+            setConversationCostTotal(0);
             setLastUsage(null);
             setLastBillingMeta(null);
           }
@@ -701,15 +782,13 @@ export default function StudioChatPage() {
       }
     }
 
-    if (user) {
-      void loadProfile();
-    }
+    void loadProfile();
     void loadConfig();
 
     return () => {
       cancelled = true;
     };
-  }, [lockedModelId, selectedModel, selectedProvider, user]);
+  }, [authLoading, lockedModelId, selectedModel, selectedProvider, user]);
 
   useEffect(() => {
     let cancelled = false;
@@ -731,16 +810,26 @@ export default function StudioChatPage() {
           })),
         );
         setLockedModelId(response.conversation.model || lockedModelId);
-        setConversationTokens(response.conversation.totalTokens || 0);
+        setConversationTitle(normalizeConversationTitle(response.conversation.title));
+        setConversationTitleDraft(normalizeConversationTitle(response.conversation.title));
+        setEditingConversationTitle(false);
+        setConversationPromptTokens(response.conversation.promptTokensTotal || 0);
+        setConversationCompletionTokens(response.conversation.completionTokensTotal || 0);
+        setConversationCostTotal(response.conversation.totalCostCredits || 0);
         setLastUsage(null);
         setLastBillingMeta(null);
       } catch (err) {
         if (cancelled) return;
         setError(err instanceof Error ? err.message : "Could not load chat history.");
         setConversationId("");
+        setConversationTitle(DEFAULT_CONVERSATION_TITLE);
+        setConversationTitleDraft(DEFAULT_CONVERSATION_TITLE);
+        setEditingConversationTitle(false);
         setMessages([]);
         setPhase("select");
-        setConversationTokens(0);
+        setConversationPromptTokens(0);
+        setConversationCompletionTokens(0);
+        setConversationCostTotal(0);
         setLastUsage(null);
         setLastBillingMeta(null);
       } finally {
@@ -769,6 +858,35 @@ export default function StudioChatPage() {
     () => providerGroups.find((group) => group.provider === selectedProvider) || null,
     [providerGroups, selectedProvider],
   );
+
+  const visibleProviderGroups = useMemo(() => {
+    const providerQuery = providerSearch.trim().toLowerCase();
+    const modelQuery = modelSearch.trim().toLowerCase();
+
+    return providerGroups
+      .map((group) => {
+        const providerMatches = !providerQuery || group.provider.toLowerCase().includes(providerQuery);
+        const models = group.models.filter((model) => {
+          if (modelQuery) {
+            const haystack = `${model.displayName} ${model.description || ""}`.toLowerCase();
+            if (!haystack.includes(modelQuery)) return false;
+          }
+          return providerMatches;
+        });
+        return { ...group, models };
+      })
+      .filter((group) => group.models.length > 0);
+  }, [modelSearch, providerGroups, providerSearch]);
+
+  const visibleActiveProviderGroup = useMemo(() => {
+    return visibleProviderGroups.find((group) => group.provider === selectedProvider) || visibleProviderGroups[0] || null;
+  }, [selectedProvider, visibleProviderGroups]);
+
+  const visibleSelectedModelOption = useMemo(() => {
+    return visibleActiveProviderGroup?.models.find((model) => model.id === selectedModel)
+      || visibleActiveProviderGroup?.models[0]
+      || null;
+  }, [selectedModel, visibleActiveProviderGroup]);
 
   const selectedModelOption = useMemo(
     () => activeProviderGroup?.models.find((model) => model.id === selectedModel) || null,
@@ -801,6 +919,20 @@ export default function StudioChatPage() {
       return next;
     });
   }, [lockedModel, lockedModelParameters]);
+
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    textarea.style.height = "0px";
+    const computed = window.getComputedStyle(textarea);
+    const lineHeight = Number.parseFloat(computed.lineHeight) || 20;
+    const maxHeight = lineHeight * 5;
+    const nextHeight = Math.min(textarea.scrollHeight, maxHeight);
+
+    textarea.style.height = `${nextHeight}px`;
+    textarea.style.overflowY = textarea.scrollHeight > maxHeight ? "auto" : "hidden";
+  }, [input]);
 
   async function handleImageUpload(event: ChangeEvent<HTMLInputElement>) {
     const originalFile = event.target.files?.[0];
@@ -850,7 +982,12 @@ export default function StudioChatPage() {
       const conversation = await api.createPlainChatConversation({ model: selectedModel });
       setLockedModelId(selectedModel);
       setConversationId(conversation.id);
-      setConversationTokens(conversation.totalTokens || 0);
+      setConversationTitle(normalizeConversationTitle(conversation.title));
+      setConversationTitleDraft(normalizeConversationTitle(conversation.title));
+      setEditingConversationTitle(false);
+      setConversationPromptTokens(conversation.promptTokensTotal || 0);
+      setConversationCompletionTokens(conversation.completionTokensTotal || 0);
+      setConversationCostTotal(conversation.totalCostCredits || 0);
       setLastUsage(null);
       setLastBillingMeta(null);
       setPhase("chat");
@@ -872,12 +1009,13 @@ export default function StudioChatPage() {
     }
     if ((!text && !inputImage) || !lockedModelId || !conversationId || loadingReply || !user) return;
 
+    const attachedImage = inputImage;
     const parts: PlainChatPart[] = [];
     if (text) {
       parts.push({ type: "text", text });
     }
-    if (lockedModel?.supportsImageInput && inputImage) {
-      parts.push({ type: "image_url", url: inputImage.url });
+    if (lockedModel?.supportsImageInput && attachedImage) {
+      parts.push({ type: "image_url", url: attachedImage.url });
     }
 
     const optimisticUserMessage: ChatMessage = {
@@ -890,6 +1028,7 @@ export default function StudioChatPage() {
 
     setMessages((current) => [...current, optimisticUserMessage]);
     setInput("");
+    setInputImage(null);
     setLoadingReply(true);
     setError(null);
 
@@ -920,14 +1059,22 @@ export default function StudioChatPage() {
       };
 
       setMessages((current) => [...current.slice(0, -1), userMessage, assistantMessage]);
-      setConversationTokens(response.conversation?.totalTokens || 0);
+      setConversationTitle(normalizeConversationTitle(response.conversation?.title));
+      setConversationTitleDraft(normalizeConversationTitle(response.conversation?.title));
+      setConversationPromptTokens(response.conversation?.promptTokensTotal || 0);
+      setConversationCompletionTokens(response.conversation?.completionTokensTotal || 0);
+      setConversationCostTotal(response.conversation?.totalCostCredits || 0);
       setLastUsage(response.usage || null);
       setLastBillingMeta(response.meta || null);
       if (typeof response.meta?.current_balance === "number") {
         setCurrentCredits(response.meta.current_balance);
       }
+      if (attachedImage?.previewUrl) {
+        URL.revokeObjectURL(attachedImage.previewUrl);
+      }
     } catch (err) {
       setMessages((current) => current.slice(0, -1));
+      setInputImage(attachedImage);
       setError(err instanceof Error ? err.message : "Could not get a reply.");
     } finally {
       setLoadingReply(false);
@@ -937,9 +1084,73 @@ export default function StudioChatPage() {
   const remainingChars = MAX_CHAT_TEXT_CHARS - input.length;
   const displayName = user?.displayName || user?.email?.split("@")[0] || "Studio User";
   const photoUrl = user?.photoURL || null;
+  const normalizedConversationTitle = normalizeConversationTitle(conversationTitle);
+  const conversationTotalTokens = conversationPromptTokens + conversationCompletionTokens;
   const lastResolvedCost = toResolvedCostNumber(lastBillingMeta?.resolvedCost);
   const lastTotalTokens = getUsageTotalTokens(lastUsage);
   const lastBillingComponents = Object.entries(lastBillingMeta?.billing?.components || {});
+
+  function renderModelParamsPanel(isMobile = false) {
+    return (
+      <div
+        className={`h-full ${
+          isMobile
+            ? "overflow-hidden rounded-xl border border-[rgba(173,198,255,0.1)] bg-[rgba(25,31,49,0.7)] backdrop-blur-[16px]"
+            : "border-l border-white/10 bg-transparent"
+        }`}
+      >
+        <div className={`flex items-center justify-end border-b border-white/10 ${isMobile ? "p-5" : "px-4 py-5"}`}>
+          {lockedModelParameters.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => {
+                if (!lockedModel) return;
+                setParameterValues(createParameterState(lockedModel.parameterSchema));
+              }}
+              className="text-[10px] font-bold uppercase text-[#adc6ff] hover:underline"
+            >
+              Reset
+            </button>
+          ) : null}
+        </div>
+
+        <div className={`space-y-4 overflow-y-auto custom-scrollbar ${isMobile ? "max-h-[420px] p-5" : "h-[calc(100vh-64px-61px)] px-4 py-5"}`}>
+              {lockedModelParameters.length > 0 ? (
+                <div className="space-y-4">
+                  {lockedModelParameters.map(([key, entry]) => {
+                    const pricingHint = getChatParamPricingHint(lockedModel, key);
+                    return (
+                      <div key={key} className="space-y-2">
+                        <div className="flex items-start justify-between gap-3">
+                          <label className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-[#c2c6d6]">
+                            <span>{toParameterLabel(key)}</span>
+                            {pricingHint ? (
+                              <span
+                                className="group relative mr-1 inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-white/15 text-[10px] font-bold normal-case tracking-normal text-[#adc6ff]"
+                                aria-label="Show size pricing"
+                              >
+                                !
+                                <span className="pointer-events-none absolute left-4 top-full z-20 mt-4 hidden w-max max-w-[220px] whitespace-pre-line rounded-md border border-white/10 bg-[#151b2d] px-3 py-2 text-[11px] font-medium normal-case leading-5 tracking-normal text-white shadow-[0_12px_30px_rgba(0,0,0,0.35)] group-hover:block">
+                                  {pricingHint}
+                                </span>
+                              </span>
+                            ) : null}
+                          </label>
+                        </div>
+                        {renderParameterControl(key, entry)}
+                      </div>
+                    );
+                  })}
+                </div>
+          ) : (
+            <div className={`${isMobile ? "rounded-lg border border-white/8 bg-[#151b2d] px-4 py-5" : "px-1 py-2"} text-sm leading-6 text-[#8c909f]`}>
+              This model does not expose editable chat parameters yet.
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   async function handleNewChat() {
     if (!lockedModelId || !user) return;
@@ -949,7 +1160,12 @@ export default function StudioChatPage() {
       setError(null);
       const conversation = await api.createPlainChatConversation({ model: lockedModelId });
       setConversationId(conversation.id);
-      setConversationTokens(conversation.totalTokens || 0);
+      setConversationTitle(normalizeConversationTitle(conversation.title));
+      setConversationTitleDraft(normalizeConversationTitle(conversation.title));
+      setEditingConversationTitle(false);
+      setConversationPromptTokens(conversation.promptTokensTotal || 0);
+      setConversationCompletionTokens(conversation.completionTokensTotal || 0);
+      setConversationCostTotal(conversation.totalCostCredits || 0);
       setLastUsage(null);
       setLastBillingMeta(null);
       setMessages([]);
@@ -959,6 +1175,56 @@ export default function StudioChatPage() {
       setError(err instanceof Error ? err.message : "Could not start a new chat.");
     } finally {
       setLoadingReply(false);
+    }
+  }
+
+  async function handleDeleteConversation() {
+    if (!conversationId) return;
+    if (typeof window !== "undefined" && !window.confirm("Delete this conversation? This action cannot be undone.")) {
+      return;
+    }
+
+    try {
+      setLoadingReply(true);
+      setError(null);
+      await api.deletePlainChatConversation(conversationId);
+      setConversationId("");
+      setConversationTitle(DEFAULT_CONVERSATION_TITLE);
+      setConversationTitleDraft(DEFAULT_CONVERSATION_TITLE);
+      setEditingConversationTitle(false);
+      setConversationPromptTokens(0);
+      setConversationCompletionTokens(0);
+      setConversationCostTotal(0);
+      setLastUsage(null);
+      setLastBillingMeta(null);
+      setMessages([]);
+      setInput("");
+      setInputImage(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not delete this chat.");
+    } finally {
+      setLoadingReply(false);
+    }
+  }
+
+  async function handleSaveConversationTitle() {
+    const normalized = normalizeConversationTitle(conversationTitleDraft);
+    if (!conversationId) {
+      setConversationTitle(normalized);
+      setConversationTitleDraft(normalized);
+      setEditingConversationTitle(false);
+      return;
+    }
+
+    try {
+      setError(null);
+      const updatedConversation = await api.updatePlainChatConversation(conversationId, { title: normalized });
+      const nextTitle = normalizeConversationTitle(updatedConversation.title);
+      setConversationTitle(nextTitle);
+      setConversationTitleDraft(nextTitle);
+      setEditingConversationTitle(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not rename this chat.");
     }
   }
 
@@ -972,7 +1238,7 @@ export default function StudioChatPage() {
           onChange={(event) => {
             setParameterValues((current) => ({ ...current, [key]: event.target.value }));
           }}
-          className="w-full rounded-xl border border-white/10 bg-[#101728] px-3 py-2 text-sm text-white outline-none transition focus:border-[#adc6ff]/40"
+          className="w-full rounded-md border border-white/10 bg-[#101728] px-3 py-2 text-sm text-white outline-none transition focus:border-[#adc6ff]/40"
         >
           {entry.values.map((option) => (
             <option key={String(option)} value={String(option)}>
@@ -990,7 +1256,7 @@ export default function StudioChatPage() {
           onClick={() => {
             setParameterValues((current) => ({ ...current, [key]: !Boolean(current[key]) }));
           }}
-          className={`flex w-full items-center justify-between rounded-xl border px-3 py-2 text-sm transition-colors ${
+          className={`flex w-full items-center justify-between rounded-md border px-3 py-2 text-sm transition-colors ${
             Boolean(value)
               ? "border-[#adc6ff]/30 bg-[#adc6ff]/10 text-[#adc6ff]"
               : "border-white/10 bg-[#101728] text-[#dce1fb]"
@@ -1048,7 +1314,7 @@ export default function StudioChatPage() {
                 const bounded = Math.min(max, Math.max(min, parsed));
                 setParameterValues((current) => ({ ...current, [key]: bounded }));
               }}
-              className="w-28 rounded-xl border border-white/10 bg-[#101728] px-3 py-2 text-sm text-white outline-none transition focus:border-[#adc6ff]/40"
+              className="w-28 rounded-md border border-white/10 bg-[#101728] px-3 py-2 text-sm text-white outline-none transition focus:border-[#adc6ff]/40"
             />
           </div>
           <div className="flex justify-between text-[11px] text-[#8c909f]">
@@ -1060,419 +1326,492 @@ export default function StudioChatPage() {
     }
 
     return (
-      <div className="rounded-xl border border-white/10 bg-[#101728] px-3 py-2 text-sm text-[#8c909f]">
+      <div className="rounded-md border border-white/10 bg-[#101728] px-3 py-2 text-sm text-[#8c909f]">
         Unsupported parameter type.
       </div>
     );
   }
 
   return (
-    <section className="min-h-[calc(100vh-4rem)] px-6 py-8 lg:px-10">
+    <section className="min-h-[calc(100vh-4rem)] overflow-x-hidden px-6 py-8 lg:px-10">
       {phase === "select" ? (
-        <div className="mx-auto max-w-6xl space-y-8">
-          <div className="max-w-3xl">
-            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-[#adc6ff]/20 bg-[#adc6ff]/10 px-4 py-2 text-[10px] font-bold uppercase tracking-[0.22em] text-[#adc6ff]">
-              Simple Chat
-            </div>
-            <h1 className="font-headline text-4xl font-bold tracking-tight text-white lg:text-5xl">
-              Select a model before you start chatting.
-            </h1>
-            <p className="mt-4 text-base leading-7 text-[#c2c6d6] lg:text-lg">
-              Choose one provider, pick one model, then continue into a locked chat session. The model will stay fixed for that conversation.
-            </p>
-          </div>
+        <div className="relative mx-auto flex min-h-[calc(100vh-8rem)] max-w-7xl flex-col overflow-hidden rounded-[1.5rem] border border-white/8 bg-[#0c1324] shadow-[0_24px_80px_rgba(0,0,0,0.28)]">
+          <div className="pointer-events-none absolute right-[-8rem] top-16 h-[26rem] w-[26rem] rounded-full bg-[#adc6ff]/5 blur-[120px]" />
+          <div className="pointer-events-none absolute bottom-0 left-[18%] h-[18rem] w-[18rem] rounded-full bg-[#d0bcff]/5 blur-[100px]" />
 
-          <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
-            <aside className="space-y-3 rounded-2xl border border-white/8 bg-[#151b2d] p-6">
-              <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#adc6ff]">Providers</div>
-              {providerGroups.map((group) => (
-                <button
-                  key={group.provider}
-                  type="button"
-                  onClick={() => {
-                    setSelectedProvider(group.provider);
-                    setSelectedModel(group.models[0]?.id || "");
-                  }}
-                  className={`flex w-full items-center justify-between rounded-xl px-4 py-3 text-left text-sm transition-colors ${
-                    selectedProvider === group.provider
-                      ? "bg-[#adc6ff]/10 font-semibold text-[#adc6ff]"
-                      : "bg-[#191f31] text-[#dce1fb] hover:bg-[#23293c]"
-                  }`}
-                >
-                  <span>{group.provider}</span>
-                  <span className="text-[10px] uppercase tracking-widest text-[#8c909f]">{group.models.length}</span>
-                </button>
-              ))}
-            </aside>
-
-            <div className="rounded-2xl border border-white/8 bg-[#151b2d] p-6">
-              <div className="flex flex-col gap-3 border-b border-white/8 pb-5 sm:flex-row sm:items-end sm:justify-between">
-                <div>
-                  <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#adc6ff]">Available Models</div>
-                  <h2 className="mt-2 font-headline text-2xl font-bold text-white">{selectedProvider || "Choose a provider"}</h2>
-                </div>
-                {selectedModelOption ? (
-                  <div className="rounded-full border border-[#adc6ff]/20 bg-[#adc6ff]/10 px-4 py-2 text-xs font-bold uppercase tracking-[0.2em] text-[#adc6ff]">
-                    Usage-based billing
-                  </div>
-                ) : null}
+          <div className="flex flex-1 overflow-hidden">
+            <aside className="hidden w-72 flex-shrink-0 border-r border-white/6 bg-slate-900/35 px-4 py-8 backdrop-blur-xl lg:flex lg:flex-col">
+              <div className="mb-10 px-2">
+                <h1 className="bg-gradient-to-br from-blue-200 to-blue-500 bg-clip-text font-headline text-xl font-bold text-transparent">
+                  Engineered AI
+                </h1>
+                <p className="mt-1 font-headline text-[10px] uppercase tracking-widest text-on-surface opacity-60">
+                  Provider Selection
+                </p>
               </div>
 
-              <div className="mt-6 space-y-3">
-                {loadingConfig ? (
-                  <div className="rounded-xl bg-[#191f31] px-4 py-3 text-sm text-[#8c909f]">Loading models…</div>
-                ) : activeProviderGroup ? (
-                  activeProviderGroup.models.map((model) => (
+              <div className="mb-6 px-2 text-on-surface-variant transition-colors focus-within:text-primary">
+                <div className="relative">
+                  <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-lg opacity-50">search</span>
+                  <input
+                    type="text"
+                    value={providerSearch}
+                    onChange={(event) => setProviderSearch(event.target.value)}
+                    placeholder="Search providers..."
+                    className="w-full rounded-xl border border-outline-variant/20 bg-[#0a0d1a] py-2.5 pl-10 pr-4 text-sm placeholder:text-slate-600 focus:border-primary/40 focus:outline-none focus:ring-1 focus:ring-primary/40"
+                  />
+                </div>
+              </div>
+
+              <nav className="flex-1 space-y-2">
+                {visibleProviderGroups.map((group) => {
+                  const active = (visibleActiveProviderGroup?.provider || selectedProvider) === group.provider;
+                  return (
                     <button
-                      key={model.id}
+                      key={group.provider}
                       type="button"
-                      onClick={() => setSelectedModel(model.id)}
-                      className={`w-full rounded-2xl border px-5 py-4 text-left transition-all ${
-                        selectedModel === model.id
-                          ? "border-[#adc6ff]/30 bg-[#adc6ff]/10 text-[#adc6ff]"
-                          : "border-white/8 bg-[#191f31] text-[#dce1fb] hover:bg-[#23293c]"
+                      onClick={() => {
+                        setSelectedProvider(group.provider);
+                        setSelectedModel(group.models[0]?.id || "");
+                      }}
+                      className={`group flex w-full scale-[0.99] items-center justify-between rounded-xl px-4 py-3 text-left transition-all duration-300 active:scale-95 ${
+                        active
+                          ? "border-r-2 border-blue-500 bg-blue-500/5 font-bold text-blue-400"
+                          : "font-medium text-slate-500 hover:bg-slate-800/60 hover:text-slate-300"
                       }`}
                     >
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <div className="font-headline text-xl font-bold">{model.displayName}</div>
-                          <p className="mt-2 text-sm leading-6 text-[#c2c6d6]">{model.description || "Text-focused conversational model."}</p>
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            <span className="rounded-full border border-white/10 bg-[#23293c] px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-[#c2c6d6]">
-                              {model.provider}
-                            </span>
-                            {model.supportsImageInput ? (
-                              <span className="rounded-full border border-[#adc6ff]/20 bg-[#adc6ff]/10 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-[#adc6ff]">
-                                accepts image input
-                              </span>
-                            ) : null}
-                          </div>
-                        </div>
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8c909f]">Usage-based</div>
+                      <div className="flex items-center gap-3">
+                        <span className="material-symbols-outlined text-xl">{getProviderIcon(group.provider)}</span>
+                        <span className="font-headline text-sm uppercase tracking-widest">{group.provider}</span>
                       </div>
+                      <span className={`text-[10px] ${active ? "opacity-80" : "opacity-40 group-hover:opacity-100"}`}>
+                        {group.models.length} models
+                      </span>
                     </button>
-                  ))
-                ) : (
-                  <div className="rounded-xl bg-[#191f31] px-4 py-3 text-sm text-[#8c909f]">No models available.</div>
-                )}
-              </div>
+                  );
+                })}
+              </nav>
 
-              <div className="mt-8 flex flex-wrap gap-4">
-                <Link
-                  href="/studio/start"
-                  className="rounded-xl border border-white/10 bg-[#191f31] px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#23293c]"
-                >
-                  Back to Choice
-                </Link>
-                <button
-                  type="button"
-                  onClick={() => void handleStartChat()}
-                  disabled={!selectedModel || loadingConfig || loadingReply}
-                  className="rounded-xl bg-gradient-to-r from-[#adc6ff] to-[#4d8eff] px-6 py-3 text-sm font-bold text-[#00285d] transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {loadingReply ? "Starting…" : "Next"}
-                </button>
-              </div>
-            </div>
+              <div className="mt-auto" />
+            </aside>
+
+            <main className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
+              <header className="flex flex-col justify-between gap-4 px-8 pb-6 pt-10 xl:flex-row xl:items-baseline xl:px-12 xl:pt-12">
+                <div className="flex flex-col gap-4">
+                  <div className="flex flex-col gap-4 xl:flex-row xl:items-center">
+                    <h2 className="font-headline text-2xl font-bold tracking-tight text-on-surface xl:text-3xl">
+                      {visibleActiveProviderGroup?.provider || selectedProvider || "Select a Provider"}
+                    </h2>
+                    <div className="relative min-w-[280px] max-w-md xl:ml-6">
+                      <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-lg text-slate-500 transition-colors group-focus-within:text-primary">
+                        search
+                      </span>
+                      <input
+                        type="text"
+                        value={modelSearch}
+                        onChange={(event) => setModelSearch(event.target.value)}
+                        placeholder="Search models..."
+                        className="w-full rounded-full border border-outline-variant/20 bg-[#0a0d1a] py-2 pl-12 pr-6 text-sm placeholder:text-slate-600 focus:border-primary/40 focus:outline-none focus:ring-1 focus:ring-primary/40"
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div />
+              </header>
+
+              <section className="max-w-5xl px-8 pb-28 xl:px-12">
+                <div className="flex flex-col gap-[10px]">
+                  {loadingConfig ? (
+                    <div className="rounded-xl border border-outline-variant/10 bg-surface-container-low p-8 text-sm text-on-surface-variant">
+                      Loading models…
+                    </div>
+                  ) : visibleActiveProviderGroup ? (
+                    visibleActiveProviderGroup.models.map((model) => {
+                      const active = (visibleSelectedModelOption?.id || selectedModel) === model.id;
+                      return (
+                        <button
+                          key={model.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedProvider(visibleActiveProviderGroup.provider);
+                            setSelectedModel(model.id);
+                          }}
+                          className={`group relative w-full cursor-pointer rounded-md border bg-[#16192a] px-5 py-4 text-left transition-colors duration-200 ${
+                            active
+                              ? "border-[rgba(255,255,255,0.18)]"
+                              : "border-[rgba(255,255,255,0.08)] hover:border-[rgba(255,255,255,0.12)] hover:bg-[#1a1d27]"
+                          }`}
+                        >
+                          <div className="relative flex items-start justify-between gap-4">
+                            <div className="flex-1">
+                              <div className="mb-1.5 flex items-center gap-2">
+                                <h3 className="text-[15px] font-semibold text-[#f3f5ff]">
+                                  {model.displayName}
+                                </h3>
+                              </div>
+                              <p className="mb-3 max-w-xl text-[13px] font-normal leading-5 text-[#8b8fa8]">
+                                {model.description || "Usage-based conversational model for plain chat."}
+                              </p>
+                              <div className="flex flex-wrap gap-2">
+                                <span className="rounded-full border border-[rgba(255,255,255,0.15)] bg-transparent px-3 py-1 text-[10px] font-medium uppercase tracking-[0.05em] text-[#8b8fa8]">
+                                  {model.provider}
+                                </span>
+                                {model.supportsImageInput ? (
+                                  <span className="rounded-full border border-[rgba(255,255,255,0.15)] bg-transparent px-3 py-1 text-[10px] font-medium uppercase tracking-[0.05em] text-[#8b8fa8]">
+                                    Multimodal
+                                  </span>
+                                ) : (
+                                  <span className="rounded-full border border-[rgba(255,255,255,0.15)] bg-transparent px-3 py-1 text-[10px] font-medium uppercase tracking-[0.05em] text-[#8b8fa8]">
+                                    Text
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex flex-col items-end gap-4">
+                              <span className="rounded-full bg-[#202433] px-2.5 py-1 text-[10px] font-medium text-[#8b8fa8]">
+                                Usage-Based
+                              </span>
+                              {active ? (
+                                <div className="flex h-10 w-10 items-center justify-center rounded-md bg-[#eef2ff] text-[#0f1117]">
+                                  <span className="material-symbols-outlined text-[18px]" style={{ fontVariationSettings: "'FILL' 1" }}>
+                                    check
+                                  </span>
+                                </div>
+                              ) : (
+                                <div className="flex h-10 w-10 items-center justify-center rounded-md border border-[rgba(255,255,255,0.12)] text-[#747b93]">
+                                  <span className="material-symbols-outlined text-[18px]">check</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <div className="rounded-xl border border-outline-variant/10 bg-surface-container-low p-8 text-sm text-on-surface-variant">
+                      No models available for the current search.
+                    </div>
+                  )}
+                </div>
+              </section>
+
+              <footer className="sticky bottom-0 flex flex-col justify-between gap-4 border-t border-outline-variant/10 bg-slate-950/80 px-8 py-6 backdrop-blur-md xl:flex-row xl:items-center xl:px-12">
+                <div className="flex items-center gap-6">
+                  <Link
+                    href="/studio/start"
+                    className="group flex items-center gap-2 opacity-80 transition-all duration-300 hover:opacity-100"
+                  >
+                    <span className="material-symbols-outlined text-sm">arrow_back</span>
+                    <span className="text-xs font-medium text-slate-400 group-hover:text-blue-300">Back to Choice</span>
+                  </Link>
+                </div>
+                <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:gap-6">
+                  <div className="flex items-center gap-6">
+                    <span className="cursor-default text-[13px] font-normal text-[rgba(255,255,255,0.35)]">
+                      Documentation
+                    </span>
+                    <span className="cursor-default text-[13px] font-normal text-[rgba(255,255,255,0.35)]">
+                      System Status
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handleStartChat()}
+                    disabled={!visibleSelectedModelOption || loadingConfig || loadingReply}
+                    className="flex items-center gap-2 rounded-[5px] bg-gradient-to-br from-[#adc6ff] to-[#4d8eff] px-8 py-3 font-headline text-sm font-bold text-[#002e6a] shadow-[0_0_24px_rgba(77,142,255,0.18)] transition-all duration-300 hover:scale-105 hover:shadow-[0_0_32px_rgba(77,142,255,0.28)] active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <span>{loadingReply ? "Starting…" : "Next Step"}</span>
+                    <span className="material-symbols-outlined text-sm">chevron_right</span>
+                  </button>
+                </div>
+              </footer>
+            </main>
           </div>
         </div>
       ) : (
-        <div className="mx-auto flex min-h-[calc(100vh-8rem)] max-w-7xl flex-col overflow-hidden rounded-2xl border border-white/8 bg-[#151b2d]">
-          <div className="sticky top-16 z-30 border-b border-white/8 bg-[#11182a]/95 px-6 py-4 backdrop-blur-xl">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex items-center gap-4">
-                <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-xl border border-[#adc6ff]/20 bg-[#1a2333]">
-                  {photoUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={photoUrl} alt={displayName} className="h-full w-full object-cover" />
+        <div className="mx-auto grid max-w-[1600px] grid-cols-1 gap-6 px-4 pb-12 pt-24 sm:px-6 xl:px-8">
+          <header className="fixed left-0 right-0 top-0 z-40 border-b border-white/10 bg-[#0c1324]/90 backdrop-blur-xl md:left-48">
+            <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 xl:px-8">
+              <div className="flex min-w-0 items-center gap-4">
+                <div className="min-w-0">
+                  {editingConversationTitle ? (
+                    <div className="flex min-w-0 items-center gap-2">
+                      <input
+                        type="text"
+                        value={conversationTitleDraft}
+                        onChange={(event) => setConversationTitleDraft(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            void handleSaveConversationTitle();
+                          }
+                          if (event.key === "Escape") {
+                            setConversationTitleDraft(normalizedConversationTitle);
+                            setEditingConversationTitle(false);
+                          }
+                        }}
+                        maxLength={120}
+                        className="min-w-0 rounded-md border border-white/15 bg-[#151b2d] px-3 py-1.5 font-headline text-base font-bold tracking-tight text-white outline-none focus:border-[#adc6ff]/40 sm:text-lg"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void handleSaveConversationTitle()}
+                        className="rounded-md border border-white/15 px-2.5 py-1.5 text-[11px] font-semibold text-[#adc6ff] transition-colors hover:bg-white/5"
+                      >
+                        Save
+                      </button>
+                    </div>
                   ) : (
-                    <span className="text-sm font-bold text-[#adc6ff]">{displayName.slice(0, 2).toUpperCase()}</span>
+                    <div className="flex min-w-0 items-center gap-2">
+                      <h1 className="truncate font-headline text-base font-bold tracking-tight text-white sm:text-lg">
+                        {normalizedConversationTitle}
+                      </h1>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setConversationTitleDraft(normalizedConversationTitle);
+                          setEditingConversationTitle(true);
+                        }}
+                        className="rounded-md border border-white/10 p-1 text-[#c2c6d6] transition-colors hover:bg-white/5 hover:text-white"
+                        aria-label="Rename chat"
+                      >
+                        <span className="material-symbols-outlined text-sm">edit</span>
+                      </button>
+                    </div>
                   )}
+                  <div className="mt-1 text-xs text-[#8c909f]">{lockedModel?.displayName || "Selected model"}</div>
                 </div>
-                <div>
-                  <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#adc6ff]">Chat Session</div>
-                  <div className="mt-1 font-headline text-xl font-bold text-white">{lockedModel?.displayName || "Selected model"}</div>
+                <div className="hidden h-8 w-px bg-white/10 lg:block" />
+                <div className="hidden flex-wrap items-start gap-4 lg:flex">
+                  <div className="min-w-[140px]">
+                    <span className="block text-[10px] uppercase tracking-[0.14em] text-[#c2c6d6]">Total tokens used</span>
+                    <span className="mt-1 block text-sm font-semibold text-white">
+                      {conversationTotalTokens.toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="min-w-[150px]">
+                    <span className="block text-[10px] uppercase tracking-[0.14em] text-[#c2c6d6]">Cost of conversation</span>
+                    <span className="mt-1 block text-sm font-semibold text-[#adc6ff]">
+                      {`${conversationCostTotal.toFixed(2)} Cr`}
+                    </span>
+                  </div>
                 </div>
               </div>
-              <div className="flex flex-wrap items-center gap-3">
-                <div className="rounded-full border border-white/10 bg-[#191f31] px-4 py-2 text-sm font-semibold text-white">
-                  Tokens used: <span className="text-[#adc6ff]">{conversationTokens.toLocaleString()}</span>
-                </div>
-                <div className="rounded-full border border-white/10 bg-[#191f31] px-4 py-2 text-sm font-semibold text-white">
-                  Last cost: <span className="text-[#adc6ff]">{lastResolvedCost > 0 ? `${lastResolvedCost.toFixed(4)} credits` : "—"}</span>
-                </div>
-                <div className="rounded-full border border-white/10 bg-[#191f31] px-4 py-2 text-sm font-semibold text-white">
-                  Remaining credits: <span className="text-[#adc6ff]">{currentCredits === null ? "..." : currentCredits.toFixed(2)}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div className="border-b border-white/8 px-6 py-5">
-            <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#adc6ff]">Simple Chat Session</div>
-            <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <h2 className="font-headline text-3xl font-bold text-white">{lockedModel?.displayName || "Selected model"}</h2>
-                <p className="mt-2 text-sm text-[#c2c6d6]">
-                  {lockedModel?.description || "Chat with the selected model. The model is locked for this conversation."}
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-3">
+
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                 <button
                   type="button"
                   onClick={() => void handleNewChat()}
-                  className="rounded-xl border border-white/10 bg-[#191f31] px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-[#23293c]"
+                  className="rounded-md border border-white/15 px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-[#2e3447]/50 sm:text-sm"
                 >
                   New Chat
                 </button>
+                <button
+                  type="button"
+                  onClick={() => void handleDeleteConversation()}
+                  disabled={!conversationId || loadingReply}
+                  className="rounded-md border border-[#5b2028] px-4 py-2 text-xs font-medium text-[#ffb4ab] transition-colors hover:bg-[#5b2028]/20 disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm"
+                >
+                  Delete Chat
+                </button>
                 <Link
                   href="/studio/start"
-                  className="rounded-xl bg-gradient-to-r from-[#adc6ff] to-[#4d8eff] px-4 py-3 text-sm font-bold text-[#00285d] transition-all hover:brightness-110"
+                  className="rounded-md border border-white/15 px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-[#2e3447]/50 sm:text-sm"
                 >
                   Back to Choice
                 </Link>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex-1 overflow-hidden px-6 py-6">
-            <div className="grid h-full gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
-              <div className="space-y-4 overflow-y-auto pr-1">
-                {loadingConversation ? (
-                  <div className="flex h-full min-h-[360px] items-center justify-center">
-                    <div className="max-w-xl text-center text-sm text-[#8c909f]">Loading conversation…</div>
-                  </div>
-                ) : messages.length === 0 ? (
-                  <div className="flex h-full min-h-[360px] items-center justify-center">
-                    <div className="max-w-xl text-center">
-                      <span className="material-symbols-outlined text-6xl text-[#adc6ff]">chat</span>
-                      <h3 className="mt-4 font-headline text-3xl font-bold text-white">Start the conversation</h3>
-                      <p className="mt-3 text-base leading-7 text-[#c2c6d6]">
-                        Send your first message. This session keeps the previous turns in memory while you continue chatting.
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  messages.map((message) => (
-                    <div
-                      key={message.id}
-                      className={`max-w-3xl rounded-2xl px-5 py-4 ${
-                        message.role === "user"
-                          ? "ml-auto bg-gradient-to-r from-[#adc6ff] to-[#4d8eff] text-[#00285d]"
-                          : "bg-[#191f31] text-[#dce1fb]"
-                      }`}
-                    >
-                      <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.18em] opacity-70">
-                        {message.role === "user" ? "You" : lockedModel?.displayName || "Assistant"}
-                      </div>
-                      {message.role === "user" ? (
-                        <UserMessageContent message={message} />
-                      ) : (
-                        <AssistantMessageContent message={message} />
-                      )}
-                    </div>
-                  ))
-                )}
-
-                {loadingReply ? (
-                  <div className="max-w-3xl rounded-2xl bg-[#191f31] px-5 py-4 text-[#dce1fb]">
-                    <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.18em] opacity-70">
-                      {lockedModel?.displayName || "Assistant"}
-                    </div>
-                    <p className="text-sm leading-7 text-[#8c909f]">Thinking…</p>
-                  </div>
-                ) : null}
-              </div>
-
-              <aside className="h-fit rounded-2xl border border-white/8 bg-[#11182a] p-5 xl:sticky xl:top-0">
-                <div className="mb-5 rounded-2xl border border-white/8 bg-[#151b2d] p-4">
-                  <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#adc6ff]">Last Request Billing</div>
-                  <div className="mt-3 grid grid-cols-2 gap-3">
-                    <div className="rounded-xl border border-white/8 bg-[#11182a] px-3 py-3">
-                      <div className="text-[10px] uppercase tracking-[0.18em] text-[#8c909f]">Cost</div>
-                      <div className="mt-1 text-sm font-semibold text-white">
-                        {lastResolvedCost > 0 ? `${lastResolvedCost.toFixed(4)} credits` : "—"}
-                      </div>
-                    </div>
-                    <div className="rounded-xl border border-white/8 bg-[#11182a] px-3 py-3">
-                      <div className="text-[10px] uppercase tracking-[0.18em] text-[#8c909f]">Tokens</div>
-                      <div className="mt-1 text-sm font-semibold text-white">
-                        {lastTotalTokens > 0 ? lastTotalTokens.toLocaleString() : "—"}
-                      </div>
-                    </div>
-                  </div>
-                  {lastBillingMeta?.billingMode ? (
-                    <div className="mt-3 text-xs text-[#c2c6d6]">
-                      Billing mode: <span className="font-semibold text-white">{lastBillingMeta.billingMode}</span>
-                    </div>
-                  ) : null}
-                  {lastBillingComponents.length > 0 ? (
-                    <div className="mt-4 space-y-2">
-                      {lastBillingComponents.map(([key, value]) => {
-                        const componentCost = toResolvedCostNumber((value as Record<string, unknown>)?.cost as string | number | undefined);
-                        return (
-                          <div key={key} className="rounded-xl border border-white/8 bg-[#11182a] px-3 py-3">
-                            <div className="flex items-center justify-between gap-3">
-                              <div className="text-xs font-semibold text-white">{formatBillingComponentLabel(key)}</div>
-                              <div className="text-xs font-semibold text-[#adc6ff]">
-                                {componentCost > 0 ? `${componentCost.toFixed(4)} cr` : "—"}
-                              </div>
-                            </div>
-                            {"promptTokens" in (value as Record<string, unknown>) || "completionTokens" in (value as Record<string, unknown>) ? (
-                              <div className="mt-2 text-[11px] text-[#8c909f]">
-                                {Number((value as Record<string, unknown>).promptTokens || 0).toLocaleString()} in / {Number((value as Record<string, unknown>).completionTokens || 0).toLocaleString()} out
-                              </div>
-                            ) : null}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : null}
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#adc6ff]">Model Params</div>
-                    <h3 className="mt-2 font-headline text-xl font-bold text-white">
-                      {lockedModel?.displayName || "Selected model"}
-                    </h3>
-                  </div>
-                  {lockedModelParameters.length > 0 ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (!lockedModel) return;
-                        setParameterValues(createParameterState(lockedModel.parameterSchema));
-                      }}
-                      className="rounded-lg border border-white/10 bg-[#191f31] px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#23293c]"
-                    >
-                      Reset
-                    </button>
-                  ) : null}
-                </div>
-
-                <p className="mt-3 text-sm leading-6 text-[#8c909f]">
-                  These settings apply to the next assistant turns in this locked conversation.
-                </p>
-
-                <div className="mt-5 space-y-4">
-                  {lockedModelParameters.length > 0 ? (
-                    lockedModelParameters.map(([key, entry]) => (
-                      <div key={key} className="rounded-2xl border border-white/8 bg-[#151b2d] p-4">
-                        <div className="mb-3 flex items-start justify-between gap-3">
-                          <div>
-                            <div className="text-sm font-semibold text-white">{toParameterLabel(key)}</div>
-                          </div>
-                          <div className="max-w-[130px] text-right text-[11px] leading-4 text-[#8c909f]">
-                            {entry.note ? <div>{entry.note}</div> : null}
-                          </div>
-                        </div>
-                        {renderParameterControl(key, entry)}
-                      </div>
-                    ))
-                  ) : (
-                    <div className="rounded-2xl border border-white/8 bg-[#151b2d] px-4 py-5 text-sm leading-6 text-[#8c909f]">
-                      This model does not expose editable chat parameters yet.
-                    </div>
-                  )}
-                </div>
-              </aside>
-            </div>
-          </div>
-
-          <div className="border-t border-white/8 px-6 py-5">
-            {error ? (
-              <div className="mb-4 rounded-xl border border-[#93000a]/30 bg-[#93000a]/10 px-4 py-3 text-sm text-[#ffdad6]">
-                {error}
-              </div>
-            ) : null}
-
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/png,image/jpeg,image/webp"
-              className="hidden"
-              onChange={handleImageUpload}
-            />
-
-            {lockedModel?.supportsImageInput && inputImage ? (
-              <div className="mb-4 flex items-center justify-between gap-4 rounded-xl border border-white/10 bg-[#191f31] px-4 py-3">
-                <div className="flex items-center gap-3">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={inputImage.previewUrl} alt={inputImage.name} className="h-12 w-12 rounded-lg object-cover" />
-                  <div>
-                    <div className="text-sm font-semibold text-white">{inputImage.name}</div>
-                    <div className="text-xs text-[#8c909f]">{(inputImage.size / (1024 * 1024)).toFixed(2)} MB</div>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (inputImage?.previewUrl) URL.revokeObjectURL(inputImage.previewUrl);
-                    setInputImage(null);
-                  }}
-                  className="rounded-lg border border-white/10 bg-[#23293c] px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#33394c]"
-                >
-                  Remove
-                </button>
-              </div>
-            ) : null}
-
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
-              <div className="flex-1">
-                <textarea
-                  value={input}
-                  onChange={(event) => {
-                    const nextValue = event.target.value;
-                    setInput(nextValue.slice(0, MAX_CHAT_TEXT_CHARS));
-                    if (error && nextValue.length <= MAX_CHAT_TEXT_CHARS) {
-                      setError(null);
-                    }
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" && !event.shiftKey) {
-                      event.preventDefault();
-                      void handleSend();
-                    }
-                  }}
-                  placeholder={lockedModel?.supportsImageInput ? "Send a message or ask about the uploaded image…" : "Send a message…"}
-                  rows={4}
-                  className="w-full resize-none rounded-2xl border border-white/10 bg-[#070d1f] px-5 py-4 text-sm leading-7 text-white outline-none transition placeholder:text-[#8c909f] focus:border-[#adc6ff]/40"
-                />
-                <div className="mt-2 flex justify-end text-xs text-[#8c909f]">
-                  <span className={remainingChars < 400 ? "text-[#ffb4ab]" : undefined}>
-                    {input.length}/{MAX_CHAT_TEXT_CHARS}
+                <div className="flex items-center gap-2 rounded-full border border-white/5 bg-[#23293c] px-3 py-1.5">
+                  <span className="material-symbols-outlined text-sm text-[#adc6ff]" style={{ fontVariationSettings: "'FILL' 1" }}>
+                    bolt
+                  </span>
+                  <span className="text-xs font-bold text-blue-100 sm:text-sm">
+                    {currentCredits === null ? "..." : `${currentCredits.toFixed(2)} Credits`}
                   </span>
                 </div>
               </div>
-              <div className="flex items-center gap-3">
-                {lockedModel?.supportsImageInput ? (
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={uploadingImage || loadingReply}
-                    className="flex h-12 w-12 items-center justify-center rounded-xl border border-white/10 bg-[#191f31] text-white transition-colors hover:bg-[#23293c] disabled:cursor-not-allowed disabled:opacity-50"
-                    title="Upload image"
-                  >
-                    <span className="material-symbols-outlined text-xl">upload</span>
-                  </button>
-                ) : null}
-                <button
-                  type="button"
-                  onClick={() => void handleSend()}
-                  disabled={
-                    (!input.trim() && !inputImage) ||
-                    input.trim().length > MAX_CHAT_TEXT_CHARS ||
-                    !lockedModelId ||
-                    !conversationId ||
-                    loadingReply ||
-                    uploadingImage ||
-                    loadingConversation
-                  }
-                  className="rounded-xl bg-gradient-to-r from-[#adc6ff] to-[#4d8eff] px-6 py-3 text-sm font-bold text-[#00285d] transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {uploadingImage ? "Uploading…" : "Send"}
-                </button>
+
+              <div className="flex w-full flex-wrap items-start gap-4 lg:hidden">
+                <div className="min-w-[140px]">
+                  <span className="block text-[10px] uppercase tracking-[0.14em] text-[#c2c6d6]">Total tokens used</span>
+                  <span className="mt-1 block text-sm font-semibold text-white">
+                    {conversationTotalTokens.toLocaleString()}
+                  </span>
+                </div>
+                <div className="min-w-[150px]">
+                  <span className="block text-[10px] uppercase tracking-[0.14em] text-[#c2c6d6]">Cost of conversation</span>
+                  <span className="mt-1 block text-sm font-semibold text-[#adc6ff]">
+                    {`${conversationCostTotal.toFixed(2)} Cr`}
+                  </span>
+                </div>
               </div>
             </div>
+          </header>
+
+          <div className="lg:hidden">{renderModelParamsPanel(true)}</div>
+
+          <aside className="fixed bottom-0 top-16 right-0 hidden w-[224px] lg:block">
+            {renderModelParamsPanel(false)}
+          </aside>
+
+          <div className="lg:pr-[248px]">
+            <section className="flex min-w-0 flex-col gap-6 pb-[240px]">
+              <div className="relative flex flex-col overflow-hidden rounded-xl border border-[rgba(173,198,255,0.1)] bg-[rgba(25,31,49,0.7)] p-8 backdrop-blur-[16px]">
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#adc6ff]/5 to-transparent" />
+
+                <div className="relative p-6">
+                  {loadingConversation ? (
+                    <div className="flex h-full items-center justify-center">
+                      <div className="max-w-xl text-center text-sm text-[#8c909f]">Loading conversation…</div>
+                    </div>
+                  ) : messages.length === 0 ? (
+                    <div className="flex h-full items-center justify-center">
+                      <div className="max-w-sm space-y-4 text-center">
+                        <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full border border-white/10 bg-[#2e3447]">
+                          <span className="material-symbols-outlined text-3xl text-[#adc6ff]">chat_bubble</span>
+                        </div>
+                        <h2 className="font-headline text-2xl font-bold text-slate-50">Start the conversation</h2>
+                        <p className="text-sm leading-relaxed text-[#c2c6d6]">
+                          Ask a question, describe an image, or start a brainstorming session with the selected model.
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-6">
+                      {messages.map((message) => (
+                        <div key={message.id} className={`flex flex-col ${message.role === "user" ? "items-end" : "items-start"}`}>
+                          <div
+                            className={`max-w-[80%] border p-4 text-on-surface ${
+                              message.role === "user"
+                                ? "rounded-2xl rounded-tr-none border-[#adc6ff]/20 bg-[#adc6ff]/10 text-[#dce1fb]"
+                                : "rounded-2xl rounded-tl-none border-white/10 bg-[#2e3447] text-[#dce1fb]"
+                            }`}
+                          >
+                            <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.18em] opacity-70">
+                              {message.role === "user" ? displayName : lockedModel?.displayName || "Assistant"}
+                            </div>
+                            {message.role === "user" ? <UserMessageContent message={message} /> : <AssistantMessageContent message={message} />}
+                          </div>
+                        </div>
+                      ))}
+
+                      {loadingReply ? (
+                        <div className="flex flex-col items-start">
+                          <div className="max-w-[80%] rounded-2xl rounded-tl-none border border-white/10 bg-[#2e3447] p-4 text-[#dce1fb]">
+                            <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.18em] opacity-70">
+                              {lockedModel?.displayName || "Assistant"}
+                            </div>
+                            <p className="text-sm leading-relaxed text-[#8c909f]">Thinking…</p>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-white/10 bg-[#0c1324]/92 px-4 py-4 backdrop-blur-xl md:left-48 md:right-[224px] sm:px-6 xl:px-8">
+                <div className="mx-auto max-w-[1600px]">
+                  <div className="bg-transparent py-1">
+                {error ? (
+                  <div className="mb-4 rounded-lg border border-[#93000a]/30 bg-[#93000a]/10 px-4 py-3 text-sm text-[#ffdad6]">
+                    {error}
+                  </div>
+                ) : null}
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  className="hidden"
+                  onChange={handleImageUpload}
+                />
+
+                {lockedModel?.supportsImageInput && inputImage ? (
+                  <div className="mb-4 flex items-center justify-between gap-4 rounded-lg border border-white/10 bg-[#151b2d] px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={inputImage.previewUrl} alt={inputImage.name} className="h-12 w-12 rounded-lg object-cover" />
+                      <div>
+                        <div className="text-sm font-semibold text-white">{inputImage.name}</div>
+                        <div className="text-xs text-[#8c909f]">{(inputImage.size / (1024 * 1024)).toFixed(2)} MB</div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (inputImage?.previewUrl) URL.revokeObjectURL(inputImage.previewUrl);
+                        setInputImage(null);
+                      }}
+                      className="rounded-md border border-white/10 bg-[#23293c] px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#33394c]"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ) : null}
+
+                <div className="rounded-lg border border-white/10 bg-[#070d1f] p-4 transition-all focus-within:border-[#adc6ff]/40">
+                  <textarea
+                    ref={textareaRef}
+                    value={input}
+                    onChange={(event) => {
+                      const nextValue = event.target.value;
+                      setInput(nextValue.slice(0, MAX_CHAT_TEXT_CHARS));
+                      if (error && nextValue.length <= MAX_CHAT_TEXT_CHARS) {
+                        setError(null);
+                      }
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && !event.shiftKey) {
+                        event.preventDefault();
+                        void handleSend();
+                      }
+                    }}
+                    placeholder={lockedModel?.supportsImageInput ? "Type your message here or ask about the uploaded image…" : "Type your message here…"}
+                    rows={1}
+                    className="w-full resize-none border-none bg-transparent text-sm leading-6 text-white outline-none placeholder:text-[#8c909f]/60"
+                  />
+
+                  <div className="mt-4 flex items-center justify-between border-t border-white/10 pt-4">
+                    <div className="flex items-center gap-4">
+                      {lockedModel?.supportsImageInput ? (
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          disabled={uploadingImage || loadingReply}
+                          className="rounded-md p-2 text-[#c2c6d6] transition-colors hover:bg-[#2e3447] disabled:cursor-not-allowed disabled:opacity-50"
+                          title="Upload image"
+                        >
+                          <span className="material-symbols-outlined">upload_file</span>
+                        </button>
+                      ) : null}
+                      <span className={`text-[11px] font-medium uppercase tracking-wider text-[#8c909f] ${remainingChars < 400 ? "!text-[#ffb4ab]" : ""}`}>
+                        {input.length} / {MAX_CHAT_TEXT_CHARS}
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => void handleSend()}
+                      disabled={
+                        (!input.trim() && !inputImage) ||
+                        input.trim().length > MAX_CHAT_TEXT_CHARS ||
+                        !lockedModelId ||
+                        !conversationId ||
+                        loadingReply ||
+                        uploadingImage ||
+                        loadingConversation
+                      }
+                      className="flex items-center gap-2 rounded-md bg-gradient-to-r from-[#adc6ff] to-[#4d8eff] px-6 py-2 text-sm font-bold text-[#002e6a] transition-all hover:opacity-90 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <span>{uploadingImage ? "Uploading…" : "Send"}</span>
+                      <span className="material-symbols-outlined text-sm">send</span>
+                    </button>
+                  </div>
+                </div>
+                  </div>
+                </div>
+              </div>
+            </section>
           </div>
         </div>
       )}

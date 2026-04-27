@@ -8,22 +8,13 @@ import { redeemCode } from "../../lib/creditCodes";
 import { getCredits } from "../../lib/credits";
 import { getHistory, type HistoryEntry } from "../../lib/history";
 import { api } from "../../services/api";
-import type { ModelCatalogEntry, SystemConfig } from "../../types";
+import type { ModelCatalogEntry, ModelPricingSummary, PlainChatModelItem, SystemConfig } from "../../types";
 
 interface SuspensionState {
   reason: string;
   endsAt: string | null;
   endsAtLabel: string | null;
 }
-
-type CostCard = {
-  id: string;
-  name: string;
-  provider: string;
-  cost: number;
-  description: string;
-  task: "image" | "caption";
-};
 
 type UsageEvent = {
   id: string;
@@ -33,6 +24,15 @@ type UsageEvent = {
   status: string;
   amount: string;
   positive?: boolean;
+};
+
+type PricingCardItem = {
+  id: string;
+  name: string;
+  provider?: string;
+  taskLabel?: string;
+  minimum: number;
+  detailLines: string[];
 };
 
 function formatSuspensionEndsAt(value: string): string | null {
@@ -68,28 +68,6 @@ function parseSuspensionState(message: string): SuspensionState | null {
   };
 }
 
-function providerName(value: string) {
-  return value
-    .split(/[-_]/g)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-}
-
-function flattenCostCards(
-  models: Record<string, ModelCatalogEntry> | undefined,
-  task: "image" | "caption",
-): CostCard[] {
-  return Object.entries(models || {}).map(([id, item]) => ({
-    id,
-    name: item.display_name || id,
-    provider: item.provider || "unknown",
-    cost: item.cost ?? 0,
-    description: item.description || "No description available in the current catalog cache.",
-    task,
-  }));
-}
-
 function shouldShowPolicyLink(message: string) {
   return /usage policy|failed credit code attempts|failed credit-code attempts|suspended/i.test(message);
 }
@@ -98,25 +76,110 @@ function isRedeemCooldownMessage(message: string) {
   return /reached 5 failed credit code attempts in 5 minutes/i.test(message);
 }
 
-function mapHistoryToUsageEvents(entries: HistoryEntry[], modelCards: CostCard[]): UsageEvent[] {
-  const modelMap = new Map<string, CostCard>();
-  for (const item of modelCards) {
-    modelMap.set(item.id, item);
-    modelMap.set(item.name, item);
-  }
-
+function mapHistoryToUsageEvents(entries: HistoryEntry[]): UsageEvent[] {
   return entries.slice(0, 5).map((entry) => {
-    const matched = modelMap.get(entry.model);
     const outputs = [entry.imageUrl ? "Image" : null, entry.caption ? "Caption" : null].filter(Boolean).join(" + ") || "Generation";
     return {
       id: entry.id,
       date: entry.createdAt.toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" }),
       activity: outputs,
-      detail: matched?.name || entry.model || "Saved studio output",
+      detail: entry.model || "Saved studio output",
       status: "COMPLETED",
-      amount: matched ? `-${matched.cost.toFixed(2)}` : "Logged",
+      amount: "Logged",
     };
   });
+}
+
+function toProviderLabel(provider: string) {
+  const normalized = provider.trim().toLowerCase();
+  if (!normalized) return "AI Provider";
+  return normalized
+    .split(/[\s_-]+/)
+    .map((token) => token.charAt(0).toUpperCase() + token.slice(1))
+    .join(" ");
+}
+
+function formatCreditValue(value: number) {
+  if (value > 0 && value < 0.01) {
+    return `${value.toFixed(3)} Cr`;
+  }
+  return `${value.toFixed(2)} Cr`;
+}
+
+function formatPricingDetails(pricing?: ModelPricingSummary | null): string[] {
+  if (!pricing?.expected || typeof pricing.expected !== "object") {
+    return [`From ${formatCreditValue(pricing?.minimum || 0)}`];
+  }
+
+  const detailLines: string[] = [];
+  const expected = pricing.expected;
+
+  if (typeof expected.basePrice === "number" && Number.isFinite(expected.basePrice)) {
+    detailLines.push(`Base: ${formatCreditValue(expected.basePrice)}`);
+  }
+
+  if (expected.imageSizePrices && typeof expected.imageSizePrices === "object") {
+    for (const [label, rawValue] of Object.entries(expected.imageSizePrices)) {
+      const value = Number(rawValue);
+      if (Number.isFinite(value)) {
+        detailLines.push(`${label}: ${formatCreditValue(value)}`);
+      }
+    }
+  }
+
+  if (expected.sampleImageSizePrices && typeof expected.sampleImageSizePrices === "object") {
+    for (const [label, rawValue] of Object.entries(expected.sampleImageSizePrices)) {
+      const value = Number(rawValue);
+      if (Number.isFinite(value)) {
+        detailLines.push(`Sample ${label}: ${formatCreditValue(value)}`);
+      }
+    }
+  }
+
+  return detailLines.length ? detailLines : [`From ${formatCreditValue(pricing.minimum || 0)}`];
+}
+
+function toSmartPricingCards(config: SystemConfig | null): PricingCardItem[] {
+  if (!config?.model_catalog) return [];
+
+  const taskLabels: Record<string, string> = {
+    caption: "Smart Caption",
+    image: "Smart Image",
+  };
+
+  const items: PricingCardItem[] = [];
+  for (const [task, taskModels] of Object.entries(config.model_catalog)) {
+    if (!taskModels || typeof taskModels !== "object") continue;
+    for (const [modelId, entry] of Object.entries(taskModels)) {
+      const modelEntry = entry as ModelCatalogEntry;
+      const pricing = modelEntry.pricing;
+      if (!pricing) continue;
+      items.push({
+        id: `${task}:${modelId}`,
+        name: modelEntry.display_name || modelId,
+        provider: toProviderLabel(modelEntry.provider || ""),
+        taskLabel: taskLabels[task] || task,
+        minimum: Number(pricing.minimum || 0),
+        detailLines: formatPricingDetails(pricing),
+      });
+    }
+  }
+
+  return items.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function toPlainChatPricingCards(models: PlainChatModelItem[]): PricingCardItem[] {
+  return models
+    .filter((model) => model.pricing)
+    .map((model) => ({
+      id: model.id,
+      name: model.displayName,
+      provider: toProviderLabel(model.provider || ""),
+      taskLabel: "Plain Chat",
+      minimum: Number(model.pricing?.minimum || 0),
+      detailLines: formatPricingDetails(model.pricing),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 const faqItems = [
@@ -142,12 +205,13 @@ export default function CreditsPage() {
   const router = useRouter();
   const { user, loading } = useAuth();
 
-  const [config, setConfig] = useState<SystemConfig | null>(null);
-  const [configLoading, setConfigLoading] = useState(true);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [credits, setCredits] = useState<number | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
+  const [plainChatModels, setPlainChatModels] = useState<PlainChatModelItem[]>([]);
+  const [systemConfig, setSystemConfig] = useState<SystemConfig | null>(null);
+  const [pricingLoading, setPricingLoading] = useState(true);
   const [codeInput, setCodeInput] = useState("");
   const [codeMessage, setCodeMessage] = useState<{ text: string; success: boolean; showPolicyLink?: boolean } | null>(null);
   const [redeeming, setRedeeming] = useState(false);
@@ -176,16 +240,6 @@ export default function CreditsPage() {
     }
   }, [user]);
 
-  const fetchConfig = useCallback(async () => {
-    setConfigLoading(true);
-    try {
-      const nextConfig = await api.getConfig();
-      setConfig(nextConfig);
-    } finally {
-      setConfigLoading(false);
-    }
-  }, []);
-
   const fetchHistory = useCallback(async () => {
     if (!user) return;
     setHistoryLoading(true);
@@ -199,10 +253,28 @@ export default function CreditsPage() {
     }
   }, [user]);
 
+  const fetchPricing = useCallback(async () => {
+    if (!user) return;
+    setPricingLoading(true);
+    try {
+      const [plainChatResponse, configResponse] = await Promise.all([
+        api.getPlainChatModels(),
+        api.getConfig(),
+      ]);
+      setPlainChatModels(Array.isArray(plainChatResponse.models) ? plainChatResponse.models : []);
+      setSystemConfig(configResponse);
+    } catch {
+      setPlainChatModels([]);
+      setSystemConfig(null);
+    } finally {
+      setPricingLoading(false);
+    }
+  }, [user]);
+
   useEffect(() => {
     if (!user) return;
-    void Promise.all([fetchBalance(), fetchConfig(), fetchHistory()]);
-  }, [fetchBalance, fetchConfig, fetchHistory, user]);
+    void Promise.all([fetchBalance(), fetchHistory(), fetchPricing()]);
+  }, [fetchBalance, fetchHistory, fetchPricing, user]);
 
   useEffect(() => {
     if (!redeemCooldownStorageKey || typeof window === "undefined") return;
@@ -304,16 +376,14 @@ export default function CreditsPage() {
     }
   }, [activateRedeemCooldown, codeInput, fetchBalance, redeemBlockedUntil, redeemCooldownStorageKey, user]);
 
-  const imageCosts = useMemo(() => flattenCostCards(config?.model_catalog?.image, "image"), [config]);
-  const textCosts = useMemo(() => flattenCostCards(config?.model_catalog?.caption, "caption"), [config]);
-  const allCosts = useMemo(() => [...imageCosts, ...textCosts], [imageCosts, textCosts]);
-  const rateCards = useMemo(() => [...allCosts].sort((a, b) => a.cost - b.cost).slice(0, 6), [allCosts]);
-  const usageEvents = useMemo(() => mapHistoryToUsageEvents(history, allCosts), [allCosts, history]);
+  const usageEvents = useMemo(() => mapHistoryToUsageEvents(history), [history]);
   const progressWidth = useMemo(() => {
     if (credits === null) return "0%";
     const percentage = Math.max(8, Math.min(100, (credits / 5) * 100));
     return `${percentage}%`;
   }, [credits]);
+  const smartPricingCards = useMemo(() => toSmartPricingCards(systemConfig), [systemConfig]);
+  const plainChatPricingCards = useMemo(() => toPlainChatPricingCards(plainChatModels), [plainChatModels]);
 
   if (loading || !user) {
     return (
@@ -366,11 +436,8 @@ export default function CreditsPage() {
 
           <div className="min-w-[300px] rounded-xl border border-white/10 bg-[rgba(25,31,49,0.7)] p-8 backdrop-blur-xl">
             <span className="text-xs font-semibold uppercase tracking-[0.28em] text-[#adc6ff]">Available Balance</span>
-            <div className="mt-2 flex items-baseline gap-2">
-              <span className="text-5xl font-bold tracking-tight text-white">
-                {credits === null ? "..." : credits.toFixed(2)}
-              </span>
-              <span className="text-[#c2c6d6]">credits</span>
+            <div className="mt-2 text-5xl font-bold tracking-tight text-white">
+              {credits === null ? "..." : `${credits.toFixed(2)} Cr`}
             </div>
             <div className="mt-4 h-1 w-full overflow-hidden rounded-full bg-[#2e3447]">
               <div className="h-full bg-[#adc6ff]" style={{ width: progressWidth }} />
@@ -387,7 +454,7 @@ export default function CreditsPage() {
           <span className="h-px w-8 bg-[#adc6ff]" /> Redeem Code
         </h2>
         <div className="max-w-2xl rounded-xl border border-white/10 bg-[rgba(25,31,49,0.7)] p-8 backdrop-blur-xl">
-          <p className="mb-6 text-sm text-[#c2c6d6]">Enter a promotional code or a gift code to instantly top up your balance.</p>
+          <p className="mb-6 text-sm text-[#c2c6d6]">Enter a credit code or a gift code to instantly top up your balance.</p>
           <div className="flex flex-col gap-4 sm:flex-row">
             <div className="relative flex-grow">
               <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-xl text-[#c2c6d6]">
@@ -434,35 +501,122 @@ export default function CreditsPage() {
         </div>
       </section>
 
-      <section className="mb-24 grid grid-cols-1 gap-12 lg:grid-cols-5">
-        <div className="lg:col-span-2">
-          <h2 className="mb-8 font-headline text-2xl font-bold tracking-tight text-blue-50">Model Rates</h2>
-          <div className="space-y-4">
-            {configLoading ? (
-              <div className="rounded-lg bg-[#191f31] p-6 text-sm text-[#c2c6d6]">Syncing current catalog prices…</div>
-            ) : (
-              rateCards.map((item) => (
-                <div key={`${item.task}:${item.id}`} className="flex items-center justify-between rounded-lg bg-[#191f31] p-6">
-                  <div className="flex items-center gap-4">
-                    <span className={`material-symbols-outlined ${item.task === "image" ? "text-[#adc6ff]" : "text-[#d0bcff]"}`}>
-                      {item.task === "image" ? "image" : "notes"}
-                    </span>
-                    <div>
-                      <p className="font-medium text-white">{item.name}</p>
-                      <p className="text-xs text-[#c2c6d6]">{providerName(item.provider)} · {item.description}</p>
-                    </div>
-                  </div>
-                  <span className="font-bold text-[#adc6ff]">
-                    {item.cost.toFixed(2)}
-                    <span className="ml-1 text-[10px] uppercase">Cr</span>
-                  </span>
-                </div>
-              ))
-            )}
-          </div>
+      <section className="mb-24">
+        <div className="mb-8 flex items-center justify-between">
+          <h2 className="font-headline text-2xl font-bold tracking-tight text-blue-50">Pricing</h2>
+          <span className="text-[11px] uppercase tracking-[0.22em] text-[#8c909f]">Live Billing Rules</span>
         </div>
 
-        <div className="lg:col-span-3">
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
+          <div className="rounded-xl border border-white/10 bg-[rgba(25,31,49,0.7)] p-6 backdrop-blur-xl">
+            <h3 className="font-headline text-lg font-semibold text-white">Workflow Basics</h3>
+            <p className="mt-2 text-sm leading-6 text-[#c2c6d6]">
+              Smart Creation starts with an analysis fee, then applies the selected model pricing. Plain Chat uses the
+              current model billing and image-size rules when applicable.
+            </p>
+
+            <div className="mt-6 space-y-4">
+              <div className="rounded-lg border border-white/10 bg-[#151b2d]/70 px-4 py-3">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#8c909f]">Smart Analysis Fee</p>
+                <p className="mt-1 text-lg font-semibold text-white">
+                  {systemConfig ? formatCreditValue(systemConfig.smart_analysis_fee || 0) : "—"}
+                </p>
+              </div>
+              <div className="rounded-lg border border-white/10 bg-[#151b2d]/70 px-4 py-3">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#8c909f]">Minimum Text Generation</p>
+                <p className="mt-1 text-lg font-semibold text-white">
+                  {systemConfig ? formatCreditValue(systemConfig.minimum_text_generation_cost || 0) : "—"}
+                </p>
+              </div>
+              <div className="rounded-lg border border-white/10 bg-[#151b2d]/70 px-4 py-3">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#8c909f]">Minimum Image Generation</p>
+                <p className="mt-1 text-lg font-semibold text-white">
+                  {systemConfig ? formatCreditValue(systemConfig.minimum_image_generation_cost || 0) : "—"}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-6">
+            <div className="rounded-xl border border-white/10 bg-[rgba(25,31,49,0.7)] p-6 backdrop-blur-xl">
+              <div className="mb-5 flex items-center justify-between">
+                <h3 className="font-headline text-lg font-semibold text-white">Plain Chat Models</h3>
+                <span className="text-[10px] uppercase tracking-[0.22em] text-[#8c909f]">Chat And Multimodal</span>
+              </div>
+              {pricingLoading ? (
+                <p className="text-sm text-[#c2c6d6]">Loading live pricing…</p>
+              ) : plainChatPricingCards.length ? (
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                  {plainChatPricingCards.map((item) => (
+                    <div key={item.id} className="rounded-lg border border-white/10 bg-[#151b2d]/70 p-4">
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <p className="font-medium text-white">{item.name}</p>
+                          <p className="mt-1 text-[10px] uppercase tracking-[0.22em] text-[#8c909f]">
+                            {item.provider} {item.taskLabel ? `• ${item.taskLabel}` : ""}
+                          </p>
+                        </div>
+                        <span className="rounded-full border border-[#adc6ff]/20 bg-[#adc6ff]/10 px-2 py-0.5 text-[10px] text-[#adc6ff]">
+                          From {formatCreditValue(item.minimum)}
+                        </span>
+                      </div>
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        {item.detailLines.map((line) => (
+                          <span key={line} className="rounded-full border border-white/10 px-2 py-1 text-[11px] text-[#c2c6d6]">
+                            {line}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-[#c2c6d6]">No live plain chat pricing is available right now.</p>
+              )}
+            </div>
+
+            <div className="rounded-xl border border-white/10 bg-[rgba(25,31,49,0.7)] p-6 backdrop-blur-xl">
+              <div className="mb-5 flex items-center justify-between">
+                <h3 className="font-headline text-lg font-semibold text-white">Smart Creation Models</h3>
+                <span className="text-[10px] uppercase tracking-[0.22em] text-[#8c909f]">Caption And Image</span>
+              </div>
+              {pricingLoading ? (
+                <p className="text-sm text-[#c2c6d6]">Loading live pricing…</p>
+              ) : smartPricingCards.length ? (
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                  {smartPricingCards.map((item) => (
+                    <div key={item.id} className="rounded-lg border border-white/10 bg-[#151b2d]/70 p-4">
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <p className="font-medium text-white">{item.name}</p>
+                          <p className="mt-1 text-[10px] uppercase tracking-[0.22em] text-[#8c909f]">
+                            {item.provider} {item.taskLabel ? `• ${item.taskLabel}` : ""}
+                          </p>
+                        </div>
+                        <span className="rounded-full border border-[#adc6ff]/20 bg-[#adc6ff]/10 px-2 py-0.5 text-[10px] text-[#adc6ff]">
+                          From {formatCreditValue(item.minimum)}
+                        </span>
+                      </div>
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        {item.detailLines.map((line) => (
+                          <span key={line} className="rounded-full border border-white/10 px-2 py-1 text-[11px] text-[#c2c6d6]">
+                            {line}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-[#c2c6d6]">No live smart creation pricing is available right now.</p>
+              )}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="mb-24">
+        <div>
           <div className="mb-8 flex items-center justify-between">
             <h2 className="font-headline text-2xl font-bold tracking-tight text-blue-50">Recent History</h2>
             <Link href="/gallery" className="text-sm text-[#adc6ff] hover:underline">

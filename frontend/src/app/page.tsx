@@ -9,28 +9,28 @@ const showcaseModels = [
     title: "NanoBanana Pro",
     badge: "Flagship",
     badgeClass: "bg-primary/90 text-[#002e6a]",
-    image: "/landing/hero-main.png",
+    image: "/landing/model-nanobanana-pro.webp",
     alt: "Featured model showcase image",
   },
   {
     title: "ImagenUltra 4",
     badge: "Photoreal",
     badgeClass: "bg-secondary/90 text-[#23005c]",
-    image: "/landing/hero-secondary.jpg",
+    image: "/landing/model-imagen-ultra-4.webp",
     alt: "Photoreal model showcase image",
   },
   {
     title: "NanoBanana 2",
     badge: "Versatile",
     badgeClass: "bg-[#8392a6]/90 text-[#1c2b3c]",
-    image: "/landing/hero-main.png",
+    image: "/landing/model-nanobanana-2.webp",
     alt: "Versatile model showcase image",
   },
   {
-    title: "Imagen 4.0",
+    title: "Gemini 3 Flash",
     badge: "Studio",
     badgeClass: "bg-[#424754]/90 text-white",
-    image: "/landing/hero-secondary.jpg",
+    image: "/landing/model-gemini-3-flash.webp",
     alt: "Studio model showcase image",
   },
 ];
@@ -38,8 +38,8 @@ const showcaseModels = [
 const roadmapItems = [
   {
     title: "Video generation",
-    description: "Cinematic 4K motion synthesis from text prompts.",
-    status: "Status: In Beta Training",
+    description: "Cinematic 4K motion synthesis.",
+    status: "Status: under developpement",
     icon: "movie",
     accent: "text-primary",
     dot: "bg-primary shadow-[0_0_20px_rgba(173,198,255,1)]",
@@ -49,7 +49,7 @@ const roadmapItems = [
   {
     title: "Voice content",
     description: "Cloning and synthetic narration with emotional depth.",
-    status: "Status: Research Phase",
+    status: "Status: under intergration",
     icon: "mic",
     accent: "text-secondary",
     dot: "bg-secondary shadow-[0_0_20px_rgba(208,188,255,1)]",
@@ -119,15 +119,12 @@ export default function LandingPage() {
           <div className="absolute bottom-[-5%] left-[-5%] h-[400px] w-[400px] rounded-full bg-[#d0bcff]/10 blur-[100px]" />
         </div>
         <div className="relative z-10 mx-auto max-w-4xl text-center">
-          <span className="mb-8 inline-block rounded-full border border-[#424754]/30 bg-[#23293c] px-4 py-1.5 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#adc6ff]">
-            The AI Architect Studio
-          </span>
           <h1 className="font-headline text-5xl font-bold leading-[1.1] tracking-tight text-[#dce1fb] md:text-7xl lg:text-8xl">
             Vibe at the speed of{" "}
             <span className="bg-gradient-to-r from-[#adc6ff] to-[#d0bcff] bg-clip-text text-transparent">thought.</span>
           </h1>
           <p className="mx-auto mb-12 mt-8 max-w-2xl text-lg font-light leading-relaxed text-[#c2c6d6] md:text-xl">
-            Engineered for the digital architect. We blend sophisticated neural models with editorial precision to redefine modern creation.
+            Direct access to premium AI chat, image generation, and smarter creation flows built for fast creative work.
           </p>
           <div className="flex flex-col justify-center gap-4 sm:flex-row">
             <Link href={primaryHref} className="rounded-md bg-gradient-to-br from-[#adc6ff] to-[#4d8eff] px-10 py-4 text-lg font-semibold text-[#002e6a] transition-all hover:shadow-[0_0_40px_-10px_rgba(173,198,255,0.5)]">
@@ -149,25 +146,25 @@ export default function LandingPage() {
 
           <div className="grid grid-cols-1 gap-6 md:grid-cols-12">
             <div className="group relative overflow-hidden rounded-xl border border-[#424754]/10 bg-[#151b2d] md:col-span-7">
-              <Image src="/landing/hero-main.png" alt="Generate captions and images" width={1200} height={800} className="h-[400px] w-full object-cover opacity-60 transition-transform duration-700 group-hover:scale-105" />
+              <Image src="/landing/chat-models-v2.webp" alt="Chat with models" width={2048} height={1152} quality={100} priority sizes="(max-width: 767px) 100vw, 58vw" className="h-[400px] w-full object-cover opacity-60 transition-transform duration-700 group-hover:scale-105" />
               <div className="absolute inset-0 bg-gradient-to-t from-[#0c1324] via-transparent to-transparent" />
               <div className="absolute bottom-0 p-10">
                 <span className="material-symbols-outlined mb-4 text-4xl text-[#adc6ff]">auto_awesome</span>
-                <h3 className="font-headline text-3xl font-bold">Generate captions and images</h3>
+                <h3 className="font-headline text-3xl font-bold">Chat with models</h3>
                 <p className="mt-3 max-w-md text-[#c2c6d6]">
-                  Seamlessly bridge the gap between visual and verbal. Craft matching captions and high-fidelity visuals in a single sweep.
+                  Work directly with text, image, and multimodal models in plain chat. Send prompts, upload images, and iterate inside one conversation.
                 </p>
               </div>
             </div>
 
             <div className="group relative overflow-hidden rounded-xl border border-[#424754]/10 bg-[#151b2d] md:col-span-5">
-              <Image src="/landing/hero-secondary.jpg" alt="Edit images" width={900} height={800} className="h-[400px] w-full object-cover opacity-60 transition-transform duration-700 group-hover:scale-105" />
+              <Image src="/landing/edit-images-v2.webp" alt="Edit images" width={1800} height={1350} quality={100} sizes="(max-width: 767px) 100vw, 42vw" className="h-[400px] w-full object-cover opacity-60 transition-transform duration-700 group-hover:scale-105" />
               <div className="absolute inset-0 bg-gradient-to-t from-[#0c1324] via-transparent to-transparent" />
               <div className="absolute bottom-0 p-10">
                 <span className="material-symbols-outlined mb-4 text-4xl text-[#adc6ff]">brush</span>
                 <h3 className="font-headline text-2xl font-bold">Edit images</h3>
                 <p className="mt-3 text-[#c2c6d6]">
-                  Prompt-based manipulation for lighting, texture, styling, and subject refinement while keeping visual direction intact.
+                  Upload a reference, transform it with image-capable models, and continue refining results through follow-up instructions.
                 </p>
               </div>
             </div>
@@ -178,20 +175,20 @@ export default function LandingPage() {
                   <span className="material-symbols-outlined mb-4 text-4xl text-[#adc6ff]">psychology</span>
                   <h3 className="font-headline text-3xl font-bold">Smart generation</h3>
                   <p className="mt-6 text-lg leading-relaxed text-[#c2c6d6]">
-                    Advanced prompt optimization and user intent analysis. We do not just follow instructions; we interpret the vibe you are targeting.
+                    Start from a simple idea, review the optimized direction, then generate images and captions with model-aware settings and billing visibility.
                   </p>
                   <ul className="mt-8 space-y-4">
                     <li className="flex items-center gap-3 text-[#dce1fb]">
                       <span className="material-symbols-outlined text-[#adc6ff]">check_circle</span>
-                      Intent-aware generation
+                      Intent analysis before generation
                     </li>
                     <li className="flex items-center gap-3 text-[#dce1fb]">
                       <span className="material-symbols-outlined text-[#adc6ff]">check_circle</span>
-                      Automated prompt refinement
+                      Optimized prompts before execution
                     </li>
                     <li className="flex items-center gap-3 text-[#dce1fb]">
                       <span className="material-symbols-outlined text-[#adc6ff]">check_circle</span>
-                      Cross-model style direction
+                      Controlled image and caption outputs
                     </li>
                   </ul>
                 </div>
@@ -240,7 +237,7 @@ export default function LandingPage() {
                         </div>
 
                         <div className="relative flex-1 overflow-hidden bg-black">
-                          <Image src="/landing/hero-main.png" alt="Smart generation preview" width={1200} height={800} className="h-full w-full object-cover" />
+                          <Image src="/landing/smart-generation-v2.webp" alt="Smart generation preview" width={2048} height={1365} quality={100} sizes="(max-width: 1023px) 100vw, 48vw" className="h-full w-full object-cover" />
                           <div className="pointer-events-none absolute inset-0 bg-gradient-to-tr from-[#adc6ff]/10 to-transparent" />
                           <div className="absolute right-4 top-4 flex gap-2">
                             <span className="flex items-center gap-1 rounded-full bg-black/60 px-3 py-1 text-[10px] font-mono backdrop-blur-md">
@@ -275,7 +272,7 @@ export default function LandingPage() {
           <div className="mb-20 flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
             <div>
               <h2 className="font-headline text-4xl font-bold tracking-tight">Model Showcase</h2>
-              <p className="mt-4 text-[#c2c6d6]">The heavyweights of the Vibecraft ecosystem.</p>
+              <p className="mt-4 text-[#c2c6d6]">Models available across plain chat and Smart Creation workflows.</p>
             </div>
             <Link href={primaryHref} className="flex items-center gap-2 font-semibold text-[#adc6ff] transition-all hover:gap-4">
               View Live Studio
@@ -286,7 +283,7 @@ export default function LandingPage() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {showcaseModels.map((model) => (
               <div key={model.title} className="group relative aspect-[4/5] overflow-hidden rounded-lg">
-                <Image src={model.image} alt={model.alt} width={900} height={1200} className="h-full w-full object-cover" />
+                <Image src={model.image} alt={model.alt} width={1200} height={1500} quality={100} sizes="(max-width: 639px) 100vw, (max-width: 1023px) 50vw, 25vw" className="h-full w-full object-cover" />
                 <div className="absolute inset-0 bg-black/40 transition-colors group-hover:bg-black/20" />
                 <div className="absolute bottom-6 left-6">
                   <span className={`mb-2 inline-block rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-widest ${model.badgeClass}`}>
@@ -360,17 +357,13 @@ export default function LandingPage() {
             </div>
             <h2 className="font-headline text-4xl font-bold lg:text-5xl">Ready to Build?</h2>
             <p className="mx-auto mb-10 mt-6 max-w-xl text-lg leading-relaxed text-[#c2c6d6]">
-              Join creators using Vibecraft to generate visuals, captions, and campaign-ready content from one studio.
+              Add credits and enjoy state-of-the-art AI models in one place, with top-ups in Tunisian dinar.
             </p>
             <div className="flex flex-col justify-center gap-6 sm:flex-row">
               <Link href={primaryHref} className="rounded-md bg-[#adc6ff] px-12 py-5 text-xl font-bold text-[#002e6a] shadow-lg shadow-[#adc6ff]/20 transition-all hover:scale-105 active:scale-95">
                 {user ? "Open Dashboard" : "Claim Early Access"}
               </Link>
-              <Link href="/policy" className="rounded-md border border-[#424754]/40 bg-[#2e3447]/60 px-12 py-5 text-xl font-bold text-white transition-colors hover:bg-[#33394c]">
-                Read Terms
-              </Link>
             </div>
-            <p className="mt-8 font-mono text-sm uppercase tracking-[0.3em] text-[#c2c6d6]">No credit card required. Cancel anytime.</p>
           </div>
         </div>
       </section>

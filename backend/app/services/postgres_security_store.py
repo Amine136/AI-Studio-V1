@@ -691,10 +691,10 @@ def get_history(uid: str, max_items: int = 20) -> list[dict[str, Any]]:
         return [_history_dict_from_model(entry) for entry in repo.get_history(uid, max_items)]
 
 
-def create_chat_conversation(uid: str, model: str, system_parts: list[dict[str, Any]]) -> dict[str, Any]:
+def create_chat_conversation(uid: str, model: str, system_parts: list[dict[str, Any]], title: str = "New Chat") -> dict[str, Any]:
     with session_scope() as session:
         repo = SecurityRepository(session)
-        entry = repo.create_chat_conversation(uid, model, system_parts)
+        entry = repo.create_chat_conversation(uid, model, system_parts, title)
         return _chat_conversation_dict_from_model(entry)
 
 
@@ -711,6 +711,26 @@ def get_chat_conversation(uid: str, conversation_id: str) -> dict[str, Any] | No
         if entry is None:
             return None
         return _chat_conversation_dict_from_model(entry)
+
+
+def update_chat_conversation_title(uid: str, conversation_id: str, title: str) -> dict[str, Any]:
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        conversation = repo.get_chat_conversation_for_update(uid, conversation_id)
+        if conversation is None:
+            raise ValueError("CHAT_CONVERSATION_NOT_FOUND")
+        entry = repo.update_chat_conversation_title(conversation, title)
+        return _chat_conversation_dict_from_model(entry)
+
+
+def delete_chat_conversation(uid: str, conversation_id: str) -> bool:
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        conversation = repo.get_chat_conversation_for_update(uid, conversation_id)
+        if conversation is None:
+            return False
+        repo.delete_chat_conversation(conversation)
+        return True
 
 
 def add_chat_message(uid: str, conversation_id: str, role: str, parts: list[dict[str, Any]]) -> dict[str, Any]:
@@ -731,8 +751,10 @@ def add_chat_turn(
     *,
     user_parts: list[dict[str, Any]],
     assistant_parts: list[dict[str, Any]],
+    title: str | None = None,
     prompt_tokens: int = 0,
     completion_tokens: int = 0,
+    charged_cost: float = 0,
 ) -> dict[str, dict[str, Any]]:
     with session_scope() as session:
         repo = SecurityRepository(session)
@@ -745,8 +767,10 @@ def add_chat_turn(
         repo.touch_chat_conversation(
             conversation,
             touched_at=created_at,
+            title=title,
             prompt_tokens_delta=prompt_tokens,
             completion_tokens_delta=completion_tokens,
+            total_cost_minor_delta=_credits_to_minor(charged_cost),
         )
         return {
             "user": _chat_message_dict_from_model(user_entry),
@@ -1103,6 +1127,7 @@ def _chat_conversation_dict_from_model(entry: Any) -> dict[str, Any]:
         "id": entry.id,
         "uid": entry.uid,
         "model": entry.model,
+        "title": entry.title or "New Chat",
         "system": list(entry.system_json or []),
         "createdAt": int(entry.created_at),
         "updatedAt": int(entry.updated_at),
@@ -1110,6 +1135,7 @@ def _chat_conversation_dict_from_model(entry: Any) -> dict[str, Any]:
         "promptTokensTotal": int(entry.prompt_tokens_total or 0),
         "completionTokensTotal": int(entry.completion_tokens_total or 0),
         "totalTokens": int(entry.prompt_tokens_total or 0) + int(entry.completion_tokens_total or 0),
+        "totalCostCredits": _minor_to_credits(int(entry.total_cost_minor or 0)),
     }
 
 

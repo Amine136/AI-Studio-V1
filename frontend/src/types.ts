@@ -57,9 +57,9 @@ export interface PlainChatModelItem {
   displayName: string;
   description?: string;
   provider: string;
-  cost: number;
   supportsImageInput: boolean;
   parameterSchema?: Record<string, PlainChatParameterSchemaEntry>;
+  pricing?: ModelPricingSummary;
 }
 
 export interface PlainChatModelListResponse {
@@ -69,6 +69,7 @@ export interface PlainChatModelListResponse {
 export interface PlainChatConversationItem {
   id: string;
   model: string;
+  title: string;
   system: PlainChatPart[];
   createdAt: number;
   updatedAt: number;
@@ -76,6 +77,7 @@ export interface PlainChatConversationItem {
   promptTokensTotal?: number;
   completionTokensTotal?: number;
   totalTokens?: number;
+  totalCostCredits?: number;
 }
 
 export interface PlainChatConversationListResponse {
@@ -84,7 +86,12 @@ export interface PlainChatConversationListResponse {
 
 export interface PlainChatConversationCreateRequest {
   model: string;
+  title?: string;
   system?: PlainChatPart[];
+}
+
+export interface PlainChatConversationUpdateRequest {
+  title: string;
 }
 
 export interface PlainChatConversationMessagesResponse {
@@ -215,7 +222,6 @@ export interface ModelPricingSummary {
 }
 
 export interface ModelCatalogEntry {
-  cost?: number;
   billing?: Record<string, unknown> | null;
   display_name?: string;
   provider?: string;

@@ -117,9 +117,9 @@ class PlainChatModelItem(BaseModel):
     display_name: str = Field(alias="displayName")
     description: str = ""
     provider: str
-    cost: float = 0.0
     supports_image_input: bool = Field(default=False, alias="supportsImageInput")
     parameter_schema: Dict[str, Any] = Field(default_factory=dict, alias="parameterSchema")
+    pricing: Dict[str, Any] = Field(default_factory=dict)
 
     model_config = {"populate_by_name": True}
 
@@ -130,12 +130,14 @@ class PlainChatModelListResponse(BaseModel):
 
 class PlainChatConversationCreateRequest(BaseModel):
     model: str = Field(..., min_length=1, max_length=255, description="Selected chat model ID.")
+    title: Optional[str] = Field(default=None, min_length=1, max_length=120)
     system: List[ChatMessagePart] = Field(default_factory=list, max_length=8)
 
 
 class PlainChatConversationItem(BaseModel):
     id: str
     model: str
+    title: str = Field(default="New Chat")
     system: List[ChatMessagePart] = Field(default_factory=list)
     created_at: int = Field(alias="createdAt")
     updated_at: int = Field(alias="updatedAt")
@@ -143,6 +145,7 @@ class PlainChatConversationItem(BaseModel):
     prompt_tokens_total: int = Field(default=0, alias="promptTokensTotal")
     completion_tokens_total: int = Field(default=0, alias="completionTokensTotal")
     total_tokens: int = Field(default=0, alias="totalTokens")
+    total_cost_credits: float = Field(default=0, alias="totalCostCredits")
 
     model_config = {"populate_by_name": True}
 
@@ -154,6 +157,10 @@ class PlainChatConversationListResponse(BaseModel):
 class PlainChatConversationMessagesResponse(BaseModel):
     conversation: PlainChatConversationItem
     messages: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class PlainChatConversationUpdateRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=120)
 
 
 class PlainChatConversationMessageCreateRequest(BaseModel):

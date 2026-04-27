@@ -176,7 +176,7 @@ function getModelMinimumCost(model?: ModelCatalogEntry) {
   if (typeof minimum === "number" && Number.isFinite(minimum)) {
     return minimum;
   }
-  return typeof model?.cost === "number" ? model.cost : 0;
+  return 0;
 }
 
 function formatExpectedPricing(model?: ModelCatalogEntry) {

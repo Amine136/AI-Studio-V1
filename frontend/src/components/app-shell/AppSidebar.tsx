@@ -30,9 +30,9 @@ export default function AppSidebar({ activePath }: { activePath: string }) {
 
   return (
     <>
-      <aside className="fixed left-0 top-0 hidden h-screen w-64 flex-col border-r border-white/6 bg-[linear-gradient(180deg,#1a2333_0%,#0c1324_100%)] px-4 py-8 md:flex">
+      <aside className="fixed left-0 top-0 hidden h-screen w-48 flex-col border-r border-white/6 bg-[linear-gradient(180deg,#1a2333_0%,#0c1324_100%)] px-3 py-8 md:flex">
         <div className="mb-10 px-2">
-          <h1 className="font-headline text-2xl font-bold tracking-tighter text-[#adc6ff]">Creative Studio</h1>
+          <h1 className="font-headline text-xl font-bold tracking-tighter text-[#adc6ff]">Creative Studio</h1>
           <p className="mt-1 text-xs uppercase tracking-[0.28em] text-[#b9c8de]/70">Pro Plan</p>
         </div>
 
@@ -43,7 +43,7 @@ export default function AppSidebar({ activePath }: { activePath: string }) {
               <Link
                 key={item.label}
                 href={item.href}
-                className={`flex items-center gap-3 rounded-md px-4 py-3 transition-colors duration-200 ${
+                className={`flex items-center gap-3 rounded-md px-3 py-3 transition-colors duration-200 ${
                   active
                     ? "bg-[#1a2333] font-bold text-[#adc6ff]"
                     : "text-[#b9c8de]/70 hover:bg-[#1a2333] hover:text-[#adc6ff]"
@@ -62,17 +62,10 @@ export default function AppSidebar({ activePath }: { activePath: string }) {
         </nav>
 
         <div className="mt-auto space-y-2 border-t border-white/10 pt-8">
-          <Link
-            href="/privacy"
-            className="flex items-center gap-3 rounded-md px-4 py-2 text-[#b9c8de]/70 transition-colors hover:bg-[#1a2333]"
-          >
-            <span className="material-symbols-outlined">help</span>
-            <span>Support</span>
-          </Link>
           <button
             type="button"
             onClick={handleSignOut}
-            className="flex w-full items-center gap-3 rounded-md px-4 py-2 text-left text-[#b9c8de]/70 transition-colors hover:bg-[#1a2333]"
+            className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-[#b9c8de]/70 transition-colors hover:bg-[#1a2333]"
           >
             <span className="material-symbols-outlined">logout</span>
             <span>{signingOut ? "Signing Out..." : "Sign Out"}</span>

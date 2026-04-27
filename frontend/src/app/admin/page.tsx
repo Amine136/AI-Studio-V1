@@ -13,6 +13,13 @@ import {
     CatalogWarningItem,
 } from "../../types";
 
+function formatCreditAmount(value: number): string {
+    if (value > 0 && value < 0.01) {
+        return value.toFixed(3);
+    }
+    return value.toFixed(2);
+}
+
 export default function AdminPage() {
     const router = useRouter();
     const { session, loading: sessionLoading, error: sessionError } = useAdminSession();
@@ -276,7 +283,7 @@ export default function AdminPage() {
                 <div className="grid grid-cols-1 gap-6 mt-6">
                     <OverviewPanel
                         title="Warnings"
-                        subtitle="Catalog pricing below enforced backend floors"
+                        subtitle="Model minimum pricing below enforced backend floors"
                         meta={`${warnings.length} active`}
                         action={
                             <button onClick={() => router.push("/warnings")} className="admin-gradient-btn">
@@ -299,10 +306,10 @@ export default function AdminPage() {
                                     <p className="mt-2 text-sm text-slate-200">{warning.message}</p>
                                     <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-300">
                                         <span className="rounded-full border border-white/8 bg-white/[0.03] px-2.5 py-1">
-                                            Configured: {warning.configured_cost.toFixed(2)}
+                                            Configured: {formatCreditAmount(warning.configured_cost)}
                                         </span>
                                         <span className="rounded-full border border-white/8 bg-white/[0.03] px-2.5 py-1">
-                                            Minimum: {warning.minimum_cost.toFixed(2)}
+                                            Minimum: {formatCreditAmount(warning.minimum_cost)}
                                         </span>
                                         <span className="rounded-full border border-white/8 bg-white/[0.03] px-2.5 py-1">
                                             Model: {warning.model}

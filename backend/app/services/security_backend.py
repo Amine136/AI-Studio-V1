@@ -14,6 +14,7 @@ from app.services.postgres_security_store import (  # noqa: F401
     create_credit_code_batch,
     create_credit_code_batch_with_title,
     create_generation_job,
+    delete_chat_conversation,
     disable_credit_code_batch,
     disable_credit_code,
     enable_credit_code,
@@ -46,4 +47,5 @@ from app.services.postgres_security_store import (  # noqa: F401
     reserve_generation_credits,
     add_chat_message,
     update_generation_job,
+    update_chat_conversation_title,
 )

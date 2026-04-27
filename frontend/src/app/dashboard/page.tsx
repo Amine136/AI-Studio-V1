@@ -20,7 +20,7 @@ type DashboardModelCard = {
   name: string;
   provider: string;
   modelId: string;
-  cost: number;
+  minimum: number;
   description: string;
   type: string;
   inputModalities: string[];
@@ -55,7 +55,7 @@ function flattenModelCatalog(models: Record<string, ModelCatalogEntry> | undefin
     name: item.display_name || id,
     provider: item.provider || "unknown",
     modelId: item.model_id || id,
-    cost: item.cost ?? 0,
+    minimum: typeof item.pricing?.minimum === "number" ? item.pricing.minimum : 0,
     description: item.description || "No description available in the current catalog cache.",
     type: item.type || "standard",
     inputModalities: item.input_modalities || [],
@@ -78,6 +78,13 @@ function formatProviderName(value: string) {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+}
+
+function formatMinimumCredits(value: number) {
+  if (value > 0 && value < 0.01) {
+    return `${value.toFixed(3)} Cr`;
+  }
+  return `${value.toFixed(2)} Cr`;
 }
 
 function isRenderableImageUrl(value?: string) {
@@ -178,7 +185,7 @@ export default function DashboardPage() {
     null;
   const secondaryModels = [...imageModels, ...textModels]
     .filter((model) => model.id !== featuredModel?.id)
-    .sort((a, b) => a.cost - b.cost)
+    .sort((a, b) => a.minimum - b.minimum)
     .slice(0, 2);
   const systemCards = [
     {
@@ -403,8 +410,8 @@ export default function DashboardPage() {
                     </div>
                   </div>
                   <div className="text-right">
-                    <span className="font-headline text-2xl font-bold text-[#adc6ff]">{featuredModel.cost.toFixed(2)}</span>
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-[#c2c6d6]">Credits / Gen</p>
+                    <span className="font-headline text-2xl font-bold text-[#adc6ff]">{formatMinimumCredits(featuredModel.minimum)}</span>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-[#c2c6d6]">Minimum</p>
                   </div>
                 </div>
 
@@ -458,8 +465,8 @@ export default function DashboardPage() {
                 </div>
                 <div className="flex items-center gap-6">
                   <div className="text-right">
-                    <span className="text-sm font-bold text-slate-300">{model.cost.toFixed(2)}</span>
-                    <p className="text-[8px] font-bold uppercase text-slate-500">Credits</p>
+                    <span className="text-sm font-bold text-slate-300">{formatMinimumCredits(model.minimum)}</span>
+                    <p className="text-[8px] font-bold uppercase text-slate-500">Minimum</p>
                   </div>
                   <span className="material-symbols-outlined text-slate-600 transition-colors group-hover:text-[#adc6ff]">arrow_forward_ios</span>
                 </div>

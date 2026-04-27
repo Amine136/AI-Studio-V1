@@ -40,7 +40,7 @@ export default function StudioHomePage() {
         const [profile, entries, conversationResponse] = await Promise.all([
           getProfile(),
           getHistory(uid, 8),
-          api.getPlainChatConversations(6),
+          api.getPlainChatConversations(20),
         ]);
 
         if (!cancelled) {
@@ -68,11 +68,22 @@ export default function StudioHomePage() {
     };
   }, [user]);
 
-  const featuredEntry = history[0] ?? null;
-  const recentEntries = useMemo(() => history.slice(0, 6), [history]);
-  const recentConversations = useMemo(() => conversations.slice(0, 4), [conversations]);
+  const recentConversations = useMemo(() => conversations.slice(0, 20), [conversations]);
   const imageCount = useMemo(() => history.filter((entry) => isRenderableImageUrl(entry.imageUrl)).length, [history]);
   const captionCount = useMemo(() => history.filter((entry) => Boolean(entry.caption?.trim())).length, [history]);
+
+  async function handleDeleteConversation(conversationId: string) {
+    if (typeof window !== "undefined" && !window.confirm("Delete this conversation? This action cannot be undone.")) {
+      return;
+    }
+
+    try {
+      await api.deletePlainChatConversation(conversationId);
+      setConversations((current) => current.filter((conversation) => conversation.id !== conversationId));
+    } catch (error) {
+      console.error(error);
+    }
+  }
 
   return (
     <section className="min-h-[calc(100vh-4rem)] px-6 py-8 lg:px-10">
@@ -132,8 +143,8 @@ export default function StudioHomePage() {
                   <div className="text-3xl font-bold text-white">{captionCount}</div>
                   <div className="mt-1 text-xs uppercase tracking-widest text-[#c2c6d6]">Captions</div>
                 </div>
-                <div className="rounded-xl bg-[#191f31] p-4">
-                  <div className="text-3xl font-bold text-white">{featuredEntry ? "Live" : "-"}</div>
+                  <div className="rounded-xl bg-[#191f31] p-4">
+                  <div className="text-3xl font-bold text-white">{recentConversations.length > 0 ? "Live" : "-"}</div>
                   <div className="mt-1 text-xs uppercase tracking-widest text-[#c2c6d6]">Studio State</div>
                 </div>
               </div>
@@ -141,62 +152,15 @@ export default function StudioHomePage() {
           </div>
         </section>
 
-        <section className="grid gap-6 lg:grid-cols-[0.92fr_1.08fr]">
-          <div className="overflow-hidden rounded-2xl border border-white/8 bg-[#151b2d]">
-            <div className="border-b border-white/8 px-6 py-5">
-              <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#adc6ff]">Latest Output</div>
-              <h2 className="mt-2 font-headline text-2xl font-bold text-white">Most recent creation</h2>
-            </div>
-
-            {featuredEntry ? (
-              <div className="p-6">
-                {isRenderableImageUrl(featuredEntry.imageUrl) ? (
-                  <div className="overflow-hidden rounded-2xl border border-white/8 bg-[#070d1f]">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={featuredEntry.imageUrl} alt={featuredEntry.prompt} className="h-80 w-full object-cover" />
-                  </div>
-                ) : (
-                  <div className="flex h-80 items-center justify-center rounded-2xl border border-white/8 bg-[#070d1f] text-center">
-                    <div>
-                      <span className="material-symbols-outlined text-5xl text-[#adc6ff]">notes</span>
-                      <p className="mt-4 font-headline text-2xl font-bold text-white">Caption result</p>
-                    </div>
-                  </div>
-                )}
-
-                <div className="mt-5 space-y-3">
-                  <div className="text-sm text-[#c2c6d6]">{formatHistoryDate(featuredEntry.createdAt)}</div>
-                  <h3 className="font-headline text-2xl font-bold text-white">{featuredEntry.prompt}</h3>
-                  {featuredEntry.caption ? (
-                    <p className="text-sm leading-7 text-[#c2c6d6]">{featuredEntry.caption}</p>
-                  ) : (
-                    <p className="text-sm leading-7 text-[#8c909f]">No caption saved for this result.</p>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="p-6">
-                <div className="flex h-[420px] items-center justify-center rounded-2xl border border-dashed border-white/10 bg-[#070d1f] text-center">
-                  <div>
-                    <span className="material-symbols-outlined text-5xl text-[#adc6ff]">auto_awesome</span>
-                    <p className="mt-4 font-headline text-2xl font-bold text-white">No project yet</p>
-                    <p className="mt-2 max-w-sm text-sm leading-6 text-[#c2c6d6]">
-                      Start your first project and the latest result will appear here.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
+        <section>
           <div className="rounded-2xl border border-white/8 bg-[#151b2d]">
             <div className="flex items-center justify-between border-b border-white/8 px-6 py-5">
               <div>
                 <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#adc6ff]">Recent Usage</div>
-                <h2 className="mt-2 font-headline text-2xl font-bold text-white">History</h2>
+                <h2 className="mt-2 font-headline text-2xl font-bold text-white">Plain Chat History</h2>
               </div>
-              <Link href="/gallery" className="text-sm font-semibold text-[#adc6ff] transition-colors hover:text-white">
-                View all
+              <Link href="/studio/chat" className="text-sm font-semibold text-[#adc6ff] transition-colors hover:text-white">
+                Open chat
               </Link>
             </div>
 
@@ -206,19 +170,45 @@ export default function StudioHomePage() {
                   <Link
                     key={conversation.id}
                     href={`/studio/chat?conversation=${encodeURIComponent(conversation.id)}`}
-                    className="flex items-center gap-4 px-6 py-4 transition-colors hover:bg-white/[0.03]"
+                    className="grid grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_auto_auto_auto] items-center gap-4 px-6 py-4 transition-colors hover:bg-white/[0.03]"
                   >
-                    <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-[#adc6ff]/15 bg-[#adc6ff]/10">
-                      <span className="material-symbols-outlined text-2xl text-[#adc6ff]">chat</span>
+                    <div className="min-w-0">
+                      <div className="text-[10px] uppercase tracking-[0.18em] text-[#8c909f]">Name</div>
+                      <div className="mt-1 truncate font-medium text-white">
+                        {conversation.title || "New Chat"}
+                      </div>
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate font-headline text-lg font-bold text-white">Continue chat</div>
-                      <div className="mt-1 truncate text-sm text-[#c2c6d6]">{conversation.model || "Chat model"}</div>
+                    <div className="min-w-0">
+                      <div className="text-[10px] uppercase tracking-[0.18em] text-[#8c909f]">Model used</div>
+                      <div className="mt-1 truncate font-medium text-white">{conversation.model || "Chat model"}</div>
                     </div>
-                    <div className="flex shrink-0 items-center gap-3">
-                      <div className="text-xs uppercase tracking-widest text-[#8c909f]">
+                    <div className="min-w-0">
+                      <div className="text-[10px] uppercase tracking-[0.18em] text-[#8c909f]">Last change</div>
+                      <div className="mt-1 truncate text-sm text-[#c2c6d6]">
                         {formatHistoryDate(new Date((conversation.lastMessageAt || conversation.updatedAt) * 1000))}
                       </div>
+                    </div>
+                    <div className="flex min-w-0 items-center justify-between gap-3">
+                      <div>
+                        <div className="text-[10px] uppercase tracking-[0.18em] text-[#8c909f]">Credits charged</div>
+                        <div className="mt-1 font-medium text-white">
+                          {(conversation.totalCostCredits || 0).toFixed(2)} Cr
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          void handleDeleteConversation(conversation.id);
+                        }}
+                        className="rounded-md border border-[#5b2028] p-2 text-[#ffb4ab] transition-colors hover:bg-[#5b2028]/20"
+                        aria-label={`Delete ${conversation.title || "conversation"}`}
+                      >
+                        <span className="material-symbols-outlined text-[18px]">delete</span>
+                      </button>
                       <span className="material-symbols-outlined text-[#adc6ff]">arrow_forward</span>
                     </div>
                   </Link>
@@ -226,28 +216,10 @@ export default function StudioHomePage() {
               ) : null}
 
               {loading ? (
-                <div className="px-6 py-10 text-sm text-[#8c909f]">Loading recent history…</div>
-              ) : recentEntries.length === 0 && recentConversations.length === 0 ? (
-                <div className="px-6 py-10 text-sm text-[#8c909f]">No recent studio activity yet.</div>
-              ) : (
-                recentEntries.map((entry) => (
-                  <div key={entry.id} className="flex items-center gap-4 px-6 py-4">
-                    <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/8 bg-[#070d1f]">
-                      {isRenderableImageUrl(entry.imageUrl) ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={entry.imageUrl} alt={entry.prompt} className="h-full w-full object-cover" />
-                      ) : (
-                        <span className="material-symbols-outlined text-2xl text-[#adc6ff]">notes</span>
-                      )}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate font-headline text-lg font-bold text-white">{entry.prompt}</div>
-                      <div className="mt-1 truncate text-sm text-[#c2c6d6]">{entry.model || "Studio model"}</div>
-                    </div>
-                    <div className="text-xs uppercase tracking-widest text-[#8c909f]">{formatHistoryDate(entry.createdAt)}</div>
-                  </div>
-                ))
-              )}
+                <div className="px-6 py-10 text-sm text-[#8c909f]">Loading plain chat history…</div>
+              ) : recentConversations.length === 0 ? (
+                <div className="px-6 py-10 text-sm text-[#8c909f]">No recent plain chat conversations yet.</div>
+              ) : null}
             </div>
           </div>
         </section>

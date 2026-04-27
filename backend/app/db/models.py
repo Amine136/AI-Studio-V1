@@ -213,12 +213,14 @@ class ChatConversation(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     uid: Mapped[str] = mapped_column(ForeignKey("users.uid", ondelete="CASCADE"), nullable=False)
     model: Mapped[str] = mapped_column(String(255), nullable=False)
+    title: Mapped[str] = mapped_column(String(120), default="New Chat", nullable=False)
     system_json: Mapped[list[dict[str, Any]]] = mapped_column("system", JSON, default=list, nullable=False)
     created_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
     updated_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
     last_message_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     prompt_tokens_total: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     completion_tokens_total: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    total_cost_minor: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     user: Mapped[User] = relationship(back_populates="chat_conversations")
     messages: Mapped[list["ChatMessage"]] = relationship(
@@ -229,6 +231,7 @@ class ChatConversation(Base):
     __table_args__ = (
         CheckConstraint("prompt_tokens_total >= 0", name="ck_chat_conversations_prompt_tokens_total_nonnegative"),
         CheckConstraint("completion_tokens_total >= 0", name="ck_chat_conversations_completion_tokens_total_nonnegative"),
+        CheckConstraint("total_cost_minor >= 0", name="ck_chat_conversations_total_cost_minor_nonnegative"),
         Index("ix_chat_conversations_uid_updated_at", "uid", "updated_at"),
         Index("ix_chat_conversations_uid_last_message_at", "uid", "last_message_at"),
     )

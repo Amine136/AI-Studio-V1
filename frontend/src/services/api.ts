@@ -16,6 +16,7 @@ import {
   PlainChatConversationMessageCreateRequest,
   PlainChatConversationMessagesResponse,
   PlainChatConversationTurnResponse,
+  PlainChatConversationUpdateRequest,
   PlainChatModelListResponse,
   SystemConfig,
   UploadedImageResult,
@@ -125,6 +126,18 @@ export const api = {
   ): Promise<PlainChatConversationItem> => {
     const res = await client.post('/chat/conversations', payload);
     return res.data;
+  },
+
+  updatePlainChatConversation: async (
+    conversationId: string,
+    payload: PlainChatConversationUpdateRequest,
+  ): Promise<PlainChatConversationItem> => {
+    const res = await client.patch(`/chat/conversations/${conversationId}`, payload);
+    return res.data;
+  },
+
+  deletePlainChatConversation: async (conversationId: string): Promise<void> => {
+    await client.delete(`/chat/conversations/${conversationId}`);
   },
 
   getPlainChatConversationMessages: async (

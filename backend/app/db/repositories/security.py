@@ -396,18 +396,20 @@ class SecurityRepository:
             ).scalars()
         )
 
-    def create_chat_conversation(self, uid: str, model: str, system_parts: list[dict[str, Any]]) -> ChatConversation:
+    def create_chat_conversation(self, uid: str, model: str, system_parts: list[dict[str, Any]], title: str = "New Chat") -> ChatConversation:
         now = int(time.time())
         entry = ChatConversation(
             id=str(uuid.uuid4()),
             uid=uid,
             model=model,
+            title=title,
             system_json=system_parts,
             created_at=now,
             updated_at=now,
             last_message_at=None,
             prompt_tokens_total=0,
             completion_tokens_total=0,
+            total_cost_minor=0,
         )
         self.session.add(entry)
         self.session.flush()
@@ -446,16 +448,31 @@ class SecurityRepository:
         conversation: ChatConversation,
         *,
         touched_at: int | None = None,
+        title: str | None = None,
         prompt_tokens_delta: int = 0,
         completion_tokens_delta: int = 0,
+        total_cost_minor_delta: int = 0,
     ) -> ChatConversation:
         now = touched_at or int(time.time())
+        if title is not None:
+            conversation.title = title
         conversation.updated_at = now
         conversation.last_message_at = now
         conversation.prompt_tokens_total = max(int(conversation.prompt_tokens_total or 0) + int(prompt_tokens_delta or 0), 0)
         conversation.completion_tokens_total = max(int(conversation.completion_tokens_total or 0) + int(completion_tokens_delta or 0), 0)
+        conversation.total_cost_minor = max(int(conversation.total_cost_minor or 0) + int(total_cost_minor_delta or 0), 0)
         self.session.flush()
         return conversation
+
+    def update_chat_conversation_title(self, conversation: ChatConversation, title: str) -> ChatConversation:
+        conversation.title = title
+        conversation.updated_at = int(time.time())
+        self.session.flush()
+        return conversation
+
+    def delete_chat_conversation(self, conversation: ChatConversation) -> None:
+        self.session.delete(conversation)
+        self.session.flush()
 
     def add_chat_message(
         self,
@@ -487,7 +504,11 @@ class SecurityRepository:
                     ChatMessage.uid == uid,
                     ChatMessage.conversation_id == conversation_id,
                 )
-                .order_by(ChatMessage.created_at.asc(), ChatMessage.id.asc())
+                .order_by(
+                    ChatMessage.created_at.asc(),
+                    case((ChatMessage.role == "user", 0), else_=1).asc(),
+                    ChatMessage.id.asc(),
+                )
                 .limit(max_items)
             ).scalars()
         )

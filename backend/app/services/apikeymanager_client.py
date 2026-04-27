@@ -76,6 +76,22 @@ def _build_headers() -> Dict[str, str]:
     }
 
 
+def _generated_image_public_url(url: str) -> str:
+    candidate = str(url or "").strip()
+    if not candidate:
+        return candidate
+
+    source_prefix = f"{settings.apikeymanager_public_base_url}/generated-images/" if settings.apikeymanager_public_base_url else ""
+    target_prefix = f"{settings.public_backend_base_url}/generated-images/" if settings.public_backend_base_url else ""
+
+    if source_prefix and target_prefix and candidate.startswith(source_prefix):
+        filename = candidate[len(source_prefix):].lstrip("/")
+        if filename:
+            return f"{target_prefix}{filename}"
+
+    return candidate
+
+
 def _post_apikeymanager(path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
     url = f"{settings.apikeymanager_base_url}{path}"
     last_error: ApiKeyManagerProxyError | None = None
@@ -244,7 +260,28 @@ def generate_text_payload_via_proxy(
 
 def generate_chat_via_proxy(payload: Dict[str, Any]) -> Dict[str, Any]:
     data = _post_chat(payload)
-    return data.get("data") or {}
+    response_data = data.get("data", {}) or {}
+    message = response_data.get("message")
+    if isinstance(message, dict):
+        parts = message.get("parts")
+        if isinstance(parts, list):
+            normalized_parts: list[dict[str, Any]] = []
+            for part in parts:
+                if not isinstance(part, dict):
+                    continue
+                if str(part.get("type") or "") == "image_url":
+                    image_url = str(part.get("url") or "").strip()
+                    normalized_parts.append({
+                        **part,
+                        "url": _generated_image_public_url(image_url) if image_url else image_url,
+                    })
+                    continue
+                normalized_parts.append(part)
+            response_data["message"] = {
+                **message,
+                "parts": normalized_parts,
+            }
+    return response_data
 
 
 def generate_image_via_proxy(
@@ -287,7 +324,7 @@ def generate_image_via_proxy(
     outputs = response_data.get("outputs") or {}
     image_url = outputs.get("imageUrl")
     if isinstance(image_url, str) and image_url.strip():
-        return image_url
+        return _generated_image_public_url(image_url)
 
     image_base64 = outputs.get("imageBase64") or response_data.get("response")
     if not image_base64:
@@ -336,7 +373,7 @@ def generate_image_payload_via_proxy(
     outputs = response_data.get("outputs") or {}
     image_url = outputs.get("imageUrl")
     if isinstance(image_url, str) and image_url.strip():
-        resolved_image = image_url
+        resolved_image = _generated_image_public_url(image_url)
     else:
         image_base64 = outputs.get("imageBase64") or response_data.get("response")
         if not image_base64:
@@ -388,7 +425,7 @@ def generate_text_and_image_via_proxy(
     outputs = response_data.get("outputs") or {}
     image_url = outputs.get("imageUrl")
     if isinstance(image_url, str) and image_url.strip():
-        resolved_image = image_url
+        resolved_image = _generated_image_public_url(image_url)
     else:
         image_base64 = outputs.get("imageBase64") or response_data.get("response")
         if not image_base64:
@@ -434,7 +471,7 @@ def generate_text_and_image_payload_via_proxy(
     outputs = response_data.get("outputs") or {}
     image_url = outputs.get("imageUrl")
     if isinstance(image_url, str) and image_url.strip():
-        resolved_image = image_url
+        resolved_image = _generated_image_public_url(image_url)
     else:
         image_base64 = outputs.get("imageBase64") or response_data.get("response")
         if not image_base64:
@@ -528,20 +565,12 @@ def _normalize_model_entry(model_config: Dict[str, Any]) -> Dict[str, Any]:
         "provider": provider,
         "model_id": model_config.get("model_id") or model_config.get("name"),
         "display_name": model_config.get("display_name") or model_config.get("displayName"),
-        "cost": _parse_cost(model_config.get("cost", 0)),
         "billing": model_config.get("billing") if isinstance(model_config.get("billing"), dict) else None,
         "description": model_config.get("description", ""),
         "input_modalities": model_config.get("input_modalities") or model_config.get("inputModalities") or [],
         "output_modalities": output_modalities,
         "type": _infer_model_type(provider, output_modalities),
     }
-
-
-def _parse_cost(raw_cost: Any) -> float:
-    try:
-        return float(raw_cost)
-    except (TypeError, ValueError):
-        return 0.0
 
 
 def _infer_model_type(provider: Optional[str], output_modalities: list[str]) -> str:

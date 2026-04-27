@@ -43,9 +43,9 @@ def list_plain_chat_models() -> list[dict[str, Any]]:
                 "displayName": str(model_entry.get("display_name") or model_name),
                 "description": str(model_entry.get("description") or ""),
                 "provider": str(model_entry.get("provider") or ""),
-                "cost": float(model_entry.get("cost", 0) or 0),
                 "supportsImageInput": _supports_image_input(model_entry),
                 "parameterSchema": settings.get_model_parameter_schema(model_name, model_entry),
+                "pricing": _derive_plain_chat_model_pricing_summary(model_entry),
             }
 
     return sorted(
@@ -275,16 +275,19 @@ def _validate_system_parts(parts: list[ChatMessagePart], *, supports_image_input
 
 def _validate_uploaded_image_url(image_url: str) -> None:
     uploaded_prefix = f"{settings.public_backend_base_url}/images/"
-    generated_prefix = ""
+    generated_prefixes: list[str] = []
+    if settings.public_backend_base_url:
+        generated_prefixes.append(f"{settings.public_backend_base_url}/generated-images/")
     if settings.apikeymanager_public_base_url:
-        generated_prefix = f"{settings.apikeymanager_public_base_url}/generated-images/"
+        generated_prefixes.append(f"{settings.apikeymanager_public_base_url}/generated-images/")
 
     parsed = urlparse(image_url)
     filename = Path(parsed.path).name
     if image_url.startswith(uploaded_prefix) and SAFE_UPLOADED_FILENAME.match(filename):
         return
-    if generated_prefix and image_url.startswith(generated_prefix) and SAFE_GENERATED_FILENAME.match(filename):
-        return
+    for generated_prefix in generated_prefixes:
+        if image_url.startswith(generated_prefix) and SAFE_GENERATED_FILENAME.match(filename):
+            return
     raise ValueError("CHAT_IMAGE_URL_INVALID")
 
 
@@ -296,6 +299,84 @@ def _is_text_capable_model(model_entry: dict[str, Any]) -> bool:
 def _supports_image_input(model_entry: dict[str, Any]) -> bool:
     input_modalities = set(model_entry.get("input_modalities") or [])
     return "IMAGE" in input_modalities or model_entry.get("type") == "gemini-image"
+
+
+def _parse_billing_float(value: Any) -> float | None:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    return round(parsed, 6)
+
+
+def _derive_plain_chat_model_pricing_summary(model_config: dict[str, Any] | None) -> dict[str, Any]:
+    config = dict(model_config or {})
+    billing = config.get("billing") if isinstance(config.get("billing"), dict) else {}
+    billing_mode = str(billing.get("mode") or "").strip().lower()
+    fixed_config = billing.get("fixed") if isinstance(billing.get("fixed"), dict) else {}
+    fixed_amount = _parse_billing_float(fixed_config.get("amount"))
+    image_config = billing.get("image") if isinstance(billing.get("image"), dict) else {}
+    image_size_prices = image_config.get("imageSizePrices") if isinstance(image_config.get("imageSizePrices"), dict) else {}
+    sample_image_size_prices = image_config.get("sampleImageSizePrices") if isinstance(image_config.get("sampleImageSizePrices"), dict) else {}
+    base_price = _parse_billing_float(image_config.get("basePrice"))
+
+    normalized_image_size_prices = {
+        str(key): parsed
+        for key, raw in image_size_prices.items()
+        if (parsed := _parse_billing_float(raw)) is not None
+    }
+    normalized_sample_image_size_prices = {
+        str(key): parsed
+        for key, raw in sample_image_size_prices.items()
+        if (parsed := _parse_billing_float(raw)) is not None
+    }
+
+    candidates: list[float] = []
+    if fixed_amount is not None:
+        candidates.append(fixed_amount)
+    if base_price is not None:
+        candidates.append(base_price)
+    candidates.extend(normalized_image_size_prices.values())
+    candidates.extend(normalized_sample_image_size_prices.values())
+
+    text_floor = round(settings.minimum_text_generation_cost, 4)
+    image_floor = round(settings.minimum_image_generation_cost, 4)
+
+    if not candidates:
+        return {
+            "minimum": text_floor,
+            "expected": {
+                "type": "usage_based" if billing_mode in {"token", "composite"} else "fixed",
+                "label": "Usage-based billing",
+                "amount": text_floor,
+            },
+        }
+
+    raw_minimum = round(min(candidates), 4)
+    minimum = round(max(raw_minimum, image_floor), 4)
+
+    expected: dict[str, Any]
+    if fixed_amount is not None and not normalized_image_size_prices and not normalized_sample_image_size_prices and base_price is None:
+        expected = {
+            "type": "fixed",
+            "label": "Fixed billing",
+            "amount": round(fixed_amount, 4),
+        }
+    else:
+        expected = {
+            "type": "image_variant" if (normalized_image_size_prices or normalized_sample_image_size_prices) else "fixed",
+        }
+    if base_price is not None:
+        expected["basePrice"] = round(base_price, 4)
+    if normalized_image_size_prices:
+        expected["imageSizePrices"] = {key: round(value, 4) for key, value in normalized_image_size_prices.items()}
+    if normalized_sample_image_size_prices:
+        expected["sampleImageSizePrices"] = {key: round(value, 4) for key, value in normalized_sample_image_size_prices.items()}
+
+    return {
+        "minimum": minimum,
+        "expected": expected,
+    }
 
 
 def _message_char_count(message: dict[str, Any]) -> int:

@@ -12,6 +12,13 @@ const AUTH_WARNING_ACTIONS = new Set([
     "admin_login_admin_deactivated",
 ]);
 
+function formatCreditAmount(value: number): string {
+    if (value > 0 && value < 0.01) {
+        return value.toFixed(3);
+    }
+    return value.toFixed(2);
+}
+
 export default function AdminWarningsPage() {
     const [catalogWarnings, setCatalogWarnings] = useState<CatalogWarningItem[]>([]);
     const [authWarnings, setAuthWarnings] = useState<AdminAuditLogItem[]>([]);
@@ -70,7 +77,7 @@ export default function AdminWarningsPage() {
                     <div className="flex items-center justify-between border-b border-white/8 px-5 py-4">
                         <div>
                             <h2 className="text-base font-semibold text-white">Warnings Overview</h2>
-                            <p className="text-xs text-slate-500">Catalog pricing issues and admin auth security events</p>
+                            <p className="text-xs text-slate-500">Catalog minimum-pricing issues and admin auth security events</p>
                         </div>
                         <span className="text-xs text-slate-500">{totalWarnings} items</span>
                     </div>
@@ -186,7 +193,7 @@ export default function AdminWarningsPage() {
                                 <div className="flex items-center justify-between gap-4">
                                     <div>
                                         <h3 className="text-sm font-semibold text-white">Catalog Warnings</h3>
-                                        <p className="mt-1 text-xs text-slate-500">Model pricing below enforced backend floors</p>
+                                        <p className="mt-1 text-xs text-slate-500">Model minimum pricing below enforced backend floors</p>
                                     </div>
                                     <span className="rounded-full border border-amber-300/15 bg-amber-300/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-200">
                                         {catalogWarnings.length} active
@@ -207,10 +214,10 @@ export default function AdminWarningsPage() {
                                                 <p className="mt-2 text-sm text-slate-200">{warning.message}</p>
                                                 <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-300">
                                                     <span className="rounded-full border border-white/8 bg-white/[0.03] px-2.5 py-1">
-                                                        Configured: {warning.configured_cost.toFixed(2)}
+                                                        Configured: {formatCreditAmount(warning.configured_cost)}
                                                     </span>
                                                     <span className="rounded-full border border-white/8 bg-white/[0.03] px-2.5 py-1">
-                                                        Minimum: {warning.minimum_cost.toFixed(2)}
+                                                        Minimum: {formatCreditAmount(warning.minimum_cost)}
                                                     </span>
                                                     <span className="rounded-full border border-white/8 bg-white/[0.03] px-2.5 py-1">
                                                         Model: {warning.model}
