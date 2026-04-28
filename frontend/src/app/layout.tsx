@@ -1,7 +1,9 @@
 "use client";
 
+import { useEffect } from "react";
 import "./globals.css";
 import { AuthProvider } from "../context/AuthContext";
+import { applyAccentColorToDocument, readAccentColorFromCookie } from "../lib/accentColor";
 
 const LOGO_VERSION = "20260404-1846";
 
@@ -10,6 +12,10 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  useEffect(() => {
+    applyAccentColorToDocument(readAccentColorFromCookie());
+  }, []);
+
   return (
     <html lang="en">
       <head>

@@ -62,7 +62,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 {credits === null ? "..." : `${credits.toFixed(2)} Credits`}
               </span>
             </div>
-            <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-md border border-[#adc6ff]/20 bg-[#1a2333]">
+            <div
+              className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-md border bg-[#1a2333]"
+              style={{
+                borderColor: "var(--workspace-accent-ring)",
+                boxShadow: "0 0 0 1px var(--workspace-accent-soft)",
+              }}
+            >
               {photoUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={photoUrl} alt={displayName} className="h-full w-full object-cover" />
