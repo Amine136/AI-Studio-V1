@@ -7,8 +7,7 @@ import { useAuth } from "../../context/AuthContext";
 import { redeemCode } from "../../lib/creditCodes";
 import { getCredits } from "../../lib/credits";
 import { getHistory, type HistoryEntry } from "../../lib/history";
-import { api } from "../../services/api";
-import type { ModelCatalogEntry, ModelPricingSummary, PlainChatModelItem, SystemConfig } from "../../types";
+
 
 interface SuspensionState {
   reason: string;
@@ -26,14 +25,7 @@ type UsageEvent = {
   positive?: boolean;
 };
 
-type PricingCardItem = {
-  id: string;
-  name: string;
-  provider?: string;
-  taskLabel?: string;
-  minimum: number;
-  detailLines: string[];
-};
+
 
 function formatSuspensionEndsAt(value: string): string | null {
   const date = new Date(value);
@@ -90,97 +82,7 @@ function mapHistoryToUsageEvents(entries: HistoryEntry[]): UsageEvent[] {
   });
 }
 
-function toProviderLabel(provider: string) {
-  const normalized = provider.trim().toLowerCase();
-  if (!normalized) return "AI Provider";
-  return normalized
-    .split(/[\s_-]+/)
-    .map((token) => token.charAt(0).toUpperCase() + token.slice(1))
-    .join(" ");
-}
 
-function formatCreditValue(value: number) {
-  if (value > 0 && value < 0.01) {
-    return `${value.toFixed(3)} Cr`;
-  }
-  return `${value.toFixed(2)} Cr`;
-}
-
-function formatPricingDetails(pricing?: ModelPricingSummary | null): string[] {
-  if (!pricing?.expected || typeof pricing.expected !== "object") {
-    return [`From ${formatCreditValue(pricing?.minimum || 0)}`];
-  }
-
-  const detailLines: string[] = [];
-  const expected = pricing.expected;
-
-  if (typeof expected.basePrice === "number" && Number.isFinite(expected.basePrice)) {
-    detailLines.push(`Base: ${formatCreditValue(expected.basePrice)}`);
-  }
-
-  if (expected.imageSizePrices && typeof expected.imageSizePrices === "object") {
-    for (const [label, rawValue] of Object.entries(expected.imageSizePrices)) {
-      const value = Number(rawValue);
-      if (Number.isFinite(value)) {
-        detailLines.push(`${label}: ${formatCreditValue(value)}`);
-      }
-    }
-  }
-
-  if (expected.sampleImageSizePrices && typeof expected.sampleImageSizePrices === "object") {
-    for (const [label, rawValue] of Object.entries(expected.sampleImageSizePrices)) {
-      const value = Number(rawValue);
-      if (Number.isFinite(value)) {
-        detailLines.push(`Sample ${label}: ${formatCreditValue(value)}`);
-      }
-    }
-  }
-
-  return detailLines.length ? detailLines : [`From ${formatCreditValue(pricing.minimum || 0)}`];
-}
-
-function toSmartPricingCards(config: SystemConfig | null): PricingCardItem[] {
-  if (!config?.model_catalog) return [];
-
-  const taskLabels: Record<string, string> = {
-    caption: "Smart Caption",
-    image: "Smart Image",
-  };
-
-  const items: PricingCardItem[] = [];
-  for (const [task, taskModels] of Object.entries(config.model_catalog)) {
-    if (!taskModels || typeof taskModels !== "object") continue;
-    for (const [modelId, entry] of Object.entries(taskModels)) {
-      const modelEntry = entry as ModelCatalogEntry;
-      const pricing = modelEntry.pricing;
-      if (!pricing) continue;
-      items.push({
-        id: `${task}:${modelId}`,
-        name: modelEntry.display_name || modelId,
-        provider: toProviderLabel(modelEntry.provider || ""),
-        taskLabel: taskLabels[task] || task,
-        minimum: Number(pricing.minimum || 0),
-        detailLines: formatPricingDetails(pricing),
-      });
-    }
-  }
-
-  return items.sort((a, b) => a.name.localeCompare(b.name));
-}
-
-function toPlainChatPricingCards(models: PlainChatModelItem[]): PricingCardItem[] {
-  return models
-    .filter((model) => model.pricing)
-    .map((model) => ({
-      id: model.id,
-      name: model.displayName,
-      provider: toProviderLabel(model.provider || ""),
-      taskLabel: "Plain Chat",
-      minimum: Number(model.pricing?.minimum || 0),
-      detailLines: formatPricingDetails(model.pricing),
-    }))
-    .sort((a, b) => a.name.localeCompare(b.name));
-}
 
 const faqItems = [
   {
@@ -209,9 +111,7 @@ export default function CreditsPage() {
   const [historyLoading, setHistoryLoading] = useState(true);
   const [credits, setCredits] = useState<number | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
-  const [plainChatModels, setPlainChatModels] = useState<PlainChatModelItem[]>([]);
-  const [systemConfig, setSystemConfig] = useState<SystemConfig | null>(null);
-  const [pricingLoading, setPricingLoading] = useState(true);
+
   const [codeInput, setCodeInput] = useState("");
   const [codeMessage, setCodeMessage] = useState<{ text: string; success: boolean; showPolicyLink?: boolean } | null>(null);
   const [redeeming, setRedeeming] = useState(false);
@@ -253,28 +153,10 @@ export default function CreditsPage() {
     }
   }, [user]);
 
-  const fetchPricing = useCallback(async () => {
-    if (!user) return;
-    setPricingLoading(true);
-    try {
-      const [plainChatResponse, configResponse] = await Promise.all([
-        api.getPlainChatModels(),
-        api.getConfig(),
-      ]);
-      setPlainChatModels(Array.isArray(plainChatResponse.models) ? plainChatResponse.models : []);
-      setSystemConfig(configResponse);
-    } catch {
-      setPlainChatModels([]);
-      setSystemConfig(null);
-    } finally {
-      setPricingLoading(false);
-    }
-  }, [user]);
-
   useEffect(() => {
     if (!user) return;
-    void Promise.all([fetchBalance(), fetchHistory(), fetchPricing()]);
-  }, [fetchBalance, fetchHistory, fetchPricing, user]);
+    void Promise.all([fetchBalance(), fetchHistory()]);
+  }, [fetchBalance, fetchHistory, user]);
 
   useEffect(() => {
     if (!redeemCooldownStorageKey || typeof window === "undefined") return;
@@ -382,8 +264,7 @@ export default function CreditsPage() {
     const percentage = Math.max(8, Math.min(100, (credits / 5) * 100));
     return `${percentage}%`;
   }, [credits]);
-  const smartPricingCards = useMemo(() => toSmartPricingCards(systemConfig), [systemConfig]);
-  const plainChatPricingCards = useMemo(() => toPlainChatPricingCards(plainChatModels), [plainChatModels]);
+
 
   if (loading || !user) {
     return (
@@ -501,119 +382,7 @@ export default function CreditsPage() {
         </div>
       </section>
 
-      <section className="mb-24">
-        <div className="mb-8 flex items-center justify-between">
-          <h2 className="font-headline text-2xl font-bold tracking-tight text-blue-50">Pricing</h2>
-          <span className="text-[11px] uppercase tracking-[0.22em] text-[#8c909f]">Live Billing Rules</span>
-        </div>
 
-        <div className="grid grid-cols-1 gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
-          <div className="rounded-xl border border-white/10 bg-[rgba(25,31,49,0.7)] p-6 backdrop-blur-xl">
-            <h3 className="font-headline text-lg font-semibold text-white">Workflow Basics</h3>
-            <p className="mt-2 text-sm leading-6 text-[#c2c6d6]">
-              Smart Creation starts with an analysis fee, then applies the selected model pricing. Plain Chat uses the
-              current model billing and image-size rules when applicable.
-            </p>
-
-            <div className="mt-6 space-y-4">
-              <div className="rounded-lg border border-white/10 bg-[#151b2d]/70 px-4 py-3">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#8c909f]">Smart Analysis Fee</p>
-                <p className="mt-1 text-lg font-semibold text-white">
-                  {systemConfig ? formatCreditValue(systemConfig.smart_analysis_fee || 0) : "—"}
-                </p>
-              </div>
-              <div className="rounded-lg border border-white/10 bg-[#151b2d]/70 px-4 py-3">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#8c909f]">Minimum Text Generation</p>
-                <p className="mt-1 text-lg font-semibold text-white">
-                  {systemConfig ? formatCreditValue(systemConfig.minimum_text_generation_cost || 0) : "—"}
-                </p>
-              </div>
-              <div className="rounded-lg border border-white/10 bg-[#151b2d]/70 px-4 py-3">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#8c909f]">Minimum Image Generation</p>
-                <p className="mt-1 text-lg font-semibold text-white">
-                  {systemConfig ? formatCreditValue(systemConfig.minimum_image_generation_cost || 0) : "—"}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-6">
-            <div className="rounded-xl border border-white/10 bg-[rgba(25,31,49,0.7)] p-6 backdrop-blur-xl">
-              <div className="mb-5 flex items-center justify-between">
-                <h3 className="font-headline text-lg font-semibold text-white">Plain Chat Models</h3>
-                <span className="text-[10px] uppercase tracking-[0.22em] text-[#8c909f]">Chat And Multimodal</span>
-              </div>
-              {pricingLoading ? (
-                <p className="text-sm text-[#c2c6d6]">Loading live pricing…</p>
-              ) : plainChatPricingCards.length ? (
-                <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                  {plainChatPricingCards.map((item) => (
-                    <div key={item.id} className="rounded-lg border border-white/10 bg-[#151b2d]/70 p-4">
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <p className="font-medium text-white">{item.name}</p>
-                          <p className="mt-1 text-[10px] uppercase tracking-[0.22em] text-[#8c909f]">
-                            {item.provider} {item.taskLabel ? `• ${item.taskLabel}` : ""}
-                          </p>
-                        </div>
-                        <span className="rounded-full border border-[#adc6ff]/20 bg-[#adc6ff]/10 px-2 py-0.5 text-[10px] text-[#adc6ff]">
-                          From {formatCreditValue(item.minimum)}
-                        </span>
-                      </div>
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        {item.detailLines.map((line) => (
-                          <span key={line} className="rounded-full border border-white/10 px-2 py-1 text-[11px] text-[#c2c6d6]">
-                            {line}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-[#c2c6d6]">No live plain chat pricing is available right now.</p>
-              )}
-            </div>
-
-            <div className="rounded-xl border border-white/10 bg-[rgba(25,31,49,0.7)] p-6 backdrop-blur-xl">
-              <div className="mb-5 flex items-center justify-between">
-                <h3 className="font-headline text-lg font-semibold text-white">Smart Creation Models</h3>
-                <span className="text-[10px] uppercase tracking-[0.22em] text-[#8c909f]">Caption And Image</span>
-              </div>
-              {pricingLoading ? (
-                <p className="text-sm text-[#c2c6d6]">Loading live pricing…</p>
-              ) : smartPricingCards.length ? (
-                <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                  {smartPricingCards.map((item) => (
-                    <div key={item.id} className="rounded-lg border border-white/10 bg-[#151b2d]/70 p-4">
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <p className="font-medium text-white">{item.name}</p>
-                          <p className="mt-1 text-[10px] uppercase tracking-[0.22em] text-[#8c909f]">
-                            {item.provider} {item.taskLabel ? `• ${item.taskLabel}` : ""}
-                          </p>
-                        </div>
-                        <span className="rounded-full border border-[#adc6ff]/20 bg-[#adc6ff]/10 px-2 py-0.5 text-[10px] text-[#adc6ff]">
-                          From {formatCreditValue(item.minimum)}
-                        </span>
-                      </div>
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        {item.detailLines.map((line) => (
-                          <span key={line} className="rounded-full border border-white/10 px-2 py-1 text-[11px] text-[#c2c6d6]">
-                            {line}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-[#c2c6d6]">No live smart creation pricing is available right now.</p>
-              )}
-            </div>
-          </div>
-        </div>
-      </section>
 
       <section className="mb-24">
         <div>

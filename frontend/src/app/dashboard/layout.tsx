@@ -44,16 +44,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }, [user]);
 
   return (
-    <div className="flex min-h-screen bg-[#0c1324] text-[#dce1fb] selection:bg-[#adc6ff]/30">
+    <div className="flex min-h-screen overflow-x-hidden bg-[#0c1324] text-[#dce1fb] selection:bg-[#4d8eff] selection:text-[#00285d]">
       <AppSidebar activePath="/dashboard" />
 
-      <main className="ml-0 min-h-screen flex-1 bg-[#0c1324] md:ml-64">
-        <header className="sticky top-0 z-40 flex items-center justify-between border-b border-white/5 bg-[#0c1324]/80 px-8 py-4 font-headline tracking-tight shadow-xl shadow-blue-900/10 backdrop-blur-xl">
-          <div className="flex flex-1 items-center">
+      <main className="flex min-w-0 flex-1 flex-col md:ml-48">
+        <header className="sticky top-0 z-40 flex h-16 items-center justify-between border-b border-white/10 bg-[#0c1324]/80 px-4 font-headline shadow-[0_16px_40px_rgba(0,0,0,0.2)] backdrop-blur-xl sm:px-8">
+          <div className="flex items-center gap-4">
             <h2 className="text-xl font-bold tracking-tight text-[#dce1fb]">Dashboard</h2>
           </div>
 
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-4">
             <div className="flex items-center gap-2 rounded-full border border-white/5 bg-[#23293c] px-4 py-1.5">
               <span className="material-symbols-outlined text-sm text-[#adc6ff]" style={{ fontVariationSettings: "'FILL' 1" }}>
                 bolt
@@ -62,7 +62,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 {credits === null ? "..." : `${credits.toFixed(2)} Credits`}
               </span>
             </div>
-            <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border-2 border-[#adc6ff]/20 transition-colors hover:border-[#adc6ff]/50">
+            <div
+              className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-md border bg-[#1a2333]"
+              style={{
+                borderColor: "var(--workspace-accent-ring)",
+                boxShadow: "0 0 0 1px var(--workspace-accent-soft)",
+              }}
+            >
               {photoUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={photoUrl} alt={displayName} className="h-full w-full object-cover" />

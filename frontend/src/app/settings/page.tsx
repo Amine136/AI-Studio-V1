@@ -1,9 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { type CSSProperties, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
+import {
+  ACCENT_OPTIONS,
+  type AccentColorId,
+  applyAccentColorToDocument,
+  persistAccentColor,
+  readAccentColorFromCookie,
+} from "../../lib/accentColor";
 
 function formatDate(value?: string | null) {
   if (!value) return "Not available";
@@ -28,13 +35,19 @@ export default function SettingsPage() {
 
   const [emailNotifications, setEmailNotifications] = useState(true);
   const [productUpdates, setProductUpdates] = useState(false);
-  const [accent, setAccent] = useState("blue");
+  const [accent, setAccent] = useState<AccentColorId>("blue");
 
   useEffect(() => {
     if (!loading && !user) {
       router.replace("/auth");
     }
   }, [loading, router, user]);
+
+  useEffect(() => {
+    const savedAccent = readAccentColorFromCookie();
+    setAccent(savedAccent);
+    applyAccentColorToDocument(savedAccent);
+  }, []);
 
   if (loading || !user) {
     return (
@@ -50,6 +63,7 @@ export default function SettingsPage() {
   const username = email.includes("@") ? email.split("@")[0] : displayName.toLowerCase().replace(/\s+/g, "");
   const profileNote =
     "Google authentication is currently the only live user sign-in method. Update your Google profile if you want Vibecraft to reflect a new name or image.";
+  const accentPalette = ACCENT_OPTIONS[accent];
 
   return (
     <div className="space-y-12">
@@ -66,12 +80,19 @@ export default function SettingsPage() {
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
           <div className="lg:col-span-4 rounded-md bg-[#151b2d] p-8 text-center">
             <div className="relative mx-auto w-fit">
-              <div className="h-32 w-32 overflow-hidden rounded-md ring-4 ring-[#adc6ff]/20 ring-offset-4 ring-offset-[#151b2d]">
+              <div
+                className="h-32 w-32 overflow-hidden rounded-md ring-2 ring-offset-4 ring-offset-[#151b2d]"
+                style={{
+                  border: `1px solid ${accentPalette.ring}`,
+                  boxShadow: `0 0 0 3px ${accentPalette.soft}`,
+                  ["--tw-ring-color" as any]: accentPalette.ring,
+                }}
+              >
                 {photoUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={photoUrl} alt={displayName} className="h-full w-full object-cover" />
                 ) : (
-                  <div className="flex h-full w-full items-center justify-center bg-[#1f2b42] text-3xl font-black text-[#adc6ff]">
+                  <div className="flex h-full w-full items-center justify-center bg-[#1f2b42] text-3xl font-black" style={{ color: accentPalette.solid }}>
                     {initialsFromName(displayName)}
                   </div>
                 )}
@@ -91,7 +112,7 @@ export default function SettingsPage() {
 
             <div className="mt-6 flex flex-wrap justify-center gap-2">
               <span className="rounded-full bg-[#2e3447] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-[#b9c8de]">
-                Pro Plan
+                Workspace
               </span>
               <span className="rounded-full bg-[#2e3447] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-[#b9c8de]">
                 Verified
@@ -215,10 +236,20 @@ export default function SettingsPage() {
                 <button
                   key={option.id}
                   type="button"
-                  onClick={() => setAccent(option.id)}
+                  onClick={() => {
+                    const nextAccent = option.id as AccentColorId;
+                    setAccent(nextAccent);
+                    persistAccentColor(nextAccent);
+                    applyAccentColorToDocument(nextAccent);
+                  }}
                   className={`aspect-square rounded-sm transition-all ${option.color} ${
                     accent === option.id ? "ring-2 ring-[#adc6ff] ring-offset-4 ring-offset-[#151b2d]" : "opacity-60 hover:opacity-100"
                   }`}
+                  style={
+                    accent === option.id
+                      ? ({ ["--tw-ring-color" as any]: ACCENT_OPTIONS[option.id as AccentColorId].ring } as CSSProperties)
+                      : undefined
+                  }
                 />
               ))}
             </div>

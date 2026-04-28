@@ -19,14 +19,20 @@ export default function CreditsLayout({ children }: { children: React.ReactNode 
     <div className="flex min-h-screen bg-[#0c1324] text-[#dce1fb] selection:bg-[#adc6ff]/30">
       <AppSidebar activePath="/credits" />
 
-      <main className="flex min-w-0 flex-1 flex-col md:ml-64">
+      <main className="flex min-w-0 flex-1 flex-col md:ml-48">
         <header className="sticky top-0 z-40 flex h-16 items-center justify-between border-b border-white/10 bg-[#0c1324]/80 px-4 font-headline shadow-[0_16px_40px_rgba(0,0,0,0.2)] backdrop-blur-xl sm:px-8">
           <div className="flex items-center gap-4">
             <h2 className="text-xl font-bold tracking-tight text-[#dce1fb]">Credits & Usage</h2>
           </div>
 
           <div className="flex items-center">
-            <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-md border border-[#adc6ff]/20 bg-[#1a2333]">
+            <div
+              className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-md border bg-[#1a2333]"
+              style={{
+                borderColor: "var(--workspace-accent-ring)",
+                boxShadow: "0 0 0 1px var(--workspace-accent-soft)",
+              }}
+            >
               {photoUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={photoUrl} alt={displayName} className="h-full w-full object-cover" />
