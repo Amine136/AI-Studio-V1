@@ -10,6 +10,7 @@ const navItems = [
   { href: "/studio", label: "Studio", icon: "auto_awesome" },
   { href: "/gallery", label: "Gallery", icon: "photo_library" },
   { href: "/credits", label: "Credits", icon: "account_balance_wallet" },
+  { href: "/pricing", label: "Pricing", icon: "payments" },
   { href: "/settings", label: "Settings", icon: "tune" },
 ];
 
