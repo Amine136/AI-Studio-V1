@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 import time
 import uuid
 from typing import Any
@@ -9,7 +10,15 @@ from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from app.db.models import AdminAccount, AdminAuditLog, AdminSession, AnalyzeSession, ChatConversation, ChatMessage, CreditCode, CreditCodeClaim, CreditLedgerEntry, GenerationJob, HistoryEntry, RateLimitBucket, User
+from app.db.models import AdminAccount, AdminAuditLog, AdminSession, AnalyzeSession, ChatConversation, ChatMessage, CreditCode, CreditCodeClaim, CreditLedgerEntry, DeactivatedEmail, GenerationJob, HistoryEntry, RateLimitBucket, User
+
+USERNAME_ALLOWED_RE = re.compile(r"[^a-z0-9._-]+")
+
+
+def _default_username(email: str, display_name: str, uid: str) -> str:
+    seed = (email.split("@", 1)[0] if "@" in email else display_name or uid).strip().lower()
+    normalized = USERNAME_ALLOWED_RE.sub("", seed)
+    return normalized[:15] or "vibecraft"
 
 
 class SecurityRepository:
@@ -132,6 +141,8 @@ class SecurityRepository:
                 uid=uid,
                 email=email,
                 display_name=display_name,
+                username=_default_username(email, display_name, uid),
+                bio="",
                 credits_minor=0,
                 reserved_credits_minor=0,
                 created_at=now,
@@ -142,10 +153,85 @@ class SecurityRepository:
         else:
             user.email = email
             user.display_name = display_name
+            if not str(user.username or "").strip():
+                user.username = _default_username(email, display_name, uid)
             user.updated_at = now
             user.last_seen_at = now
         self.session.flush()
         return user
+
+    def update_user_profile(self, user: User, *, username: str, bio: str, updated_at: int) -> User:
+        user.username = username
+        user.bio = bio
+        user.updated_at = updated_at
+        user.last_seen_at = updated_at
+        self.session.flush()
+        return user
+
+    def update_user_notification_preferences(
+        self,
+        user: User,
+        *,
+        email_general_news_enabled: bool,
+        email_platform_updates_enabled: bool,
+        updated_at: int,
+    ) -> User:
+        user.email_general_news_enabled = bool(email_general_news_enabled)
+        user.email_platform_updates_enabled = bool(email_platform_updates_enabled)
+        user.updated_at = updated_at
+        user.last_seen_at = updated_at
+        self.session.flush()
+        return user
+
+    def deactivate_user(self, user: User, *, reason: str, updated_at: int) -> User:
+        user.is_deactivated = True
+        user.deactivated_at = updated_at
+        user.deactivation_reason = reason
+        user.is_suspended = True
+        user.suspension_reason = reason
+        user.updated_at = updated_at
+        user.last_seen_at = updated_at
+        self.session.flush()
+        return user
+
+    def get_deactivated_email(self, email: str) -> DeactivatedEmail | None:
+        normalized = email.strip().lower()
+        if not normalized:
+            return None
+        return self.session.get(DeactivatedEmail, normalized)
+
+    def upsert_deactivated_email(
+        self,
+        *,
+        email: str,
+        original_uid: str | None,
+        deactivated_at: int,
+        reason: str | None,
+    ) -> DeactivatedEmail:
+        normalized = email.strip().lower()
+        entry = DeactivatedEmail(
+            email=normalized,
+            original_uid=original_uid.strip() if original_uid else None,
+            deactivated_at=deactivated_at,
+            reason=reason.strip() if reason else None,
+        )
+        stmt = pg_insert(DeactivatedEmail).values(
+            email=entry.email,
+            original_uid=entry.original_uid,
+            deactivated_at=entry.deactivated_at,
+            reason=entry.reason,
+        )
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[DeactivatedEmail.email],
+            set_={
+                "original_uid": entry.original_uid,
+                "deactivated_at": entry.deactivated_at,
+                "reason": entry.reason,
+            },
+        )
+        self.session.execute(stmt)
+        self.session.flush()
+        return self.session.get(DeactivatedEmail, normalized)
 
     def get_user(self, uid: str) -> User | None:
         return self.session.get(User, uid)

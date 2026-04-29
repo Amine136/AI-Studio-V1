@@ -4,6 +4,8 @@ import Link from "next/link";
 import { type CSSProperties, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
+import { api } from "../../services/api";
+import { signOutUser } from "../../lib/auth";
 import {
   ACCENT_OPTIONS,
   type AccentColorId,
@@ -36,6 +38,23 @@ export default function SettingsPage() {
   const [emailNotifications, setEmailNotifications] = useState(true);
   const [productUpdates, setProductUpdates] = useState(false);
   const [accent, setAccent] = useState<AccentColorId>("blue");
+  const [editableUsername, setEditableUsername] = useState("");
+  const [bio, setBio] = useState("");
+  const [savedUsername, setSavedUsername] = useState("");
+  const [savedBio, setSavedBio] = useState("");
+  const [profileChangesRemaining, setProfileChangesRemaining] = useState<number | null>(null);
+  const [profileSaveError, setProfileSaveError] = useState<string | null>(null);
+  const [profileSaveSuccess, setProfileSaveSuccess] = useState<string | null>(null);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [notificationsError, setNotificationsError] = useState<string | null>(null);
+  const [notificationsSuccess, setNotificationsSuccess] = useState<string | null>(null);
+  const [savingNotifications, setSavingNotifications] = useState(false);
+  const [deactivationError, setDeactivationError] = useState<string | null>(null);
+  const [showDeactivateConfirm, setShowDeactivateConfirm] = useState(false);
+  const [deactivatingAccount, setDeactivatingAccount] = useState(false);
+  const displayName = user?.displayName || user?.email?.split("@")[0] || "Vibecraft User";
+  const email = user?.email || "No email available";
+  const photoUrl = user?.photoURL || null;
 
   useEffect(() => {
     if (!loading && !user) {
@@ -49,6 +68,41 @@ export default function SettingsPage() {
     applyAccentColorToDocument(savedAccent);
   }, []);
 
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+
+    void api
+      .getProfile()
+      .then((profile) => {
+        if (cancelled) return;
+        const nextUsername =
+          String(profile.username || "").trim() ||
+          (email.includes("@") ? email.split("@")[0] : displayName.toLowerCase().replace(/\s+/g, ""))
+            .replace(/[^a-zA-Z0-9._-]/g, "")
+            .slice(0, 15) ||
+          "vibecraft";
+        const nextBio = String(profile.bio || "");
+        setEditableUsername(nextUsername);
+        setSavedUsername(nextUsername);
+        setBio(nextBio);
+        setSavedBio(nextBio);
+        setEmailNotifications(profile.emailGeneralNewsEnabled ?? true);
+        setProductUpdates(profile.emailPlatformUpdatesEnabled ?? true);
+        setProfileChangesRemaining(
+          typeof profile.profileChangesRemaining === "number" ? profile.profileChangesRemaining : null,
+        );
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setProfileSaveError(error instanceof Error ? error.message : "Failed to load profile settings.");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [displayName, email, user]);
+
   if (loading || !user) {
     return (
       <main className="flex min-h-screen items-center justify-center">
@@ -56,14 +110,76 @@ export default function SettingsPage() {
       </main>
     );
   }
-
-  const displayName = user.displayName || user.email?.split("@")[0] || "Vibecraft User";
-  const email = user.email || "No email available";
-  const photoUrl = user.photoURL || null;
-  const username = email.includes("@") ? email.split("@")[0] : displayName.toLowerCase().replace(/\s+/g, "");
   const profileNote =
     "Google authentication is currently the only live user sign-in method. Update your Google profile if you want Vibecraft to reflect a new name or image.";
   const accentPalette = ACCENT_OPTIONS[accent];
+  const isProfileDirty = editableUsername !== savedUsername || bio !== savedBio;
+
+  async function handleProfileSave() {
+    if (!isProfileDirty || savingProfile) return;
+    setSavingProfile(true);
+    setProfileSaveError(null);
+    setProfileSaveSuccess(null);
+    try {
+      const profile = await api.updateProfile({
+        username: editableUsername,
+        bio,
+      });
+      const nextUsername = String(profile.username || editableUsername);
+      const nextBio = String(profile.bio || "");
+      setEditableUsername(nextUsername);
+      setSavedUsername(nextUsername);
+      setBio(nextBio);
+      setSavedBio(nextBio);
+      setProfileChangesRemaining(
+        typeof profile.profileChangesRemaining === "number" ? profile.profileChangesRemaining : null,
+      );
+      setProfileSaveSuccess("Profile updated.");
+    } catch (error) {
+      setProfileSaveError(error instanceof Error ? error.message : "Failed to update profile.");
+    } finally {
+      setSavingProfile(false);
+    }
+  }
+
+  async function handleNotificationPreferenceChange(next: {
+    emailGeneralNewsEnabled: boolean;
+    emailPlatformUpdatesEnabled: boolean;
+  }) {
+    const previousEmailNotifications = emailNotifications;
+    const previousProductUpdates = productUpdates;
+    setSavingNotifications(true);
+    setNotificationsError(null);
+    setNotificationsSuccess(null);
+    setEmailNotifications(next.emailGeneralNewsEnabled);
+    setProductUpdates(next.emailPlatformUpdatesEnabled);
+    try {
+      const profile = await api.updateNotificationPreferences(next);
+      setEmailNotifications(profile.emailGeneralNewsEnabled ?? next.emailGeneralNewsEnabled);
+      setProductUpdates(profile.emailPlatformUpdatesEnabled ?? next.emailPlatformUpdatesEnabled);
+      setNotificationsSuccess("Notification preferences updated.");
+    } catch (error) {
+      setEmailNotifications(previousEmailNotifications);
+      setProductUpdates(previousProductUpdates);
+      setNotificationsError(error instanceof Error ? error.message : "Failed to update notification preferences.");
+    } finally {
+      setSavingNotifications(false);
+    }
+  }
+
+  async function handleDeactivateAccount() {
+    if (deactivatingAccount) return;
+    setDeactivatingAccount(true);
+    setDeactivationError(null);
+    try {
+      await api.deactivateAccount();
+      await signOutUser();
+      router.replace("/auth");
+    } catch (error) {
+      setDeactivationError(error instanceof Error ? error.message : "Failed to deactivate account.");
+      setDeactivatingAccount(false);
+    }
+  }
 
   return (
     <div className="space-y-12">
@@ -107,7 +223,7 @@ export default function SettingsPage() {
 
             <div className="mt-6">
               <h4 className="text-xl font-bold text-[#dce1fb]">{displayName}</h4>
-              <p className="text-sm text-[#c2c6d6]">Google-linked Vibecraft account</p>
+              <p className="text-sm text-[#c2c6d6]">@{savedUsername || editableUsername || "vibecraft"}</p>
             </div>
 
             <div className="mt-6 flex flex-wrap justify-center gap-2">
@@ -118,6 +234,12 @@ export default function SettingsPage() {
                 Verified
               </span>
             </div>
+
+            {savedBio || bio ? (
+              <p className="font-headline mt-6 text-[15px] leading-relaxed tracking-[0.01em] text-[#d4e4fa]">
+                {savedBio || bio}
+              </p>
+            ) : null}
           </div>
 
           <div className="space-y-8 rounded-md bg-[#151b2d] p-8 lg:col-span-8">
@@ -142,31 +264,63 @@ export default function SettingsPage() {
               </div>
               <div className="space-y-2">
                 <label className="block text-xs font-bold uppercase tracking-[0.22em] text-[#8c909f]">Username</label>
-                <input
-                  type="text"
-                  defaultValue={username}
-                  className="w-full rounded-sm border-none bg-[#070d1f] px-4 py-3 text-[#dce1fb] outline-none placeholder:text-[#8c909f]"
-                  placeholder="Choose a username"
-                />
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    value={editableUsername}
+                    maxLength={15}
+                    onChange={(event) => {
+                      const nextValue = event.target.value.replace(/[^a-zA-Z0-9._-]/g, "");
+                      setEditableUsername(nextValue.slice(0, 15));
+                    }}
+                    className="w-full rounded-sm border border-transparent bg-[#070d1f] px-4 py-3 text-[#dce1fb] outline-none transition focus:border-[#adc6ff]/35"
+                    placeholder="Choose a username"
+                  />
+                  <div className="flex items-center justify-between text-[11px] text-[#8c909f]">
+                    <span>Letters, numbers, dots, underscores, and hyphens only.</span>
+                    <span>{editableUsername.length}/15</span>
+                  </div>
+                </div>
               </div>
               <div className="space-y-2 md:col-span-2">
-                <label className="block text-xs font-bold uppercase tracking-[0.22em] text-[#8c909f]">Professional Bio</label>
-                <textarea
-                  readOnly
-                  rows={4}
-                  value={profileNote}
-                  className="w-full resize-none rounded-sm border-none bg-[#070d1f] px-4 py-3 text-[#dce1fb] outline-none"
-                />
+                <label className="block text-xs font-bold uppercase tracking-[0.22em] text-[#8c909f]">Bio</label>
+                <div className="space-y-2">
+                  <textarea
+                    rows={5}
+                    value={bio}
+                    maxLength={500}
+                    onChange={(event) => setBio(event.target.value.slice(0, 500))}
+                    className="w-full resize-none rounded-sm border border-transparent bg-[#070d1f] px-4 py-3 text-[#dce1fb] outline-none transition placeholder:text-[#8c909f] focus:border-[#adc6ff]/35"
+                    placeholder="Tell people what you build, explore, or create with Vibecraft."
+                  />
+                  <div className="flex items-start justify-between gap-4 text-[11px] text-[#8c909f]">
+                    <span>{profileNote}</span>
+                    <span className="shrink-0">{bio.length}/500</span>
+                  </div>
+                </div>
               </div>
+            </div>
+
+            <div className="flex items-center justify-between border-t border-white/8 pt-4 text-[11px] text-[#8c909f]">
+              <span>
+                {profileChangesRemaining === null
+                  ? "Profile changes are limited to 2 per month."
+                  : `${profileChangesRemaining} profile change${profileChangesRemaining === 1 ? "" : "s"} remaining this month.`}
+              </span>
+              {profileSaveError ? <span className="text-[#ffb4ab]">{profileSaveError}</span> : null}
+              {!profileSaveError && profileSaveSuccess ? <span className="text-[#adc6ff]">{profileSaveSuccess}</span> : null}
             </div>
 
             <div className="flex justify-end pt-4">
               <button
                 type="button"
-                disabled
-                className="cursor-not-allowed rounded-sm bg-[linear-gradient(90deg,#adc6ff,#4d8eff)] px-8 py-3 text-sm font-bold tracking-wide text-[#002e6a] opacity-60"
+                onClick={() => void handleProfileSave()}
+                disabled={!isProfileDirty || savingProfile}
+                className={`rounded-sm bg-[linear-gradient(90deg,#adc6ff,#4d8eff)] px-8 py-3 text-sm font-bold tracking-wide text-[#002e6a] transition ${
+                  !isProfileDirty || savingProfile ? "cursor-not-allowed opacity-60" : "hover:brightness-110"
+                }`}
               >
-                Update Profile
+                {savingProfile ? "Saving..." : "Update Profile"}
               </button>
             </div>
           </div>
@@ -187,13 +341,19 @@ export default function SettingsPage() {
             <div className="space-y-6 p-8">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="font-medium text-[#dce1fb]">Email Notifications</p>
-                  <p className="text-xs text-[#c2c6d6]">Daily summaries and account alerts</p>
+                  <p className="font-medium text-[#dce1fb]">AI General News</p>
+                  <p className="text-xs text-[#c2c6d6]">Email updates about major AI news and general ecosystem shifts.</p>
                 </div>
                 <button
                   type="button"
-                  onClick={() => setEmailNotifications((current) => !current)}
-                  className={`relative h-6 w-11 rounded-full transition ${emailNotifications ? "bg-[#adc6ff]" : "bg-[#2e3447]"}`}
+                  disabled={savingNotifications}
+                  onClick={() =>
+                    void handleNotificationPreferenceChange({
+                      emailGeneralNewsEnabled: !emailNotifications,
+                      emailPlatformUpdatesEnabled: productUpdates,
+                    })
+                  }
+                  className={`relative h-6 w-11 rounded-full transition ${emailNotifications ? "bg-[#adc6ff]" : "bg-[#2e3447]"} ${savingNotifications ? "cursor-not-allowed opacity-70" : ""}`}
                 >
                   <span
                     className={`absolute top-[2px] h-5 w-5 rounded-full bg-white transition ${
@@ -204,13 +364,19 @@ export default function SettingsPage() {
               </div>
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="font-medium text-[#dce1fb]">Product Updates</p>
-                  <p className="text-xs text-[#c2c6d6]">Early access to beta features and AI models</p>
+                  <p className="font-medium text-[#dce1fb]">Platform News and Model Updates</p>
+                  <p className="text-xs text-[#c2c6d6]">New Vibecraft features, platform changes, and newly added AI models.</p>
                 </div>
                 <button
                   type="button"
-                  onClick={() => setProductUpdates((current) => !current)}
-                  className={`relative h-6 w-11 rounded-full transition ${productUpdates ? "bg-[#adc6ff]" : "bg-[#2e3447]"}`}
+                  disabled={savingNotifications}
+                  onClick={() =>
+                    void handleNotificationPreferenceChange({
+                      emailGeneralNewsEnabled: emailNotifications,
+                      emailPlatformUpdatesEnabled: !productUpdates,
+                    })
+                  }
+                  className={`relative h-6 w-11 rounded-full transition ${productUpdates ? "bg-[#adc6ff]" : "bg-[#2e3447]"} ${savingNotifications ? "cursor-not-allowed opacity-70" : ""}`}
                 >
                   <span
                     className={`absolute top-[2px] h-5 w-5 rounded-full bg-white transition ${
@@ -219,6 +385,10 @@ export default function SettingsPage() {
                   />
                 </button>
               </div>
+              {notificationsError ? <p className="text-xs text-[#ffb4ab]">{notificationsError}</p> : null}
+              {!notificationsError && notificationsSuccess ? (
+                <p className="text-xs text-[#adc6ff]">{notificationsSuccess}</p>
+              ) : null}
             </div>
           </div>
 
@@ -315,18 +485,55 @@ export default function SettingsPage() {
           <div>
             <h4 className="text-xl font-bold text-[#ffb4ab]">Deactivate Account</h4>
             <p className="mt-1 text-sm text-[#c2c6d6]">
-              This action is not self-serve in the MVP. Contact support if you need account removal or assistance with your Google-linked identity.
+              Deactivating your account is permanent. You will lose access to this account and you will no longer be able to access its data.
             </p>
+            {deactivationError ? <p className="mt-3 text-xs text-[#ffb4ab]">{deactivationError}</p> : null}
           </div>
           <button
             type="button"
-            disabled
-            className="cursor-not-allowed rounded-sm border border-[#93000a]/50 px-6 py-2.5 text-sm font-bold text-[#ffb4ab] opacity-70"
+            onClick={() => setShowDeactivateConfirm(true)}
+            disabled={deactivatingAccount}
+            className={`rounded-sm border border-[#93000a]/50 px-6 py-2.5 text-sm font-bold text-[#ffb4ab] transition ${
+              deactivatingAccount ? "cursor-not-allowed opacity-70" : "hover:bg-[#93000a]/10"
+            }`}
           >
-            Delete Account
+            {deactivatingAccount ? "Deactivating..." : "Deactivate Account"}
           </button>
         </div>
       </section>
+      {showDeactivateConfirm ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-6">
+          <div className="w-full max-w-lg rounded-md border border-[#93000a]/35 bg-[#151b2d] p-8">
+            <h4 className="text-xl font-bold text-[#ffb4ab]">Confirm Account Deactivation</h4>
+            <p className="mt-4 text-sm leading-relaxed text-[#c2c6d6]">
+              Once you deactivate this account, you will lose access to your workspace, balance, history, conversations, and generated content tied to this account.
+            </p>
+            <p className="mt-3 text-sm leading-relaxed text-[#c2c6d6]">
+              You will be signed out immediately and this account will no longer be accessible.
+            </p>
+            <div className="mt-8 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setShowDeactivateConfirm(false)}
+                disabled={deactivatingAccount}
+                className="rounded-sm border border-white/10 px-5 py-2.5 text-sm font-bold text-[#dce1fb] transition hover:bg-white/[0.03]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleDeactivateAccount()}
+                disabled={deactivatingAccount}
+                className={`rounded-sm border border-[#93000a]/50 bg-[#93000a]/15 px-5 py-2.5 text-sm font-bold text-[#ffb4ab] transition ${
+                  deactivatingAccount ? "cursor-not-allowed opacity-70" : "hover:bg-[#93000a]/25"
+                }`}
+              >
+                {deactivatingAccount ? "Deactivating..." : "Confirm Deactivation"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

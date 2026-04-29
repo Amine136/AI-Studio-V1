@@ -19,6 +19,9 @@ import {
   PlainChatConversationUpdateRequest,
   PlainChatModelListResponse,
   SystemConfig,
+  CurrentUserProfile,
+  UserNotificationPreferencesUpdateRequest,
+  UserProfileUpdateRequest,
   UploadedImageResult,
 } from '../types';
 import { auth } from '../lib/firebase';
@@ -156,9 +159,50 @@ export const api = {
     return res.data;
   },
 
-  getProfile: async () => {
+  getProfile: async (): Promise<CurrentUserProfile> => {
     try {
       const res = await client.get('/me');
+      return res.data;
+    } catch (error) {
+      const detail = extractErrorMessage(error);
+      if (detail) {
+        throw new Error(detail);
+      }
+      throw error;
+    }
+  },
+
+  updateProfile: async (payload: UserProfileUpdateRequest): Promise<CurrentUserProfile> => {
+    try {
+      const res = await client.patch('/me', payload);
+      return res.data;
+    } catch (error) {
+      const detail = extractErrorMessage(error);
+      if (detail) {
+        throw new Error(detail);
+      }
+      throw error;
+    }
+  },
+
+  updateNotificationPreferences: async (
+    payload: UserNotificationPreferencesUpdateRequest,
+  ): Promise<CurrentUserProfile> => {
+    try {
+      const res = await client.patch('/me/preferences', payload);
+      return res.data;
+    } catch (error) {
+      const detail = extractErrorMessage(error);
+      if (detail) {
+        throw new Error(detail);
+      }
+      throw error;
+    }
+  },
+
+  deactivateAccount: async (): Promise<CurrentUserProfile> => {
+    try {
+      const res = await client.post('/me/deactivate');
       return res.data;
     } catch (error) {
       const detail = extractErrorMessage(error);

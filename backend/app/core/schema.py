@@ -1,3 +1,4 @@
+import re
 from typing import List, Dict, Any, Optional, Literal
 from pydantic import BaseModel, Field, field_validator
 
@@ -175,6 +176,31 @@ class PlainChatConversationTurnResponse(BaseModel):
     assistant_message: Optional[Dict[str, Any]] = Field(default=None, alias="assistantMessage")
     usage: Optional[Dict[str, Any]] = Field(default=None)
     meta: Optional[Dict[str, Any]] = Field(default=None)
+
+    model_config = {"populate_by_name": True}
+
+
+class UserProfileUpdateRequest(BaseModel):
+    username: str = Field(..., min_length=1, max_length=15)
+    bio: str = Field(default="", max_length=500)
+
+    @field_validator("username")
+    @classmethod
+    def normalize_username(cls, value: str) -> str:
+        normalized = re.sub(r"[^a-z0-9._-]+", "", str(value or "").strip().lower())
+        if not normalized:
+            raise ValueError("Username is required")
+        return normalized[:15]
+
+    @field_validator("bio")
+    @classmethod
+    def normalize_bio(cls, value: str) -> str:
+        return str(value or "").strip()[:500]
+
+
+class UserNotificationPreferencesUpdateRequest(BaseModel):
+    email_general_news_enabled: bool = Field(alias="emailGeneralNewsEnabled")
+    email_platform_updates_enabled: bool = Field(alias="emailPlatformUpdatesEnabled")
 
     model_config = {"populate_by_name": True}
 

@@ -9,7 +9,7 @@ from google.oauth2 import id_token
 
 from app.config import settings
 from app.services.admin_auth import get_admin_session
-from app.services.security_backend import ensure_user, get_active_suspension
+from app.services.security_backend import ensure_user, get_active_suspension, is_email_deactivated
 
 # Header name the client must send
 API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
@@ -52,7 +52,20 @@ async def verify_firebase_user(
 
     email = claims.get("email", "")
     display_name = claims.get("name") or email or uid
+    deactivated_email = is_email_deactivated(email)
+    if deactivated_email:
+        detail = "This email address belongs to a deactivated account and cannot be used again."
+        reason = str((deactivated_email or {}).get("reason") or "").strip()
+        if reason:
+            detail = reason
+        raise HTTPException(status_code=403, detail=detail)
     profile = ensure_user(uid, email, display_name)
+    if bool((profile or {}).get("isDeactivated")):
+        detail = "This account has been deactivated. You no longer have access to this account or its data."
+        reason = str((profile or {}).get("deactivationReason") or "").strip()
+        if reason:
+            detail = reason
+        raise HTTPException(status_code=403, detail=detail)
     suspension = get_active_suspension(uid)
     if suspension:
         detail = "Your account is suspended."

@@ -18,7 +18,7 @@ from slowapi.errors import RateLimitExceeded
 from sqlalchemy import text
 
 from app.config import settings
-from app.core.schema import AdminAuditLogListResponse, AdminAuthFailureSummaryResponse, AdminCreditCodeBatchListResponse, AdminCreditCodeListResponse, AdminGenerationJobItem, AdminGenerationJobListResponse, AdminLoginRequest, AdminReasonRequest, AdminSessionResponse, AdminUserDetailResponse, AdminUserListResponse, CatalogUpdateNotification, GenerateRequest, GenerationResult, PlainChatConversationCreateRequest, PlainChatConversationItem, PlainChatConversationListResponse, PlainChatConversationMessageCreateRequest, PlainChatConversationMessagesResponse, PlainChatConversationTurnResponse, PlainChatConversationUpdateRequest, PlainChatModelListResponse, SystemConfig
+from app.core.schema import AdminAuditLogListResponse, AdminAuthFailureSummaryResponse, AdminCreditCodeBatchListResponse, AdminCreditCodeListResponse, AdminGenerationJobItem, AdminGenerationJobListResponse, AdminLoginRequest, AdminReasonRequest, AdminSessionResponse, AdminUserDetailResponse, AdminUserListResponse, CatalogUpdateNotification, GenerateRequest, GenerationResult, PlainChatConversationCreateRequest, PlainChatConversationItem, PlainChatConversationListResponse, PlainChatConversationMessageCreateRequest, PlainChatConversationMessagesResponse, PlainChatConversationTurnResponse, PlainChatConversationUpdateRequest, PlainChatModelListResponse, SystemConfig, UserNotificationPreferencesUpdateRequest, UserProfileUpdateRequest
 from app.db.session import session_scope
 from app.graph.workflow import studio_graph_app
 from app.services.admin_auth import AdminAuthRateLimitError, authenticate_admin, list_admin_auth_failure_summaries, revoke_admin_session
@@ -42,6 +42,7 @@ from app.services.security_backend import (
     create_credit_code_batch,
     create_credit_code_batch_with_title,
     create_generation_job,
+    deactivate_user_account,
     delete_chat_conversation,
     disable_credit_code_batch,
     disable_credit_code,
@@ -52,6 +53,7 @@ from app.services.security_backend import (
     get_chat_conversation,
     get_chat_messages,
     get_history,
+    get_profile_change_status,
     get_user,
     hash_credit_code,
     list_admin_audit_logs,
@@ -71,6 +73,8 @@ from app.services.security_backend import (
     reserve_generation_credits,
     suspend_user,
     unsuspend_user,
+    update_user_profile,
+    update_user_notification_preferences,
 )
 
 SYSTEM_AUDIT_EMAIL = "system@vibecraft.local"
@@ -1037,7 +1041,50 @@ def admin_current_session(request: Request, response: Response, admin: Dict[str,
 @app.get("/me", tags=["Configuration"], summary="Get Current User Profile")
 @limiter.limit("30/minute")
 def get_current_user_profile(request: Request, user: Dict[str, Any] = Depends(verify_firebase_user)):
-    return get_user(user["uid"])
+    profile = get_user(user["uid"])
+    profile.update(get_profile_change_status(user["uid"]))
+    return profile
+
+
+@app.patch("/me", tags=["Configuration"], summary="Update Current User Profile")
+@limiter.limit("10/minute")
+def update_current_user_profile(
+    request: Request,
+    payload: UserProfileUpdateRequest,
+    user: Dict[str, Any] = Depends(verify_firebase_user),
+):
+    try:
+        return update_user_profile(user["uid"], username=payload.username, bio=payload.bio)
+    except ValueError as exc:
+        code = str(exc)
+        if code == "PROFILE_USERNAME_REQUIRED":
+            raise HTTPException(status_code=400, detail="Username is required") from exc
+        if code == "PROFILE_UPDATE_LIMIT":
+            raise HTTPException(status_code=429, detail="Profile changes are limited to 2 per month") from exc
+        raise HTTPException(status_code=400, detail="Invalid profile update") from exc
+
+
+@app.patch("/me/preferences", tags=["Configuration"], summary="Update Current User Notification Preferences")
+@limiter.limit("20/minute")
+def update_current_user_notification_preferences(
+    request: Request,
+    payload: UserNotificationPreferencesUpdateRequest,
+    user: Dict[str, Any] = Depends(verify_firebase_user),
+):
+    return update_user_notification_preferences(
+        user["uid"],
+        email_general_news_enabled=payload.email_general_news_enabled,
+        email_platform_updates_enabled=payload.email_platform_updates_enabled,
+    )
+
+
+@app.post("/me/deactivate", tags=["Configuration"], summary="Deactivate Current User Account")
+@limiter.limit("3/day")
+def deactivate_current_user_account(
+    request: Request,
+    user: Dict[str, Any] = Depends(verify_firebase_user),
+):
+    return deactivate_user_account(user["uid"])
 
 
 @app.get("/history", tags=["Configuration"], summary="Get User History")

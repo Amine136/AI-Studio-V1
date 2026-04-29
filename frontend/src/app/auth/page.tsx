@@ -3,8 +3,37 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { signInWithGoogle } from "../../lib/auth";
+import { signInWithGoogle, signOutUser } from "../../lib/auth";
 import { useAuth } from "../../context/AuthContext";
+import { api } from "../../services/api";
+
+function mapAuthErrorMessage(error: unknown): string {
+  const rawMessage =
+    typeof error === "object" && error !== null && "message" in error
+      ? String((error as { message?: string }).message || "")
+      : "";
+  const normalized = rawMessage.toLowerCase();
+
+  if (normalized.includes("auth/popup-closed-by-user")) {
+    return "Google sign-in was canceled before completion.";
+  }
+  if (normalized.includes("auth/cancelled-popup-request")) {
+    return "A Google sign-in request was canceled. Please try again.";
+  }
+  if (normalized.includes("auth/popup-blocked")) {
+    return "Your browser blocked the Google sign-in popup. Allow popups and try again.";
+  }
+  if (normalized.includes("auth/network-request-failed")) {
+    return "A network error interrupted Google sign-in. Please try again.";
+  }
+  if (normalized.includes("auth/account-exists-with-different-credential")) {
+    return "This email is already linked with a different sign-in method.";
+  }
+  if (normalized.includes("deactivated")) {
+    return "Your account has been deactivated. You no longer have access to this account or its data. Review our Privacy Policy and Terms of Service for more information.";
+  }
+  return rawMessage || "Google sign-in failed.";
+}
 
 export default function AuthPage() {
   const router = useRouter();
@@ -12,14 +41,44 @@ export default function AuthPage() {
 
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [validatingSession, setValidatingSession] = useState(false);
 
   useEffect(() => {
-    if (!authLoading && user) {
-      router.replace("/dashboard");
-    }
+    if (authLoading || !user) return;
+
+    let cancelled = false;
+    setValidatingSession(true);
+    setError("");
+
+    void api
+      .getProfile()
+      .then(() => {
+        if (cancelled) return;
+        router.replace("/dashboard");
+      })
+      .catch(async (err: unknown) => {
+        if (cancelled) return;
+        const message = mapAuthErrorMessage(err);
+        if (message.toLowerCase().includes("deactivated")) {
+          await signOutUser().catch(() => undefined);
+          if (cancelled) return;
+          setError(message);
+        } else {
+          setError(message);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setValidatingSession(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [authLoading, user, router]);
 
-  if (authLoading || user) {
+  if (authLoading || (user && validatingSession)) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#0c1324]">
         <div className="auth-loader" />
@@ -32,10 +91,8 @@ export default function AuthPage() {
     setLoading(true);
     try {
       await signInWithGoogle();
-      router.replace("/dashboard");
     } catch (err: unknown) {
-      const firebaseError = err as { message?: string };
-      setError(firebaseError.message || "Google sign-in failed.");
+      setError(mapAuthErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -78,7 +135,17 @@ export default function AuthPage() {
 
           {error ? (
             <div className="mb-5 rounded-md border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
-              {error}
+              <p>{error}</p>
+              {error.toLowerCase().includes("deactivated") ? (
+                <div className="mt-3 flex flex-wrap gap-4 text-[11px] uppercase tracking-[0.16em]">
+                  <Link href="/privacy" className="text-[#ffd6d1] underline underline-offset-4">
+                    Privacy Policy
+                  </Link>
+                  <Link href="/policy" className="text-[#ffd6d1] underline underline-offset-4">
+                    Terms of Service
+                  </Link>
+                </div>
+              ) : null}
             </div>
           ) : null}
 

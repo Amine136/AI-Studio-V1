@@ -1,8 +1,7 @@
 import { api } from "../services/api";
-import type { AdminUserListItem } from "../types";
+import type { AdminUserListItem, CurrentUserProfile } from "../types";
 
 export type UserRecord = AdminUserListItem;
-export type CurrentUserProfile = UserRecord;
 
 export async function getProfile(): Promise<CurrentUserProfile> {
     return api.getProfile();

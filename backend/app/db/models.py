@@ -14,6 +14,10 @@ class User(Base):
     uid: Mapped[str] = mapped_column(String(128), primary_key=True)
     email: Mapped[str] = mapped_column(String(320), default="", nullable=False)
     display_name: Mapped[str] = mapped_column(String(255), default="", nullable=False)
+    username: Mapped[str] = mapped_column(String(15), default="", nullable=False)
+    bio: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    email_general_news_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    email_platform_updates_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     credits_minor: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     reserved_credits_minor: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     created_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
@@ -21,6 +25,9 @@ class User(Base):
     last_seen_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
     is_suspended: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     suspension_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_deactivated: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    deactivated_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    deactivation_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     created_codes: Mapped[list["CreditCode"]] = relationship(
         back_populates="created_by_user",
@@ -46,6 +53,19 @@ class User(Base):
         CheckConstraint("reserved_credits_minor >= 0", name="ck_users_reserved_credits_minor_nonnegative"),
         Index("ix_users_email", "email"),
         Index("ix_users_last_seen_at", "last_seen_at"),
+    )
+
+
+class DeactivatedEmail(Base):
+    __tablename__ = "deactivated_emails"
+
+    email: Mapped[str] = mapped_column(String(320), primary_key=True)
+    original_uid: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    deactivated_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    __table_args__ = (
+        Index("ix_deactivated_emails_deactivated_at", "deactivated_at"),
     )
 
 

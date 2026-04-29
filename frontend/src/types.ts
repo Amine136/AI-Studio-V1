@@ -164,6 +164,39 @@ export interface PlainChatTurnMeta {
   [key: string]: any;
 }
 
+export interface CurrentUserProfile {
+  uid: string;
+  email: string;
+  displayName: string;
+  username?: string;
+  bio?: string;
+  emailGeneralNewsEnabled?: boolean;
+  emailPlatformUpdatesEnabled?: boolean;
+  credits?: number;
+  reservedCredits?: number;
+  totalCredits?: number;
+  createdAt?: number | null;
+  updatedAt?: number | null;
+  lastSeenAt?: number | null;
+  isSuspended?: boolean;
+  suspensionReason?: string;
+  isDeactivated?: boolean;
+  deactivatedAt?: number | null;
+  deactivationReason?: string;
+  profileChangesRemaining?: number;
+  profileChangesResetAt?: number | null;
+}
+
+export interface UserProfileUpdateRequest {
+  username: string;
+  bio: string;
+}
+
+export interface UserNotificationPreferencesUpdateRequest {
+  emailGeneralNewsEnabled: boolean;
+  emailPlatformUpdatesEnabled: boolean;
+}
+
 // Step 1: What we send to start
 export interface GenerateRequest {
   user_text: string;
