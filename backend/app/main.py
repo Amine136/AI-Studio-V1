@@ -18,7 +18,7 @@ from slowapi.errors import RateLimitExceeded
 from sqlalchemy import text
 
 from app.config import settings
-from app.core.schema import AdminAuditLogListResponse, AdminAuthFailureSummaryResponse, AdminCreditCodeBatchListResponse, AdminCreditCodeListResponse, AdminGenerationJobItem, AdminGenerationJobListResponse, AdminLoginRequest, AdminReasonRequest, AdminSessionResponse, AdminUserDetailResponse, AdminUserListResponse, CatalogUpdateNotification, GenerateRequest, GenerationResult, PlainChatConversationCreateRequest, PlainChatConversationItem, PlainChatConversationListResponse, PlainChatConversationMessageCreateRequest, PlainChatConversationMessagesResponse, PlainChatConversationTurnResponse, PlainChatConversationUpdateRequest, PlainChatModelListResponse, SystemConfig, UserNotificationPreferencesUpdateRequest, UserProfileUpdateRequest
+from app.core.schema import AdminAuditLogListResponse, AdminAuthFailureSummaryResponse, AdminCreditCodeBatchListResponse, AdminCreditCodeListResponse, AdminGenerationJobItem, AdminGenerationJobListResponse, AdminLoginRequest, AdminReasonRequest, AdminSessionResponse, AdminUserDetailResponse, AdminUserListResponse, CatalogUpdateNotification, DashboardNewsItemResponse, DashboardNewsListResponse, DashboardNewsUpsertRequest, GenerateRequest, GenerationResult, PlainChatConversationCreateRequest, PlainChatConversationItem, PlainChatConversationListResponse, PlainChatConversationMessageCreateRequest, PlainChatConversationMessagesResponse, PlainChatConversationTurnResponse, PlainChatConversationUpdateRequest, PlainChatModelListResponse, SystemConfig, UserNotificationPreferencesUpdateRequest, UserProfileUpdateRequest
 from app.db.session import session_scope
 from app.graph.workflow import studio_graph_app
 from app.services.admin_auth import AdminAuthRateLimitError, authenticate_admin, list_admin_auth_failure_summaries, revoke_admin_session
@@ -41,9 +41,11 @@ from app.services.security_backend import (
     create_credit_code,
     create_credit_code_batch,
     create_credit_code_batch_with_title,
+    create_dashboard_news_item,
     create_generation_job,
     deactivate_user_account,
     delete_chat_conversation,
+    delete_dashboard_news_item,
     disable_credit_code_batch,
     disable_credit_code,
     enable_credit_code,
@@ -59,6 +61,7 @@ from app.services.security_backend import (
     list_admin_audit_logs,
     list_admin_generation_jobs,
     list_chat_conversations,
+    list_dashboard_news_items,
     update_chat_conversation_title,
     list_credit_code_batches,
     list_credit_code_batch_status_summaries,
@@ -73,6 +76,7 @@ from app.services.security_backend import (
     reserve_generation_credits,
     suspend_user,
     unsuspend_user,
+    update_dashboard_news_item,
     update_user_profile,
     update_user_notification_preferences,
 )
@@ -1087,6 +1091,19 @@ def deactivate_current_user_account(
     return deactivate_user_account(user["uid"])
 
 
+@app.get(
+    "/dashboard-news",
+    response_model=DashboardNewsListResponse,
+    tags=["Configuration"],
+    summary="List Active Dashboard News",
+)
+@limiter.limit("60/minute")
+def get_dashboard_news(request: Request):
+    del request
+    items = list_dashboard_news_items(active_only=True)
+    return {"items": items, "total": len(items)}
+
+
 @app.get("/history", tags=["Configuration"], summary="Get User History")
 @limiter.limit("30/minute")
 def get_user_history(request: Request, limit: int = 20, user: Dict[str, Any] = Depends(verify_firebase_user)):
@@ -1512,6 +1529,109 @@ def admin_list_auth_failure_summaries(
         "summaries": summaries,
         "total": len(summaries),
     }
+
+
+@app.get(
+    "/admin/dashboard-news",
+    response_model=DashboardNewsListResponse,
+    tags=["Configuration"],
+    summary="List Dashboard News For Admin",
+)
+@limiter.limit("30/minute")
+def admin_list_dashboard_news(
+    request: Request,
+    _admin: Dict[str, Any] = Depends(verify_admin_session),
+):
+    del request
+    items = list_dashboard_news_items(active_only=False)
+    return {"items": items, "total": len(items)}
+
+
+@app.post(
+    "/admin/dashboard-news",
+    response_model=DashboardNewsItemResponse,
+    tags=["Configuration"],
+    summary="Create Dashboard News For Admin",
+)
+@limiter.limit("20/minute")
+def admin_create_dashboard_news(
+    request: Request,
+    payload: DashboardNewsUpsertRequest,
+    admin: Dict[str, Any] = Depends(verify_admin_session),
+    _csrf: None = Depends(verify_admin_csrf),
+):
+    del request
+    return create_dashboard_news_item(
+        badge=payload.badge,
+        when_label="",
+        title=payload.title,
+        description=payload.description,
+        link_label=payload.linkLabel,
+        link_href=payload.linkHref,
+        tone=payload.tone,
+        sort_order=payload.sortOrder,
+        is_active=payload.isActive,
+        admin_uid=admin["uid"],
+        admin_email=admin["email"],
+    )
+
+
+@app.patch(
+    "/admin/dashboard-news/{item_id}",
+    response_model=DashboardNewsItemResponse,
+    tags=["Configuration"],
+    summary="Update Dashboard News For Admin",
+)
+@limiter.limit("20/minute")
+def admin_update_dashboard_news(
+    request: Request,
+    item_id: str,
+    payload: DashboardNewsUpsertRequest,
+    admin: Dict[str, Any] = Depends(verify_admin_session),
+    _csrf: None = Depends(verify_admin_csrf),
+):
+    del request
+    try:
+        return update_dashboard_news_item(
+            item_id,
+            badge=payload.badge,
+            when_label="",
+            title=payload.title,
+            description=payload.description,
+            link_label=payload.linkLabel,
+            link_href=payload.linkHref,
+            tone=payload.tone,
+            sort_order=payload.sortOrder,
+            is_active=payload.isActive,
+            admin_uid=admin["uid"],
+            admin_email=admin["email"],
+        )
+    except ValueError as exc:
+        if str(exc) == "DASHBOARD_NEWS_NOT_FOUND":
+            raise HTTPException(status_code=404, detail="Dashboard news item not found") from exc
+        raise
+
+
+@app.delete(
+    "/admin/dashboard-news/{item_id}",
+    tags=["Configuration"],
+    summary="Delete Dashboard News For Admin",
+)
+@limiter.limit("20/minute")
+def admin_delete_dashboard_news(
+    request: Request,
+    item_id: str,
+    admin: Dict[str, Any] = Depends(verify_admin_session),
+    _csrf: None = Depends(verify_admin_csrf),
+):
+    del request
+    try:
+        delete_dashboard_news_item(item_id, admin_uid=admin["uid"], admin_email=admin["email"])
+    except ValueError as exc:
+        if str(exc) == "DASHBOARD_NEWS_NOT_FOUND":
+            raise HTTPException(status_code=404, detail="Dashboard news item not found") from exc
+        raise
+    return {"success": True}
 
 
 @app.post(

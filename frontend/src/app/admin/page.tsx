@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import AnimatedLogo from "../../components/AnimatedLogo";
@@ -192,6 +192,7 @@ export default function AdminPage() {
                         <div className="flex flex-wrap gap-2">
                             <QuickAccessButton label="Users" onClick={() => router.push("/users")} icon="users" />
                             <QuickAccessButton label="Codes" onClick={() => router.push("/codes")} icon="codes" />
+                            <QuickAccessButton label="News" onClick={() => router.push("/news")} icon="news" />
                             <QuickAccessButton label="Logs" onClick={() => router.push("/logs")} icon="logs" />
                             <QuickAccessButton label="Warnings" onClick={() => router.push("/warnings")} icon="warnings" />
                         </div>
@@ -425,7 +426,7 @@ function QuickAccessButton({
 }: {
     label: string;
     onClick: () => void;
-    icon: "users" | "codes" | "logs" | "warnings";
+    icon: "users" | "codes" | "news" | "logs" | "warnings";
 }) {
     return (
         <button
@@ -445,6 +446,13 @@ function QuickAccessButton({
                         <rect x="3" y="5" width="18" height="14" rx="2" />
                         <path d="M7 10h10" />
                         <path d="M7 14h6" />
+                    </svg>
+                ) : icon === "news" ? (
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M4 5h16v14H4z" />
+                        <path d="M8 9h8" />
+                        <path d="M8 13h8" />
+                        <path d="M8 17h5" />
                     </svg>
                 ) : icon === "warnings" ? (
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

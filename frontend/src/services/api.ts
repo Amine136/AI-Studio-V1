@@ -8,6 +8,9 @@ import {
   AdminCreditCodeListResponse,
   AdminGenerationJobListResponse,
   AdminUserListResponse,
+  DashboardNewsListResponse,
+  DashboardNewsItem,
+  DashboardNewsUpsertRequest,
   GenerateRequest,
   GenerationResult,
   PlainChatConversationCreateRequest,
@@ -236,6 +239,11 @@ export const api = {
     return res.data;
   },
 
+  getDashboardNews: async (): Promise<DashboardNewsListResponse> => {
+    const res = await client.get('/dashboard-news');
+    return res.data;
+  },
+
   redeemCode: async (code: string) => {
     try {
       const res = await client.post('/credits/redeem', { code });
@@ -324,6 +332,25 @@ export const api = {
   getAdminAuthFailureSummaries: async (): Promise<AdminAuthFailureSummaryResponse> => {
     const res = await client.get('/admin/auth-failures');
     return res.data;
+  },
+
+  getAdminDashboardNews: async (): Promise<DashboardNewsListResponse> => {
+    const res = await client.get('/admin/dashboard-news');
+    return res.data;
+  },
+
+  createAdminDashboardNews: async (payload: DashboardNewsUpsertRequest): Promise<DashboardNewsItem> => {
+    const res = await client.post('/admin/dashboard-news', payload);
+    return res.data;
+  },
+
+  updateAdminDashboardNews: async (itemId: string, payload: DashboardNewsUpsertRequest): Promise<DashboardNewsItem> => {
+    const res = await client.patch(`/admin/dashboard-news/${itemId}`, payload);
+    return res.data;
+  },
+
+  deleteAdminDashboardNews: async (itemId: string): Promise<void> => {
+    await client.delete(`/admin/dashboard-news/${itemId}`);
   },
 
   createAdminCode: async (credits: number, maxClaims: number) => {

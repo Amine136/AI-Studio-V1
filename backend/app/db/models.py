@@ -106,6 +106,28 @@ class AdminSession(Base):
     )
 
 
+class DashboardNewsItem(Base):
+    __tablename__ = "dashboard_news"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    badge: Mapped[str] = mapped_column(String(80), default="", nullable=False)
+    when_label: Mapped[str] = mapped_column(String(80), default="", nullable=False)
+    title: Mapped[str] = mapped_column(String(160), nullable=False)
+    description: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    link_label: Mapped[str] = mapped_column(String(80), default="", nullable=False)
+    link_href: Mapped[str] = mapped_column(String(255), default="/studio", nullable=False)
+    tone: Mapped[str] = mapped_column(String(24), default="blue", nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    updated_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+    __table_args__ = (
+        Index("ix_dashboard_news_active_sort_order", "is_active", "sort_order"),
+        Index("ix_dashboard_news_updated_at", "updated_at"),
+    )
+
+
 class CreditCode(Base):
     __tablename__ = "credit_codes"
 

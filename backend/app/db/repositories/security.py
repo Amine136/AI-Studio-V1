@@ -10,7 +10,7 @@ from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from app.db.models import AdminAccount, AdminAuditLog, AdminSession, AnalyzeSession, ChatConversation, ChatMessage, CreditCode, CreditCodeClaim, CreditLedgerEntry, DeactivatedEmail, GenerationJob, HistoryEntry, RateLimitBucket, User
+from app.db.models import AdminAccount, AdminAuditLog, AdminSession, AnalyzeSession, ChatConversation, ChatMessage, CreditCode, CreditCodeClaim, CreditLedgerEntry, DashboardNewsItem, DeactivatedEmail, GenerationJob, HistoryEntry, RateLimitBucket, User
 
 USERNAME_ALLOWED_RE = re.compile(r"[^a-z0-9._-]+")
 
@@ -132,6 +132,84 @@ class SecurityRepository:
         entry.updated_at = now
         self.session.flush()
         return entry
+
+    def list_dashboard_news_items(self, *, active_only: bool = False) -> list[DashboardNewsItem]:
+        stmt = select(DashboardNewsItem)
+        if active_only:
+            stmt = stmt.where(DashboardNewsItem.is_active.is_(True))
+        stmt = stmt.order_by(DashboardNewsItem.sort_order.asc(), DashboardNewsItem.updated_at.desc(), DashboardNewsItem.created_at.desc())
+        return list(self.session.execute(stmt).scalars())
+
+    def get_dashboard_news_item(self, item_id: str) -> DashboardNewsItem | None:
+        return self.session.get(DashboardNewsItem, item_id)
+
+    def get_dashboard_news_item_for_update(self, item_id: str) -> DashboardNewsItem | None:
+        return self.session.execute(
+            select(DashboardNewsItem).where(DashboardNewsItem.id == item_id).with_for_update()
+        ).scalar_one_or_none()
+
+    def create_dashboard_news_item(
+        self,
+        *,
+        badge: str,
+        when_label: str,
+        title: str,
+        description: str,
+        link_label: str,
+        link_href: str,
+        tone: str,
+        sort_order: int,
+        is_active: bool,
+    ) -> DashboardNewsItem:
+        now = int(time.time())
+        item = DashboardNewsItem(
+            id=str(uuid.uuid4()),
+            badge=badge,
+            when_label=when_label,
+            title=title,
+            description=description,
+            link_label=link_label,
+            link_href=link_href,
+            tone=tone,
+            sort_order=sort_order,
+            is_active=is_active,
+            created_at=now,
+            updated_at=now,
+        )
+        self.session.add(item)
+        self.session.flush()
+        return item
+
+    def update_dashboard_news_item(
+        self,
+        item: DashboardNewsItem,
+        *,
+        badge: str,
+        when_label: str,
+        title: str,
+        description: str,
+        link_label: str,
+        link_href: str,
+        tone: str,
+        sort_order: int,
+        is_active: bool,
+    ) -> DashboardNewsItem:
+        item.badge = badge
+        item.when_label = when_label
+        item.title = title
+        item.description = description
+        item.link_label = link_label
+        item.link_href = link_href
+        item.tone = tone
+        item.sort_order = sort_order
+        item.is_active = is_active
+        item.updated_at = int(time.time())
+        self.session.flush()
+        return item
+
+    def delete_dashboard_news_item(self, item: DashboardNewsItem) -> None:
+        self.session.delete(item)
+        self.session.flush()
 
     def ensure_user(self, uid: str, email: str, display_name: str) -> User:
         now = int(time.time())

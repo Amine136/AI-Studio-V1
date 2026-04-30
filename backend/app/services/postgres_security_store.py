@@ -355,6 +355,125 @@ def list_admin_audit_logs(
         ]
 
 
+def list_dashboard_news_items(*, active_only: bool = False) -> list[dict[str, Any]]:
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        return [_dashboard_news_dict_from_model(item) for item in repo.list_dashboard_news_items(active_only=active_only)]
+
+
+def create_dashboard_news_item(
+    *,
+    badge: str,
+    when_label: str,
+    title: str,
+    description: str,
+    link_label: str,
+    link_href: str,
+    tone: str,
+    sort_order: int,
+    is_active: bool,
+    admin_uid: str | None,
+    admin_email: str,
+) -> dict[str, Any]:
+    now = int(time.time())
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        item = repo.create_dashboard_news_item(
+            badge=badge,
+            when_label=when_label,
+            title=title,
+            description=description,
+            link_label=link_label,
+            link_href=link_href,
+            tone=tone,
+            sort_order=sort_order,
+            is_active=is_active,
+        )
+        repo.add_admin_audit_log(
+            admin_uid=admin_uid,
+            admin_email=admin_email.strip(),
+            action="dashboard_news_create",
+            target_type="dashboard_news",
+            target_id=item.id,
+            reason=f"Created dashboard news item '{title}'.",
+            metadata_json={"title": title, "tone": tone, "is_active": bool(is_active), "sort_order": int(sort_order)},
+            created_at=now,
+        )
+        return _dashboard_news_dict_from_model(item)
+
+
+def update_dashboard_news_item(
+    item_id: str,
+    *,
+    badge: str,
+    when_label: str,
+    title: str,
+    description: str,
+    link_label: str,
+    link_href: str,
+    tone: str,
+    sort_order: int,
+    is_active: bool,
+    admin_uid: str | None,
+    admin_email: str,
+) -> dict[str, Any]:
+    now = int(time.time())
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        item = repo.get_dashboard_news_item_for_update(item_id)
+        if item is None:
+            raise ValueError("DASHBOARD_NEWS_NOT_FOUND")
+        repo.update_dashboard_news_item(
+            item,
+            badge=badge,
+            when_label=when_label,
+            title=title,
+            description=description,
+            link_label=link_label,
+            link_href=link_href,
+            tone=tone,
+            sort_order=sort_order,
+            is_active=is_active,
+        )
+        repo.add_admin_audit_log(
+            admin_uid=admin_uid,
+            admin_email=admin_email.strip(),
+            action="dashboard_news_update",
+            target_type="dashboard_news",
+            target_id=item.id,
+            reason=f"Updated dashboard news item '{title}'.",
+            metadata_json={"title": title, "tone": tone, "is_active": bool(is_active), "sort_order": int(sort_order)},
+            created_at=now,
+        )
+        return _dashboard_news_dict_from_model(item)
+
+
+def delete_dashboard_news_item(
+    item_id: str,
+    *,
+    admin_uid: str | None,
+    admin_email: str,
+) -> None:
+    now = int(time.time())
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        item = repo.get_dashboard_news_item_for_update(item_id)
+        if item is None:
+            raise ValueError("DASHBOARD_NEWS_NOT_FOUND")
+        title = item.title
+        repo.delete_dashboard_news_item(item)
+        repo.add_admin_audit_log(
+            admin_uid=admin_uid,
+            admin_email=admin_email.strip(),
+            action="dashboard_news_delete",
+            target_type="dashboard_news",
+            target_id=item_id,
+            reason=f"Deleted dashboard news item '{title}'.",
+            metadata_json={"title": title},
+            created_at=now,
+        )
+
+
 def adjust_credits(
     uid: str,
     delta: float,
@@ -1270,6 +1389,23 @@ def _user_dict_from_model(user: Any) -> dict[str, Any]:
         "isDeactivated": bool(user.is_deactivated),
         "deactivatedAt": user.deactivated_at,
         "deactivationReason": user.deactivation_reason or "",
+    }
+
+
+def _dashboard_news_dict_from_model(item: Any) -> dict[str, Any]:
+    return {
+        "id": item.id,
+        "badge": item.badge,
+        "when": item.when_label,
+        "title": item.title,
+        "description": item.description,
+        "linkLabel": item.link_label,
+        "linkHref": item.link_href,
+        "tone": item.tone,
+        "sortOrder": int(item.sort_order),
+        "isActive": bool(item.is_active),
+        "createdAt": item.created_at,
+        "updatedAt": item.updated_at,
     }
 
 

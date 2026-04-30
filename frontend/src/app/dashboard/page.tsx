@@ -7,7 +7,7 @@ import { useAuth } from "../../context/AuthContext";
 import { getHistory, type HistoryEntry } from "../../lib/history";
 import { getProfile } from "../../lib/credits";
 import { api } from "../../services/api";
-import type { ModelCatalogEntry, SystemConfig } from "../../types";
+import type { DashboardNewsItem, ModelCatalogEntry, SystemConfig } from "../../types";
 
 interface SuspensionState {
   reason: string;
@@ -91,35 +91,68 @@ function isRenderableImageUrl(value?: string) {
   return Boolean(value && (value.startsWith("http://") || value.startsWith("https://") || value.startsWith("/")));
 }
 
-const newsItems = [
+const defaultNewsItems: DashboardNewsItem[] = [
   {
-    badge: "New Launch",
-    when: "Just Now",
+    id: "default-1",
+    badge: "New Features",
+    when: "",
     title: "Quick and Smart workflows are active",
     description: "Move straight to generation when you want speed, or pay the Smart analysis fee for extra prompt optimization.",
-    link: "Learn more",
-    badgeClass: "bg-blue-400/10 text-blue-400",
-    slideClass: "slide-1",
+    linkLabel: "Learn more",
+    linkHref: "/studio",
+    tone: "blue",
+    sortOrder: 0,
+    isActive: true,
   },
   {
-    badge: "Community",
-    when: "2h Ago",
+    id: "default-2",
+    badge: "Platform Updates",
+    when: "",
     title: "Failed delivery protection is enabled",
     description: "When Vibecraft cannot deliver a usable result, reserved generation credits are released instead of captured.",
-    link: "Review flow",
-    badgeClass: "bg-[#d0bcff]/10 text-[#d0bcff]",
-    slideClass: "slide-2",
+    linkLabel: "Review flow",
+    linkHref: "/credits",
+    tone: "purple",
+    sortOrder: 1,
+    isActive: true,
   },
   {
-    badge: "Platform",
-    when: "Yesterday",
+    id: "default-3",
+    badge: "AI News",
+    when: "",
     title: "Admin protections already run live",
     description: "Login lockouts, warnings, rate limits, and audit flows are active across the admin surface.",
-    link: "Open warnings",
-    badgeClass: "bg-[#b9c8de]/10 text-[#b9c8de]",
-    slideClass: "slide-3",
+    linkLabel: "Open warnings",
+    linkHref: "/policy",
+    tone: "slate",
+    sortOrder: 2,
+    isActive: true,
   },
 ];
+
+function newsBadgeClass(tone: DashboardNewsItem["tone"]) {
+  if (tone === "purple") return "bg-[#d0bcff]/10 text-[#d0bcff]";
+  if (tone === "slate") return "bg-[#b9c8de]/10 text-[#b9c8de]";
+  return "bg-blue-400/10 text-blue-400";
+}
+
+function formatRelativeTime(timestamp?: number | null) {
+  if (!timestamp) return "Just now";
+  const seconds = Math.max(0, Math.floor(Date.now() / 1000) - timestamp);
+  if (seconds < 60) return "Just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  const weeks = Math.floor(days / 7);
+  if (weeks < 5) return `${weeks}w ago`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months}mo ago`;
+  const years = Math.floor(days / 365);
+  return `${years}y ago`;
+}
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -130,6 +163,7 @@ export default function DashboardPage() {
   const [config, setConfig] = useState<SystemConfig | null>(null);
   const [currentCredits, setCurrentCredits] = useState<number | null>(null);
   const [suspension, setSuspension] = useState<SuspensionState | null>(null);
+  const [newsItems, setNewsItems] = useState<DashboardNewsItem[]>(defaultNewsItems);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -153,6 +187,19 @@ export default function DashboardPage() {
     setConfig(nextConfig);
   }, []);
 
+  const fetchDashboardNews = useCallback(async () => {
+    try {
+      const response = await api.getDashboardNews();
+      if (response.items?.length) {
+        setNewsItems(response.items);
+      } else {
+        setNewsItems(defaultNewsItems);
+      }
+    } catch {
+      setNewsItems(defaultNewsItems);
+    }
+  }, []);
+
   const fetchProfile = useCallback(async () => {
     if (!user) return;
     try {
@@ -169,7 +216,8 @@ export default function DashboardPage() {
     void fetchHistoryData();
     void fetchConfig();
     void fetchProfile();
-  }, [fetchConfig, fetchHistoryData, fetchProfile, user]);
+    void fetchDashboardNews();
+  }, [fetchConfig, fetchDashboardNews, fetchHistoryData, fetchProfile, user]);
 
   const imageModels = useMemo(() => flattenModelCatalog(config?.model_catalog?.image), [config]);
   const textModels = useMemo(() => flattenModelCatalog(config?.model_catalog?.caption), [config]);
@@ -479,27 +527,30 @@ export default function DashboardPage() {
           <section className="space-y-4">
             <h3 className="font-headline text-2xl font-bold tracking-tight">Studio News</h3>
             <div className="relative h-48 overflow-hidden rounded-xl border border-blue-400/20 bg-[#151b2d]">
-              {newsItems.map((item) => (
-                <div key={item.title} className={`absolute inset-0 flex flex-col justify-between p-6 ${item.slideClass}`}>
+              {newsItems.map((item, index) => (
+                <div key={item.id} className={`absolute inset-0 flex flex-col justify-between p-6 slide-${(index % 3) + 1}`}>
                   <div className="flex items-center justify-between">
-                    <span className={`rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest ${item.badgeClass}`}>
+                    <span className={`rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest ${newsBadgeClass(item.tone)}`}>
                       {item.badge}
                     </span>
-                    <span className="text-[10px] font-bold text-slate-500">{item.when}</span>
+                    <span className="text-[10px] font-bold text-slate-500">{formatRelativeTime(item.updatedAt ?? item.createdAt)}</span>
                   </div>
                   <div>
                     <h4 className="mb-1 text-lg font-bold text-blue-100">{item.title}</h4>
                     <p className="text-xs leading-relaxed text-[#c2c6d6]">{item.description}</p>
                   </div>
-                  <Link href="/studio" className="flex items-center gap-1 self-start text-xs font-bold text-[#adc6ff] hover:underline">
-                    {item.link} <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
+                  <Link href={item.linkHref || "/studio"} className="flex items-center gap-1 self-start text-xs font-bold text-[#adc6ff] hover:underline">
+                    {item.linkLabel || "Learn more"} <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
                   </Link>
                 </div>
               ))}
               <div className="absolute bottom-4 right-6 flex gap-1.5">
-                <div className="h-1.5 w-1.5 rounded-full bg-blue-400 opacity-100" />
-                <div className="h-1.5 w-1.5 rounded-full bg-slate-600" />
-                <div className="h-1.5 w-1.5 rounded-full bg-slate-600" />
+                {newsItems.slice(0, 3).map((item, index) => (
+                  <div
+                    key={`dot-${item.id}`}
+                    className={`h-1.5 w-1.5 rounded-full ${index === 0 ? "bg-blue-400 opacity-100" : "bg-slate-600"}`}
+                  />
+                ))}
               </div>
             </div>
           </section>

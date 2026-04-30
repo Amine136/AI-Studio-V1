@@ -487,6 +487,42 @@ class AdminAuditLogListResponse(BaseModel):
     targetId: str = ""
 
 
+class DashboardNewsItemResponse(BaseModel):
+    id: str
+    badge: str = ""
+    when: str = ""
+    title: str
+    description: str = ""
+    linkLabel: str = ""
+    linkHref: str = "/studio"
+    tone: str = "blue"
+    sortOrder: int = 0
+    isActive: bool = True
+    createdAt: Optional[int] = None
+    updatedAt: Optional[int] = None
+
+
+class DashboardNewsListResponse(BaseModel):
+    items: List[DashboardNewsItemResponse]
+    total: int
+
+
+class DashboardNewsUpsertRequest(BaseModel):
+    badge: Literal["AI News", "Platform Updates", "New Features"] = "AI News"
+    title: str = Field(..., min_length=1, max_length=160)
+    description: str = Field(default="", max_length=600)
+    linkLabel: str = Field(default="", max_length=80)
+    linkHref: str = Field(default="/studio", max_length=255)
+    tone: Literal["blue", "purple", "slate"] = "blue"
+    sortOrder: int = Field(default=0, ge=0, le=999)
+    isActive: bool = True
+
+    @field_validator("title", "description", "linkLabel", "linkHref")
+    @classmethod
+    def normalize_text_fields(cls, value: str) -> str:
+        return str(value or "").strip()
+
+
 class AdminAuthFailureSummaryItem(BaseModel):
     username: str
     isActive: bool = True

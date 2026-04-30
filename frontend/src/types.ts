@@ -197,6 +197,40 @@ export interface UserNotificationPreferencesUpdateRequest {
   emailPlatformUpdatesEnabled: boolean;
 }
 
+export type DashboardNewsTone = "blue" | "purple" | "slate";
+export type DashboardNewsBadge = "AI News" | "Platform Updates" | "New Features";
+
+export interface DashboardNewsItem {
+  id: string;
+  badge: DashboardNewsBadge;
+  when: string;
+  title: string;
+  description: string;
+  linkLabel: string;
+  linkHref: string;
+  tone: DashboardNewsTone;
+  sortOrder: number;
+  isActive: boolean;
+  createdAt?: number | null;
+  updatedAt?: number | null;
+}
+
+export interface DashboardNewsListResponse {
+  items: DashboardNewsItem[];
+  total: number;
+}
+
+export interface DashboardNewsUpsertRequest {
+  badge: DashboardNewsBadge;
+  title: string;
+  description: string;
+  linkLabel: string;
+  linkHref: string;
+  tone: DashboardNewsTone;
+  sortOrder: number;
+  isActive: boolean;
+}
+
 // Step 1: What we send to start
 export interface GenerateRequest {
   user_text: string;

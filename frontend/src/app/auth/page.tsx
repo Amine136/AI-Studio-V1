@@ -44,6 +44,28 @@ export default function AuthPage() {
   const [validatingSession, setValidatingSession] = useState(false);
 
   useEffect(() => {
+    const searchParams = new URLSearchParams(window.location.search);
+    const reason = searchParams.get("reason");
+    if (!reason) return;
+
+    if (reason === "deactivated") {
+      setError(
+        "Your account has been deactivated. You no longer have access to this account or its data. Review our Privacy Policy and Terms of Service for more information.",
+      );
+      return;
+    }
+
+    if (reason === "suspended") {
+      setError("Your account has been suspended. Access to Vibecraft is currently unavailable.");
+      return;
+    }
+
+    if (reason === "unauthorized") {
+      setError("You need an active Vibecraft account to access that page.");
+    }
+  }, []);
+
+  useEffect(() => {
     if (authLoading || !user) return;
 
     let cancelled = false;
