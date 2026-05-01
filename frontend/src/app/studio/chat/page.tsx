@@ -356,6 +356,66 @@ function getChatParamPricingHint(model: ChatModelOption | null, key: string) {
     .join("\n");
 }
 
+function getChatModelMinimumCost(model: ChatModelOption | null) {
+  const minimum = model?.pricing?.minimum;
+  if (typeof minimum === "number" && Number.isFinite(minimum)) {
+    return minimum;
+  }
+  return 0;
+}
+
+function normalizeExpectedPricingKey(value: unknown) {
+  const raw = String(value ?? "").trim().toLowerCase().replace(/\s+/g, "");
+  if (raw === "512" || raw === "512px" || raw === "0.5k") return "0.5k";
+  if (raw === "1024" || raw === "1024px" || raw === "1k") return "1k";
+  if (raw === "2048" || raw === "2048px" || raw === "2k") return "2k";
+  if (raw === "4096" || raw === "4096px" || raw === "4k") return "4k";
+  return raw;
+}
+
+function resolveExpectedVariantPrice(priceMap: Record<string, number> | undefined, value: unknown) {
+  if (!priceMap) return null;
+  const target = normalizeExpectedPricingKey(value);
+  if (!target) return null;
+  for (const [key, rawValue] of Object.entries(priceMap)) {
+    if (normalizeExpectedPricingKey(key) !== target) continue;
+    const parsed = Number(rawValue);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+function getChatModelExpectedCost(model: ChatModelOption | null, values: ParameterState) {
+  const expected = model?.pricing?.expected;
+  const minimum = getChatModelMinimumCost(model);
+
+  if (typeof expected === "number" && Number.isFinite(expected)) {
+    return expected;
+  }
+  if (!expected || typeof expected !== "object") {
+    return minimum;
+  }
+  if (typeof expected.amount === "number" && Number.isFinite(expected.amount)) {
+    return expected.amount;
+  }
+
+  const sampleVariant = resolveExpectedVariantPrice(expected.sampleImageSizePrices, values.sampleImageSize);
+  if (sampleVariant !== null) {
+    return sampleVariant;
+  }
+
+  const imageVariant = resolveExpectedVariantPrice(expected.imageSizePrices, values.imageSize);
+  if (imageVariant !== null) {
+    return imageVariant;
+  }
+
+  if (typeof expected.basePrice === "number" && Number.isFinite(expected.basePrice)) {
+    return expected.basePrice;
+  }
+
+  return minimum;
+}
+
 function toParameterLabel(key: string) {
   return key
     .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
@@ -685,10 +745,14 @@ export default function StudioChatPage() {
   }, [phase, messages, selectedProvider, selectedModel, lockedModelId, conversationId, conversationTitle, parameterValues]);
 
   useEffect(() => {
-    if (typeof window === "undefined" || !conversationId) return;
+    if (typeof window === "undefined") return;
     const url = new URL(window.location.href);
     url.searchParams.delete("new");
-    url.searchParams.set("conversation", conversationId);
+    if (conversationId) {
+      url.searchParams.set("conversation", conversationId);
+    } else {
+      url.searchParams.delete("conversation");
+    }
     window.history.replaceState({}, "", url.toString());
   }, [conversationId]);
 
@@ -896,6 +960,25 @@ export default function StudioChatPage() {
     [lockedModelId, providerGroups],
   );
 
+  const selectedModelMinimumCost = useMemo(
+    () => getChatModelMinimumCost(visibleSelectedModelOption),
+    [visibleSelectedModelOption],
+  );
+
+  const lockedModelMinimumCost = useMemo(
+    () => getChatModelMinimumCost(lockedModel),
+    [lockedModel],
+  );
+
+  const lockedModelExpectedCost = useMemo(
+    () => getChatModelExpectedCost(lockedModel, parameterValues),
+    [lockedModel, parameterValues],
+  );
+
+  const insufficientSelectedModelCredits = currentCredits !== null && currentCredits < selectedModelMinimumCost;
+  const insufficientLockedModelMinimumCredits = currentCredits !== null && currentCredits < lockedModelMinimumCost;
+  const insufficientLockedModelExpectedCredits = currentCredits !== null && currentCredits < lockedModelExpectedCost;
+
   const lockedModelParameters = useMemo(
     () => (lockedModel ? getVisibleChatParameters(lockedModel.parameterSchema) : []),
     [lockedModel],
@@ -975,19 +1058,22 @@ export default function StudioChatPage() {
 
   async function handleStartChat() {
     if (!selectedModel || !user) return;
+    if (insufficientSelectedModelCredits) {
+      setError(`You need at least ${selectedModelMinimumCost.toFixed(2)} credits to use this model.`);
+      return;
+    }
 
     try {
       setLoadingReply(true);
       setError(null);
-      const conversation = await api.createPlainChatConversation({ model: selectedModel });
       setLockedModelId(selectedModel);
-      setConversationId(conversation.id);
-      setConversationTitle(normalizeConversationTitle(conversation.title));
-      setConversationTitleDraft(normalizeConversationTitle(conversation.title));
+      setConversationId("");
+      setConversationTitle(DEFAULT_CONVERSATION_TITLE);
+      setConversationTitleDraft(DEFAULT_CONVERSATION_TITLE);
       setEditingConversationTitle(false);
-      setConversationPromptTokens(conversation.promptTokensTotal || 0);
-      setConversationCompletionTokens(conversation.completionTokensTotal || 0);
-      setConversationCostTotal(conversation.totalCostCredits || 0);
+      setConversationPromptTokens(0);
+      setConversationCompletionTokens(0);
+      setConversationCostTotal(0);
       setLastUsage(null);
       setLastBillingMeta(null);
       setPhase("chat");
@@ -1007,7 +1093,15 @@ export default function StudioChatPage() {
       setError(`Your message is too long. Maximum ${MAX_CHAT_TEXT_CHARS} characters.`);
       return;
     }
-    if ((!text && !inputImage) || !lockedModelId || !conversationId || loadingReply || !user) return;
+    if ((!text && !inputImage) || !lockedModelId || loadingReply || !user) return;
+    if (insufficientLockedModelMinimumCredits) {
+      setError(`You need at least ${lockedModelMinimumCost.toFixed(2)} credits to use this chat model.`);
+      return;
+    }
+    if (insufficientLockedModelExpectedCredits) {
+      setError(`You need about ${lockedModelExpectedCost.toFixed(2)} credits for the selected settings.`);
+      return;
+    }
 
     const attachedImage = inputImage;
     const parts: PlainChatPart[] = [];
@@ -1033,7 +1127,22 @@ export default function StudioChatPage() {
     setError(null);
 
     try {
-      const response = await api.sendPlainChatConversationMessage(conversationId, {
+      let activeConversationId = conversationId;
+      if (!activeConversationId) {
+        const createdConversation = await api.createPlainChatConversation({
+          model: lockedModelId,
+          title: normalizedConversationTitle,
+        });
+        activeConversationId = createdConversation.id;
+        setConversationId(createdConversation.id);
+        setConversationTitle(normalizeConversationTitle(createdConversation.title));
+        setConversationTitleDraft(normalizeConversationTitle(createdConversation.title));
+        setConversationPromptTokens(createdConversation.promptTokensTotal || 0);
+        setConversationCompletionTokens(createdConversation.completionTokensTotal || 0);
+        setConversationCostTotal(createdConversation.totalCostCredits || 0);
+      }
+
+      const response = await api.sendPlainChatConversationMessage(activeConversationId, {
         parts,
         options: buildChatOptionsFromParameters(parameterValues),
       });
@@ -1159,14 +1268,13 @@ export default function StudioChatPage() {
     try {
       setLoadingReply(true);
       setError(null);
-      const conversation = await api.createPlainChatConversation({ model: lockedModelId });
-      setConversationId(conversation.id);
-      setConversationTitle(normalizeConversationTitle(conversation.title));
-      setConversationTitleDraft(normalizeConversationTitle(conversation.title));
+      setConversationId("");
+      setConversationTitle(DEFAULT_CONVERSATION_TITLE);
+      setConversationTitleDraft(DEFAULT_CONVERSATION_TITLE);
       setEditingConversationTitle(false);
-      setConversationPromptTokens(conversation.promptTokensTotal || 0);
-      setConversationCompletionTokens(conversation.completionTokensTotal || 0);
-      setConversationCostTotal(conversation.totalCostCredits || 0);
+      setConversationPromptTokens(0);
+      setConversationCompletionTokens(0);
+      setConversationCostTotal(0);
       setLastUsage(null);
       setLastBillingMeta(null);
       setMessages([]);
@@ -1241,11 +1349,16 @@ export default function StudioChatPage() {
           }}
           className="w-full rounded-md border border-white/10 bg-[#101728] px-3 py-2 text-sm text-white outline-none transition focus:border-[#adc6ff]/40"
         >
-          {entry.values.map((option) => (
-            <option key={String(option)} value={String(option)}>
-              {String(option)}
-            </option>
-          ))}
+          {entry.values.map((option) => {
+            const nextOption = String(option);
+            const nextValues = { ...parameterValues, [key]: nextOption };
+            const affordable = currentCredits === null || getChatModelExpectedCost(lockedModel, nextValues) <= currentCredits;
+            return (
+              <option key={nextOption} value={nextOption} disabled={!affordable}>
+                {nextOption}{!affordable ? " — locked" : ""}
+              </option>
+            );
+          })}
         </select>
       );
     }
@@ -1429,16 +1542,22 @@ export default function StudioChatPage() {
                   ) : visibleActiveProviderGroup ? (
                     visibleActiveProviderGroup.models.map((model) => {
                       const active = (visibleSelectedModelOption?.id || selectedModel) === model.id;
+                      const minimumCost = getChatModelMinimumCost(model);
+                      const affordable = currentCredits === null || currentCredits >= minimumCost;
                       return (
                         <button
                           key={model.id}
                           type="button"
+                          disabled={!affordable}
                           onClick={() => {
+                            if (!affordable) return;
                             setSelectedProvider(visibleActiveProviderGroup.provider);
                             setSelectedModel(model.id);
                           }}
                           className={`group relative w-full cursor-pointer rounded-md border bg-[#16192a] px-5 py-4 text-left transition-colors duration-200 ${
-                            active
+                            !affordable
+                              ? "cursor-not-allowed border-[rgba(255,255,255,0.05)] bg-[#131624] opacity-55"
+                              : active
                               ? "border-[rgba(255,255,255,0.18)]"
                               : "border-[rgba(255,255,255,0.08)] hover:border-[rgba(255,255,255,0.12)] hover:bg-[#1a1d27]"
                           }`}
@@ -1453,6 +1572,11 @@ export default function StudioChatPage() {
                               <p className="mb-3 max-w-xl text-[13px] font-normal leading-5 text-[#8b8fa8]">
                                 {model.description || "Usage-based conversational model for plain chat."}
                               </p>
+                              {!affordable ? (
+                                <p className="mb-3 text-[11px] font-medium text-[#ffb4ab]">
+                                  Need at least {minimumCost.toFixed(2)} credits.
+                                </p>
+                              ) : null}
                               <div className="flex flex-wrap gap-2">
                                 <span className="rounded-full border border-[rgba(255,255,255,0.15)] bg-transparent px-3 py-1 text-[10px] font-medium uppercase tracking-[0.05em] text-[#8b8fa8]">
                                   {model.provider}
@@ -1518,10 +1642,10 @@ export default function StudioChatPage() {
                   <button
                     type="button"
                     onClick={() => void handleStartChat()}
-                    disabled={!visibleSelectedModelOption || loadingConfig || loadingReply}
+                    disabled={!visibleSelectedModelOption || loadingConfig || loadingReply || insufficientSelectedModelCredits}
                     className="flex items-center gap-2 rounded-[5px] bg-gradient-to-br from-[#adc6ff] to-[#4d8eff] px-8 py-3 font-headline text-sm font-bold text-[#002e6a] shadow-[0_0_24px_rgba(77,142,255,0.18)] transition-all duration-300 hover:scale-105 hover:shadow-[0_0_32px_rgba(77,142,255,0.28)] active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    <span>{loadingReply ? "Starting…" : "Next Step"}</span>
+                    <span>{loadingReply ? "Starting…" : insufficientSelectedModelCredits ? `Need ${selectedModelMinimumCost.toFixed(2)} Credits` : "Next Step"}</span>
                     <span className="material-symbols-outlined text-sm">chevron_right</span>
                   </button>
                 </div>
@@ -1645,6 +1769,13 @@ export default function StudioChatPage() {
                   </span>
                 </div>
               </div>
+              {insufficientLockedModelMinimumCredits || insufficientLockedModelExpectedCredits ? (
+                <div className="w-full rounded-md border border-[rgba(255,180,171,0.2)] bg-[rgba(105,0,5,0.18)] px-3 py-2 text-[11px] text-[#ffdad6]">
+                  {insufficientLockedModelMinimumCredits
+                    ? `Minimum required credits: ${lockedModelMinimumCost.toFixed(2)}. Current balance: ${currentCredits?.toFixed(2) ?? "0.00"}.`
+                    : `Expected credits for these settings: ${lockedModelExpectedCost.toFixed(2)}. Current balance: ${currentCredits?.toFixed(2) ?? "0.00"}.`}
+                </div>
+              ) : null}
             </div>
           </header>
 
@@ -1801,11 +1932,19 @@ export default function StudioChatPage() {
                         !conversationId ||
                         loadingReply ||
                         uploadingImage ||
-                        loadingConversation
+                        loadingConversation ||
+                        insufficientLockedModelMinimumCredits ||
+                        insufficientLockedModelExpectedCredits
                       }
                       className="flex items-center gap-2 rounded-md bg-gradient-to-r from-[#adc6ff] to-[#4d8eff] px-6 py-2 text-sm font-bold text-[#002e6a] transition-all hover:opacity-90 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      <span>{uploadingImage ? "Uploading…" : "Send"}</span>
+                      <span>
+                        {uploadingImage
+                          ? "Uploading…"
+                          : insufficientLockedModelExpectedCredits
+                            ? `Need ${lockedModelExpectedCost.toFixed(2)} Credits`
+                            : "Send"}
+                      </span>
                       <span className="material-symbols-outlined text-sm">send</span>
                     </button>
                   </div>

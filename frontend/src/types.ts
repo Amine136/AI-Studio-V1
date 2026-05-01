@@ -189,6 +189,22 @@ export interface CurrentUserProfile {
   profileChangesResetAt?: number | null;
 }
 
+export interface CreditLedgerEntry {
+  id: string;
+  uid: string;
+  deltaMinor: number;
+  reason: string;
+  actorUid?: string | null;
+  metadata?: Record<string, any>;
+  codeHash?: string | null;
+  analyzeSessionId?: string | null;
+  createdAt: number;
+}
+
+export interface CreditLedgerListResponse {
+  entries: CreditLedgerEntry[];
+}
+
 export interface UserProfileUpdateRequest {
   username: string;
   bio: string;

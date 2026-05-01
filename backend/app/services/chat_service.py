@@ -55,6 +55,56 @@ def list_plain_chat_models() -> list[dict[str, Any]]:
     )
 
 
+def minimum_required_credits_for_plain_chat(model_name: str) -> float:
+    _, model_entry = resolve_plain_chat_model(model_name)
+    pricing = _derive_plain_chat_model_pricing_summary(model_entry)
+    return round(float(pricing.get("minimum") or settings.minimum_text_generation_cost), 4)
+
+
+def expected_required_credits_for_plain_chat(model_name: str, options: PlainChatOptions | dict[str, Any] | None = None) -> float:
+    _, model_entry = resolve_plain_chat_model(model_name)
+    pricing = _derive_plain_chat_model_pricing_summary(model_entry)
+    expected = pricing.get("expected")
+    minimum = round(float(pricing.get("minimum") or settings.minimum_text_generation_cost), 4)
+
+    if isinstance(expected, (int, float)):
+        return round(float(expected), 4)
+    if not isinstance(expected, dict):
+        return minimum
+
+    amount = _parse_billing_float(expected.get("amount"))
+    if amount is not None:
+        return round(amount, 4)
+
+    raw_options: dict[str, Any]
+    if isinstance(options, PlainChatOptions):
+        raw_options = options.model_dump(by_alias=True, exclude_none=True)
+    elif isinstance(options, dict):
+        raw_options = options
+    else:
+        raw_options = {}
+
+    sample_variant = _resolve_expected_variant_price(
+        expected.get("sampleImageSizePrices") if isinstance(expected.get("sampleImageSizePrices"), dict) else None,
+        raw_options.get("sampleImageSize"),
+    )
+    if sample_variant is not None:
+        return sample_variant
+
+    image_variant = _resolve_expected_variant_price(
+        expected.get("imageSizePrices") if isinstance(expected.get("imageSizePrices"), dict) else None,
+        raw_options.get("imageSize"),
+    )
+    if image_variant is not None:
+        return image_variant
+
+    base_price = _parse_billing_float(expected.get("basePrice"))
+    if base_price is not None:
+        return round(base_price, 4)
+
+    return minimum
+
+
 def normalize_plain_chat_system(model_name: str, parts: list[ChatMessagePart]) -> list[dict[str, Any]]:
     _, model_entry = resolve_plain_chat_model(model_name)
     _validate_system_parts(parts, supports_image_input=_supports_image_input(model_entry))
@@ -337,6 +387,34 @@ def _parse_billing_float(value: Any) -> float | None:
     except (TypeError, ValueError):
         return None
     return round(parsed, 6)
+
+
+def _normalize_expected_pricing_key(value: Any) -> str:
+    raw = str(value or "").strip().lower().replace(" ", "")
+    if raw in {"512", "512px", "0.5k"}:
+        return "0.5k"
+    if raw in {"1024", "1024px", "1k"}:
+        return "1k"
+    if raw in {"2048", "2048px", "2k"}:
+        return "2k"
+    if raw in {"4096", "4096px", "4k"}:
+        return "4k"
+    return raw
+
+
+def _resolve_expected_variant_price(price_map: dict[str, Any] | None, value: Any) -> float | None:
+    if not isinstance(price_map, dict):
+        return None
+    target = _normalize_expected_pricing_key(value)
+    if not target:
+        return None
+    for raw_key, raw_value in price_map.items():
+        if _normalize_expected_pricing_key(raw_key) != target:
+            continue
+        parsed = _parse_billing_float(raw_value)
+        if parsed is not None:
+            return round(parsed, 4)
+    return None
 
 
 def _derive_plain_chat_model_pricing_summary(model_config: dict[str, Any] | None) -> dict[str, Any]:

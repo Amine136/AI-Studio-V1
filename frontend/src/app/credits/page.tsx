@@ -4,9 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
-import { redeemCode } from "../../lib/creditCodes";
-import { getCredits } from "../../lib/credits";
-import { getHistory, type HistoryEntry } from "../../lib/history";
+import { api } from "../../services/api";
+import type { CreditLedgerEntry } from "../../types";
 
 
 interface SuspensionState {
@@ -19,10 +18,9 @@ type UsageEvent = {
   id: string;
   date: string;
   activity: string;
-  detail: string;
   status: string;
   amount: string;
-  positive?: boolean;
+  positive: boolean;
 };
 
 
@@ -68,16 +66,36 @@ function isRedeemCooldownMessage(message: string) {
   return /reached 5 failed credit code attempts in 5 minutes/i.test(message);
 }
 
-function mapHistoryToUsageEvents(entries: HistoryEntry[]): UsageEvent[] {
-  return entries.slice(0, 5).map((entry) => {
-    const outputs = [entry.imageUrl ? "Image" : null, entry.caption ? "Caption" : null].filter(Boolean).join(" + ") || "Generation";
+function formatLedgerActivity(entry: CreditLedgerEntry) {
+  const reason = String(entry.reason || "").trim().toLowerCase();
+  if (reason === "plain_chat_charge") return "plain chat";
+  if (reason === "credit_code_redeem") return "credit redeem";
+  if (reason === "smart_analysis_charge") return "smart analysis";
+  if (reason === "generation_capture") {
+    const outputs = Array.isArray(entry.metadata?.requested_outputs) ? entry.metadata?.requested_outputs : [];
+    if (outputs.includes("image") && outputs.includes("caption")) return "generation";
+    if (outputs.includes("image")) return "image generation";
+    if (outputs.includes("caption")) return "caption generation";
+    return "generation";
+  }
+  if (reason === "generation_release") return "refund";
+  if (reason === "generation_reserve") return "generation reserve";
+  if (reason === "manual_adjustment") return "manual adjustment";
+  return reason.replace(/_/g, " ");
+}
+
+function mapLedgerToUsageEvents(entries: CreditLedgerEntry[]): UsageEvent[] {
+  return entries.slice(0, 20).map((entry) => {
+    const createdAt = new Date((entry.createdAt || 0) * 1000);
+    const credits = Math.abs(Number(entry.deltaMinor || 0)) / 100;
+    const positive = Number(entry.deltaMinor || 0) > 0;
     return {
       id: entry.id,
-      date: entry.createdAt.toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" }),
-      activity: outputs,
-      detail: entry.model || "Saved studio output",
+      date: createdAt.toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" }),
+      activity: formatLedgerActivity(entry),
       status: "COMPLETED",
-      amount: "Logged",
+      amount: `${positive ? "+" : "-"}${credits.toFixed(2)} Cr`,
+      positive,
     };
   });
 }
@@ -87,15 +105,15 @@ function mapHistoryToUsageEvents(entries: HistoryEntry[]): UsageEvent[] {
 const faqItems = [
   {
     title: "Do credits expire?",
-    body: "Regular Vibecraft credits do not expire during the MVP. Temporary or promotional credits may include their own expiry windows.",
+    body: "Purchased credits do not expire. Redeemed code credits may have a time limit only when that limit is clearly shown in the redeem action.",
   },
   {
     title: "Can I add credits directly?",
-    body: "For the current MVP, top-ups happen through redeem codes only. Public checkout and auto-refill are not active yet.",
+    body: "For the current version, top-ups happen through redeem codes only. Public checkout and auto-refill are not active yet.",
   },
   {
     title: "What happens if a task fails?",
-    body: "If Vibecraft cannot deliver a usable result, reserved generation credits are released automatically and the user is not charged.",
+    body: "If the platform cannot deliver a usable result, reserved generation credits are released automatically and the user is not charged.",
   },
   {
     title: "What does Smart mode charge?",
@@ -107,7 +125,7 @@ export default function CreditsPage() {
   const router = useRouter();
   const { user, loading } = useAuth();
 
-  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [history, setHistory] = useState<CreditLedgerEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [credits, setCredits] = useState<number | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
@@ -117,6 +135,7 @@ export default function CreditsPage() {
   const [redeeming, setRedeeming] = useState(false);
   const [redeemBlockedUntil, setRedeemBlockedUntil] = useState<number | null>(null);
   const [suspension, setSuspension] = useState<SuspensionState | null>(null);
+  const [showAllTransactions, setShowAllTransactions] = useState(false);
 
   const redeemCooldownStorageKey = user ? `vibecraft:redeemCooldownUntil:${user.uid}` : null;
 
@@ -129,7 +148,8 @@ export default function CreditsPage() {
   const fetchBalance = useCallback(async () => {
     if (!user) return;
     try {
-      const nextCredits = await getCredits(user.uid);
+      const profile = await api.getProfile();
+      const nextCredits = profile.credits ?? 0;
       setCredits(nextCredits);
       setProfileError(null);
     } catch (error) {
@@ -144,8 +164,8 @@ export default function CreditsPage() {
     if (!user) return;
     setHistoryLoading(true);
     try {
-      const entries = await getHistory(user.uid, 8);
-      setHistory(entries);
+      const response = await api.getCreditLedger(20);
+      setHistory(response.entries || []);
     } catch {
       setHistory([]);
     } finally {
@@ -216,7 +236,7 @@ export default function CreditsPage() {
     setRedeeming(true);
     setCodeMessage(null);
     try {
-      const result = await redeemCode(codeInput, user.uid);
+      const result = await api.redeemCode(codeInput);
       setCodeMessage({
         text: result.message,
         success: result.success,
@@ -258,7 +278,12 @@ export default function CreditsPage() {
     }
   }, [activateRedeemCooldown, codeInput, fetchBalance, redeemBlockedUntil, redeemCooldownStorageKey, user]);
 
-  const usageEvents = useMemo(() => mapHistoryToUsageEvents(history), [history]);
+  const usageEvents = useMemo(() => mapLedgerToUsageEvents(history), [history]);
+  const visibleUsageEvents = useMemo(
+    () => (showAllTransactions ? usageEvents : usageEvents.slice(0, 5)),
+    [showAllTransactions, usageEvents],
+  );
+  const hiddenTransactionCount = Math.max(0, usageEvents.length - 5);
   const progressWidth = useMemo(() => {
     if (credits === null) return "0%";
     const percentage = Math.max(8, Math.min(100, (credits / 5) * 100));
@@ -311,7 +336,7 @@ export default function CreditsPage() {
             <h1 className="font-headline text-5xl font-bold tracking-tighter text-blue-50 md:text-7xl">Fuel Your Vision</h1>
             <p className="mt-4 max-w-lg text-lg leading-relaxed text-[#c2c6d6]">
               Manage your resources and power your generative workflows with precision. Live credit balance, redeem codes,
-              model pricing, and recent usage all in one place.
+              and recent account activity all in one place.
             </p>
           </div>
 
@@ -388,9 +413,6 @@ export default function CreditsPage() {
         <div>
           <div className="mb-8 flex items-center justify-between">
             <h2 className="font-headline text-2xl font-bold tracking-tight text-blue-50">Recent History</h2>
-            <Link href="/gallery" className="text-sm text-[#adc6ff] hover:underline">
-              View Gallery
-            </Link>
           </div>
           <div className="overflow-hidden rounded-xl border border-white/10">
             <table className="w-full text-left">
@@ -409,13 +431,12 @@ export default function CreditsPage() {
                       Loading recent usage…
                     </td>
                   </tr>
-                ) : usageEvents.length ? (
-                  usageEvents.map((event) => (
+                ) : visibleUsageEvents.length ? (
+                  visibleUsageEvents.map((event) => (
                     <tr key={event.id}>
                       <td className="px-6 py-5 text-sm">{event.date}</td>
                       <td className="px-6 py-5">
                         <p className="font-medium text-white">{event.activity}</p>
-                        <p className="text-[10px] uppercase text-[#c2c6d6]">{event.detail}</p>
                       </td>
                       <td className="px-6 py-5">
                         <span className="rounded-full border border-blue-500/20 bg-blue-500/10 px-2 py-0.5 text-[10px] text-blue-400">
@@ -428,13 +449,24 @@ export default function CreditsPage() {
                 ) : (
                   <tr>
                     <td colSpan={4} className="px-6 py-8 text-sm text-[#c2c6d6]">
-                      No recent generation history yet. Your completed studio outputs will appear here.
+                      No recent credit transactions yet. Your balance changes will appear here.
                     </td>
                   </tr>
                 )}
               </tbody>
             </table>
           </div>
+          {hiddenTransactionCount > 0 ? (
+            <div className="mt-4 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowAllTransactions((current) => !current)}
+                className="rounded-md border border-white/10 bg-white/5 px-4 py-2 text-sm text-[#adc6ff] transition hover:bg-white/10"
+              >
+                {showAllTransactions ? "Show Less" : `Show ${hiddenTransactionCount} More`}
+              </button>
+            </div>
+          ) : null}
         </div>
       </section>
 

@@ -8,7 +8,7 @@ import AuthenticatedImage from "../../components/AuthenticatedImage";
 import { getHistory, type HistoryEntry } from "../../lib/history";
 import { getProfile } from "../../lib/credits";
 import { api } from "../../services/api";
-import type { DashboardNewsItem, ModelCatalogEntry, SystemConfig } from "../../types";
+import type { DashboardNewsItem, ModelCatalogEntry, OutputType, SystemConfig } from "../../types";
 
 interface SuspensionState {
   reason: string;
@@ -21,11 +21,16 @@ type DashboardModelCard = {
   name: string;
   provider: string;
   modelId: string;
-  minimum: number;
   description: string;
   type: string;
   inputModalities: string[];
   outputModalities: string[];
+};
+
+type DashboardTemplate = {
+  title: string;
+  description: string;
+  href: string;
 };
 
 function formatSuspensionEndsAt(value: string): string | null {
@@ -56,21 +61,11 @@ function flattenModelCatalog(models: Record<string, ModelCatalogEntry> | undefin
     name: item.display_name || id,
     provider: item.provider || "unknown",
     modelId: item.model_id || id,
-    minimum: typeof item.pricing?.minimum === "number" ? item.pricing.minimum : 0,
     description: item.description || "No description available in the current catalog cache.",
     type: item.type || "standard",
     inputModalities: item.input_modalities || [],
     outputModalities: item.output_modalities || [],
   }));
-}
-
-function groupModelsByProvider(models: DashboardModelCard[]) {
-  return models.reduce<Record<string, DashboardModelCard[]>>((acc, model) => {
-    const provider = model.provider || "unknown";
-    if (!acc[provider]) acc[provider] = [];
-    acc[provider].push(model);
-    return acc;
-  }, {});
 }
 
 function formatProviderName(value: string) {
@@ -79,13 +74,6 @@ function formatProviderName(value: string) {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
-}
-
-function formatMinimumCredits(value: number) {
-  if (value > 0 && value < 0.01) {
-    return `${value.toFixed(3)} Cr`;
-  }
-  return `${value.toFixed(2)} Cr`;
 }
 
 function isRenderableImageUrl(value?: string) {
@@ -155,6 +143,41 @@ function formatRelativeTime(timestamp?: number | null) {
   return `${years}y ago`;
 }
 
+function buildTemplateHref(outputs: OutputType[], idea: string) {
+  const params = new URLSearchParams({
+    idea,
+    outputs: outputs.join(","),
+  });
+  return `/studio/create?${params.toString()}`;
+}
+
+const dashboardTemplates: DashboardTemplate[] = [
+  {
+    title: "Viral Script",
+    description: "Hook a trend fast with a punchy social concept built for comments, saves, and reposts.",
+    href: buildTemplateHref(
+      ["caption"],
+      "Write a short, high-engagement social script with a bold hook, a fast payoff, and a CTA people want to comment on.",
+    ),
+  },
+  {
+    title: "Product Art",
+    description: "Seed a premium product-shot direction with polished lighting, tactile detail, and campaign-ready framing.",
+    href: buildTemplateHref(
+      ["image"],
+      "Create a premium product-shot concept with luxury lighting, refined materials, crisp reflections, and a clean editorial backdrop.",
+    ),
+  },
+  {
+    title: "Blog Outline",
+    description: "Start article planning with a structured concept that turns one idea into a clear publishable outline.",
+    href: buildTemplateHref(
+      ["caption"],
+      "Build a structured blog outline with a sharp working title, key sections, talking points, and practical takeaways for readers.",
+    ),
+  },
+];
+
 export default function DashboardPage() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
@@ -165,6 +188,8 @@ export default function DashboardPage() {
   const [currentCredits, setCurrentCredits] = useState<number | null>(null);
   const [suspension, setSuspension] = useState<SuspensionState | null>(null);
   const [newsItems, setNewsItems] = useState<DashboardNewsItem[]>(defaultNewsItems);
+  const [activeTemplateIndex, setActiveTemplateIndex] = useState(0);
+  const [activeNewsIndex, setActiveNewsIndex] = useState(0);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -220,13 +245,30 @@ export default function DashboardPage() {
     void fetchDashboardNews();
   }, [fetchConfig, fetchDashboardNews, fetchHistoryData, fetchProfile, user]);
 
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setActiveTemplateIndex((current) => (current + 1) % dashboardTemplates.length);
+    }, 3000);
+
+    return () => window.clearInterval(intervalId);
+  }, []);
+
+  useEffect(() => {
+    if (newsItems.length <= 1) {
+      setActiveNewsIndex(0);
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      setActiveNewsIndex((current) => (current + 1) % newsItems.length);
+    }, 3000);
+
+    return () => window.clearInterval(intervalId);
+  }, [newsItems]);
+
   const imageModels = useMemo(() => flattenModelCatalog(config?.model_catalog?.image), [config]);
   const textModels = useMemo(() => flattenModelCatalog(config?.model_catalog?.caption), [config]);
-  const imageProviders = useMemo(() => groupModelsByProvider(imageModels), [imageModels]);
-  const textProviders = useMemo(() => groupModelsByProvider(textModels), [textModels]);
-  const featuredHistory = history[0] ?? null;
   const latestItems = history.slice(0, 4);
-  const heroProject = featuredHistory?.prompt || "Neural Landscapes v4";
   const featuredModel =
     imageModels.find((model) => /gemini/i.test(model.name) || /gemini/i.test(model.modelId)) ||
     imageModels[0] ||
@@ -234,7 +276,7 @@ export default function DashboardPage() {
     null;
   const secondaryModels = [...imageModels, ...textModels]
     .filter((model) => model.id !== featuredModel?.id)
-    .sort((a, b) => a.minimum - b.minimum)
+    .sort((a, b) => a.name.localeCompare(b.name))
     .slice(0, 2);
   const systemCards = [
     {
@@ -283,52 +325,6 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-12">
-      <style jsx global>{`
-        .slide-1 {
-          animation: dashboardFadeInOut 15s infinite;
-          animation-delay: 0s;
-        }
-
-        .slide-2 {
-          animation: dashboardFadeInOut 15s infinite;
-          animation-delay: 5s;
-          opacity: 0;
-        }
-
-        .slide-3 {
-          animation: dashboardFadeInOut 15s infinite;
-          animation-delay: 10s;
-          opacity: 0;
-        }
-
-        @keyframes dashboardFadeInOut {
-          0% {
-            opacity: 0;
-            transform: translateY(10px);
-            visibility: hidden;
-          }
-          2% {
-            opacity: 1;
-            transform: translateY(0);
-            visibility: visible;
-          }
-          31% {
-            opacity: 1;
-            transform: translateY(0);
-            visibility: visible;
-          }
-          33% {
-            opacity: 0;
-            transform: translateY(-10px);
-            visibility: hidden;
-          }
-          100% {
-            opacity: 0;
-            visibility: hidden;
-          }
-        }
-      `}</style>
-
       <section className="relative">
         <div className="space-y-2">
           <h2 className="font-headline text-4xl font-bold tracking-tighter text-blue-100">
@@ -338,24 +334,48 @@ export default function DashboardPage() {
         </div>
 
         <div className="mt-8 grid grid-cols-12 gap-6">
-          <div className="relative col-span-12 flex min-h-[240px] flex-col justify-between overflow-hidden rounded-xl border border-white/5 bg-[#151b2d] p-8 xl:col-span-8">
+          <div className="relative col-span-12 min-h-[240px] overflow-hidden rounded-xl border border-white/5 bg-[#151b2d] p-8 xl:col-span-8">
             <div className="absolute right-0 top-0 -mr-32 -mt-32 h-64 w-64 rounded-full bg-[#adc6ff]/10 blur-[80px]" />
-            <div className="z-10">
-              <span className="mb-4 block text-sm font-bold uppercase tracking-widest text-[#adc6ff]">Active Project</span>
-              <h3 className="mb-2 font-headline text-2xl font-bold">{heroProject}</h3>
-              <p className="max-w-md text-[#c2c6d6]">
-                {featuredHistory
-                  ? "Continue working on your high-fidelity concept and push it toward the next campaign deliverable."
-                  : "Start a new session and build your next visual, caption, or multimodal concept from one studio."}
-              </p>
-            </div>
-            <div className="z-10 flex gap-4">
-              <Link href="/studio" className="rounded-md border border-white/5 bg-[#33394c] px-6 py-2 text-sm font-semibold transition-colors hover:bg-[#2e3447]">
-                Resume Session
-              </Link>
-              <Link href="/gallery" className="px-6 py-2 text-sm font-semibold text-[#adc6ff] hover:underline">
-                View All Files
-              </Link>
+            <div className="relative z-10 h-full min-h-[176px]">
+              {dashboardTemplates.map((template, index) => {
+                const isActive = index === activeTemplateIndex;
+                return (
+                  <div
+                    key={template.title}
+                    aria-hidden={!isActive}
+                    className={`absolute inset-0 flex h-full flex-col justify-between transition-all duration-700 ${
+                      isActive ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-2 opacity-0"
+                    }`}
+                  >
+                    <div>
+                      <span className="mb-4 block text-sm font-bold uppercase tracking-widest text-[#adc6ff]">
+                        Quick Start Templates
+                      </span>
+                      <h3 className="mb-3 font-headline text-3xl font-bold text-blue-100">{template.title}</h3>
+                      <p className="max-w-xl text-base leading-7 text-[#c2c6d6]">{template.description}</p>
+                    </div>
+
+                    <div className="flex items-end justify-between gap-4">
+                      <div className="flex gap-2">
+                        {dashboardTemplates.map((item, dotIndex) => (
+                          <span
+                            key={item.title}
+                            className={`h-2 w-2 rounded-full transition-colors ${
+                              dotIndex === activeTemplateIndex ? "bg-[#adc6ff]" : "bg-white/15"
+                            }`}
+                          />
+                        ))}
+                      </div>
+                      <Link
+                        href={template.href}
+                        className="rounded-md border border-[#adc6ff]/30 bg-[#adc6ff] px-6 py-3 text-sm font-bold text-[#032a61] transition-colors hover:bg-[#c1d5ff]"
+                      >
+                        Use Template
+                      </Link>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
@@ -457,10 +477,6 @@ export default function DashboardPage() {
                       </div>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <span className="font-headline text-2xl font-bold text-[#adc6ff]">{formatMinimumCredits(featuredModel.minimum)}</span>
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-[#c2c6d6]">Minimum</p>
-                  </div>
                 </div>
 
                 <p className="max-w-2xl leading-relaxed text-[#dce1fb]">{featuredModel.description}</p>
@@ -512,10 +528,6 @@ export default function DashboardPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-6">
-                  <div className="text-right">
-                    <span className="text-sm font-bold text-slate-300">{formatMinimumCredits(model.minimum)}</span>
-                    <p className="text-[8px] font-bold uppercase text-slate-500">Minimum</p>
-                  </div>
                   <span className="material-symbols-outlined text-slate-600 transition-colors group-hover:text-[#adc6ff]">arrow_forward_ios</span>
                 </div>
               </Link>
@@ -528,7 +540,13 @@ export default function DashboardPage() {
             <h3 className="font-headline text-2xl font-bold tracking-tight">Studio News</h3>
             <div className="relative h-48 overflow-hidden rounded-xl border border-blue-400/20 bg-[#151b2d]">
               {newsItems.map((item, index) => (
-                <div key={item.id} className={`absolute inset-0 flex flex-col justify-between p-6 slide-${(index % 3) + 1}`}>
+                <div
+                  key={item.id}
+                  aria-hidden={index !== activeNewsIndex}
+                  className={`absolute inset-0 flex flex-col justify-between p-6 transition-all duration-700 ${
+                    index === activeNewsIndex ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-2 opacity-0"
+                  }`}
+                >
                   <div className="flex items-center justify-between">
                     <span className={`rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest ${newsBadgeClass(item.tone)}`}>
                       {item.badge}
@@ -545,10 +563,10 @@ export default function DashboardPage() {
                 </div>
               ))}
               <div className="absolute bottom-4 right-6 flex gap-1.5">
-                {newsItems.slice(0, 3).map((item, index) => (
+                {newsItems.map((item, index) => (
                   <div
                     key={`dot-${item.id}`}
-                    className={`h-1.5 w-1.5 rounded-full ${index === 0 ? "bg-blue-400 opacity-100" : "bg-slate-600"}`}
+                    className={`h-1.5 w-1.5 rounded-full ${index === activeNewsIndex ? "bg-blue-400 opacity-100" : "bg-slate-600"}`}
                   />
                 ))}
               </div>

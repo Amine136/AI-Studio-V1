@@ -18,7 +18,7 @@ from slowapi.errors import RateLimitExceeded
 from sqlalchemy import text
 
 from app.config import settings
-from app.core.schema import AdminAuditLogListResponse, AdminAuthFailureSummaryResponse, AdminCreditCodeBatchListResponse, AdminCreditCodeListResponse, AdminGenerationJobItem, AdminGenerationJobListResponse, AdminLoginRequest, AdminReasonRequest, AdminSessionResponse, AdminUserDetailResponse, AdminUserListResponse, CatalogUpdateNotification, DashboardNewsItemResponse, DashboardNewsListResponse, DashboardNewsUpsertRequest, GenerateRequest, GenerationResult, PlainChatConversationCreateRequest, PlainChatConversationItem, PlainChatConversationListResponse, PlainChatConversationMessageCreateRequest, PlainChatConversationMessagesResponse, PlainChatConversationTurnResponse, PlainChatConversationUpdateRequest, PlainChatModelListResponse, SystemConfig, UserNotificationPreferencesUpdateRequest, UserProfileUpdateRequest
+from app.core.schema import AdminAuditLogListResponse, AdminAuthFailureSummaryResponse, AdminCreditCodeBatchListResponse, AdminCreditCodeListResponse, AdminGenerationJobItem, AdminGenerationJobListResponse, AdminLoginRequest, AdminReasonRequest, AdminSessionResponse, AdminUserDetailResponse, AdminUserListResponse, CatalogUpdateNotification, CreditLedgerListResponse, DashboardNewsItemResponse, DashboardNewsListResponse, DashboardNewsUpsertRequest, GenerateRequest, GenerationResult, PlainChatConversationCreateRequest, PlainChatConversationItem, PlainChatConversationListResponse, PlainChatConversationMessageCreateRequest, PlainChatConversationMessagesResponse, PlainChatConversationTurnResponse, PlainChatConversationUpdateRequest, PlainChatModelListResponse, SystemConfig, UserNotificationPreferencesUpdateRequest, UserProfileUpdateRequest
 from app.db.session import session_scope
 from app.db.repositories.security import SecurityRepository
 from app.graph.workflow import studio_graph_app
@@ -26,7 +26,7 @@ from app.services.admin_auth import AdminAuthRateLimitError, authenticate_admin,
 from app.services.apikeymanager_client import ApiKeyManagerProxyError, check_apikeymanager_ready
 from app.services.auth import verify_admin_csrf, verify_admin_session, verify_api_key, verify_firebase_user
 from app.services.catalog_store import catalog_store
-from app.services.chat_service import assemble_plain_chat_context, list_plain_chat_models, normalize_plain_chat_system, prepare_plain_chat_conversation_request, preview_plain_chat_prompt, send_plain_chat, serialize_plain_chat_parts
+from app.services.chat_service import assemble_plain_chat_context, expected_required_credits_for_plain_chat, list_plain_chat_models, minimum_required_credits_for_plain_chat, normalize_plain_chat_system, prepare_plain_chat_conversation_request, preview_plain_chat_prompt, send_plain_chat, serialize_plain_chat_parts
 from app.services.security_backend import (
     add_history_entry,
     add_chat_turn,
@@ -62,6 +62,7 @@ from app.services.security_backend import (
     list_admin_audit_logs,
     list_admin_generation_jobs,
     list_chat_conversations,
+    list_credit_ledger_entries,
     list_dashboard_news_items,
     update_chat_conversation_title,
     list_credit_code_batches,
@@ -813,6 +814,28 @@ def create_plain_chat_conversation_message(
         if conversation is None:
             raise HTTPException(status_code=404, detail="Chat conversation not found")
 
+        current_profile = get_user(user["uid"])
+        current_credits = float((current_profile or {}).get("credits", 0) or 0)
+        model_name = str(conversation.get("model") or "")
+        minimum_required = minimum_required_credits_for_plain_chat(model_name)
+        if current_credits < minimum_required:
+            raise HTTPException(
+                status_code=402,
+                detail=(
+                    "Insufficient credits for the minimum required cost. "
+                    f"You need at least {minimum_required:.4f} credits for this chat model."
+                ),
+            )
+        expected_required = expected_required_credits_for_plain_chat(model_name, payload.options)
+        if current_credits < expected_required:
+            raise HTTPException(
+                status_code=402,
+                detail=(
+                    "Insufficient credits for the selected settings. "
+                    f"You need about {expected_required:.2f} credits for this plain chat request."
+                ),
+            )
+
         existing_messages = get_chat_messages(user["uid"], conversation_id, 200)
         user_parts = serialize_plain_chat_parts(payload.parts)
         auto_title = None
@@ -1134,6 +1157,14 @@ def get_dashboard_news(request: Request):
 def get_user_history(request: Request, limit: int = 20, user: Dict[str, Any] = Depends(verify_firebase_user)):
     capped_limit = min(max(limit, 1), 100)
     return {"entries": get_history(user["uid"], capped_limit)}
+
+
+@app.get("/credits/ledger", response_model=CreditLedgerListResponse, tags=["Configuration"], summary="Get User Credit Ledger")
+@limiter.limit("30/minute")
+def get_user_credit_ledger(request: Request, limit: int = 20, user: Dict[str, Any] = Depends(verify_firebase_user)):
+    del request
+    capped_limit = min(max(limit, 1), 50)
+    return CreditLedgerListResponse(entries=list_credit_ledger_entries(user["uid"], capped_limit))
 
 
 @app.post("/history", tags=["Configuration"], summary="Add User History Entry")
