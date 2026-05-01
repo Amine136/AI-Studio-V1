@@ -137,6 +137,12 @@ class Config:
 
         # Authentication
         self.api_key = os.getenv("API_KEY")
+        self.app_env = os.getenv("APP_ENV", "prod").strip().lower() or "prod"
+        self.authorized_user_emails = {
+            email.strip().lower()
+            for email in os.getenv("AUTHORIZED_USER_EMAILS", "").split(",")
+            if email.strip()
+        }
 
     @property
     def postgres_enabled(self) -> bool:

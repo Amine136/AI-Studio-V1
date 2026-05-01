@@ -52,6 +52,10 @@ async def verify_firebase_user(
 
     email = claims.get("email", "")
     display_name = claims.get("name") or email or uid
+    if settings.app_env == "staging" and settings.authorized_user_emails:
+        normalized_email = str(email or "").strip().lower()
+        if normalized_email not in settings.authorized_user_emails:
+            raise HTTPException(status_code=403, detail="This staging environment is restricted to authorized accounts only.")
     deactivated_email = is_email_deactivated(email)
     if deactivated_email:
         detail = "This email address belongs to a deactivated account and cannot be used again."
