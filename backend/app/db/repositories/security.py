@@ -532,6 +532,17 @@ class SecurityRepository:
         self.session.flush()
         return entry
 
+    def list_credit_ledger_entries(self, uid: str, max_items: int = 20) -> list[CreditLedgerEntry]:
+        bounded_limit = max(1, min(int(max_items), 100))
+        return list(
+            self.session.execute(
+                select(CreditLedgerEntry)
+                .where(CreditLedgerEntry.uid == uid)
+                .order_by(CreditLedgerEntry.created_at.desc(), CreditLedgerEntry.id.desc())
+                .limit(bounded_limit)
+            ).scalars()
+        )
+
     def sum_user_usage_minor(self, uid: str, *, since_ts: int, reasons: list[str]) -> int:
         if not reasons:
             return 0

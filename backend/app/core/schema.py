@@ -212,6 +212,24 @@ class UserNotificationPreferencesUpdateRequest(BaseModel):
 
     model_config = {"populate_by_name": True}
 
+
+class CreditLedgerEntryResponse(BaseModel):
+    id: str
+    uid: str
+    delta_minor: int = Field(alias="deltaMinor")
+    reason: str
+    actor_uid: Optional[str] = Field(default=None, alias="actorUid")
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+    code_hash: Optional[str] = Field(default=None, alias="codeHash")
+    analyze_session_id: Optional[str] = Field(default=None, alias="analyzeSessionId")
+    created_at: int = Field(alias="createdAt")
+
+    model_config = {"populate_by_name": True}
+
+
+class CreditLedgerListResponse(BaseModel):
+    entries: List[CreditLedgerEntryResponse] = Field(default_factory=list)
+
 class GenerateRequest(BaseModel):
     """Request payload for content generation."""
     user_text: str = Field(

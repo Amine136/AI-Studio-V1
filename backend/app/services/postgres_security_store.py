@@ -959,6 +959,12 @@ def get_history(uid: str, max_items: int = 20) -> list[dict[str, Any]]:
         return [_history_dict_from_model(entry) for entry in repo.get_history(uid, max_items)]
 
 
+def list_credit_ledger_entries(uid: str, max_items: int = 20) -> list[dict[str, Any]]:
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        return [_credit_ledger_dict_from_model(entry) for entry in repo.list_credit_ledger_entries(uid, max_items)]
+
+
 def create_chat_conversation(uid: str, model: str, system_parts: list[dict[str, Any]], title: str = "New Chat") -> dict[str, Any]:
     with session_scope() as session:
         repo = SecurityRepository(session)
@@ -1460,6 +1466,20 @@ def _chat_conversation_dict_from_model(entry: Any) -> dict[str, Any]:
         "completionTokensTotal": int(entry.completion_tokens_total or 0),
         "totalTokens": int(entry.prompt_tokens_total or 0) + int(entry.completion_tokens_total or 0),
         "totalCostCredits": _minor_to_credits(int(entry.total_cost_minor or 0)),
+    }
+
+
+def _credit_ledger_dict_from_model(entry: Any) -> dict[str, Any]:
+    return {
+        "id": entry.id,
+        "uid": entry.uid,
+        "deltaMinor": int(entry.delta_minor or 0),
+        "reason": entry.reason,
+        "actorUid": entry.actor_uid,
+        "metadata": dict(entry.metadata_json or {}),
+        "codeHash": entry.code_hash,
+        "analyzeSessionId": entry.analyze_session_id,
+        "createdAt": int(entry.created_at or 0),
     }
 
 

@@ -18,7 +18,7 @@ from slowapi.errors import RateLimitExceeded
 from sqlalchemy import text
 
 from app.config import settings
-from app.core.schema import AdminAuditLogListResponse, AdminAuthFailureSummaryResponse, AdminCreditCodeBatchListResponse, AdminCreditCodeListResponse, AdminGenerationJobItem, AdminGenerationJobListResponse, AdminLoginRequest, AdminReasonRequest, AdminSessionResponse, AdminUserDetailResponse, AdminUserListResponse, CatalogUpdateNotification, DashboardNewsItemResponse, DashboardNewsListResponse, DashboardNewsUpsertRequest, GenerateRequest, GenerationResult, PlainChatConversationCreateRequest, PlainChatConversationItem, PlainChatConversationListResponse, PlainChatConversationMessageCreateRequest, PlainChatConversationMessagesResponse, PlainChatConversationTurnResponse, PlainChatConversationUpdateRequest, PlainChatModelListResponse, SystemConfig, UserNotificationPreferencesUpdateRequest, UserProfileUpdateRequest
+from app.core.schema import AdminAuditLogListResponse, AdminAuthFailureSummaryResponse, AdminCreditCodeBatchListResponse, AdminCreditCodeListResponse, AdminGenerationJobItem, AdminGenerationJobListResponse, AdminLoginRequest, AdminReasonRequest, AdminSessionResponse, AdminUserDetailResponse, AdminUserListResponse, CatalogUpdateNotification, CreditLedgerListResponse, DashboardNewsItemResponse, DashboardNewsListResponse, DashboardNewsUpsertRequest, GenerateRequest, GenerationResult, PlainChatConversationCreateRequest, PlainChatConversationItem, PlainChatConversationListResponse, PlainChatConversationMessageCreateRequest, PlainChatConversationMessagesResponse, PlainChatConversationTurnResponse, PlainChatConversationUpdateRequest, PlainChatModelListResponse, SystemConfig, UserNotificationPreferencesUpdateRequest, UserProfileUpdateRequest
 from app.db.session import session_scope
 from app.db.repositories.security import SecurityRepository
 from app.graph.workflow import studio_graph_app
@@ -62,6 +62,7 @@ from app.services.security_backend import (
     list_admin_audit_logs,
     list_admin_generation_jobs,
     list_chat_conversations,
+    list_credit_ledger_entries,
     list_dashboard_news_items,
     update_chat_conversation_title,
     list_credit_code_batches,
@@ -1156,6 +1157,14 @@ def get_dashboard_news(request: Request):
 def get_user_history(request: Request, limit: int = 20, user: Dict[str, Any] = Depends(verify_firebase_user)):
     capped_limit = min(max(limit, 1), 100)
     return {"entries": get_history(user["uid"], capped_limit)}
+
+
+@app.get("/credits/ledger", response_model=CreditLedgerListResponse, tags=["Configuration"], summary="Get User Credit Ledger")
+@limiter.limit("30/minute")
+def get_user_credit_ledger(request: Request, limit: int = 20, user: Dict[str, Any] = Depends(verify_firebase_user)):
+    del request
+    capped_limit = min(max(limit, 1), 50)
+    return CreditLedgerListResponse(entries=list_credit_ledger_entries(user["uid"], capped_limit))
 
 
 @app.post("/history", tags=["Configuration"], summary="Add User History Entry")
