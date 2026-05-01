@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useRef, useMemo, useCallback, type ChangeEvent } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "../../../services/api";
 import { GenerateRequest, GenerationMeta, UISchemaItem, OutputType, ModelCatalogEntry, PlainChatParameterSchemaEntry, SystemConfig } from "../../../types";
 import { useAuth } from "../../../context/AuthContext";
@@ -323,6 +323,17 @@ function isGeminiTextModel(model?: ModelCatalogEntry) {
   return outputModalities.has("TEXT");
 }
 
+function parseRequestedOutputs(value: string | null): OutputType[] | null {
+  if (!value) return null;
+  const outputs = value
+    .split(",")
+    .map((item) => item.trim())
+    .filter((item): item is OutputType => item === "caption" || item === "image");
+
+  if (outputs.length === 0) return null;
+  return Array.from(new Set(outputs));
+}
+
 function isGeminiTextOnlyModel(model?: ModelCatalogEntry) {
   if (!model || model.provider !== "google-gemini") return false;
   const outputModalities = new Set(model.output_modalities || []);
@@ -404,10 +415,12 @@ async function normalizeUploadImage(file: File): Promise<File> {
 
 export default function Home() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user, loading: authLoading } = useAuth();
   const selectedMode = "smart" as const;
   const creditsRef = useRef<CreditsDisplayHandle>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const hasAppliedTemplatePrefill = useRef(false);
 
   // --- Auth Gate ---
   useEffect(() => {
@@ -564,6 +577,27 @@ export default function Home() {
       }
     };
   }, [inputImage]);
+
+  useEffect(() => {
+    if (hasAppliedTemplatePrefill.current) return;
+
+    const idea = searchParams.get("idea");
+    const requestedOutputs = parseRequestedOutputs(searchParams.get("outputs"));
+
+    if (!idea && !requestedOutputs) {
+      hasAppliedTemplatePrefill.current = true;
+      return;
+    }
+
+    if (idea) {
+      setUserText(idea);
+    }
+    if (requestedOutputs) {
+      setSelectedOutputs(requestedOutputs);
+    }
+
+    hasAppliedTemplatePrefill.current = true;
+  }, [searchParams]);
 
   useEffect(() => {
     pendingAnalyzeSessionRef.current = pendingAnalyzeSessionId;

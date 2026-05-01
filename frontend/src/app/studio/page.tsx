@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../services/api";
-import type { PlainChatConversationItem } from "../../types";
+import type { PlainChatConversationItem, PlainChatModelItem } from "../../types";
 import { getProfile } from "../../lib/credits";
 import { getHistory, type HistoryEntry } from "../../lib/history";
 
@@ -27,6 +27,7 @@ export default function StudioHomePage() {
   const [credits, setCredits] = useState<number | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [conversations, setConversations] = useState<PlainChatConversationItem[]>([]);
+  const [plainChatModels, setPlainChatModels] = useState<PlainChatModelItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -37,22 +38,25 @@ export default function StudioHomePage() {
 
     async function loadStudioHome() {
       try {
-        const [profile, entries, conversationResponse] = await Promise.all([
+        const [profile, entries, conversationResponse, plainChatResponse] = await Promise.all([
           getProfile(),
           getHistory(uid, 8),
           api.getPlainChatConversations(20),
+          api.getPlainChatModels(),
         ]);
 
         if (!cancelled) {
           setCredits(profile.credits ?? 0);
           setHistory(entries);
           setConversations(conversationResponse.conversations ?? []);
+          setPlainChatModels(Array.isArray(plainChatResponse.models) ? plainChatResponse.models : []);
         }
       } catch {
         if (!cancelled) {
           setCredits(null);
           setHistory([]);
           setConversations([]);
+          setPlainChatModels([]);
         }
       } finally {
         if (!cancelled) {
@@ -69,6 +73,15 @@ export default function StudioHomePage() {
   }, [user]);
 
   const recentConversations = useMemo(() => conversations.slice(0, 20), [conversations]);
+  const plainChatModelLookup = useMemo(() => {
+    const lookup = new Map<string, string>();
+    for (const model of plainChatModels) {
+      if (!model?.id) continue;
+      lookup.set(model.id, model.displayName || model.id);
+      lookup.set(model.id.toLowerCase(), model.displayName || model.id);
+    }
+    return lookup;
+  }, [plainChatModels]);
   const imageCount = useMemo(() => history.filter((entry) => isRenderableImageUrl(entry.imageUrl)).length, [history]);
   const captionCount = useMemo(() => history.filter((entry) => Boolean(entry.caption?.trim())).length, [history]);
 
@@ -94,11 +107,10 @@ export default function StudioHomePage() {
               Studio Home
             </div>
             <h1 className="font-headline text-4xl font-bold tracking-tight text-white lg:text-5xl">
-              Start a new project when you are ready.
+              Ignite Your Creative Vision
             </h1>
             <p className="mt-4 max-w-2xl text-base leading-7 text-[#c2c6d6] lg:text-lg">
-              Your studio now starts from a cleaner home. Review your latest outputs, check your balance,
-              and launch the next project only when you need it.
+              Welcome to your creative command center
             </p>
 
             <div className="mt-8 flex flex-col gap-4 sm:flex-row">
@@ -125,7 +137,6 @@ export default function StudioHomePage() {
               <div className="mt-4 font-headline text-5xl font-bold text-white">
                 {credits === null ? "..." : credits.toFixed(2)}
               </div>
-              <p className="mt-2 text-sm text-[#c2c6d6]">Available for new projects and generation runs.</p>
             </div>
 
             <div className="rounded-2xl border border-white/8 bg-[#151b2d] p-6">
@@ -180,7 +191,9 @@ export default function StudioHomePage() {
                     </div>
                     <div className="min-w-0">
                       <div className="text-[10px] uppercase tracking-[0.18em] text-[#8c909f]">Model used</div>
-                      <div className="mt-1 truncate font-medium text-white">{conversation.model || "Chat model"}</div>
+                      <div className="mt-1 truncate font-medium text-white">
+                        {plainChatModelLookup.get(conversation.model) || plainChatModelLookup.get((conversation.model || "").toLowerCase()) || conversation.model || "Chat model"}
+                      </div>
                     </div>
                     <div className="min-w-0">
                       <div className="text-[10px] uppercase tracking-[0.18em] text-[#8c909f]">Last change</div>
