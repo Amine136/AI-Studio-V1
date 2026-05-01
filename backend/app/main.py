@@ -26,7 +26,7 @@ from app.services.admin_auth import AdminAuthRateLimitError, authenticate_admin,
 from app.services.apikeymanager_client import ApiKeyManagerProxyError, check_apikeymanager_ready
 from app.services.auth import verify_admin_csrf, verify_admin_session, verify_api_key, verify_firebase_user
 from app.services.catalog_store import catalog_store
-from app.services.chat_service import assemble_plain_chat_context, list_plain_chat_models, normalize_plain_chat_system, prepare_plain_chat_conversation_request, preview_plain_chat_prompt, send_plain_chat, serialize_plain_chat_parts
+from app.services.chat_service import assemble_plain_chat_context, expected_required_credits_for_plain_chat, list_plain_chat_models, minimum_required_credits_for_plain_chat, normalize_plain_chat_system, prepare_plain_chat_conversation_request, preview_plain_chat_prompt, send_plain_chat, serialize_plain_chat_parts
 from app.services.security_backend import (
     add_history_entry,
     add_chat_turn,
@@ -812,6 +812,28 @@ def create_plain_chat_conversation_message(
         conversation = get_chat_conversation(user["uid"], conversation_id)
         if conversation is None:
             raise HTTPException(status_code=404, detail="Chat conversation not found")
+
+        current_profile = get_user(user["uid"])
+        current_credits = float((current_profile or {}).get("credits", 0) or 0)
+        model_name = str(conversation.get("model") or "")
+        minimum_required = minimum_required_credits_for_plain_chat(model_name)
+        if current_credits < minimum_required:
+            raise HTTPException(
+                status_code=402,
+                detail=(
+                    "Insufficient credits for the minimum required cost. "
+                    f"You need at least {minimum_required:.4f} credits for this chat model."
+                ),
+            )
+        expected_required = expected_required_credits_for_plain_chat(model_name, payload.options)
+        if current_credits < expected_required:
+            raise HTTPException(
+                status_code=402,
+                detail=(
+                    "Insufficient credits for the selected settings. "
+                    f"You need about {expected_required:.2f} credits for this plain chat request."
+                ),
+            )
 
         existing_messages = get_chat_messages(user["uid"], conversation_id, 200)
         user_parts = serialize_plain_chat_parts(payload.parts)
