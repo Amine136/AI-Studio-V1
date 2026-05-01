@@ -5,12 +5,14 @@ export type GenerationMode = "quick" | "smart";
 export type GenerationStatus = "processing" | "generating";
 
 export interface InputImagePayload {
+  file_id?: string;
   name?: string;
   mime_type?: string;
   url: string;
 }
 
 export interface UploadedImageResult {
+  id: string;
   name: string;
   mime_type: string;
   url: string;

@@ -20,6 +20,7 @@ from sqlalchemy import text
 from app.config import settings
 from app.core.schema import AdminAuditLogListResponse, AdminAuthFailureSummaryResponse, AdminCreditCodeBatchListResponse, AdminCreditCodeListResponse, AdminGenerationJobItem, AdminGenerationJobListResponse, AdminLoginRequest, AdminReasonRequest, AdminSessionResponse, AdminUserDetailResponse, AdminUserListResponse, CatalogUpdateNotification, DashboardNewsItemResponse, DashboardNewsListResponse, DashboardNewsUpsertRequest, GenerateRequest, GenerationResult, PlainChatConversationCreateRequest, PlainChatConversationItem, PlainChatConversationListResponse, PlainChatConversationMessageCreateRequest, PlainChatConversationMessagesResponse, PlainChatConversationTurnResponse, PlainChatConversationUpdateRequest, PlainChatModelListResponse, SystemConfig, UserNotificationPreferencesUpdateRequest, UserProfileUpdateRequest
 from app.db.session import session_scope
+from app.db.repositories.security import SecurityRepository
 from app.graph.workflow import studio_graph_app
 from app.services.admin_auth import AdminAuthRateLimitError, authenticate_admin, list_admin_auth_failure_summaries, revoke_admin_session
 from app.services.apikeymanager_client import ApiKeyManagerProxyError, check_apikeymanager_ready
@@ -80,8 +81,24 @@ from app.services.security_backend import (
     update_user_profile,
     update_user_notification_preferences,
 )
+from app.services.user_files import (
+    APIKEYMANAGER_GENERATED_IMAGE_DIRS,
+    GENERATED_IMAGES_DIR,
+    SAFE_FILE_ID,
+    SAFE_GENERATED_FILENAME,
+    UPLOADED_IMAGES_DIR,
+    create_uploaded_user_file_record,
+    delete_private_user_file_by_id,
+    generated_image_url_prefixes,
+    get_private_user_file_record,
+    load_private_user_file,
+    private_file_id_from_url,
+    private_file_url,
+    private_file_url_prefix,
+)
 
 SYSTEM_AUDIT_EMAIL = "system@vibecraft.local"
+IMAGES_DIR = GENERATED_IMAGES_DIR
 DEFAULT_PLAIN_CHAT_TITLE = "New Chat"
 PLAIN_CHAT_TITLE_UPDATE_LIMIT = 20
 PLAIN_CHAT_TITLE_UPDATE_WINDOW_SECONDS = 15 * 60
@@ -363,15 +380,6 @@ def _record_usage_limit_audit_event(*, uid: str, ip: str, mode: str, phase: str,
 # Rate Limiter (keyed by authenticated user when possible, else client IP)
 limiter = Limiter(key_func=rate_limit_key)
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-IMAGES_DIR = BASE_DIR / "generated_images"
-UPLOADED_IMAGES_DIR = BASE_DIR / "uploaded_images"
-APIKEYMANAGER_GENERATED_IMAGE_DIRS = (
-    Path("/var/www/apikeymanager/backend/generated_images"),
-    Path("/home/ouni/ApiKeyManager/backend/generated_images"),
-)
-SAFE_GENERATED_FILENAME = re.compile(r'^[a-f0-9\-]{36}\.(jpg|png|webp)$')
-SAFE_UPLOADED_FILENAME = re.compile(r'^[a-f0-9]{32}\.(jpg|png|webp)$')
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 MAX_UPLOAD_PIXELS = 16_000_000
 MAX_UPLOAD_DIMENSION = 8192
@@ -432,10 +440,6 @@ for social media marketing.
 # Attach rate limiter to app
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-
-# Ensure the images directory exists
-IMAGES_DIR.mkdir(exist_ok=True)
-UPLOADED_IMAGES_DIR.mkdir(exist_ok=True)
 
 allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
 
@@ -534,20 +538,39 @@ def cleanup_uploaded_images_on_startup():
     "/images/{filename}",
     tags=["Generation"],
     summary="Get Generated Image",
-    description="Retrieve a generated image by filename. Only valid UUID filenames are accepted."
+    description="Retrieve a generated output image by filename. Only generated image filenames are accepted."
 )
 def get_image(filename: str):
     """Serves generated images with filename validation."""
-    is_generated = SAFE_GENERATED_FILENAME.match(filename)
-    is_uploaded = SAFE_UPLOADED_FILENAME.match(filename)
-    if not is_generated and not is_uploaded:
+    if not SAFE_GENERATED_FILENAME.match(filename):
         raise HTTPException(status_code=400, detail="Invalid filename")
 
-    filepath = (IMAGES_DIR / filename) if is_generated else (UPLOADED_IMAGES_DIR / filename)
+    filepath = GENERATED_IMAGES_DIR / filename
     if not filepath.exists():
         raise HTTPException(status_code=404, detail="Image not found")
     
     return FileResponse(filepath)
+
+
+@app.get(
+    "/files/{file_id}",
+    tags=["Generation"],
+    summary="Get Private User File",
+    description="Retrieve a private uploaded file owned by the current authenticated user.",
+)
+def get_private_user_file(
+    file_id: str,
+    user: Dict[str, Any] = Depends(verify_firebase_user),
+):
+    file_record, filepath = load_private_user_file(file_id, str(user["uid"]))
+    return FileResponse(
+        filepath,
+        media_type=str(file_record["mime_type"]),
+        headers={
+            "Cache-Control": "private, max-age=3600",
+            "Vary": "Authorization",
+        },
+    )
 
 
 @app.post("/uploads/image", tags=["Generation"], summary="Upload Input Image")
@@ -582,10 +605,12 @@ async def upload_input_image(
     _verify_uploaded_image_cleanup_health()
 
     filename = _save_uploaded_input_image_bytes(image.content_type, image_bytes)
+    file_id = create_uploaded_user_file_record(str(user["uid"]), filename, image.content_type)
     return {
+        "id": file_id,
         "name": image.filename or filename,
         "mime_type": image.content_type,
-        "url": _uploaded_image_url_for_filename(filename),
+        "url": private_file_url(file_id),
         "size": len(image_bytes),
     }
 
@@ -805,7 +830,7 @@ def create_plain_chat_conversation_message(
             options=payload.options,
         )
 
-        result = send_plain_chat(request_payload)
+        result = send_plain_chat(request_payload, user_uid=str(user["uid"]))
         assistant_message = result.get("message")
         if not isinstance(assistant_message, dict):
             raise ValueError("CHAT_INVALID_PROVIDER_RESPONSE")
@@ -1735,10 +1760,11 @@ def generate_content(request: Request, payload: GenerateRequest, user: Dict[str,
             )
             generation_job_id = str(job.get("id") or "")
 
-        input_image = _prepare_input_image(payload.input_image)
+        input_image = _prepare_input_image(payload.input_image, str(user["uid"]))
 
         initial_state = {
             "user_text": payload.user_text,
+            "owner_uid": str(user["uid"]),
             "requested_outputs": payload.requested_outputs,
             "input_image": input_image,
             "user_preferences": payload.user_preferences or {},
@@ -1963,14 +1989,19 @@ def _is_valid_generated_image_result(value: Any) -> bool:
     if not image_url or _looks_like_generation_error(image_url):
         return False
 
+    private_file_id = private_file_id_from_url(image_url)
+    if private_file_id:
+        file_record = get_private_user_file_record(private_file_id)
+        return bool(file_record and str(file_record.get("kind") or "") == "generated_output")
+
     parsed = urlparse(image_url)
     filename = Path(parsed.path).name
     if not SAFE_GENERATED_FILENAME.match(filename):
         return False
 
-    uploaded_prefix = _uploaded_image_url_prefix()
-    if image_url.startswith(uploaded_prefix):
-        return (IMAGES_DIR / filename).exists()
+    generated_local_prefix = f"{settings.public_backend_base_url}/images/" if settings.public_backend_base_url else ""
+    if generated_local_prefix and image_url.startswith(generated_local_prefix):
+        return (GENERATED_IMAGES_DIR / filename).exists()
 
     generated_prefixes: list[str] = []
     if settings.public_backend_base_url:
@@ -2578,11 +2609,11 @@ def _schema_value_matches(actual: Any, expected: Any) -> bool:
 
 
 def _validate_input_image(input_image) -> None:
-    if input_image.url:
-        _validate_uploaded_image_url(input_image.url)
+    if input_image.file_id or input_image.url:
+        _validate_uploaded_image_reference(file_id=input_image.file_id, image_url=input_image.url)
         return
 
-    raise HTTPException(status_code=400, detail="Uploaded image URL is required")
+    raise HTTPException(status_code=400, detail="Uploaded image reference is required")
 
 
 def _is_gemini_text_model(model_entry: Dict[str, Any]) -> bool:
@@ -2605,51 +2636,37 @@ def _is_image_capable_model(model_entry: Dict[str, Any]) -> bool:
     return "IMAGE" in output_modalities
 
 
-def _prepare_input_image(input_image) -> Dict[str, str] | None:
+def _prepare_input_image(input_image, owner_uid: str) -> Dict[str, str] | None:
     if not input_image:
         return None
 
-    if input_image.url:
-        _validate_uploaded_image_url(input_image.url)
-        return {"url": input_image.url, "mime_type": input_image.mime_type or ""}
+    if input_image.file_id or input_image.url:
+        candidate_id = str(input_image.file_id or "").strip() or private_file_id_from_url(str(input_image.url or "")) or ""
+        file_record, filepath = load_private_user_file(
+            candidate_id,
+            owner_uid,
+            allowed_kinds={"uploaded_input", "generated_output"},
+        )
+        image_bytes = filepath.read_bytes()
+        return {
+            "mime_type": str(file_record["mime_type"] or input_image.mime_type or ""),
+            "data": base64.b64encode(image_bytes).decode("ascii"),
+        }
 
     return None
 
 
-def _validate_uploaded_image_url(image_url: str) -> None:
-    parsed = urlparse(image_url)
-    filename = Path(parsed.path).name
-    uploaded_prefix = _uploaded_image_url_prefix()
-    generated_prefixes: list[str] = []
-    if settings.public_backend_base_url:
-        generated_prefixes.append(f"{settings.public_backend_base_url}/generated-images/")
-    if settings.apikeymanager_public_base_url:
-        generated_prefixes.append(f"{settings.apikeymanager_public_base_url}/generated-images/")
+def _validate_uploaded_image_reference(*, file_id: str | None = None, image_url: str | None = None) -> None:
+    normalized_file_id = str(file_id or "").strip()
+    normalized_url = str(image_url or "").strip()
 
-    if image_url.startswith(uploaded_prefix) and SAFE_UPLOADED_FILENAME.match(filename):
+    if normalized_file_id and SAFE_FILE_ID.match(normalized_file_id):
         return
-    for generated_prefix in generated_prefixes:
-        if image_url.startswith(generated_prefix) and re.fullmatch(r"^[0-9a-f-]{36}\.(png|jpg|webp)$", filename):
+    if normalized_url:
+        if private_file_id_from_url(normalized_url):
             return
 
-    raise HTTPException(status_code=400, detail="Only Vibecraft or ApiKeyManager generated image URLs are allowed")
-
-
-def _uploaded_image_url_prefix() -> str:
-    return f"{settings.public_backend_base_url}/images/"
-
-
-def _uploaded_image_url_for_filename(filename: str) -> str:
-    return f"{_uploaded_image_url_prefix()}{filename}"
-
-
-def _generated_image_url_prefixes() -> list[str]:
-    prefixes: list[str] = []
-    if settings.public_backend_base_url:
-        prefixes.append(f"{settings.public_backend_base_url}/generated-images/")
-    if settings.apikeymanager_public_base_url:
-        prefixes.append(f"{settings.apikeymanager_public_base_url}/generated-images/")
-    return prefixes
+    raise HTTPException(status_code=400, detail="Only Vibecraft private file URLs are allowed")
 
 
 def _collect_chat_message_image_urls(messages: list[dict[str, Any]]) -> set[str]:
@@ -2665,26 +2682,18 @@ def _collect_chat_message_image_urls(messages: list[dict[str, Any]]) -> set[str]
 
 
 def _delete_chat_conversation_images(image_urls: set[str]) -> None:
-    uploaded_prefix = _uploaded_image_url_prefix()
-    generated_prefixes = _generated_image_url_prefixes()
-
     for image_url in image_urls:
+        private_file_id = private_file_id_from_url(image_url)
+        if private_file_id:
+            delete_private_user_file_by_id(private_file_id)
+            continue
+
         parsed = urlparse(image_url)
-        filename = Path(parsed.path).name
-        if not filename:
-            continue
-
-        if image_url.startswith(uploaded_prefix) and SAFE_UPLOADED_FILENAME.match(filename):
-            try:
-                (UPLOADED_IMAGES_DIR / filename).unlink(missing_ok=True)
-            except OSError:
-                pass
-            continue
-
-        if any(image_url.startswith(prefix) for prefix in generated_prefixes) and re.fullmatch(r"^[0-9a-f-]{36}\.(png|jpg|webp)$", filename):
-            for directory in (IMAGES_DIR, *APIKEYMANAGER_GENERATED_IMAGE_DIRS):
+        target_name = Path(parsed.path).name
+        if target_name and any(image_url.startswith(prefix) for prefix in generated_image_url_prefixes()) and re.fullmatch(r"^[0-9a-f-]{36}\.(png|jpg|webp)$", target_name):
+            for directory in (GENERATED_IMAGES_DIR, *APIKEYMANAGER_GENERATED_IMAGE_DIRS):
                 try:
-                    (directory / filename).unlink(missing_ok=True)
+                    (directory / target_name).unlink(missing_ok=True)
                 except OSError:
                     continue
 
@@ -2697,19 +2706,17 @@ def _save_uploaded_input_image_bytes(mime_type: str, image_bytes: bytes) -> str:
         image_file.write(image_bytes)
     return filename
 
-
 def _cleanup_expired_uploaded_images() -> None:
-    cutoff = time.time() - UPLOAD_RETENTION_SECONDS
-    for file_path in UPLOADED_IMAGES_DIR.iterdir():
-        if not file_path.is_file():
-            continue
-        if not SAFE_UPLOADED_FILENAME.match(file_path.name):
-            continue
-        try:
-            if file_path.stat().st_mtime < cutoff:
-                file_path.unlink(missing_ok=True)
-        except FileNotFoundError:
-            continue
+    cutoff = int(time.time() - UPLOAD_RETENTION_SECONDS)
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        for entry in repo.list_user_files_before(kind="uploaded_input", created_before=cutoff):
+            filepath = UPLOADED_IMAGES_DIR / str(entry.storage_path)
+            try:
+                filepath.unlink(missing_ok=True)
+            except OSError:
+                pass
+            repo.delete_user_file(entry)
 
 
 def _verify_uploaded_image_cleanup_health() -> None:
@@ -2717,18 +2724,11 @@ def _verify_uploaded_image_cleanup_health() -> None:
     if not consume_rate_limit(verification_key, max_count=1, window_seconds=60 * 60):
         return
 
-    now = time.time()
+    now = int(time.time())
     stale_count = 0
-    for file_path in UPLOADED_IMAGES_DIR.iterdir():
-        if not file_path.is_file():
-            continue
-        if not SAFE_UPLOADED_FILENAME.match(file_path.name):
-            continue
-        try:
-            if file_path.stat().st_mtime < (now - UPLOAD_RETENTION_SECONDS):
-                stale_count += 1
-        except FileNotFoundError:
-            continue
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        stale_count = len(repo.list_user_files_before(kind="uploaded_input", created_before=now - UPLOAD_RETENTION_SECONDS))
 
     if stale_count > 0:
         add_admin_audit_log(

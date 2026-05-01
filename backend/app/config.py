@@ -59,7 +59,7 @@ class Config:
         self.admin_session_secret = os.getenv("ADMIN_SESSION_SECRET", "").strip()
         self.admin_session_cookie_name = os.getenv("ADMIN_SESSION_COOKIE_NAME", "vibecraft_admin_session").strip() or "vibecraft_admin_session"
         self.admin_csrf_cookie_name = os.getenv("ADMIN_CSRF_COOKIE_NAME", "vibecraft_admin_csrf").strip() or "vibecraft_admin_csrf"
-        self.admin_session_ttl_seconds = int(os.getenv("ADMIN_SESSION_TTL_SECONDS", str(12 * 60 * 60)))
+        self.admin_session_ttl_seconds = int(os.getenv("ADMIN_SESSION_TTL_SECONDS", str(15 * 60)))
         self.admin_cookie_secure = os.getenv("ADMIN_COOKIE_SECURE", "true").strip().lower() not in {"0", "false", "no", "off"}
         self.admin_login_username_limit = int(os.getenv("ADMIN_LOGIN_USERNAME_LIMIT", "5"))
         self.admin_login_ip_limit = int(os.getenv("ADMIN_LOGIN_IP_LIMIT", "10"))

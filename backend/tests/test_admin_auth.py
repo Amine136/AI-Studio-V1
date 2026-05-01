@@ -212,3 +212,40 @@ def test_deactivate_admin_account_revokes_sessions_and_blocks_future_login(test_
 
     logs = store.list_admin_audit_logs(limit=20, target_id="cli-deactivate")
     assert any(log["action"] == "admin_account_deactivated" for log in logs)
+
+
+def test_admin_session_extends_expiry_on_activity(test_db, monkeypatch):
+    monkeypatch.setattr(admin_auth.settings, "admin_session_secret", "test-secret")
+    monkeypatch.setattr(admin_auth.settings, "admin_session_ttl_seconds", 900)
+
+    admin_auth.create_admin_account("idle-admin", "StrongPass123!")
+    token, _session = admin_auth.authenticate_admin("idle-admin", "StrongPass123!", ip_address="6.6.6.6")
+    shortened_expires_at = int(time.time()) + 120
+
+    with session_scope() as db:
+        repo = SecurityRepository(db)
+        entry = repo.get_admin_session(admin_auth._hash_admin_session_token(token))
+        assert entry is not None
+        entry.expires_at = shortened_expires_at
+        db.flush()
+
+    refreshed = admin_auth.get_admin_session(token)
+    assert refreshed is not None
+    assert int(refreshed["expiresAt"]) > shortened_expires_at
+
+
+def test_admin_session_expires_after_idle_timeout(test_db, monkeypatch):
+    monkeypatch.setattr(admin_auth.settings, "admin_session_secret", "test-secret")
+    monkeypatch.setattr(admin_auth.settings, "admin_session_ttl_seconds", 900)
+
+    admin_auth.create_admin_account("expired-admin", "StrongPass123!")
+    token, _session = admin_auth.authenticate_admin("expired-admin", "StrongPass123!", ip_address="8.8.8.8")
+
+    with session_scope() as db:
+        repo = SecurityRepository(db)
+        entry = repo.get_admin_session(admin_auth._hash_admin_session_token(token))
+        assert entry is not None
+        entry.expires_at = int(time.time()) - 1
+        db.flush()
+
+    assert admin_auth.get_admin_session(token) is None

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
+import AuthenticatedImage from "../../components/AuthenticatedImage";
 import { getHistory, type HistoryEntry } from "../../lib/history";
 import { getProfile } from "../../lib/credits";
 import { api } from "../../services/api";
@@ -402,8 +403,7 @@ export default function DashboardPage() {
                 <div key={entry.id} className="group cursor-pointer">
                   <div className="relative mb-3 aspect-[4/5] overflow-hidden rounded-xl border border-white/5 bg-[#151b2d]">
                     {isRenderableImageUrl(entry.imageUrl) ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={entry.imageUrl} alt={entry.prompt} className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                      <AuthenticatedImage src={entry.imageUrl || ""} alt={entry.prompt} className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110" />
                     ) : (
                       <div className="flex h-full w-full items-center justify-center bg-[#151b2d] text-white/20">
                         <span className="material-symbols-outlined text-[72px]">description</span>

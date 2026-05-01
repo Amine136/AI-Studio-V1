@@ -1,12 +1,12 @@
 import base64
 import json
-import uuid
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 import httpx
 
 from app.config import settings
+from app.services.user_files import privatize_generated_image_url, save_generated_output_base64_for_owner
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 IMAGES_DIR = BASE_DIR / "generated_images"
@@ -74,22 +74,6 @@ def _build_headers() -> Dict[str, str]:
         "Authorization": f"Bearer {settings.apikeymanager_token}",
         "Content-Type": "application/json",
     }
-
-
-def _generated_image_public_url(url: str) -> str:
-    candidate = str(url or "").strip()
-    if not candidate:
-        return candidate
-
-    source_prefix = f"{settings.apikeymanager_public_base_url}/generated-images/" if settings.apikeymanager_public_base_url else ""
-    target_prefix = f"{settings.public_backend_base_url}/generated-images/" if settings.public_backend_base_url else ""
-
-    if source_prefix and target_prefix and candidate.startswith(source_prefix):
-        filename = candidate[len(source_prefix):].lstrip("/")
-        if filename:
-            return f"{target_prefix}{filename}"
-
-    return candidate
 
 
 def _post_apikeymanager(path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -258,7 +242,7 @@ def generate_text_payload_via_proxy(
     }
 
 
-def generate_chat_via_proxy(payload: Dict[str, Any]) -> Dict[str, Any]:
+def generate_chat_via_proxy(payload: Dict[str, Any], *, owner_uid: str) -> Dict[str, Any]:
     data = _post_chat(payload)
     response_data = data.get("data", {}) or {}
     message = response_data.get("message")
@@ -273,7 +257,7 @@ def generate_chat_via_proxy(payload: Dict[str, Any]) -> Dict[str, Any]:
                     image_url = str(part.get("url") or "").strip()
                     normalized_parts.append({
                         **part,
-                        "url": _generated_image_public_url(image_url) if image_url else image_url,
+                        "url": privatize_generated_image_url(owner_uid, image_url) if image_url else image_url,
                     })
                     continue
                 normalized_parts.append(part)
@@ -288,6 +272,8 @@ def generate_image_via_proxy(
     provider: str,
     model_id: str,
     prompt: str,
+    *,
+    owner_uid: str,
     image_config: Optional[Dict[str, Any]] = None,
     input_image: Optional[Dict[str, str]] = None,
     options: Optional[Dict[str, Any]] = None,
@@ -324,19 +310,21 @@ def generate_image_via_proxy(
     outputs = response_data.get("outputs") or {}
     image_url = outputs.get("imageUrl")
     if isinstance(image_url, str) and image_url.strip():
-        return _generated_image_public_url(image_url)
+        return privatize_generated_image_url(owner_uid, image_url)
 
     image_base64 = outputs.get("imageBase64") or response_data.get("response")
     if not image_base64:
         raise RuntimeError("ApiKeyManager did not return image data")
 
-    return _save_generated_image(image_base64)
+    return save_generated_output_base64_for_owner(owner_uid, image_base64)
 
 
 def generate_image_payload_via_proxy(
     provider: str,
     model_id: str,
     prompt: str,
+    *,
+    owner_uid: str,
     image_config: Optional[Dict[str, Any]] = None,
     input_image: Optional[Dict[str, str]] = None,
     options: Optional[Dict[str, Any]] = None,
@@ -373,12 +361,12 @@ def generate_image_payload_via_proxy(
     outputs = response_data.get("outputs") or {}
     image_url = outputs.get("imageUrl")
     if isinstance(image_url, str) and image_url.strip():
-        resolved_image = _generated_image_public_url(image_url)
+        resolved_image = privatize_generated_image_url(owner_uid, image_url)
     else:
         image_base64 = outputs.get("imageBase64") or response_data.get("response")
         if not image_base64:
             raise RuntimeError("ApiKeyManager did not return image data")
-        resolved_image = _save_generated_image(image_base64)
+        resolved_image = save_generated_output_base64_for_owner(owner_uid, image_base64)
 
     return {
         "image": resolved_image,
@@ -397,6 +385,8 @@ def generate_text_and_image_via_proxy(
     provider: str,
     model_id: str,
     prompt: str,
+    *,
+    owner_uid: str,
     image_config: Optional[Dict[str, Any]] = None,
     input_image: Optional[Dict[str, str]] = None,
     options: Optional[Dict[str, Any]] = None,
@@ -425,12 +415,12 @@ def generate_text_and_image_via_proxy(
     outputs = response_data.get("outputs") or {}
     image_url = outputs.get("imageUrl")
     if isinstance(image_url, str) and image_url.strip():
-        resolved_image = _generated_image_public_url(image_url)
+        resolved_image = privatize_generated_image_url(owner_uid, image_url)
     else:
         image_base64 = outputs.get("imageBase64") or response_data.get("response")
         if not image_base64:
             raise RuntimeError("ApiKeyManager did not return image data")
-        resolved_image = _save_generated_image(image_base64)
+        resolved_image = save_generated_output_base64_for_owner(owner_uid, image_base64)
     text_output = outputs.get("text") or ""
 
     return {
@@ -443,6 +433,8 @@ def generate_text_and_image_payload_via_proxy(
     provider: str,
     model_id: str,
     prompt: str,
+    *,
+    owner_uid: str,
     image_config: Optional[Dict[str, Any]] = None,
     input_image: Optional[Dict[str, str]] = None,
     options: Optional[Dict[str, Any]] = None,
@@ -471,12 +463,12 @@ def generate_text_and_image_payload_via_proxy(
     outputs = response_data.get("outputs") or {}
     image_url = outputs.get("imageUrl")
     if isinstance(image_url, str) and image_url.strip():
-        resolved_image = _generated_image_public_url(image_url)
+        resolved_image = privatize_generated_image_url(owner_uid, image_url)
     else:
         image_base64 = outputs.get("imageBase64") or response_data.get("response")
         if not image_base64:
             raise RuntimeError("ApiKeyManager did not return image data")
-        resolved_image = _save_generated_image(image_base64)
+        resolved_image = save_generated_output_base64_for_owner(owner_uid, image_base64)
 
     return {
         "image": resolved_image,
@@ -507,32 +499,6 @@ def _build_input_parts(prompt: str, input_image: Optional[Dict[str, str]] = None
             )
     parts.append({"type": "text", "text": prompt})
     return parts
-
-
-def _save_generated_image(image_base64: str) -> str:
-    try:
-        image_bytes = base64.b64decode(image_base64)
-    except Exception as exc:
-        raise RuntimeError("Invalid base64 image returned by ApiKeyManager") from exc
-
-    extension = _detect_image_extension(image_bytes)
-    filename = f"{uuid.uuid4()}.{extension}"
-    save_path = IMAGES_DIR / filename
-    with open(save_path, "wb") as image_file:
-        image_file.write(image_bytes)
-
-    return f"{settings.public_backend_base_url}/images/{filename}"
-
-
-def _detect_image_extension(image_bytes: bytes) -> str:
-    if image_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
-        return "png"
-    if image_bytes.startswith(b"\xff\xd8\xff"):
-        return "jpg"
-    if image_bytes.startswith(b"RIFF") and image_bytes[8:12] == b"WEBP":
-        return "webp"
-    return "png"
-
 
 def _normalize_model_catalog(raw_catalog: Dict[str, Any]) -> Dict[str, Dict[str, Dict[str, Any]]]:
     normalized = {

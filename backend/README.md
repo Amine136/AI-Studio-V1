@@ -67,7 +67,7 @@ CATALOG_WEBHOOK_SECRET=replace_with_a_shared_secret
 # Required for dedicated admin portal sessions
 ADMIN_SESSION_SECRET=replace_with_a_long_random_secret
 ADMIN_SESSION_COOKIE_NAME=vibecraft_admin_session
-ADMIN_SESSION_TTL_SECONDS=43200
+ADMIN_SESSION_TTL_SECONDS=900
 ADMIN_COOKIE_SECURE=true
 ```
 

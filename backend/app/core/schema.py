@@ -13,6 +13,12 @@ GenerationStatus = Literal["processing", "generating"]
 
 class InputImage(BaseModel):
     """Uploaded image reference used as multimodal input."""
+    file_id: Optional[str] = Field(
+        default=None,
+        alias="fileId",
+        description="Private uploaded file identifier",
+        json_schema_extra={"example": "123e4567-e89b-12d3-a456-426614174000"},
+    )
     name: Optional[str] = Field(default=None, description="Original file name")
     mime_type: Optional[str] = Field(
         default=None,
@@ -21,9 +27,11 @@ class InputImage(BaseModel):
     )
     url: Optional[str] = Field(
         default=None,
-        description="Public image URL used for provider-side fetch",
-        json_schema_extra={"example": "https://vibecraft.ouni.space/images/1234abcd.png"},
+        description="Authenticated image URL for the uploaded file",
+        json_schema_extra={"example": "https://vibecraft.ouni.space/api/files/123e4567-e89b-12d3-a456-426614174000"},
     )
+
+    model_config = {"populate_by_name": True}
 
 
 ChatPartType = Literal["text", "image_url"]
@@ -251,9 +259,10 @@ class GenerateRequest(BaseModel):
                     "requested_outputs": ["image", "caption"],
                     "mode": "smart",
                     "input_image": {
+                        "fileId": "123e4567-e89b-12d3-a456-426614174000",
                         "name": "reference.png",
                         "mime_type": "image/png",
-                        "url": "https://vibecraft.ouni.space/images/1234abcd.png"
+                        "url": "https://vibecraft.ouni.space/api/files/123e4567-e89b-12d3-a456-426614174000"
                     },
                     "user_preferences": {"platform": "LinkedIn", "brand_voice": "Professional"}
                 }

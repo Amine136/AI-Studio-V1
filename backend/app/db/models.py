@@ -46,6 +46,7 @@ class User(Base):
     generation_jobs: Mapped[list["GenerationJob"]] = relationship(back_populates="user")
     chat_conversations: Mapped[list["ChatConversation"]] = relationship(back_populates="user")
     chat_messages: Mapped[list["ChatMessage"]] = relationship(back_populates="user")
+    files: Mapped[list["UserFile"]] = relationship(back_populates="user")
     admin_audit_logs: Mapped[list["AdminAuditLog"]] = relationship(back_populates="admin_user")
 
     __table_args__ = (
@@ -246,6 +247,25 @@ class HistoryEntry(Base):
 
     __table_args__ = (
         Index("ix_history_entries_uid_created_at", "uid", "created_at"),
+    )
+
+
+class UserFile(Base):
+    __tablename__ = "user_files"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    owner_uid: Mapped[str] = mapped_column(ForeignKey("users.uid", ondelete="CASCADE"), nullable=False)
+    storage_path: Mapped[str] = mapped_column(Text, nullable=False)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    mime_type: Mapped[str] = mapped_column(String(128), nullable=False)
+    created_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+    user: Mapped[User] = relationship(back_populates="files")
+
+    __table_args__ = (
+        CheckConstraint("kind IN ('uploaded_input', 'generated_output')", name="ck_user_files_kind_valid"),
+        Index("ix_user_files_owner_uid_created_at", "owner_uid", "created_at"),
+        Index("ix_user_files_storage_path", "storage_path", unique=True),
     )
 
 

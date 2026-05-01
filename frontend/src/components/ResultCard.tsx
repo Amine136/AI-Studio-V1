@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import InteractiveAuthenticatedImage from "./InteractiveAuthenticatedImage";
 
 interface ResultCardProps {
     type: "caption" | "image";
@@ -56,26 +57,14 @@ export default function ResultCard({ type, content, model }: ResultCardProps) {
                 </span>
             </h4>
             {isUrl ? (
-                <div className="group relative rounded-xl overflow-hidden border border-white/10">
-                    <img
-                        src={content}
-                        alt="AI Generated"
-                        className="w-full object-cover"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent
-            opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                    <a
-                        href={content}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="absolute bottom-4 right-4 bg-white/10 backdrop-blur-md px-4 py-2 rounded-lg
-              text-xs font-bold text-white border border-white/20
-              opacity-0 group-hover:opacity-100 transition-all duration-300
-              hover:bg-white/20"
-                    >
-                        Download HD ↗
-                    </a>
-                </div>
+                <InteractiveAuthenticatedImage
+                    src={content}
+                    alt="AI Generated"
+                    wrapperClassName="rounded-xl border border-white/10"
+                    imageClassName="w-full object-cover"
+                    loadingClassName="flex min-h-64 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 py-6 text-xs text-white/60"
+                    errorClassName="flex min-h-64 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 py-6 text-xs text-white/60"
+                />
             ) : (
                 <div className="p-4 rounded-xl bg-red-500/10 text-red-400 border border-red-500/20 text-sm">
                     {content}

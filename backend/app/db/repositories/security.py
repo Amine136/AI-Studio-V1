@@ -10,7 +10,7 @@ from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from app.db.models import AdminAccount, AdminAuditLog, AdminSession, AnalyzeSession, ChatConversation, ChatMessage, CreditCode, CreditCodeClaim, CreditLedgerEntry, DashboardNewsItem, DeactivatedEmail, GenerationJob, HistoryEntry, RateLimitBucket, User
+from app.db.models import AdminAccount, AdminAuditLog, AdminSession, AnalyzeSession, ChatConversation, ChatMessage, CreditCode, CreditCodeClaim, CreditLedgerEntry, DashboardNewsItem, DeactivatedEmail, GenerationJob, HistoryEntry, RateLimitBucket, User, UserFile
 
 USERNAME_ALLOWED_RE = re.compile(r"[^a-z0-9._-]+")
 
@@ -127,9 +127,17 @@ class SecurityRepository:
         self.session.flush()
         return len(entries)
 
-    def touch_admin_session(self, entry: AdminSession, *, refreshed_at: int | None = None) -> AdminSession:
+    def touch_admin_session(
+        self,
+        entry: AdminSession,
+        *,
+        refreshed_at: int | None = None,
+        expires_at: int | None = None,
+    ) -> AdminSession:
         now = refreshed_at or int(time.time())
         entry.updated_at = now
+        if expires_at is not None:
+            entry.expires_at = expires_at
         self.session.flush()
         return entry
 
@@ -318,6 +326,53 @@ class SecurityRepository:
         return self.session.execute(
             select(User).where(User.uid == uid).with_for_update()
         ).scalar_one_or_none()
+
+    def create_user_file(
+        self,
+        *,
+        owner_uid: str,
+        storage_path: str,
+        kind: str,
+        mime_type: str,
+        file_id: str | None = None,
+        created_at: int | None = None,
+    ) -> UserFile:
+        entry = UserFile(
+            id=file_id or str(uuid.uuid4()),
+            owner_uid=owner_uid,
+            storage_path=storage_path,
+            kind=kind,
+            mime_type=mime_type,
+            created_at=created_at or int(time.time()),
+        )
+        self.session.add(entry)
+        self.session.flush()
+        return entry
+
+    def get_user_file(self, file_id: str) -> UserFile | None:
+        return self.session.get(UserFile, file_id)
+
+    def get_user_file_for_owner(self, file_id: str, owner_uid: str) -> UserFile | None:
+        return self.session.execute(
+            select(UserFile).where(
+                UserFile.id == file_id,
+                UserFile.owner_uid == owner_uid,
+            )
+        ).scalar_one_or_none()
+
+    def list_user_files_before(self, *, kind: str, created_before: int) -> list[UserFile]:
+        return list(
+            self.session.execute(
+                select(UserFile).where(
+                    UserFile.kind == kind,
+                    UserFile.created_at < created_before,
+                )
+            ).scalars()
+        )
+
+    def delete_user_file(self, entry: UserFile) -> None:
+        self.session.delete(entry)
+        self.session.flush()
 
     def list_users(self) -> list[User]:
         return list(

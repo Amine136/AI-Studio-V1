@@ -88,6 +88,11 @@ export default function PrivacyPage() {
                 billing records, and security logging. It is separate from the Usage Policy, which defines platform
                 behavior rules, enforcement, credits, and suspensions.
               </p>
+              <div className="mt-6 max-w-2xl rounded-xl border border-emerald-400/20 bg-emerald-400/[0.08] px-4 py-4 text-sm leading-7 text-emerald-50">
+                User data is treated as private by default. Access to stored account data is intended to be limited to
+                the authenticated account owner, except where limited operator or processor access is required to run,
+                secure, support, or comply with legal obligations of the service.
+              </div>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">

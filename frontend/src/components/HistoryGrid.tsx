@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { HistoryEntry } from "../lib/history";
+import AuthenticatedImage from "./AuthenticatedImage";
 
 const DEFAULT_VISIBLE_HISTORY_COUNT = 10;
 
@@ -64,8 +65,8 @@ export default function HistoryGrid({ entries, loading }: HistoryGridProps) {
                         className="group relative aspect-square rounded-xl overflow-hidden bg-white/[0.03] border border-white/5 hover:border-white/15 transition-all duration-300 cursor-pointer"
                     >
                         {isRenderableImageUrl(entry.imageUrl) ? (
-                            <img
-                                src={entry.imageUrl}
+                            <AuthenticatedImage
+                                src={entry.imageUrl || ""}
                                 alt={entry.prompt}
                                 className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                             />
@@ -102,8 +103,8 @@ export default function HistoryGrid({ entries, loading }: HistoryGridProps) {
                         onClick={(e) => e.stopPropagation()}
                     >
                         {isRenderableImageUrl(selectedEntry.imageUrl) && (
-                            <img
-                                src={selectedEntry.imageUrl}
+                            <AuthenticatedImage
+                                src={selectedEntry.imageUrl || ""}
                                 alt={selectedEntry.prompt}
                                 className="w-full rounded-t-2xl"
                             />
