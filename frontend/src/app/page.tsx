@@ -3,34 +3,35 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useAuth } from "../context/AuthContext";
+import { motion } from "framer-motion";
 
 const showcaseModels = [
   {
     title: "NanoBanana Pro",
     badge: "Flagship",
     badgeClass: "bg-primary/90 text-[#002e6a]",
-    image: "/landing/model-nanobanana-pro.webp",
+    image: "/landing/model-nanobanana-pro-dark.png",
     alt: "Featured model showcase image",
   },
   {
     title: "ImagenUltra 4",
     badge: "Photoreal",
     badgeClass: "bg-secondary/90 text-[#23005c]",
-    image: "/landing/model-imagen-ultra-4.webp",
+    image: "/landing/model-imagen-ultra-4-dark.png",
     alt: "Photoreal model showcase image",
   },
   {
     title: "NanoBanana 2",
     badge: "Versatile",
     badgeClass: "bg-[#8392a6]/90 text-[#1c2b3c]",
-    image: "/landing/model-nanobanana-2.webp",
+    image: "/landing/model-nanobanana-2-dark.png",
     alt: "Versatile model showcase image",
   },
   {
     title: "Gemini 3 Flash",
     badge: "Studio",
     badgeClass: "bg-[#424754]/90 text-white",
-    image: "/landing/model-gemini-3-flash.webp",
+    image: "/landing/model-gemini-3-flash-dark.png",
     alt: "Studio model showcase image",
   },
 ];
@@ -118,7 +119,7 @@ export default function LandingPage() {
           <div className="absolute right-[-10%] top-[-10%] h-[600px] w-[600px] rounded-full bg-[#adc6ff]/10 blur-[120px]" />
           <div className="absolute bottom-[-5%] left-[-5%] h-[400px] w-[400px] rounded-full bg-[#d0bcff]/10 blur-[100px]" />
         </div>
-        <div className="relative z-10 mx-auto max-w-4xl text-center">
+        <div className="relative z-10 mx-auto max-w-4xl text-center animate-fade-in-up stagger-children">
           <h1 className="font-headline text-5xl font-bold leading-[1.1] tracking-tight text-[#dce1fb] md:text-7xl lg:text-8xl">
             Vibe at the speed of{" "}
             <span className="bg-gradient-to-r from-[#adc6ff] to-[#d0bcff] bg-clip-text text-transparent">thought.</span>
@@ -134,6 +135,22 @@ export default function LandingPage() {
               View Models
             </a>
           </div>
+          
+          <div className="mt-14 flex items-center justify-center gap-4 animate-fade-in-up" style={{ animationDelay: '400ms' }}>
+            <div className="flex -space-x-3">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="h-10 w-10 rounded-full border-2 border-[#0c1324] bg-gradient-to-br from-indigo-400 to-purple-400" style={{ backgroundImage: `url('https://api.dicebear.com/7.x/avataaars/svg?seed=${i + 10}&backgroundColor=b6e3f4')` }} />
+              ))}
+            </div>
+            <div className="text-left">
+              <div className="flex text-yellow-400">
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <span key={i} className="material-symbols-outlined text-sm">star</span>
+                ))}
+              </div>
+              <p className="text-sm font-medium text-[#c2c6d6]">Be one of the first 1,000 creators</p>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -145,9 +162,15 @@ export default function LandingPage() {
           </div>
 
           <div className="grid grid-cols-1 gap-6 md:grid-cols-12">
-            <div className="group relative overflow-hidden rounded-xl border border-[#424754]/10 bg-[#151b2d] md:col-span-7">
-              <Image src="/landing/chat-models-v2.webp" alt="Chat with models" width={2048} height={1152} quality={100} priority sizes="(max-width: 767px) 100vw, 58vw" className="h-[400px] w-full object-cover opacity-60 transition-transform duration-700 group-hover:scale-105" />
-              <div className="absolute inset-0 bg-gradient-to-t from-[#0c1324] via-transparent to-transparent" />
+            <motion.div 
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.6 }}
+              className="group relative overflow-hidden rounded-xl border border-[#424754]/10 bg-[#151b2d] md:col-span-7"
+            >
+              <Image src="/landing/chat-abstract-dark.png" alt="Chat with models" width={2048} height={1152} quality={100} priority sizes="(max-width: 767px) 100vw, 58vw" className="h-[400px] w-full object-cover opacity-80 transition-transform duration-700 group-hover:scale-105" />
+              <div className="absolute inset-0 bg-gradient-to-t from-[#0c1324] via-[#0c1324]/20 to-transparent" />
               <div className="absolute bottom-0 p-10">
                 <span className="material-symbols-outlined mb-4 text-4xl text-[#adc6ff]">auto_awesome</span>
                 <h3 className="font-headline text-3xl font-bold">Chat with models</h3>
@@ -155,11 +178,17 @@ export default function LandingPage() {
                   Work directly with text, image, and multimodal models in plain chat. Send prompts, upload images, and iterate inside one conversation.
                 </p>
               </div>
-            </div>
+            </motion.div>
 
-            <div className="group relative overflow-hidden rounded-xl border border-[#424754]/10 bg-[#151b2d] md:col-span-5">
-              <Image src="/landing/edit-images-v2.webp" alt="Edit images" width={1800} height={1350} quality={100} sizes="(max-width: 767px) 100vw, 42vw" className="h-[400px] w-full object-cover opacity-60 transition-transform duration-700 group-hover:scale-105" />
-              <div className="absolute inset-0 bg-gradient-to-t from-[#0c1324] via-transparent to-transparent" />
+            <motion.div 
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.6, delay: 0.2 }}
+              className="group relative overflow-hidden rounded-xl border border-[#424754]/10 bg-[#151b2d] md:col-span-5"
+            >
+              <Image src="/landing/edit-images-v2-dark.png" alt="Edit images" width={1800} height={1350} quality={100} sizes="(max-width: 767px) 100vw, 42vw" className="h-[400px] w-full object-cover opacity-80 transition-transform duration-700 group-hover:scale-105" />
+              <div className="absolute inset-0 bg-gradient-to-t from-[#0c1324] via-[#0c1324]/20 to-transparent" />
               <div className="absolute bottom-0 p-10">
                 <span className="material-symbols-outlined mb-4 text-4xl text-[#adc6ff]">brush</span>
                 <h3 className="font-headline text-2xl font-bold">Edit images</h3>
@@ -167,9 +196,15 @@ export default function LandingPage() {
                   Upload a reference, transform it with image-capable models, and continue refining results through follow-up instructions.
                 </p>
               </div>
-            </div>
+            </motion.div>
 
-            <div className="group relative overflow-hidden rounded-xl border border-[#424754]/10 bg-[#23293c] md:col-span-12">
+            <motion.div 
+              initial={{ opacity: 0, y: 40 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.7 }}
+              className="group relative overflow-hidden rounded-xl border border-[#424754]/10 bg-[#23293c] md:col-span-12"
+            >
               <div className="grid items-center lg:grid-cols-5">
                 <div className="p-10 lg:col-span-2 lg:p-12">
                   <span className="material-symbols-outlined mb-4 text-4xl text-[#adc6ff]">psychology</span>
@@ -237,8 +272,8 @@ export default function LandingPage() {
                         </div>
 
                         <div className="relative flex-1 overflow-hidden bg-black">
-                          <Image src="/landing/smart-generation-v2.webp" alt="Smart generation preview" width={2048} height={1365} quality={100} sizes="(max-width: 1023px) 100vw, 48vw" className="h-full w-full object-cover" />
-                          <div className="pointer-events-none absolute inset-0 bg-gradient-to-tr from-[#adc6ff]/10 to-transparent" />
+                          <Image src="/landing/smart-generation-v2-dark.png" alt="Smart generation preview" width={2048} height={1365} quality={100} sizes="(max-width: 1023px) 100vw, 48vw" className="h-full w-full object-cover" />
+                          <div className="pointer-events-none absolute inset-0 bg-gradient-to-tr from-[#adc6ff]/5 to-transparent" />
                           <div className="absolute right-4 top-4 flex gap-2">
                             <span className="flex items-center gap-1 rounded-full bg-black/60 px-3 py-1 text-[10px] font-mono backdrop-blur-md">
                               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-green-400" />
@@ -262,7 +297,7 @@ export default function LandingPage() {
                   </div>
                 </div>
               </div>
-            </div>
+            </motion.div>
           </div>
         </div>
       </section>
@@ -281,17 +316,24 @@ export default function LandingPage() {
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {showcaseModels.map((model) => (
-              <div key={model.title} className="group relative aspect-[4/5] overflow-hidden rounded-lg">
+            {showcaseModels.map((model, index) => (
+              <motion.div 
+                key={model.title} 
+                initial={{ opacity: 0, y: 30 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.5, delay: index * 0.1 }}
+                className="group relative aspect-[4/5] overflow-hidden rounded-lg"
+              >
                 <Image src={model.image} alt={model.alt} width={1200} height={1500} quality={100} sizes="(max-width: 639px) 100vw, (max-width: 1023px) 50vw, 25vw" className="h-full w-full object-cover" />
-                <div className="absolute inset-0 bg-black/40 transition-colors group-hover:bg-black/20" />
+                <div className="absolute inset-0 bg-gradient-to-t from-[#0c1324]/90 via-[#0c1324]/20 to-transparent transition-colors group-hover:via-transparent" />
                 <div className="absolute bottom-6 left-6">
                   <span className={`mb-2 inline-block rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-widest ${model.badgeClass}`}>
                     {model.badge}
                   </span>
                   <h4 className="font-headline text-xl font-bold text-white">{model.title}</h4>
                 </div>
-              </div>
+              </motion.div>
             ))}
           </div>
         </div>
@@ -307,8 +349,15 @@ export default function LandingPage() {
           <div className="relative">
             <div className="absolute bottom-0 left-1/2 top-0 hidden w-px -translate-x-1/2 bg-gradient-to-b from-[#adc6ff] via-[#424754] to-transparent md:block" />
             <div className="space-y-24">
-              {roadmapItems.map((item) => (
-                <div key={item.title} className="grid items-center gap-20 md:grid-cols-2">
+              {roadmapItems.map((item, index) => (
+                <motion.div 
+                  key={item.title} 
+                  initial={{ opacity: 0, x: item.side === 'left' ? -30 : 30 }}
+                  whileInView={{ opacity: 1, x: 0 }}
+                  viewport={{ once: true, margin: "-100px" }}
+                  transition={{ duration: 0.6, delay: index * 0.1 }}
+                  className="grid items-center gap-20 md:grid-cols-2"
+                >
                   {item.side === "left" ? (
                     <>
                       <div className="hidden text-right md:block">
@@ -342,7 +391,7 @@ export default function LandingPage() {
                       </div>
                     </>
                   )}
-                </div>
+                </motion.div>
               ))}
             </div>
           </div>

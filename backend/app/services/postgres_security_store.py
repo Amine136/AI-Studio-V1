@@ -4,6 +4,8 @@ import hashlib
 import secrets
 import time
 import uuid
+import re
+from datetime import datetime, timezone
 from typing import Any
 
 from app.config import settings
@@ -16,6 +18,10 @@ CODE_BODY_LENGTH = 30
 SYSTEM_AUDIT_EMAIL = "system@vibecraft.local"
 AUTO_SUSPEND_AUDIT_EMAIL = "policy@vibecraft.local"
 USAGE_CAP_REASONS = ["smart_analysis_charge"]
+PROFILE_USERNAME_ALLOWED_RE = re.compile(r"[^a-z0-9._-]+")
+PROFILE_USERNAME_MAX_LENGTH = 15
+PROFILE_BIO_MAX_LENGTH = 500
+PROFILE_CHANGE_LIMIT_PER_MONTH = 2
 
 
 def preload_postgres() -> None:
@@ -31,12 +37,155 @@ def ensure_user(uid: str, email: str, display_name: str) -> dict[str, Any]:
         return _user_dict_from_model(user)
 
 
+def is_email_deactivated(email: str) -> dict[str, Any] | None:
+    normalized = str(email or "").strip().lower()
+    if not normalized:
+        return None
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        entry = repo.get_deactivated_email(normalized)
+        if entry is None:
+            return None
+        return {
+            "email": entry.email,
+            "originalUid": entry.original_uid,
+            "deactivatedAt": entry.deactivated_at,
+            "reason": entry.reason or "",
+        }
+
+
 def get_user(uid: str) -> dict[str, Any]:
     with session_scope() as session:
         repo = SecurityRepository(session)
         user = repo.get_user(uid)
         if user is None:
-            return {"uid": uid, "email": "", "displayName": "", "credits": 0.0}
+            return {
+                "uid": uid,
+                "email": "",
+                "displayName": "",
+                "username": "",
+                "bio": "",
+                "credits": 0.0,
+                "profileChangesRemaining": PROFILE_CHANGE_LIMIT_PER_MONTH,
+                "profileChangesResetAt": None,
+            }
+        return _user_dict_from_model(user)
+
+
+def get_profile_change_status(uid: str) -> dict[str, Any]:
+    now = int(time.time())
+    key, reset_at = _profile_change_bucket_key(uid, now)
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        bucket = repo.get_rate_limit_bucket(key)
+        if bucket is None or int(bucket.reset_at) <= now:
+            used = 0
+        else:
+            used = max(0, int(bucket.count))
+            reset_at = int(bucket.reset_at)
+    return {
+        "profileChangesRemaining": max(0, PROFILE_CHANGE_LIMIT_PER_MONTH - used),
+        "profileChangesResetAt": reset_at,
+    }
+
+
+def update_user_profile(uid: str, *, username: str, bio: str) -> dict[str, Any]:
+    normalized_username = _normalize_profile_username(username)
+    normalized_bio = _normalize_profile_bio(bio)
+    if not normalized_username:
+        raise ValueError("PROFILE_USERNAME_REQUIRED")
+
+    now = int(time.time())
+    key, reset_at = _profile_change_bucket_key(uid, now)
+
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        user = repo.get_user_for_update(uid)
+        if user is None:
+            user = repo.ensure_user(uid, "", "")
+            session.flush()
+
+        if normalized_username == str(user.username or "") and normalized_bio == str(user.bio or ""):
+            result = _user_dict_from_model(user)
+            result.update(_profile_change_status_from_bucket(repo.get_rate_limit_bucket(key), now, reset_at))
+            return result
+
+        bucket = repo.get_rate_limit_bucket_for_update(key)
+        if bucket is None or int(bucket.reset_at) <= now:
+            repo.upsert_rate_limit_bucket(key, 1, reset_at)
+            used = 1
+        else:
+            if int(bucket.count) >= PROFILE_CHANGE_LIMIT_PER_MONTH:
+                raise ValueError("PROFILE_UPDATE_LIMIT")
+            bucket.count += 1
+            bucket.updated_at = now
+            session.flush()
+            used = int(bucket.count)
+
+        repo.update_user_profile(user, username=normalized_username, bio=normalized_bio, updated_at=now)
+        result = _user_dict_from_model(user)
+        result.update(
+            {
+                "profileChangesRemaining": max(0, PROFILE_CHANGE_LIMIT_PER_MONTH - used),
+                "profileChangesResetAt": reset_at,
+            }
+        )
+        return result
+
+
+def update_user_notification_preferences(
+    uid: str,
+    *,
+    email_general_news_enabled: bool,
+    email_platform_updates_enabled: bool,
+) -> dict[str, Any]:
+    now = int(time.time())
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        user = repo.get_user_for_update(uid)
+        if user is None:
+            user = repo.ensure_user(uid, "", "")
+            session.flush()
+        repo.update_user_notification_preferences(
+            user,
+            email_general_news_enabled=email_general_news_enabled,
+            email_platform_updates_enabled=email_platform_updates_enabled,
+            updated_at=now,
+        )
+        result = _user_dict_from_model(user)
+        result.update(get_profile_change_status(uid))
+        return result
+
+
+def deactivate_user_account(uid: str) -> dict[str, Any]:
+    now = int(time.time())
+    reason = "Account deactivated by the user. Access has been permanently disabled."
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        user = repo.get_user_for_update(uid)
+        if user is None:
+            user = repo.ensure_user(uid, "", "")
+            session.flush()
+        if bool(user.is_deactivated):
+            return _user_dict_from_model(user)
+        repo.deactivate_user(user, reason=reason, updated_at=now)
+        if str(user.email or "").strip():
+            repo.upsert_deactivated_email(
+                email=str(user.email),
+                original_uid=user.uid,
+                deactivated_at=now,
+                reason=reason,
+            )
+        repo.add_admin_audit_log(
+            admin_uid=uid,
+            admin_email=user.email or SYSTEM_AUDIT_EMAIL,
+            action="user_self_deactivate",
+            target_type="user",
+            target_id=uid,
+            reason=reason,
+            metadata_json={"uid": uid, "self_serve": True},
+            created_at=now,
+        )
         return _user_dict_from_model(user)
 
 
@@ -204,6 +353,125 @@ def list_admin_audit_logs(
                 exclude_admin_email=SYSTEM_AUDIT_EMAIL,
             )
         ]
+
+
+def list_dashboard_news_items(*, active_only: bool = False) -> list[dict[str, Any]]:
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        return [_dashboard_news_dict_from_model(item) for item in repo.list_dashboard_news_items(active_only=active_only)]
+
+
+def create_dashboard_news_item(
+    *,
+    badge: str,
+    when_label: str,
+    title: str,
+    description: str,
+    link_label: str,
+    link_href: str,
+    tone: str,
+    sort_order: int,
+    is_active: bool,
+    admin_uid: str | None,
+    admin_email: str,
+) -> dict[str, Any]:
+    now = int(time.time())
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        item = repo.create_dashboard_news_item(
+            badge=badge,
+            when_label=when_label,
+            title=title,
+            description=description,
+            link_label=link_label,
+            link_href=link_href,
+            tone=tone,
+            sort_order=sort_order,
+            is_active=is_active,
+        )
+        repo.add_admin_audit_log(
+            admin_uid=admin_uid,
+            admin_email=admin_email.strip(),
+            action="dashboard_news_create",
+            target_type="dashboard_news",
+            target_id=item.id,
+            reason=f"Created dashboard news item '{title}'.",
+            metadata_json={"title": title, "tone": tone, "is_active": bool(is_active), "sort_order": int(sort_order)},
+            created_at=now,
+        )
+        return _dashboard_news_dict_from_model(item)
+
+
+def update_dashboard_news_item(
+    item_id: str,
+    *,
+    badge: str,
+    when_label: str,
+    title: str,
+    description: str,
+    link_label: str,
+    link_href: str,
+    tone: str,
+    sort_order: int,
+    is_active: bool,
+    admin_uid: str | None,
+    admin_email: str,
+) -> dict[str, Any]:
+    now = int(time.time())
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        item = repo.get_dashboard_news_item_for_update(item_id)
+        if item is None:
+            raise ValueError("DASHBOARD_NEWS_NOT_FOUND")
+        repo.update_dashboard_news_item(
+            item,
+            badge=badge,
+            when_label=when_label,
+            title=title,
+            description=description,
+            link_label=link_label,
+            link_href=link_href,
+            tone=tone,
+            sort_order=sort_order,
+            is_active=is_active,
+        )
+        repo.add_admin_audit_log(
+            admin_uid=admin_uid,
+            admin_email=admin_email.strip(),
+            action="dashboard_news_update",
+            target_type="dashboard_news",
+            target_id=item.id,
+            reason=f"Updated dashboard news item '{title}'.",
+            metadata_json={"title": title, "tone": tone, "is_active": bool(is_active), "sort_order": int(sort_order)},
+            created_at=now,
+        )
+        return _dashboard_news_dict_from_model(item)
+
+
+def delete_dashboard_news_item(
+    item_id: str,
+    *,
+    admin_uid: str | None,
+    admin_email: str,
+) -> None:
+    now = int(time.time())
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        item = repo.get_dashboard_news_item_for_update(item_id)
+        if item is None:
+            raise ValueError("DASHBOARD_NEWS_NOT_FOUND")
+        title = item.title
+        repo.delete_dashboard_news_item(item)
+        repo.add_admin_audit_log(
+            admin_uid=admin_uid,
+            admin_email=admin_email.strip(),
+            action="dashboard_news_delete",
+            target_type="dashboard_news",
+            target_id=item_id,
+            reason=f"Deleted dashboard news item '{title}'.",
+            metadata_json={"title": title},
+            created_at=now,
+        )
 
 
 def adjust_credits(
@@ -1069,11 +1337,47 @@ def _minor_to_credits(value: int) -> float:
     return round(int(value) / CREDIT_SCALE, 2)
 
 
+def _normalize_profile_username(value: str) -> str:
+    normalized = PROFILE_USERNAME_ALLOWED_RE.sub("", str(value or "").strip().lower())
+    return normalized[:PROFILE_USERNAME_MAX_LENGTH]
+
+
+def _normalize_profile_bio(value: str) -> str:
+    return str(value or "").strip()[:PROFILE_BIO_MAX_LENGTH]
+
+
+def _profile_change_bucket_key(uid: str, now: int) -> tuple[str, int]:
+    dt = datetime.fromtimestamp(now, tz=timezone.utc)
+    year = dt.year
+    month = dt.month
+    if month == 12:
+        next_month = datetime(year + 1, 1, 1, tzinfo=timezone.utc)
+    else:
+        next_month = datetime(year, month + 1, 1, tzinfo=timezone.utc)
+    return f"profile_update:{uid}:{year:04d}{month:02d}", int(next_month.timestamp())
+
+
+def _profile_change_status_from_bucket(bucket: Any, now: int, reset_at: int) -> dict[str, Any]:
+    if bucket is None or int(bucket.reset_at) <= now:
+        used = 0
+    else:
+        used = max(0, int(bucket.count))
+        reset_at = int(bucket.reset_at)
+    return {
+        "profileChangesRemaining": max(0, PROFILE_CHANGE_LIMIT_PER_MONTH - used),
+        "profileChangesResetAt": reset_at,
+    }
+
+
 def _user_dict_from_model(user: Any) -> dict[str, Any]:
     return {
         "uid": user.uid,
         "email": user.email,
         "displayName": user.display_name,
+        "username": user.username or "",
+        "bio": user.bio or "",
+        "emailGeneralNewsEnabled": bool(user.email_general_news_enabled),
+        "emailPlatformUpdatesEnabled": bool(user.email_platform_updates_enabled),
         "credits": _minor_to_credits(int(user.credits_minor)),
         "reservedCredits": _minor_to_credits(int(user.reserved_credits_minor)),
         "totalCredits": _minor_to_credits(int(user.credits_minor + user.reserved_credits_minor)),
@@ -1082,6 +1386,26 @@ def _user_dict_from_model(user: Any) -> dict[str, Any]:
         "lastSeenAt": user.last_seen_at,
         "isSuspended": bool(user.is_suspended),
         "suspensionReason": user.suspension_reason or "",
+        "isDeactivated": bool(user.is_deactivated),
+        "deactivatedAt": user.deactivated_at,
+        "deactivationReason": user.deactivation_reason or "",
+    }
+
+
+def _dashboard_news_dict_from_model(item: Any) -> dict[str, Any]:
+    return {
+        "id": item.id,
+        "badge": item.badge,
+        "when": item.when_label,
+        "title": item.title,
+        "description": item.description,
+        "linkLabel": item.link_label,
+        "linkHref": item.link_href,
+        "tone": item.tone,
+        "sortOrder": int(item.sort_order),
+        "isActive": bool(item.is_active),
+        "createdAt": item.created_at,
+        "updatedAt": item.updated_at,
     }
 
 

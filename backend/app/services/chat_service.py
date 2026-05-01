@@ -1,3 +1,4 @@
+import base64
 import re
 from pathlib import Path
 from typing import Any, Dict
@@ -6,8 +7,8 @@ from urllib.parse import urlparse
 from app.config import settings
 from app.core.schema import ChatMessage, ChatMessagePart, PlainChatOptions, PlainChatRequest
 from app.services.apikeymanager_client import generate_chat_via_proxy
+from app.services.user_files import load_private_user_file, private_file_id_from_url, private_file_url_prefix
 
-SAFE_UPLOADED_FILENAME = re.compile(r"^[a-f0-9]{32}\.(jpg|png|webp)$")
 SAFE_GENERATED_FILENAME = re.compile(r"^[0-9a-f-]{36}\.(png|jpg|webp)$")
 MODEL_PARAMETER_OPTION_KEY_MAP = {
     "temperature": "temperature",
@@ -57,7 +58,7 @@ def list_plain_chat_models() -> list[dict[str, Any]]:
 def normalize_plain_chat_system(model_name: str, parts: list[ChatMessagePart]) -> list[dict[str, Any]]:
     _, model_entry = resolve_plain_chat_model(model_name)
     _validate_system_parts(parts, supports_image_input=_supports_image_input(model_entry))
-    return _system_parts(parts)
+    return [_serialize_part(part) for part in parts] if parts else _system_parts([], user_uid="")
 
 
 def serialize_plain_chat_parts(parts: list[ChatMessagePart]) -> list[dict[str, Any]]:
@@ -130,7 +131,7 @@ def resolve_plain_chat_model(model_name: str) -> tuple[str, dict[str, Any]]:
     raise ValueError("CHAT_MODEL_NOT_FOUND")
 
 
-def send_plain_chat(payload: PlainChatRequest) -> dict[str, Any]:
+def send_plain_chat(payload: PlainChatRequest, *, user_uid: str) -> dict[str, Any]:
     _, model_entry = resolve_plain_chat_model(payload.model)
     provider = str(model_entry.get("provider") or "").strip()
     model_id = str(model_entry.get("model_id") or payload.model).strip()
@@ -145,8 +146,8 @@ def send_plain_chat(payload: PlainChatRequest) -> dict[str, Any]:
     request_payload: dict[str, Any] = {
         "model": model_id,
         "provider": provider,
-        "system": _system_parts(payload.system),
-        "messages": _serialize_request_messages(payload.messages),
+        "system": _system_parts(payload.system, user_uid=user_uid),
+        "messages": _serialize_request_messages(payload.messages, user_uid=user_uid),
     }
 
     request_payload["options"] = _normalized_options(
@@ -157,7 +158,7 @@ def send_plain_chat(payload: PlainChatRequest) -> dict[str, Any]:
         messages=payload.messages,
     )
 
-    result = generate_chat_via_proxy(request_payload)
+    result = generate_chat_via_proxy(request_payload, owner_uid=user_uid)
     result["message"] = _sanitize_provider_message(result.get("message"))
     return result
 
@@ -183,10 +184,10 @@ def _serialize_message(message: ChatMessage) -> dict[str, Any]:
     }
 
 
-def _serialize_request_messages(messages: list[ChatMessage]) -> list[dict[str, Any]]:
+def _serialize_request_messages(messages: list[ChatMessage], *, user_uid: str) -> list[dict[str, Any]]:
     serialized: list[dict[str, Any]] = []
     for message in messages:
-        parts = [_serialize_part(part) for part in message.parts]
+        parts = [_request_part(part, user_uid=user_uid) for part in message.parts]
         if message.role == "assistant":
             # Gemini image-capable chat requests reject replaying assistant image parts
             # in history. Keep only assistant text for continuity.
@@ -200,9 +201,9 @@ def _serialize_request_messages(messages: list[ChatMessage]) -> list[dict[str, A
     return serialized
 
 
-def _system_parts(parts: list[ChatMessagePart]) -> list[dict[str, Any]]:
+def _system_parts(parts: list[ChatMessagePart], *, user_uid: str) -> list[dict[str, Any]]:
     if parts:
-        return [_serialize_part(part) for part in parts]
+        return [_request_part(part, user_uid=user_uid) for part in parts]
     if settings.plain_chat_default_system_prompt:
         return [{"type": "text", "text": settings.plain_chat_default_system_prompt}]
     return []
@@ -212,6 +213,18 @@ def _serialize_part(part: ChatMessagePart) -> dict[str, Any]:
     if part.type == "text":
         return {"type": "text", "text": (part.text or "").strip()}
     return {"type": "image_url", "url": str(part.url or "").strip()}
+
+
+def _request_part(part: ChatMessagePart, *, user_uid: str) -> dict[str, Any]:
+    if part.type == "text":
+        return {"type": "text", "text": (part.text or "").strip()}
+
+    image_url = str(part.url or "").strip()
+    file_id = _private_file_id_from_url(image_url)
+    if file_id:
+        mime_type, encoded_image = _load_private_uploaded_image_data(file_id, user_uid=user_uid)
+        return {"type": "image", "mimeType": mime_type, "data": encoded_image}
+    return {"type": "image_url", "url": image_url}
 
 
 def _validate_plain_chat_request(payload: PlainChatRequest, model_entry: dict[str, Any]) -> None:
@@ -274,21 +287,38 @@ def _validate_system_parts(parts: list[ChatMessagePart], *, supports_image_input
 
 
 def _validate_uploaded_image_url(image_url: str) -> None:
-    uploaded_prefix = f"{settings.public_backend_base_url}/images/"
+    if private_file_id_from_url(image_url):
+        return
+    parsed = urlparse(image_url)
+    filename = Path(parsed.path).name
     generated_prefixes: list[str] = []
     if settings.public_backend_base_url:
         generated_prefixes.append(f"{settings.public_backend_base_url}/generated-images/")
-    if settings.apikeymanager_public_base_url:
-        generated_prefixes.append(f"{settings.apikeymanager_public_base_url}/generated-images/")
-
-    parsed = urlparse(image_url)
-    filename = Path(parsed.path).name
-    if image_url.startswith(uploaded_prefix) and SAFE_UPLOADED_FILENAME.match(filename):
-        return
     for generated_prefix in generated_prefixes:
         if image_url.startswith(generated_prefix) and SAFE_GENERATED_FILENAME.match(filename):
             return
     raise ValueError("CHAT_IMAGE_URL_INVALID")
+
+
+def _private_file_url_prefix() -> str:
+    return private_file_url_prefix()
+
+
+def _private_file_id_from_url(image_url: str) -> str | None:
+    return private_file_id_from_url(image_url)
+
+
+def _load_private_uploaded_image_data(file_id: str, *, user_uid: str) -> tuple[str, str]:
+    try:
+        file_record, storage_path = load_private_user_file(
+            file_id,
+            user_uid,
+            allowed_kinds={"uploaded_input", "generated_output"},
+        )
+    except Exception as exc:
+        raise ValueError("CHAT_IMAGE_URL_INVALID") from exc
+    image_bytes = storage_path.read_bytes()
+    return str(file_record["mime_type"]), base64.b64encode(image_bytes).decode("ascii")
 
 
 def _is_text_capable_model(model_entry: dict[str, Any]) -> bool:

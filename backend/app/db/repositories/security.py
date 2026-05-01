@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 import time
 import uuid
 from typing import Any
@@ -9,7 +10,15 @@ from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from app.db.models import AdminAccount, AdminAuditLog, AdminSession, AnalyzeSession, ChatConversation, ChatMessage, CreditCode, CreditCodeClaim, CreditLedgerEntry, GenerationJob, HistoryEntry, RateLimitBucket, User
+from app.db.models import AdminAccount, AdminAuditLog, AdminSession, AnalyzeSession, ChatConversation, ChatMessage, CreditCode, CreditCodeClaim, CreditLedgerEntry, DashboardNewsItem, DeactivatedEmail, GenerationJob, HistoryEntry, RateLimitBucket, User, UserFile
+
+USERNAME_ALLOWED_RE = re.compile(r"[^a-z0-9._-]+")
+
+
+def _default_username(email: str, display_name: str, uid: str) -> str:
+    seed = (email.split("@", 1)[0] if "@" in email else display_name or uid).strip().lower()
+    normalized = USERNAME_ALLOWED_RE.sub("", seed)
+    return normalized[:15] or "vibecraft"
 
 
 class SecurityRepository:
@@ -118,11 +127,97 @@ class SecurityRepository:
         self.session.flush()
         return len(entries)
 
-    def touch_admin_session(self, entry: AdminSession, *, refreshed_at: int | None = None) -> AdminSession:
+    def touch_admin_session(
+        self,
+        entry: AdminSession,
+        *,
+        refreshed_at: int | None = None,
+        expires_at: int | None = None,
+    ) -> AdminSession:
         now = refreshed_at or int(time.time())
         entry.updated_at = now
+        if expires_at is not None:
+            entry.expires_at = expires_at
         self.session.flush()
         return entry
+
+    def list_dashboard_news_items(self, *, active_only: bool = False) -> list[DashboardNewsItem]:
+        stmt = select(DashboardNewsItem)
+        if active_only:
+            stmt = stmt.where(DashboardNewsItem.is_active.is_(True))
+        stmt = stmt.order_by(DashboardNewsItem.sort_order.asc(), DashboardNewsItem.updated_at.desc(), DashboardNewsItem.created_at.desc())
+        return list(self.session.execute(stmt).scalars())
+
+    def get_dashboard_news_item(self, item_id: str) -> DashboardNewsItem | None:
+        return self.session.get(DashboardNewsItem, item_id)
+
+    def get_dashboard_news_item_for_update(self, item_id: str) -> DashboardNewsItem | None:
+        return self.session.execute(
+            select(DashboardNewsItem).where(DashboardNewsItem.id == item_id).with_for_update()
+        ).scalar_one_or_none()
+
+    def create_dashboard_news_item(
+        self,
+        *,
+        badge: str,
+        when_label: str,
+        title: str,
+        description: str,
+        link_label: str,
+        link_href: str,
+        tone: str,
+        sort_order: int,
+        is_active: bool,
+    ) -> DashboardNewsItem:
+        now = int(time.time())
+        item = DashboardNewsItem(
+            id=str(uuid.uuid4()),
+            badge=badge,
+            when_label=when_label,
+            title=title,
+            description=description,
+            link_label=link_label,
+            link_href=link_href,
+            tone=tone,
+            sort_order=sort_order,
+            is_active=is_active,
+            created_at=now,
+            updated_at=now,
+        )
+        self.session.add(item)
+        self.session.flush()
+        return item
+
+    def update_dashboard_news_item(
+        self,
+        item: DashboardNewsItem,
+        *,
+        badge: str,
+        when_label: str,
+        title: str,
+        description: str,
+        link_label: str,
+        link_href: str,
+        tone: str,
+        sort_order: int,
+        is_active: bool,
+    ) -> DashboardNewsItem:
+        item.badge = badge
+        item.when_label = when_label
+        item.title = title
+        item.description = description
+        item.link_label = link_label
+        item.link_href = link_href
+        item.tone = tone
+        item.sort_order = sort_order
+        item.is_active = is_active
+        item.updated_at = int(time.time())
+        self.session.flush()
+        return item
+
+    def delete_dashboard_news_item(self, item: DashboardNewsItem) -> None:
+        self.session.delete(item)
+        self.session.flush()
 
     def ensure_user(self, uid: str, email: str, display_name: str) -> User:
         now = int(time.time())
@@ -132,6 +227,8 @@ class SecurityRepository:
                 uid=uid,
                 email=email,
                 display_name=display_name,
+                username=_default_username(email, display_name, uid),
+                bio="",
                 credits_minor=0,
                 reserved_credits_minor=0,
                 created_at=now,
@@ -142,10 +239,85 @@ class SecurityRepository:
         else:
             user.email = email
             user.display_name = display_name
+            if not str(user.username or "").strip():
+                user.username = _default_username(email, display_name, uid)
             user.updated_at = now
             user.last_seen_at = now
         self.session.flush()
         return user
+
+    def update_user_profile(self, user: User, *, username: str, bio: str, updated_at: int) -> User:
+        user.username = username
+        user.bio = bio
+        user.updated_at = updated_at
+        user.last_seen_at = updated_at
+        self.session.flush()
+        return user
+
+    def update_user_notification_preferences(
+        self,
+        user: User,
+        *,
+        email_general_news_enabled: bool,
+        email_platform_updates_enabled: bool,
+        updated_at: int,
+    ) -> User:
+        user.email_general_news_enabled = bool(email_general_news_enabled)
+        user.email_platform_updates_enabled = bool(email_platform_updates_enabled)
+        user.updated_at = updated_at
+        user.last_seen_at = updated_at
+        self.session.flush()
+        return user
+
+    def deactivate_user(self, user: User, *, reason: str, updated_at: int) -> User:
+        user.is_deactivated = True
+        user.deactivated_at = updated_at
+        user.deactivation_reason = reason
+        user.is_suspended = True
+        user.suspension_reason = reason
+        user.updated_at = updated_at
+        user.last_seen_at = updated_at
+        self.session.flush()
+        return user
+
+    def get_deactivated_email(self, email: str) -> DeactivatedEmail | None:
+        normalized = email.strip().lower()
+        if not normalized:
+            return None
+        return self.session.get(DeactivatedEmail, normalized)
+
+    def upsert_deactivated_email(
+        self,
+        *,
+        email: str,
+        original_uid: str | None,
+        deactivated_at: int,
+        reason: str | None,
+    ) -> DeactivatedEmail:
+        normalized = email.strip().lower()
+        entry = DeactivatedEmail(
+            email=normalized,
+            original_uid=original_uid.strip() if original_uid else None,
+            deactivated_at=deactivated_at,
+            reason=reason.strip() if reason else None,
+        )
+        stmt = pg_insert(DeactivatedEmail).values(
+            email=entry.email,
+            original_uid=entry.original_uid,
+            deactivated_at=entry.deactivated_at,
+            reason=entry.reason,
+        )
+        stmt = stmt.on_conflict_do_update(
+            index_elements=[DeactivatedEmail.email],
+            set_={
+                "original_uid": entry.original_uid,
+                "deactivated_at": entry.deactivated_at,
+                "reason": entry.reason,
+            },
+        )
+        self.session.execute(stmt)
+        self.session.flush()
+        return self.session.get(DeactivatedEmail, normalized)
 
     def get_user(self, uid: str) -> User | None:
         return self.session.get(User, uid)
@@ -154,6 +326,53 @@ class SecurityRepository:
         return self.session.execute(
             select(User).where(User.uid == uid).with_for_update()
         ).scalar_one_or_none()
+
+    def create_user_file(
+        self,
+        *,
+        owner_uid: str,
+        storage_path: str,
+        kind: str,
+        mime_type: str,
+        file_id: str | None = None,
+        created_at: int | None = None,
+    ) -> UserFile:
+        entry = UserFile(
+            id=file_id or str(uuid.uuid4()),
+            owner_uid=owner_uid,
+            storage_path=storage_path,
+            kind=kind,
+            mime_type=mime_type,
+            created_at=created_at or int(time.time()),
+        )
+        self.session.add(entry)
+        self.session.flush()
+        return entry
+
+    def get_user_file(self, file_id: str) -> UserFile | None:
+        return self.session.get(UserFile, file_id)
+
+    def get_user_file_for_owner(self, file_id: str, owner_uid: str) -> UserFile | None:
+        return self.session.execute(
+            select(UserFile).where(
+                UserFile.id == file_id,
+                UserFile.owner_uid == owner_uid,
+            )
+        ).scalar_one_or_none()
+
+    def list_user_files_before(self, *, kind: str, created_before: int) -> list[UserFile]:
+        return list(
+            self.session.execute(
+                select(UserFile).where(
+                    UserFile.kind == kind,
+                    UserFile.created_at < created_before,
+                )
+            ).scalars()
+        )
+
+    def delete_user_file(self, entry: UserFile) -> None:
+        self.session.delete(entry)
+        self.session.flush()
 
     def list_users(self) -> list[User]:
         return list(

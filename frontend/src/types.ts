@@ -5,12 +5,14 @@ export type GenerationMode = "quick" | "smart";
 export type GenerationStatus = "processing" | "generating";
 
 export interface InputImagePayload {
+  file_id?: string;
   name?: string;
   mime_type?: string;
   url: string;
 }
 
 export interface UploadedImageResult {
+  id: string;
   name: string;
   mime_type: string;
   url: string;
@@ -162,6 +164,73 @@ export interface PlainChatTurnMeta {
   failure_reason?: string;
   provider_error?: Record<string, any>;
   [key: string]: any;
+}
+
+export interface CurrentUserProfile {
+  uid: string;
+  email: string;
+  displayName: string;
+  username?: string;
+  bio?: string;
+  emailGeneralNewsEnabled?: boolean;
+  emailPlatformUpdatesEnabled?: boolean;
+  credits?: number;
+  reservedCredits?: number;
+  totalCredits?: number;
+  createdAt?: number | null;
+  updatedAt?: number | null;
+  lastSeenAt?: number | null;
+  isSuspended?: boolean;
+  suspensionReason?: string;
+  isDeactivated?: boolean;
+  deactivatedAt?: number | null;
+  deactivationReason?: string;
+  profileChangesRemaining?: number;
+  profileChangesResetAt?: number | null;
+}
+
+export interface UserProfileUpdateRequest {
+  username: string;
+  bio: string;
+}
+
+export interface UserNotificationPreferencesUpdateRequest {
+  emailGeneralNewsEnabled: boolean;
+  emailPlatformUpdatesEnabled: boolean;
+}
+
+export type DashboardNewsTone = "blue" | "purple" | "slate";
+export type DashboardNewsBadge = "AI News" | "Platform Updates" | "New Features";
+
+export interface DashboardNewsItem {
+  id: string;
+  badge: DashboardNewsBadge;
+  when: string;
+  title: string;
+  description: string;
+  linkLabel: string;
+  linkHref: string;
+  tone: DashboardNewsTone;
+  sortOrder: number;
+  isActive: boolean;
+  createdAt?: number | null;
+  updatedAt?: number | null;
+}
+
+export interface DashboardNewsListResponse {
+  items: DashboardNewsItem[];
+  total: number;
+}
+
+export interface DashboardNewsUpsertRequest {
+  badge: DashboardNewsBadge;
+  title: string;
+  description: string;
+  linkLabel: string;
+  linkHref: string;
+  tone: DashboardNewsTone;
+  sortOrder: number;
+  isActive: boolean;
 }
 
 // Step 1: What we send to start

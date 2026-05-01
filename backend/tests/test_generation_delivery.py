@@ -9,7 +9,7 @@ from app.services.apikeymanager_client import ApiKeyManagerProxyError
 
 def test_execute_generation_returns_error_when_provider_fails(monkeypatch):
     monkeypatch.setitem(nodes.settings.model_catalog, "image", {"test-model": {"provider": "mock", "model_id": "mock-image", "cost": 0.1}})
-    monkeypatch.setattr(nodes, "generate_image_url", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("Invalid base64 image returned by ApiKeyManager")))
+    monkeypatch.setattr(nodes, "generate_image_payload", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("Invalid base64 image returned by ApiKeyManager")))
 
     result = nodes.execute_generation(
         {
@@ -72,7 +72,7 @@ def test_execute_generation_returns_structured_provider_failure(monkeypatch):
             provider="OpenAI",
         )
 
-    monkeypatch.setattr(nodes, "generate_image_url", raise_timeout)
+    monkeypatch.setattr(nodes, "generate_image_payload", raise_timeout)
 
     result = nodes.execute_generation(
         {

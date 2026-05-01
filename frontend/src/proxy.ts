@@ -6,6 +6,7 @@ const ADMIN_HOST = (process.env.NEXT_PUBLIC_ADMIN_HOST || "adminvibecraft.ouni.s
 const ADMIN_REDIRECTS = new Map<string, string>([
   ["/", "/admin"],
   ["/login", "/admin/login"],
+  ["/news", "/admin/news"],
   ["/users", "/admin/users"],
   ["/codes", "/admin/codes"],
   ["/logs", "/admin/logs"],

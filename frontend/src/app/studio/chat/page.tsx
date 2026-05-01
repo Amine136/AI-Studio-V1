@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Fragment, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import { useAuth } from "../../../context/AuthContext";
+import InteractiveAuthenticatedImage from "../../../components/InteractiveAuthenticatedImage";
 import { api } from "../../../services/api";
 import type { BillingBreakdown, BillingUsage, ModelPricingSummary, PlainChatModelItem, PlainChatParameterSchemaEntry, PlainChatPart, PlainChatTurnMeta, UploadedImageResult } from "../../../types";
 
@@ -18,11 +19,13 @@ interface ChatMessage {
 }
 
 interface UploadedImageState {
+  fileId: string;
   name: string;
   mimeType: string;
   url: string;
   previewUrl: string;
   size: number;
+  originalSize: number;
 }
 
 interface ChatModelOption {
@@ -72,6 +75,11 @@ type ParameterState = Record<string, ParameterValue>;
 function normalizeConversationTitle(value?: string | null): string {
   const normalized = (value || "").trim();
   return normalized || DEFAULT_CONVERSATION_TITLE;
+}
+
+function formatConversationTitle(value: string): string {
+  if (value.length <= 15) return value;
+  return `${value.slice(0, 15)}...`;
 }
 
 function renderInlineMarkdown(text: string): ReactNode[] {
@@ -251,20 +259,15 @@ function AssistantMessageContent({ message }: { message: ChatMessage }) {
       {imageParts.length > 0 ? (
         <div className="flex flex-wrap gap-3">
           {imageParts.map((part, index) => (
-            <a
+            <InteractiveAuthenticatedImage
               key={`${message.id}-image-${index}`}
-              href={part.url}
-              target="_blank"
-              rel="noreferrer"
-              className="block"
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={part.url}
-                alt={`Assistant image ${index + 1}`}
-                className="max-h-64 w-auto rounded-xl border border-white/10 object-cover shadow-[0_12px_30px_rgba(0,0,0,0.28)]"
-              />
-            </a>
+              src={part.url!}
+              alt={`Assistant image ${index + 1}`}
+              wrapperClassName="rounded-xl border border-white/10"
+              imageClassName="max-h-64 w-auto object-cover shadow-[0_12px_30px_rgba(0,0,0,0.28)]"
+              loadingClassName="flex min-h-40 min-w-40 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 py-6 text-xs text-white/60"
+              errorClassName="flex min-h-40 min-w-40 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 py-6 text-xs text-white/60"
+            />
           ))}
         </div>
       ) : null}
@@ -290,20 +293,15 @@ function UserMessageContent({ message }: { message: ChatMessage }) {
       {imageParts.length > 0 ? (
         <div className="flex flex-wrap justify-end gap-3">
           {imageParts.map((part, index) => (
-            <a
+            <InteractiveAuthenticatedImage
               key={`${message.id}-image-${index}`}
-              href={part.url}
-              target="_blank"
-              rel="noreferrer"
-              className="block"
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={part.url}
-                alt={`User upload ${index + 1}`}
-                className="max-h-56 w-auto rounded-xl border border-black/10 object-cover shadow-[0_8px_24px_rgba(0,0,0,0.18)]"
-              />
-            </a>
+              src={part.url!}
+              alt={`User upload ${index + 1}`}
+              wrapperClassName="rounded-xl border border-black/10"
+              imageClassName="max-h-56 w-auto object-cover shadow-[0_8px_24px_rgba(0,0,0,0.18)]"
+              loadingClassName="flex min-h-40 min-w-40 items-center justify-center rounded-xl border border-black/10 bg-black/5 px-4 py-6 text-xs text-black/60"
+              errorClassName="flex min-h-40 min-w-40 items-center justify-center rounded-xl border border-black/10 bg-black/5 px-4 py-6 text-xs text-black/60"
+            />
           ))}
         </div>
       ) : null}
@@ -958,11 +956,13 @@ export default function StudioChatPage() {
       setInputImage((prev) => {
         if (prev?.previewUrl) URL.revokeObjectURL(prev.previewUrl);
         return {
+          fileId: uploaded.id,
           name: uploaded.name || file.name,
           mimeType: uploaded.mime_type || file.type,
           url: uploaded.url,
           previewUrl: URL.createObjectURL(file),
           size: uploaded.size || file.size,
+          originalSize: originalFile.size,
         };
       });
     } catch (err) {
@@ -1085,6 +1085,7 @@ export default function StudioChatPage() {
   const displayName = user?.displayName || user?.email?.split("@")[0] || "Studio User";
   const photoUrl = user?.photoURL || null;
   const normalizedConversationTitle = normalizeConversationTitle(conversationTitle);
+  const displayConversationTitle = formatConversationTitle(normalizedConversationTitle);
   const conversationTotalTokens = conversationPromptTokens + conversationCompletionTokens;
   const lastResolvedCost = toResolvedCostNumber(lastBillingMeta?.resolvedCost);
   const lastTotalTokens = getUsageTotalTokens(lastUsage);
@@ -1564,7 +1565,7 @@ export default function StudioChatPage() {
                   ) : (
                     <div className="flex min-w-0 items-center gap-2">
                       <h1 className="truncate font-headline text-base font-bold tracking-tight text-white sm:text-lg">
-                        {normalizedConversationTitle}
+                        {displayConversationTitle}
                       </h1>
                       <button
                         type="button"
@@ -1689,7 +1690,9 @@ export default function StudioChatPage() {
                             <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.18em] opacity-70">
                               {message.role === "user" ? displayName : lockedModel?.displayName || "Assistant"}
                             </div>
-                            {message.role === "user" ? <UserMessageContent message={message} /> : <AssistantMessageContent message={message} />}
+                            {message.role === "user"
+                              ? <UserMessageContent message={message} />
+                              : <AssistantMessageContent message={message} />}
                           </div>
                         </div>
                       ))}
@@ -1733,7 +1736,6 @@ export default function StudioChatPage() {
                       <img src={inputImage.previewUrl} alt={inputImage.name} className="h-12 w-12 rounded-lg object-cover" />
                       <div>
                         <div className="text-sm font-semibold text-white">{inputImage.name}</div>
-                        <div className="text-xs text-[#8c909f]">{(inputImage.size / (1024 * 1024)).toFixed(2)} MB</div>
                       </div>
                     </div>
                     <button

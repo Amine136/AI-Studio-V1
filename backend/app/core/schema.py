@@ -1,3 +1,4 @@
+import re
 from typing import List, Dict, Any, Optional, Literal
 from pydantic import BaseModel, Field, field_validator
 
@@ -12,6 +13,12 @@ GenerationStatus = Literal["processing", "generating"]
 
 class InputImage(BaseModel):
     """Uploaded image reference used as multimodal input."""
+    file_id: Optional[str] = Field(
+        default=None,
+        alias="fileId",
+        description="Private uploaded file identifier",
+        json_schema_extra={"example": "123e4567-e89b-12d3-a456-426614174000"},
+    )
     name: Optional[str] = Field(default=None, description="Original file name")
     mime_type: Optional[str] = Field(
         default=None,
@@ -20,9 +27,11 @@ class InputImage(BaseModel):
     )
     url: Optional[str] = Field(
         default=None,
-        description="Public image URL used for provider-side fetch",
-        json_schema_extra={"example": "https://vibecraft.ouni.space/images/1234abcd.png"},
+        description="Authenticated image URL for the uploaded file",
+        json_schema_extra={"example": "https://vibecraft.ouni.space/api/files/123e4567-e89b-12d3-a456-426614174000"},
     )
+
+    model_config = {"populate_by_name": True}
 
 
 ChatPartType = Literal["text", "image_url"]
@@ -178,6 +187,31 @@ class PlainChatConversationTurnResponse(BaseModel):
 
     model_config = {"populate_by_name": True}
 
+
+class UserProfileUpdateRequest(BaseModel):
+    username: str = Field(..., min_length=1, max_length=15)
+    bio: str = Field(default="", max_length=500)
+
+    @field_validator("username")
+    @classmethod
+    def normalize_username(cls, value: str) -> str:
+        normalized = re.sub(r"[^a-z0-9._-]+", "", str(value or "").strip().lower())
+        if not normalized:
+            raise ValueError("Username is required")
+        return normalized[:15]
+
+    @field_validator("bio")
+    @classmethod
+    def normalize_bio(cls, value: str) -> str:
+        return str(value or "").strip()[:500]
+
+
+class UserNotificationPreferencesUpdateRequest(BaseModel):
+    email_general_news_enabled: bool = Field(alias="emailGeneralNewsEnabled")
+    email_platform_updates_enabled: bool = Field(alias="emailPlatformUpdatesEnabled")
+
+    model_config = {"populate_by_name": True}
+
 class GenerateRequest(BaseModel):
     """Request payload for content generation."""
     user_text: str = Field(
@@ -225,9 +259,10 @@ class GenerateRequest(BaseModel):
                     "requested_outputs": ["image", "caption"],
                     "mode": "smart",
                     "input_image": {
+                        "fileId": "123e4567-e89b-12d3-a456-426614174000",
                         "name": "reference.png",
                         "mime_type": "image/png",
-                        "url": "https://vibecraft.ouni.space/images/1234abcd.png"
+                        "url": "https://vibecraft.ouni.space/api/files/123e4567-e89b-12d3-a456-426614174000"
                     },
                     "user_preferences": {"platform": "LinkedIn", "brand_voice": "Professional"}
                 }
@@ -459,6 +494,42 @@ class AdminAuditLogListResponse(BaseModel):
     action: str = ""
     targetType: str = ""
     targetId: str = ""
+
+
+class DashboardNewsItemResponse(BaseModel):
+    id: str
+    badge: str = ""
+    when: str = ""
+    title: str
+    description: str = ""
+    linkLabel: str = ""
+    linkHref: str = "/studio"
+    tone: str = "blue"
+    sortOrder: int = 0
+    isActive: bool = True
+    createdAt: Optional[int] = None
+    updatedAt: Optional[int] = None
+
+
+class DashboardNewsListResponse(BaseModel):
+    items: List[DashboardNewsItemResponse]
+    total: int
+
+
+class DashboardNewsUpsertRequest(BaseModel):
+    badge: Literal["AI News", "Platform Updates", "New Features"] = "AI News"
+    title: str = Field(..., min_length=1, max_length=160)
+    description: str = Field(default="", max_length=600)
+    linkLabel: str = Field(default="", max_length=80)
+    linkHref: str = Field(default="/studio", max_length=255)
+    tone: Literal["blue", "purple", "slate"] = "blue"
+    sortOrder: int = Field(default=0, ge=0, le=999)
+    isActive: bool = True
+
+    @field_validator("title", "description", "linkLabel", "linkHref")
+    @classmethod
+    def normalize_text_fields(cls, value: str) -> str:
+        return str(value or "").strip()
 
 
 class AdminAuthFailureSummaryItem(BaseModel):

@@ -15,6 +15,7 @@ from app.db.models import (
     HistoryEntry,
     RateLimitBucket,
     User,
+    UserFile,
 )
 from app.db.session import (
     create_engine_from_settings,
@@ -41,6 +42,7 @@ __all__ = [
     "HistoryEntry",
     "RateLimitBucket",
     "User",
+    "UserFile",
     "create_engine_from_settings",
     "create_session_factory",
     "get_database_url",

@@ -14,6 +14,10 @@ class User(Base):
     uid: Mapped[str] = mapped_column(String(128), primary_key=True)
     email: Mapped[str] = mapped_column(String(320), default="", nullable=False)
     display_name: Mapped[str] = mapped_column(String(255), default="", nullable=False)
+    username: Mapped[str] = mapped_column(String(15), default="", nullable=False)
+    bio: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    email_general_news_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    email_platform_updates_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     credits_minor: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     reserved_credits_minor: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     created_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
@@ -21,6 +25,9 @@ class User(Base):
     last_seen_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
     is_suspended: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     suspension_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_deactivated: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    deactivated_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    deactivation_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     created_codes: Mapped[list["CreditCode"]] = relationship(
         back_populates="created_by_user",
@@ -39,6 +46,7 @@ class User(Base):
     generation_jobs: Mapped[list["GenerationJob"]] = relationship(back_populates="user")
     chat_conversations: Mapped[list["ChatConversation"]] = relationship(back_populates="user")
     chat_messages: Mapped[list["ChatMessage"]] = relationship(back_populates="user")
+    files: Mapped[list["UserFile"]] = relationship(back_populates="user")
     admin_audit_logs: Mapped[list["AdminAuditLog"]] = relationship(back_populates="admin_user")
 
     __table_args__ = (
@@ -46,6 +54,19 @@ class User(Base):
         CheckConstraint("reserved_credits_minor >= 0", name="ck_users_reserved_credits_minor_nonnegative"),
         Index("ix_users_email", "email"),
         Index("ix_users_last_seen_at", "last_seen_at"),
+    )
+
+
+class DeactivatedEmail(Base):
+    __tablename__ = "deactivated_emails"
+
+    email: Mapped[str] = mapped_column(String(320), primary_key=True)
+    original_uid: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    deactivated_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    __table_args__ = (
+        Index("ix_deactivated_emails_deactivated_at", "deactivated_at"),
     )
 
 
@@ -83,6 +104,28 @@ class AdminSession(Base):
     __table_args__ = (
         Index("ix_admin_sessions_admin_id_created_at", "admin_id", "created_at"),
         Index("ix_admin_sessions_expires_at", "expires_at"),
+    )
+
+
+class DashboardNewsItem(Base):
+    __tablename__ = "dashboard_news"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    badge: Mapped[str] = mapped_column(String(80), default="", nullable=False)
+    when_label: Mapped[str] = mapped_column(String(80), default="", nullable=False)
+    title: Mapped[str] = mapped_column(String(160), nullable=False)
+    description: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    link_label: Mapped[str] = mapped_column(String(80), default="", nullable=False)
+    link_href: Mapped[str] = mapped_column(String(255), default="/studio", nullable=False)
+    tone: Mapped[str] = mapped_column(String(24), default="blue", nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    updated_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+    __table_args__ = (
+        Index("ix_dashboard_news_active_sort_order", "is_active", "sort_order"),
+        Index("ix_dashboard_news_updated_at", "updated_at"),
     )
 
 
@@ -204,6 +247,25 @@ class HistoryEntry(Base):
 
     __table_args__ = (
         Index("ix_history_entries_uid_created_at", "uid", "created_at"),
+    )
+
+
+class UserFile(Base):
+    __tablename__ = "user_files"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    owner_uid: Mapped[str] = mapped_column(ForeignKey("users.uid", ondelete="CASCADE"), nullable=False)
+    storage_path: Mapped[str] = mapped_column(Text, nullable=False)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    mime_type: Mapped[str] = mapped_column(String(128), nullable=False)
+    created_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+    user: Mapped[User] = relationship(back_populates="files")
+
+    __table_args__ = (
+        CheckConstraint("kind IN ('uploaded_input', 'generated_output')", name="ck_user_files_kind_valid"),
+        Index("ix_user_files_owner_uid_created_at", "owner_uid", "created_at"),
+        Index("ix_user_files_storage_path", "storage_path", unique=True),
     )
 
 

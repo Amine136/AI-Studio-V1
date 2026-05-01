@@ -272,7 +272,11 @@ def get_admin_session(token: str) -> dict[str, Any] | None:
                 repo.revoke_admin_session(entry, revoked_at=now)
             return None
 
-        repo.touch_admin_session(entry, refreshed_at=now)
+        repo.touch_admin_session(
+            entry,
+            refreshed_at=now,
+            expires_at=now + settings.admin_session_ttl_seconds,
+        )
         account = entry.admin_account
         if account is None or not bool(account.is_active):
             repo.revoke_admin_session(entry, revoked_at=now)

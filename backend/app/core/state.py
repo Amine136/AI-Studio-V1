@@ -12,6 +12,7 @@ OutputType = Literal["caption", "image"]
 
 
 class InputImage(TypedDict, total=False):
+    file_id: str
     name: str
     mime_type: str
     url: str
@@ -28,6 +29,7 @@ class StudioState(TypedDict, total=False):
     
     # --- Input Layer (From User) ---
     user_text: str                       # Raw input: "Futuristic city in rain"
+    owner_uid: str                       # Authenticated owner for private file access
     requested_outputs: List[OutputType]  # What to generate: ["image", "caption"]
     input_image: Optional[InputImage]    # Optional uploaded image used as multimodal input
     

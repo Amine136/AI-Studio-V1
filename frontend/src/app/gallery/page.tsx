@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
+import AuthenticatedImage from "../../components/AuthenticatedImage";
 import { getHistory, type HistoryEntry } from "../../lib/history";
 
 type GalleryFilter = "all" | "images" | "captions";
@@ -167,8 +168,7 @@ export default function GalleryPage() {
             >
               <div className="relative min-h-[320px] overflow-hidden bg-[#070d1f]">
                 {isRenderableImageUrl(featuredEntry.imageUrl) ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={featuredEntry.imageUrl} alt={featuredEntry.prompt} className="h-full w-full object-cover transition-transform duration-700 hover:scale-105" />
+                  <AuthenticatedImage src={featuredEntry.imageUrl || ""} alt={featuredEntry.prompt} className="h-full w-full object-cover transition-transform duration-700 hover:scale-105" />
                 ) : (
                   <div className="flex h-full min-h-[320px] items-center justify-center text-white/20">
                     <span className="material-symbols-outlined text-[88px]">description</span>
@@ -219,8 +219,7 @@ export default function GalleryPage() {
               >
                 <div className="relative aspect-square overflow-hidden bg-[#070d1f]">
                   {isRenderableImageUrl(entry.imageUrl) ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={entry.imageUrl} alt={entry.prompt} className="h-full w-full object-cover transition-transform duration-700 hover:scale-105" />
+                    <AuthenticatedImage src={entry.imageUrl || ""} alt={entry.prompt} className="h-full w-full object-cover transition-transform duration-700 hover:scale-105" />
                   ) : (
                     <div className="flex h-full items-center justify-center text-white/20">
                       <span className="material-symbols-outlined text-[72px]">article</span>
@@ -253,8 +252,7 @@ export default function GalleryPage() {
             <div className="grid lg:grid-cols-[1.05fr_0.95fr]">
               <div className="bg-[#070d1f]">
                 {isRenderableImageUrl(selectedEntry.imageUrl) ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={selectedEntry.imageUrl} alt={selectedEntry.prompt} className="h-full w-full object-cover" />
+                  <AuthenticatedImage src={selectedEntry.imageUrl || ""} alt={selectedEntry.prompt} className="h-full w-full object-cover" />
                 ) : (
                   <div className="flex min-h-[320px] items-center justify-center text-white/20">
                     <span className="material-symbols-outlined text-[96px]">description</span>

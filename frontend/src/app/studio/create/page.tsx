@@ -13,6 +13,7 @@ import ReviewCard from "../../../components/ReviewCard";
 import ResultCard from "../../../components/ResultCard";
 import LoadingSpinner from "../../../components/LoadingSpinner";
 import CreditsDisplay from "../../../components/CreditsDisplay";
+import InteractiveAuthenticatedImage from "../../../components/InteractiveAuthenticatedImage";
 import type { CreditsDisplayHandle } from "../../../components/CreditsDisplay";
 import { addHistoryEntry } from "../../../lib/history";
 
@@ -24,11 +25,13 @@ interface Toast {
 }
 
 interface UploadedImageState {
+  fileId: string;
   name: string;
   mimeType: string;
   url: string;
   previewUrl: string;
   size: number;
+  originalSize: number;
 }
 
 interface SuspensionState {
@@ -872,11 +875,13 @@ export default function Home() {
       setInputImage((prev) => {
         if (prev?.previewUrl) URL.revokeObjectURL(prev.previewUrl);
         return {
+          fileId: uploaded.id,
           name: uploaded.name || file.name,
           mimeType: uploaded.mime_type || file.type,
           url: uploaded.url,
           previewUrl: URL.createObjectURL(file),
           size: uploaded.size || file.size,
+          originalSize: originalFile.size,
         };
       });
       if (file.size < originalFile.size) {
@@ -931,6 +936,7 @@ export default function Home() {
         requested_outputs: selectedOutputs,
         mode: "smart",
         input_image: inputImage ? {
+          file_id: inputImage.fileId,
           name: inputImage.name,
           mime_type: inputImage.mimeType,
           url: inputImage.url,
@@ -993,6 +999,7 @@ export default function Home() {
         requested_outputs: selectedOutputs,
         mode: "smart",
         input_image: inputImage ? {
+          file_id: inputImage.fileId,
           name: inputImage.name,
           mime_type: inputImage.mimeType,
           url: inputImage.url,
@@ -1606,9 +1613,6 @@ export default function Home() {
                     {inputImage ? (
                       <>
                         <p className="max-w-full truncate text-[11px] font-medium text-white">{inputImage.name}</p>
-                        <p className="mt-1 text-[10px] text-[#c2c6d6]">
-                          {(inputImage.size / (1024 * 1024)).toFixed(2)} MB • {inputImage.mimeType}
-                        </p>
                         <div className="mt-2 flex gap-2">
                           <button
                             type="button"
@@ -2102,58 +2106,18 @@ export default function Home() {
                   <div className="group glass-panel relative aspect-[16/10] overflow-hidden rounded-[1.25rem]">
                     {finalResults.image ? (
                       <>
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
+                        <InteractiveAuthenticatedImage
                           src={finalResults.image}
                           alt="Generated result"
-                          className="h-full w-full object-cover"
+                          wrapperClassName="h-full w-full"
+                          imageClassName="h-full w-full object-cover"
+                          loadingClassName="flex h-full w-full items-center justify-center bg-white/5 px-4 py-6 text-xs text-white/60"
+                          errorClassName="flex h-full w-full items-center justify-center bg-white/5 px-4 py-6 text-xs text-white/60"
                         />
                         <div className="absolute left-6 top-6">
                           <span className="rounded-md border border-primary/20 bg-black/40 px-3 py-1.5 text-[10px] font-bold tracking-widest text-primary backdrop-blur-md">
                             {primaryEngineLabel}
                           </span>
-                        </div>
-                        <div className="absolute bottom-6 right-6 flex gap-2">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (!finalResults.image) return;
-                              window.open(finalResults.image, "_blank", "noopener,noreferrer");
-                            }}
-                            className="flex h-10 w-10 items-center justify-center rounded-lg bg-black/40 text-white backdrop-blur-md transition-colors hover:bg-primary/40"
-                          >
-                            <span className="material-symbols-outlined">zoom_in</span>
-                          </button>
-                          <a
-                            href={finalResults.image}
-                            download
-                            target="_blank"
-                            rel="noreferrer"
-                            className="flex h-10 w-10 items-center justify-center rounded-lg bg-black/40 text-white backdrop-blur-md transition-colors hover:bg-primary/40"
-                          >
-                            <span className="material-symbols-outlined">download</span>
-                          </a>
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              try {
-                                if (navigator.share) {
-                                  await navigator.share({
-                                    title: primaryEngineLabel,
-                                    url: finalResults.image,
-                                  });
-                                  return;
-                                }
-                                await navigator.clipboard.writeText(finalResults.image);
-                                showToast("Image link copied.", "success");
-                              } catch {
-                                showToast("Could not copy image link.");
-                              }
-                            }}
-                            className="flex h-10 w-10 items-center justify-center rounded-lg bg-black/40 text-white backdrop-blur-md transition-colors hover:bg-primary/40"
-                          >
-                            <span className="material-symbols-outlined">share</span>
-                          </button>
                         </div>
                       </>
                     ) : (

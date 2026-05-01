@@ -277,6 +277,7 @@ def execute_generation(state: StudioState) -> StudioState:
     assigned_models = state.get("assigned_models", {})
     content_spec = state.get("content_spec", {})
     model_parameters = state.get("model_parameters", {})
+    owner_uid = str(state.get("owner_uid") or "")
 
     shared_multimodal_model = (
         input_image
@@ -329,6 +330,7 @@ def execute_generation(state: StudioState) -> StudioState:
                 provider,
                 model_id,
                 multimodal_prompt,
+                owner_uid=owner_uid,
                 image_config={
                     "aspect_ratio": content_spec.get("aspect_ratio", "16:9"),
                     **merged_image_config,
@@ -440,6 +442,7 @@ def execute_generation(state: StudioState) -> StudioState:
                     provider,
                     model_id,
                     prompt,
+                    owner_uid=owner_uid,
                     model_type=model_type,
                     image_config=image_config,
                     input_image=input_image,

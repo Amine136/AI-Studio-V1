@@ -8,6 +8,9 @@ import {
   AdminCreditCodeListResponse,
   AdminGenerationJobListResponse,
   AdminUserListResponse,
+  DashboardNewsListResponse,
+  DashboardNewsItem,
+  DashboardNewsUpsertRequest,
   GenerateRequest,
   GenerationResult,
   PlainChatConversationCreateRequest,
@@ -19,6 +22,9 @@ import {
   PlainChatConversationUpdateRequest,
   PlainChatModelListResponse,
   SystemConfig,
+  CurrentUserProfile,
+  UserNotificationPreferencesUpdateRequest,
+  UserProfileUpdateRequest,
   UploadedImageResult,
 } from '../types';
 import { auth } from '../lib/firebase';
@@ -156,9 +162,50 @@ export const api = {
     return res.data;
   },
 
-  getProfile: async () => {
+  getProfile: async (): Promise<CurrentUserProfile> => {
     try {
       const res = await client.get('/me');
+      return res.data;
+    } catch (error) {
+      const detail = extractErrorMessage(error);
+      if (detail) {
+        throw new Error(detail);
+      }
+      throw error;
+    }
+  },
+
+  updateProfile: async (payload: UserProfileUpdateRequest): Promise<CurrentUserProfile> => {
+    try {
+      const res = await client.patch('/me', payload);
+      return res.data;
+    } catch (error) {
+      const detail = extractErrorMessage(error);
+      if (detail) {
+        throw new Error(detail);
+      }
+      throw error;
+    }
+  },
+
+  updateNotificationPreferences: async (
+    payload: UserNotificationPreferencesUpdateRequest,
+  ): Promise<CurrentUserProfile> => {
+    try {
+      const res = await client.patch('/me/preferences', payload);
+      return res.data;
+    } catch (error) {
+      const detail = extractErrorMessage(error);
+      if (detail) {
+        throw new Error(detail);
+      }
+      throw error;
+    }
+  },
+
+  deactivateAccount: async (): Promise<CurrentUserProfile> => {
+    try {
+      const res = await client.post('/me/deactivate');
       return res.data;
     } catch (error) {
       const detail = extractErrorMessage(error);
@@ -189,6 +236,11 @@ export const api = {
     model: string;
   }) => {
     const res = await client.post('/history', payload);
+    return res.data;
+  },
+
+  getDashboardNews: async (): Promise<DashboardNewsListResponse> => {
+    const res = await client.get('/dashboard-news');
     return res.data;
   },
 
@@ -280,6 +332,25 @@ export const api = {
   getAdminAuthFailureSummaries: async (): Promise<AdminAuthFailureSummaryResponse> => {
     const res = await client.get('/admin/auth-failures');
     return res.data;
+  },
+
+  getAdminDashboardNews: async (): Promise<DashboardNewsListResponse> => {
+    const res = await client.get('/admin/dashboard-news');
+    return res.data;
+  },
+
+  createAdminDashboardNews: async (payload: DashboardNewsUpsertRequest): Promise<DashboardNewsItem> => {
+    const res = await client.post('/admin/dashboard-news', payload);
+    return res.data;
+  },
+
+  updateAdminDashboardNews: async (itemId: string, payload: DashboardNewsUpsertRequest): Promise<DashboardNewsItem> => {
+    const res = await client.patch(`/admin/dashboard-news/${itemId}`, payload);
+    return res.data;
+  },
+
+  deleteAdminDashboardNews: async (itemId: string): Promise<void> => {
+    await client.delete(`/admin/dashboard-news/${itemId}`);
   },
 
   createAdminCode: async (credits: number, maxClaims: number) => {
