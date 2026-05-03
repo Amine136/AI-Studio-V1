@@ -31,6 +31,7 @@ from app.services.security_backend import (
     add_history_entry,
     add_chat_turn,
     abandon_analyze_session,
+    refund_analyze_session,
     add_admin_audit_log,
     capture_generation_credits,
     complete_analyze_session,
@@ -827,14 +828,26 @@ def create_plain_chat_conversation_message(
                 ),
             )
         expected_required = expected_required_credits_for_plain_chat(model_name, payload.options)
-        if current_credits < expected_required:
-            raise HTTPException(
-                status_code=402,
-                detail=(
-                    "Insufficient credits for the selected settings. "
-                    f"You need about {expected_required:.2f} credits for this plain chat request."
-                ),
+        
+        try:
+            current_profile = adjust_credits(
+                user["uid"],
+                -expected_required,
+                "plain_chat_reserve",
+                actor_uid=user["uid"],
+                allow_negative=False,
+                metadata={"conversation_id": conversation_id}
             )
+        except ValueError as exc:
+            if str(exc) == "INSUFFICIENT_CREDITS":
+                raise HTTPException(
+                    status_code=402,
+                    detail=(
+                        "Insufficient credits for the selected settings. "
+                        f"You need about {expected_required:.4f} credits for this plain chat request."
+                    ),
+                )
+            raise HTTPException(status_code=400, detail=str(exc))
 
         existing_messages = get_chat_messages(user["uid"], conversation_id, 200)
         user_parts = serialize_plain_chat_parts(payload.parts)
@@ -853,9 +866,29 @@ def create_plain_chat_conversation_message(
             options=payload.options,
         )
 
-        result = send_plain_chat(request_payload, user_uid=str(user["uid"]))
+        try:
+            result = send_plain_chat(request_payload, user_uid=str(user["uid"]))
+        except Exception:
+            adjust_credits(
+                user["uid"],
+                expected_required,
+                "plain_chat_refund",
+                actor_uid=user["uid"],
+                allow_negative=True,
+                metadata={"conversation_id": conversation_id}
+            )
+            raise
+
         assistant_message = result.get("message")
         if not isinstance(assistant_message, dict):
+            adjust_credits(
+                user["uid"],
+                expected_required,
+                "plain_chat_refund",
+                actor_uid=user["uid"],
+                allow_negative=True,
+                metadata={"conversation_id": conversation_id}
+            )
             raise ValueError("CHAT_INVALID_PROVIDER_RESPONSE")
 
         resolved_cost_raw = result.get("resolvedCost")
@@ -864,27 +897,32 @@ def create_plain_chat_conversation_message(
         except (TypeError, ValueError):
             charged_cost = 0.0
 
-        current_profile = adjust_credits(
-            user["uid"],
-            -charged_cost,
-            "plain_chat_charge",
-            actor_uid=user["uid"],
-            allow_negative=True,
-            metadata={
-                "route": "plain_chat_conversation",
-                "conversation_id": conversation_id,
-                "model": result.get("model") or conversation.get("model"),
-                "provider": result.get("provider"),
-                "billingMode": result.get("billingMode"),
-                "resolvedCost": charged_cost,
-                "usage": result.get("usage") or {},
-                "billing": result.get("billing") or {},
-                "message_count": len(assembled_messages),
-                "stored_message_count": len(existing_messages) + 1,
-                "options": payload.options.model_dump(by_alias=True, exclude_none=True) if payload.options else {},
-                "prompt_preview": preview_plain_chat_prompt(request_payload),
-            },
-        ) if charged_cost > 0 else get_user(user["uid"])
+        refund_amount = expected_required - charged_cost
+        
+        if refund_amount != 0.0:
+            current_profile = adjust_credits(
+                user["uid"],
+                refund_amount,
+                "plain_chat_refund" if refund_amount > 0 else "plain_chat_overage",
+                actor_uid=user["uid"],
+                allow_negative=True,
+                metadata={
+                    "route": "plain_chat_conversation",
+                    "conversation_id": conversation_id,
+                    "model": result.get("model") or conversation.get("model"),
+                    "provider": result.get("provider"),
+                    "billingMode": result.get("billingMode"),
+                    "resolvedCost": charged_cost,
+                    "usage": result.get("usage") or {},
+                    "billing": result.get("billing") or {},
+                    "message_count": len(assembled_messages),
+                    "stored_message_count": len(existing_messages) + 1,
+                    "options": payload.options.model_dump(by_alias=True, exclude_none=True) if payload.options else {},
+                    "prompt_preview": preview_plain_chat_prompt(request_payload),
+                },
+            )
+        else:
+            current_profile = get_user(user["uid"])
 
         persisted_turn = add_chat_turn(
             user["uid"],
@@ -1737,26 +1775,81 @@ def generate_content(request: Request, payload: GenerateRequest, user: Dict[str,
                     f"image {minimum_required['image_minimum']:.2f})."
                 ),
             )
-        if direct_generation:
-            expected_required = _expected_required_credits_for_generate(payload)
-            if current_credits < expected_required["total"]:
-                raise HTTPException(
-                    status_code=402,
-                    detail=(
-                        "Insufficient credits for the selected settings. "
-                        f"You need about {expected_required['total']:.4f} credits "
-                        f"(text {expected_required['caption_expected']:.4f}, "
-                        f"image {expected_required['image_expected']:.4f})."
-                    ),
-                )
         _enforce_mode_specific_generate_limits(request, payload, user, direct_generation=direct_generation)
+
+        analyze_session_id = (payload.user_preferences or {}).get("analyze_session_id")
+        abandon_fee_discount = 0.0
+        
+        if direct_generation and analyze_session_id:
+            try:
+                comp_result = complete_analyze_session(analyze_session_id, user["uid"])
+                abandon_fee_discount = comp_result.get("fee", 0.0)
+            except ValueError:
+                pass
+
+        analyze_session = None
 
         if not direct_generation:
             analyze_key = f"analyze:{user['uid']}"
             if not consume_rate_limit(analyze_key, max_count=20, window_seconds=3600):
                 raise HTTPException(status_code=429, detail="Analyze limit reached. Try again later.")
 
-        if direct_generation:
+            try:
+                if payload.mode == "smart":
+                    analyze_session = create_analyze_session_with_charge(
+                        user["uid"],
+                        payload.user_text,
+                        settings.analyze_abandon_fee,
+                        settings.smart_analysis_fee,
+                    )
+                else:
+                    # quick mode creates session without analysis fee
+                    analyze_session = create_analyze_session_with_charge(
+                        user["uid"],
+                        payload.user_text,
+                        settings.analyze_abandon_fee,
+                        0.0,
+                    )
+            except ValueError as exc:
+                if str(exc) == "TOO_MANY_PENDING_ANALYZE_SESSIONS":
+                    add_admin_audit_log(
+                        admin_uid=None,
+                        admin_email=SYSTEM_AUDIT_EMAIL,
+                        action="usage_pending_review_limit_hit",
+                        target_type="user",
+                        target_id=str(user["uid"]),
+                        reason="User hit the concurrent Smart review limit.",
+                        metadata={
+                            "uid": str(user["uid"]),
+                            "mode": payload.mode,
+                            "max_pending_reviews": settings.max_pending_analyze_sessions_per_user,
+                            "pending_review_ttl_seconds": settings.pending_analyze_session_ttl_seconds,
+                        },
+                    )
+                    raise HTTPException(
+                        status_code=429,
+                        detail=(
+                            f"You cannot start a new Smart review right now because this account already has "
+                            f"{settings.max_pending_analyze_sessions_per_user} other Smart reviews in progress. "
+                            f"Finish one, leave one, or wait about {_format_wait_window(settings.pending_analyze_session_ttl_seconds)}."
+                        ),
+                    ) from exc
+                if str(exc) == "USAGE_CAP_REACHED":
+                    user_created_at = int((current_profile or {}).get("createdAt") or 0)
+                    now = int(time.time())
+                    if user_created_at and now < user_created_at + (24 * 60 * 60):
+                        raise HTTPException(
+                            status_code=429,
+                            detail="This new account reached its first-24-hours usage limit of 1 credit. Please wait until the first day passes.",
+                        ) from exc
+                    raise HTTPException(
+                        status_code=429,
+                        detail="This account reached its daily usage limit of 5 credits. Please try again later.",
+                    ) from exc
+                if str(exc) == "INSUFFICIENT_CREDITS":
+                    raise HTTPException(status_code=402, detail="Insufficient credits") from exc
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+
             job = create_generation_job(
                 user["uid"],
                 payload.user_text,
@@ -1768,28 +1861,55 @@ def generate_content(request: Request, payload: GenerateRequest, user: Dict[str,
                     "mode": payload.mode,
                     "user_corrections": payload.user_corrections or {},
                     "input_image": payload.input_image.model_dump() if payload.input_image else None,
-                    "image_model": (payload.user_preferences or {}).get("image_model"),
-                    "caption_model": (payload.user_preferences or {}).get("caption_model"),
                 },
                 status="processing",
             )
             generation_job_id = str(job.get("id") or "")
         else:
-            job = create_generation_job(
-                user["uid"],
-                payload.user_text,
-                payload.requested_outputs,
-                {
-                    "user_preferences": payload.user_preferences or {},
-                    "model_parameters": payload.model_parameters or {},
-                    "status": effective_status,
-                    "mode": payload.mode,
-                    "user_corrections": payload.user_corrections or {},
-                    "input_image": payload.input_image.model_dump() if payload.input_image else None,
-                },
-                status="processing",
-            )
-            generation_job_id = str(job.get("id") or "")
+            expected_required = _expected_required_credits_for_generate(payload)
+            expected_total = expected_required["total"]
+            discounted_expected = max(0.0, expected_total - abandon_fee_discount)
+            
+            try:
+                reserve_result = reserve_generation_credits(
+                    user["uid"],
+                    payload.user_text,
+                    payload.requested_outputs,
+                    {
+                        "user_preferences": payload.user_preferences or {},
+                        "model_parameters": payload.model_parameters or {},
+                        "status": effective_status,
+                        "mode": payload.mode,
+                        "user_corrections": payload.user_corrections or {},
+                        "input_image": payload.input_image.model_dump() if payload.input_image else None,
+                        "image_model": (payload.user_preferences or {}).get("image_model"),
+                        "caption_model": (payload.user_preferences or {}).get("caption_model"),
+                    },
+                    estimated_cost=discounted_expected,
+                )
+                generation_job_id = str(reserve_result["job"]["id"])
+            except ValueError as exc:
+                if str(exc) == "USAGE_CAP_REACHED":
+                    user_created_at = int((current_profile or {}).get("createdAt") or 0)
+                    now = int(time.time())
+                    if user_created_at and now < user_created_at + (24 * 60 * 60):
+                        raise HTTPException(
+                            status_code=429,
+                            detail="This new account reached its first-24-hours usage limit of 1 credit. Please wait until the first day passes.",
+                        ) from exc
+                    raise HTTPException(
+                        status_code=429,
+                        detail="This account reached its daily usage limit of 5 credits. Please try again later.",
+                    ) from exc
+                if str(exc) == "INSUFFICIENT_CREDITS":
+                    raise HTTPException(
+                        status_code=402,
+                        detail=(
+                            "Insufficient credits for the selected settings. "
+                            f"You need about {expected_total:.4f} credits."
+                        ),
+                    ) from exc
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         input_image = _prepare_input_image(payload.input_image, str(user["uid"]))
 
@@ -1805,10 +1925,19 @@ def generate_content(request: Request, payload: GenerateRequest, user: Dict[str,
         if payload.user_corrections:
             initial_state["user_corrections"] = payload.user_corrections
 
-        final_state = studio_graph_app.invoke(initial_state)
+        try:
+            final_state = studio_graph_app.invoke(initial_state)
+        except Exception:
+            if direct_generation and generation_job_id:
+                release_generation_credits(generation_job_id, failure_reason="provider_exception")
+            elif not direct_generation and analyze_session:
+                refund_analyze_session(analyze_session["id"], user["uid"])
+            raise
 
         if final_state.get("status") == "awaiting_review":
             if payload.mode == "quick":
+                if analyze_session:
+                    refund_analyze_session(analyze_session["id"], user["uid"])
                 return GenerationResult(
                     status="error",
                     meta={
@@ -1818,19 +1947,6 @@ def generate_content(request: Request, payload: GenerateRequest, user: Dict[str,
                 )
             if generation_job_id:
                 mark_generation_job_awaiting_review(generation_job_id)
-            if payload.mode == "smart":
-                analyze_session = create_analyze_session_with_charge(
-                    user["uid"],
-                    payload.user_text,
-                    settings.analyze_abandon_fee,
-                    settings.smart_analysis_fee,
-                )
-            else:
-                analyze_session = create_analyze_session(
-                    user["uid"],
-                    payload.user_text,
-                    settings.analyze_abandon_fee,
-                )
             return GenerationResult(
                 status="awaiting_review",
                 ui_schema=final_state.get("ui_schema"),
@@ -1848,6 +1964,10 @@ def generate_content(request: Request, payload: GenerateRequest, user: Dict[str,
             delivery_error = _validate_generation_results(payload.requested_outputs, final_payload.get("results"))
             if delivery_error:
                 current_profile = get_user(user["uid"])
+                if direct_generation and generation_job_id:
+                    release_generation_credits(generation_job_id, failure_reason=delivery_error)
+                elif not direct_generation and analyze_session:
+                    refund_analyze_session(analyze_session["id"], user["uid"])
                 return GenerationResult(
                     status="error",
                     meta={
@@ -1861,25 +1981,14 @@ def generate_content(request: Request, payload: GenerateRequest, user: Dict[str,
             except (TypeError, ValueError):
                 charged_cost = 0.0
 
-            current_profile = adjust_credits(
-                user["uid"],
-                -charged_cost,
-                "smart_generation_charge",
-                actor_uid=user["uid"],
-                allow_negative=True,
-                metadata={
-                    "mode": payload.mode,
-                    "requested_outputs": payload.requested_outputs,
-                    "generation_job_id": generation_job_id,
-                    "resolvedCost": charged_cost,
-                    "billing_components": (final_payload.get("meta") or {}).get("billing_components") or [],
-                    "settings_used": (final_payload.get("meta") or {}).get("settings_used") or {},
-                    "user_preferences": payload.user_preferences or {},
-                    "model_parameters": payload.model_parameters or {},
-                    "status": effective_status,
-                    "input_image": payload.input_image.model_dump() if payload.input_image else None,
-                },
-            ) if charged_cost > 0 else get_user(user["uid"])
+            if direct_generation and generation_job_id:
+                final_cost = max(0.0, charged_cost - abandon_fee_discount)
+                capture_result = capture_generation_credits(generation_job_id, final_cost)
+                current_balance = capture_result["balance"].get("credits", 0)
+            else:
+                current_profile = get_user(user["uid"])
+                current_balance = current_profile.get("credits", 0)
+
             return GenerationResult(
                 status="success",
                 results=final_payload.get("results"),
@@ -1887,7 +1996,7 @@ def generate_content(request: Request, payload: GenerateRequest, user: Dict[str,
                     "mode": payload.mode,
                     **(final_payload.get("meta") or {}),
                     "charged_cost": charged_cost,
-                    "current_balance": current_profile.get("credits", 0),
+                    "current_balance": current_balance,
                 },
             )
         elif final_state.get("status") == "error":
@@ -1897,6 +2006,10 @@ def generate_content(request: Request, payload: GenerateRequest, user: Dict[str,
                 or "generation_delivery_failed"
             )
             current_profile = get_user(user["uid"])
+            if direct_generation and generation_job_id:
+                release_generation_credits(generation_job_id, failure_reason=failure_reason)
+            elif not direct_generation and analyze_session:
+                refund_analyze_session(analyze_session["id"], user["uid"])
             error_message = str(
                 (final_state.get("final_response", {}).get("meta") or {}).get("error_message")
                 or final_state.get("error_message")
