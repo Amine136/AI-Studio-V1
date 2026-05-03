@@ -238,8 +238,8 @@ def test_new_account_first_day_usage_cap_blocks_additional_charge(test_db, monke
 
     store.ensure_user("user-cap-new", "new@example.com", "New User")
     store.adjust_credits("user-cap-new", 5.0, "seed", actor_uid="system", allow_negative=True)
-    charged = store.create_analyze_session_with_charge("user-cap-new", "prompt", 0.2, 0.8)
-    assert charged["analysisFee"] == 0.8
+    charged = store.create_analyze_session_with_charge("user-cap-new", "prompt", 1.0)
+    assert charged["analysisFee"] == 1.0
     with pytest.raises(ValueError, match="USAGE_CAP_REACHED"):
         store.reserve_generation_credits(
             "user-cap-new",
@@ -274,7 +274,7 @@ def test_daily_usage_cap_blocks_after_five_credits(test_db, monkeypatch):
     store.capture_generation_credits(reservation["job"]["id"], 5.0)
 
     with pytest.raises(ValueError, match="USAGE_CAP_REACHED"):
-        store.create_analyze_session_with_charge("user-cap-daily", "prompt-2", 0.2, 0.05)
+        store.create_analyze_session_with_charge("user-cap-daily", "prompt-2", 0.05)
 
 
 def test_consume_rate_limit_blocks_after_max_count(test_db):

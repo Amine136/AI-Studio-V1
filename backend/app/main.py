@@ -1778,12 +1778,10 @@ def generate_content(request: Request, payload: GenerateRequest, user: Dict[str,
         _enforce_mode_specific_generate_limits(request, payload, user, direct_generation=direct_generation)
 
         analyze_session_id = (payload.user_preferences or {}).get("analyze_session_id")
-        abandon_fee_discount = 0.0
         
         if direct_generation and analyze_session_id:
             try:
-                comp_result = complete_analyze_session(analyze_session_id, user["uid"])
-                abandon_fee_discount = comp_result.get("fee", 0.0)
+                complete_analyze_session(analyze_session_id, user["uid"])
             except ValueError:
                 pass
 
@@ -1799,7 +1797,6 @@ def generate_content(request: Request, payload: GenerateRequest, user: Dict[str,
                     analyze_session = create_analyze_session_with_charge(
                         user["uid"],
                         payload.user_text,
-                        settings.analyze_abandon_fee,
                         settings.smart_analysis_fee,
                     )
                 else:
@@ -1807,7 +1804,6 @@ def generate_content(request: Request, payload: GenerateRequest, user: Dict[str,
                     analyze_session = create_analyze_session_with_charge(
                         user["uid"],
                         payload.user_text,
-                        settings.analyze_abandon_fee,
                         0.0,
                     )
             except ValueError as exc:
@@ -1868,7 +1864,6 @@ def generate_content(request: Request, payload: GenerateRequest, user: Dict[str,
         else:
             expected_required = _expected_required_credits_for_generate(payload)
             expected_total = expected_required["total"]
-            discounted_expected = max(0.0, expected_total - abandon_fee_discount)
             
             try:
                 reserve_result = reserve_generation_credits(
@@ -1885,7 +1880,7 @@ def generate_content(request: Request, payload: GenerateRequest, user: Dict[str,
                         "image_model": (payload.user_preferences or {}).get("image_model"),
                         "caption_model": (payload.user_preferences or {}).get("caption_model"),
                     },
-                    estimated_cost=discounted_expected,
+                    estimated_cost=expected_total,
                 )
                 generation_job_id = str(reserve_result["job"]["id"])
             except ValueError as exc:
@@ -1955,7 +1950,6 @@ def generate_content(request: Request, payload: GenerateRequest, user: Dict[str,
                     "mode": payload.mode,
                     "smart_analysis_fee": analyze_session.get("analysisFee", 0),
                     "analyze_session_id": analyze_session["id"],
-                    "analyze_abandon_fee": analyze_session["fee"],
                     "current_balance": analyze_session.get("balance"),
                 },
             )
@@ -1982,8 +1976,7 @@ def generate_content(request: Request, payload: GenerateRequest, user: Dict[str,
                 charged_cost = 0.0
 
             if direct_generation and generation_job_id:
-                final_cost = max(0.0, charged_cost - abandon_fee_discount)
-                capture_result = capture_generation_credits(generation_job_id, final_cost)
+                capture_result = capture_generation_credits(generation_job_id, charged_cost)
                 current_balance = capture_result["balance"].get("credits", 0)
             else:
                 current_profile = get_user(user["uid"])

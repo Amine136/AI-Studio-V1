@@ -81,7 +81,6 @@ class Config:
             str(self.DATA_DIR / "security.sqlite3"),
         )
         self.smart_analysis_fee = float(os.getenv("SMART_ANALYSIS_FEE", "0.05"))
-        self.analyze_abandon_fee = float(os.getenv("ANALYZE_ABANDON_FEE", "0.2"))
         self.pending_analyze_session_ttl_seconds = int(os.getenv("PENDING_ANALYZE_SESSION_TTL_SECONDS", str(15 * 60)))
         self.max_pending_analyze_sessions_per_user = int(os.getenv("MAX_PENDING_ANALYZE_SESSIONS_PER_USER", "2"))
         self.quick_generate_user_limit = int(os.getenv("QUICK_GENERATE_USER_LIMIT", "50"))

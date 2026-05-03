@@ -1104,8 +1104,8 @@ def _enforce_usage_cap(repo: SecurityRepository, user: Any, *, projected_charge_
         raise ValueError("USAGE_CAP_REACHED")
 
 
-def create_analyze_session(uid: str, prompt: str, fee: float) -> dict[str, Any]:
-    fee_minor = _credits_to_minor(fee)
+def create_analyze_session(uid: str, prompt: str, analysis_fee: float = 0.0) -> dict[str, Any]:
+    fee_minor = _credits_to_minor(analysis_fee)
     with session_scope() as session:
         repo = SecurityRepository(session)
         user = repo.get_user_for_update(uid)
@@ -1116,16 +1116,14 @@ def create_analyze_session(uid: str, prompt: str, fee: float) -> dict[str, Any]:
         analyze_session = repo.create_analyze_session(uid, fee_minor, prompt)
         return {
             "id": analyze_session.id,
-            "fee": _minor_to_credits(analyze_session.fee_minor),
+            "analysisFee": _minor_to_credits(analyze_session.fee_minor),
             "status": analyze_session.status,
             "createdAt": analyze_session.created_at,
         }
 
 
-def create_analyze_session_with_charge(uid: str, prompt: str, fee: float, analysis_fee: float) -> dict[str, Any]:
-    fee_minor = _credits_to_minor(fee)
+def create_analyze_session_with_charge(uid: str, prompt: str, analysis_fee: float) -> dict[str, Any]:
     analysis_fee_minor = _credits_to_minor(analysis_fee)
-    total_deduction_minor = fee_minor + analysis_fee_minor
     now = int(time.time())
 
     with session_scope() as session:
@@ -1135,28 +1133,27 @@ def create_analyze_session_with_charge(uid: str, prompt: str, fee: float, analys
             user = repo.ensure_user(uid, "", "")
             session.flush()
         _enforce_pending_analyze_session_limit(repo, uid, now=now)
-        _enforce_usage_cap(repo, user, projected_charge_minor=total_deduction_minor, now=now)
+        _enforce_usage_cap(repo, user, projected_charge_minor=analysis_fee_minor, now=now)
 
-        if total_deduction_minor < 0:
+        if analysis_fee_minor < 0:
             raise ValueError("Fee must be non-negative")
-        if user.credits_minor < total_deduction_minor:
+        if user.credits_minor < analysis_fee_minor:
             raise ValueError("INSUFFICIENT_CREDITS")
 
-        analyze_session = repo.create_analyze_session(uid, fee_minor, prompt)
+        analyze_session = repo.create_analyze_session(uid, analysis_fee_minor, prompt)
 
-        if total_deduction_minor > 0:
-            user.credits_minor -= total_deduction_minor
+        if analysis_fee_minor > 0:
+            user.credits_minor -= analysis_fee_minor
             user.updated_at = now
             user.last_seen_at = now
             repo.add_ledger_entry(
                 uid=uid,
-                delta_minor=-total_deduction_minor,
-                reason="smart_analysis_reserve",
+                delta_minor=-analysis_fee_minor,
+                reason="smart_analysis_charge",
                 actor_uid=uid,
                 metadata_json={
                     "analyze_session_id": analyze_session.id,
                     "analysis_fee": _minor_to_credits(analysis_fee_minor),
-                    "abandon_fee": _minor_to_credits(fee_minor)
                 },
                 analyze_session_id=analyze_session.id,
                 created_at=now,
@@ -1167,11 +1164,11 @@ def create_analyze_session_with_charge(uid: str, prompt: str, fee: float, analys
                 action="smart_analysis_charge",
                 target_type="user",
                 target_id=uid,
-                reason=f"Smart analysis reserved {_minor_to_credits(total_deduction_minor):.2f} credits.",
+                reason=f"Smart analysis charged {_minor_to_credits(analysis_fee_minor):.2f} credits.",
                 metadata_json={
                     "uid": uid,
                     "analyze_session_id": analyze_session.id,
-                    "charged_credits": _minor_to_credits(total_deduction_minor),
+                    "charged_credits": _minor_to_credits(analysis_fee_minor),
                     "remaining_balance": _minor_to_credits(user.credits_minor),
                 },
                 created_at=now,
@@ -1180,8 +1177,7 @@ def create_analyze_session_with_charge(uid: str, prompt: str, fee: float, analys
         session.flush()
         return {
             "id": analyze_session.id,
-            "fee": _minor_to_credits(analyze_session.fee_minor),
-            "analysisFee": _minor_to_credits(analysis_fee_minor),
+            "analysisFee": _minor_to_credits(analyze_session.fee_minor),
             "status": analyze_session.status,
             "createdAt": analyze_session.created_at,
             "balance": _minor_to_credits(user.credits_minor),
@@ -1217,14 +1213,14 @@ def abandon_analyze_session(session_id: str, uid: str) -> dict[str, Any]:
         if user is None:
             user = repo.ensure_user(uid, "", "")
 
-        fee = _minor_to_credits(analyze_session.fee_minor)
+        analysis_fee = _minor_to_credits(analyze_session.fee_minor)
         if analyze_session.status in {"abandoned", "completed", "failed"}:
-            return {"id": session_id, "status": analyze_session.status, "fee": fee, "balance": _minor_to_credits(user.credits_minor)}
+            return {"id": session_id, "status": analyze_session.status, "analysisFee": analysis_fee, "balance": _minor_to_credits(user.credits_minor)}
 
         analyze_session.status = "abandoned"
         analyze_session.resolved_at = now
         session.flush()
-        return {"id": session_id, "status": "abandoned", "fee": fee, "balance": _minor_to_credits(user.credits_minor)}
+        return {"id": session_id, "status": "abandoned", "analysisFee": analysis_fee, "balance": _minor_to_credits(user.credits_minor)}
 
 def refund_analyze_session(session_id: str, uid: str) -> dict[str, Any]:
     now = int(time.time())
@@ -1238,9 +1234,9 @@ def refund_analyze_session(session_id: str, uid: str) -> dict[str, Any]:
         if user is None:
             user = repo.ensure_user(uid, "", "")
 
-        fee = _minor_to_credits(analyze_session.fee_minor)
+        analysis_fee = _minor_to_credits(analyze_session.fee_minor)
         if analyze_session.status in {"abandoned", "completed", "failed"}:
-            return {"id": session_id, "status": analyze_session.status, "fee": fee, "balance": _minor_to_credits(user.credits_minor)}
+            return {"id": session_id, "status": analyze_session.status, "analysisFee": analysis_fee, "balance": _minor_to_credits(user.credits_minor)}
 
         analyze_session.status = "failed"
         analyze_session.resolved_at = now
@@ -1258,7 +1254,7 @@ def refund_analyze_session(session_id: str, uid: str) -> dict[str, Any]:
             created_at=now,
         )
         session.flush()
-        return {"id": session_id, "status": "failed", "fee": fee, "balance": _minor_to_credits(user.credits_minor)}
+        return {"id": session_id, "status": "failed", "analysisFee": analysis_fee, "balance": _minor_to_credits(user.credits_minor)}
 
 
 def create_generation_job(

@@ -33,35 +33,33 @@ def test_overlapping_analyze_sessions(test_db, monkeypatch):
     store.adjust_credits(uid, 5.0, "grant", allow_negative=False)
 
     # First session should succeed
-    res1 = store.create_analyze_session_with_charge(uid, "Test 1", fee=0.20, analysis_fee=0.05)
+    res1 = store.create_analyze_session_with_charge(uid, "Test 1", analysis_fee=0.05)
     assert res1["analysisFee"] == 0.05
-    assert res1["fee"] == 0.20
 
     user = store.get_user(uid)
-    assert user["credits"] == 4.75  # 5.0 - 0.25
+    assert user["credits"] == 4.95  # 5.0 - 0.05
 
     # Second session should fail due to pending limit
     with pytest.raises(ValueError, match="TOO_MANY_PENDING_ANALYZE_SESSIONS"):
-        store.create_analyze_session_with_charge(uid, "Test 2", fee=0.20, analysis_fee=0.05)
+        store.create_analyze_session_with_charge(uid, "Test 2", analysis_fee=0.05)
 
     user = store.get_user(uid)
-    assert user["credits"] == 4.75  # no additional charge
+    assert user["credits"] == 4.95  # no additional charge
 
 def test_analyze_session_refund_on_failure(test_db):
     uid = "user-fail"
     store.ensure_user(uid, "fail@example.com", "Fail User")
     store.adjust_credits(uid, 1.0, "grant", allow_negative=False)
 
-    res = store.create_analyze_session_with_charge(uid, "Test Fail", fee=0.20, analysis_fee=0.05)
+    res = store.create_analyze_session_with_charge(uid, "Test Fail", analysis_fee=0.05)
     session_id = res["id"]
 
     user = store.get_user(uid)
-    assert user["credits"] == 0.75  # 1.0 - 0.25
+    assert user["credits"] == 0.95  # 1.0 - 0.05
 
     # Suppose upstream failed, refund!
     store.refund_analyze_session(session_id, uid)
     
     user = store.get_user(uid)
-    # The 0.20 abandon fee is refunded. The 0.05 analysis fee is kept because analysis was requested?
-    # Wait, refund_analyze_session refunds the fee_minor (abandon fee).
-    assert user["credits"] == 0.95
+    # The 0.05 analysis fee is refunded.
+    assert user["credits"] == 1.0
