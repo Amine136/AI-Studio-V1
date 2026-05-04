@@ -1164,11 +1164,6 @@ export default function Home() {
   };
 
   const handleBackFromReview = async () => {
-    const fee = analyzeFeeRef.current || 0;
-    const confirmed = window.confirm(
-      `If you leave this review step now, you will lose ${fee.toFixed(2)} credits. Continue?`
-    );
-    if (!confirmed) return;
     await abandonAnalyzeSession(false);
     setStep("INPUT");
     setIsModePickerOpen(true);
