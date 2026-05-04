@@ -270,6 +270,7 @@ export default function DashboardPage() {
   const textModels = useMemo(() => flattenModelCatalog(config?.model_catalog?.caption), [config]);
   const latestItems = history.slice(0, 4);
   const featuredModel =
+    imageModels.find((model) => model.id === "gemini-3-pro-image-preview" || /nano banana pro/i.test(model.name)) ||
     imageModels.find((model) => /gemini/i.test(model.name) || /gemini/i.test(model.modelId)) ||
     imageModels[0] ||
     textModels[0] ||

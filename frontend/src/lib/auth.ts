@@ -21,5 +21,8 @@ export async function signInWithGoogle() {
 }
 
 export async function signOutUser() {
+    if (typeof window !== "undefined") {
+        sessionStorage.setItem("signingOut", "true");
+    }
     return signOut(auth);
 }
