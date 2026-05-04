@@ -66,36 +66,108 @@ function isRedeemCooldownMessage(message: string) {
   return /reached 5 failed credit code attempts in 5 minutes/i.test(message);
 }
 
-function formatLedgerActivity(entry: CreditLedgerEntry) {
-  const reason = String(entry.reason || "").trim().toLowerCase();
-  if (reason === "plain_chat_charge") return "plain chat";
-  if (reason === "credit_code_redeem") return "credit redeem";
-  if (reason === "smart_analysis_charge") return "smart analysis";
-  if (reason === "generation_capture") {
-    const outputs = Array.isArray(entry.metadata?.requested_outputs) ? entry.metadata?.requested_outputs : [];
-    if (outputs.includes("image") && outputs.includes("caption")) return "generation";
-    if (outputs.includes("image")) return "image generation";
-    if (outputs.includes("caption")) return "caption generation";
-    return "generation";
+function groupLedgerEntries(entries: CreditLedgerEntry[]) {
+  const groups: Record<string, { id: string, createdAt: number, deltaMinor: number, activity: string }> = {};
+  const groupOrder: string[] = [];
+
+  for (const entry of entries) {
+    const reason = String(entry.reason || "").trim().toLowerCase();
+    const meta = entry.metadata || {};
+    
+    let groupKey = entry.id; 
+    let activityLabel = reason.replace(/_/g, " ");
+    
+    if (meta.conversation_id) {
+      groupKey = `chat_${meta.conversation_id}`;
+      if (meta.prompt_preview) {
+        activityLabel = `Chat: "${meta.prompt_preview}"`;
+      } else {
+        activityLabel = "Plain Chat";
+      }
+    } else if (meta.generation_job_id) {
+      groupKey = `gen_${meta.generation_job_id}`;
+      const outputs = Array.isArray(meta.requested_outputs) ? meta.requested_outputs : [];
+      if (outputs.includes("image") && outputs.includes("caption")) activityLabel = "Generation";
+      else if (outputs.includes("image")) activityLabel = "Image Generation";
+      else if (outputs.includes("caption")) activityLabel = "Caption Generation";
+      else activityLabel = "Generation";
+    } else if (meta.analyze_session_id) {
+      groupKey = `analyze_${meta.analyze_session_id}`;
+      activityLabel = "Smart Analysis";
+    } else if (reason === "credit_code_redeem") {
+      groupKey = entry.id;
+      activityLabel = "Credit Redeem";
+    } else if (reason === "manual_adjustment") {
+      groupKey = entry.id;
+      activityLabel = "Manual Adjustment";
+    }
+
+    if (!groups[groupKey]) {
+      groups[groupKey] = {
+        id: entry.id,
+        createdAt: entry.createdAt || 0,
+        deltaMinor: 0,
+        activity: activityLabel,
+      };
+      groupOrder.push(groupKey);
+    }
+    
+    groups[groupKey].deltaMinor += Number(entry.deltaMinor || 0);
   }
-  if (reason === "generation_release") return "refund";
-  if (reason === "generation_reserve") return "generation reserve";
-  if (reason === "manual_adjustment") return "manual adjustment";
-  return reason.replace(/_/g, " ");
+  
+  const finalResult: any[] = [];
+  let i = 0;
+  
+  while (i < groupOrder.length) {
+    const key = groupOrder[i];
+    const current = groups[key];
+    
+    if (key.startsWith("gen_")) {
+      let j = i + 1;
+      let isSmart = false;
+      let combinedDelta = current.deltaMinor;
+      
+      if (j < groupOrder.length && groupOrder[j].startsWith("analyze_")) {
+        const next = groups[groupOrder[j]];
+        if (Math.abs(current.createdAt - next.createdAt) < 3600) {
+          combinedDelta += next.deltaMinor;
+          isSmart = true;
+          j++;
+        }
+      }
+      
+      finalResult.push({
+        id: current.id,
+        createdAt: current.createdAt,
+        deltaMinor: combinedDelta,
+        activity: isSmart ? "Smart Content Creation" : current.activity,
+      });
+      i = j;
+      continue;
+    }
+    
+    finalResult.push(current);
+    i++;
+  }
+  
+  return finalResult;
 }
 
 function mapLedgerToUsageEvents(entries: CreditLedgerEntry[]): UsageEvent[] {
-  return entries.slice(0, 20).map((entry) => {
-    const createdAt = new Date((entry.createdAt || 0) * 1000);
-    const credits = Math.abs(Number(entry.deltaMinor || 0)) / 100;
-    const positive = Number(entry.deltaMinor || 0) > 0;
+  const grouped = groupLedgerEntries(entries);
+  return grouped.slice(0, 20).map((g) => {
+    const createdAt = new Date((g.createdAt || 0) * 1000);
+    const credits = Math.abs(Number(g.deltaMinor || 0)) / 100;
+    const isZero = g.deltaMinor === 0;
+    const positive = Number(g.deltaMinor || 0) > 0;
+    const amountStr = isZero ? "0.00" : `${positive ? "+" : "-"}${credits.toFixed(2)}`;
     return {
-      id: entry.id,
+      id: g.id,
       date: createdAt.toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" }),
-      activity: formatLedgerActivity(entry),
+      activity: g.activity,
       status: "COMPLETED",
-      amount: `${positive ? "+" : "-"}${credits.toFixed(2)} Cr`,
-      positive,
+      amount: `${amountStr} Cr`,
+      positive: g.deltaMinor >= 0,
     };
   });
 }

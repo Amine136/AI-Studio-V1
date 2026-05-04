@@ -504,7 +504,7 @@ export default function DashboardPage() {
                   </div>
                 </div>
 
-                <Link href="/studio" className="block w-full rounded-xl bg-[linear-gradient(135deg,#adc6ff_0%,#4d8eff_100%)] py-3 text-center font-bold text-[#002e6a] transition-opacity hover:opacity-90">
+                <Link href="/studio/start" className="block w-full rounded-xl bg-[linear-gradient(135deg,#adc6ff_0%,#4d8eff_100%)] py-3 text-center font-bold text-[#002e6a] transition-opacity hover:opacity-90">
                   Launch {featuredModel.name} Studio
                 </Link>
               </div>
