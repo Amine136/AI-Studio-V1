@@ -16,7 +16,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const { user } = useAuth();
   const [credits, setCredits] = useState<number | null>(null);
 
-  const displayName = user?.displayName || user?.email?.split("@")[0] || "Creative Studio";
+  const displayName = user?.displayName || user?.email?.split("@")[0] || "Vibecraft";
   const photoUrl = user?.photoURL || null;
 
   useEffect(() => {

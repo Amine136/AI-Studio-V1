@@ -188,7 +188,7 @@ export default function SettingsPage() {
           <div>
             <h3 className="font-headline text-4xl font-bold tracking-tight text-[#dce1fb]">Account</h3>
             <p className="mt-2 max-w-md text-[#c2c6d6]">
-              Manage your public profile and core identity within the Creative Studio ecosystem.
+              Manage your public profile and core identity within the Vibecraft ecosystem.
             </p>
           </div>
         </div>

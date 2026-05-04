@@ -13,7 +13,7 @@ function initialsFromName(value?: string | null) {
 export default function SettingsLayout({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
 
-  const displayName = user?.displayName || user?.email?.split("@")[0] || "Creative Studio";
+  const displayName = user?.displayName || user?.email?.split("@")[0] || "Vibecraft";
   const photoUrl = user?.photoURL || null;
 
   return (

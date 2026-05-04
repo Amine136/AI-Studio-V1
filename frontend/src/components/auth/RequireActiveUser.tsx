@@ -35,7 +35,12 @@ export default function RequireActiveUser({ children }: { children: ReactNode })
 
     async function validateAccess() {
       if (!user) {
-        router.replace(`/auth?reason=unauthorized&next=${encodeURIComponent(pathname || "/dashboard")}`);
+        if (typeof window !== "undefined" && sessionStorage.getItem("signingOut") === "true") {
+          sessionStorage.removeItem("signingOut");
+          router.replace("/auth");
+        } else {
+          router.replace(`/auth?reason=unauthorized&next=${encodeURIComponent(pathname || "/dashboard")}`);
+        }
         return;
       }
 
