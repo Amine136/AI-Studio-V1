@@ -749,14 +749,15 @@ export default function StudioChatPage() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const url = new URL(window.location.href);
+    const effectiveConversationId = conversationId || requestedConversationId || "";
     url.searchParams.delete("new");
-    if (conversationId) {
-      url.searchParams.set("conversation", conversationId);
+    if (effectiveConversationId) {
+      url.searchParams.set("conversation", effectiveConversationId);
     } else {
       url.searchParams.delete("conversation");
     }
     window.history.replaceState({}, "", url.toString());
-  }, [conversationId]);
+  }, [conversationId, requestedConversationId]);
 
   useEffect(() => {
     let cancelled = false;
