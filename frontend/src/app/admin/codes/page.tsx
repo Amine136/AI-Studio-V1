@@ -122,8 +122,6 @@ export default function AdminCodesPage() {
             const created = await api.createAdminCode(boundedCredits, boundedClaims);
             setCreatedCode(created.code || "");
             setCopyState("");
-            setCredits(1);
-            setMaxClaims(5);
             await loadCodes();
         } catch (err) {
             setCreateError(err instanceof Error ? err.message : "Unable to create gift code.");
@@ -169,8 +167,6 @@ export default function AdminCodesPage() {
             );
             setBatchMessage(`${generatedCodes.length} one-time codes downloaded.`);
             setBatchTitle("");
-            setBatchQuantity(5);
-            setBatchCredits(5);
             await loadCodes();
         } catch (err) {
             setBatchError(err instanceof Error ? err.message : "Unable to generate batch codes.");
