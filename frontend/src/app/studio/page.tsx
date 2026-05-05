@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../services/api";
@@ -23,6 +24,7 @@ function formatHistoryDate(value: Date): string {
 }
 
 export default function StudioHomePage() {
+  const router = useRouter();
   const { user } = useAuth();
   const [credits, setCredits] = useState<number | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
@@ -178,10 +180,12 @@ export default function StudioHomePage() {
             <div className="divide-y divide-white/6">
               {!loading && recentConversations.length > 0 ? (
                 recentConversations.map((conversation) => (
-                  <Link
+                  <div
                     key={conversation.id}
-                    href={`/studio/chat?conversation=${encodeURIComponent(conversation.id)}`}
-                    className="grid grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_auto_auto_auto] items-center gap-4 px-6 py-4 transition-colors hover:bg-white/[0.03]"
+                    onClick={() => {
+                      router.push(`/studio/chat?conversation=${encodeURIComponent(conversation.id)}`);
+                    }}
+                    className="grid cursor-pointer grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_auto_auto_auto_auto] items-center gap-4 px-6 py-4 transition-colors hover:bg-white/[0.03]"
                   >
                     <div className="min-w-0">
                       <div className="text-[10px] uppercase tracking-[0.18em] text-[#8c909f]">Name</div>
@@ -209,11 +213,13 @@ export default function StudioHomePage() {
                         </div>
                       </div>
                     </div>
-                    <div className="flex items-center justify-end gap-2">
+                    <div className="flex items-center justify-end gap-2 text-[#adc6ff]">
+                      <span className="material-symbols-outlined">arrow_forward</span>
+                    </div>
+                    <div className="flex items-center justify-end">
                       <button
                         type="button"
                         onClick={(event) => {
-                          event.preventDefault();
                           event.stopPropagation();
                           void handleDeleteConversation(conversation.id);
                         }}
@@ -222,9 +228,8 @@ export default function StudioHomePage() {
                       >
                         <span className="material-symbols-outlined text-[18px]">delete</span>
                       </button>
-                      <span className="material-symbols-outlined text-[#adc6ff]">arrow_forward</span>
                     </div>
-                  </Link>
+                  </div>
                 ))
               ) : null}
 
