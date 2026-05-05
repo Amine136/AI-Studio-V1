@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Fragment, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import { useAuth } from "../../../context/AuthContext";
 import InteractiveAuthenticatedImage from "../../../components/InteractiveAuthenticatedImage";
 import { api } from "../../../services/api";
+import { addHistoryEntry } from "../../../lib/history";
 import type { BillingBreakdown, BillingUsage, ModelPricingSummary, PlainChatModelItem, PlainChatParameterSchemaEntry, PlainChatPart, PlainChatTurnMeta, UploadedImageResult } from "../../../types";
 
 type ChatRole = "user" | "assistant";
@@ -662,11 +664,11 @@ export default function StudioChatPage() {
   const [providerSearch, setProviderSearch] = useState("");
   const [modelSearch, setModelSearch] = useState("");
 
-  useEffect(() => {
-    const forceNewSession = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("new") === "1";
-    const requestedConversationId =
-      typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("conversation") : null;
+  const searchParams = useSearchParams();
+  const forceNewSession = searchParams?.get("new") === "1";
+  const requestedConversationId = searchParams?.get("conversation");
 
+  useEffect(() => {
     if (forceNewSession) {
       sessionStorage.removeItem(STORAGE_KEY);
       setPhase("select");
@@ -735,7 +737,7 @@ export default function StudioChatPage() {
     } catch {
       sessionStorage.removeItem(STORAGE_KEY);
     }
-  }, []);
+  }, [forceNewSession, requestedConversationId]);
 
   useEffect(() => {
     sessionStorage.setItem(
@@ -1168,6 +1170,26 @@ export default function StudioChatPage() {
       };
 
       setMessages((current) => [...current.slice(0, -1), userMessage, assistantMessage]);
+
+      // Save generated images to history so they appear in Gallery
+      if (user && assistantMessage.parts) {
+        const imageParts = assistantMessage.parts.filter(p => p.type === "image_url" && p.url);
+        for (const part of imageParts) {
+          if (part.url) {
+            try {
+              await addHistoryEntry(user.uid, {
+                imageUrl: part.url,
+                caption: undefined,
+                prompt: userMessage.content || "Plain Chat Generation",
+                model: `chat:${response.meta?.model || response.conversation?.model || lockedModelId || selectedModel || "Unknown"}`,
+              });
+            } catch (e) {
+              console.error("Failed to save plain chat image to history:", e);
+            }
+          }
+        }
+      }
+
       setConversationTitle(normalizeConversationTitle(response.conversation?.title));
       setConversationTitleDraft(normalizeConversationTitle(response.conversation?.title));
       setConversationPromptTokens(response.conversation?.promptTokensTotal || 0);

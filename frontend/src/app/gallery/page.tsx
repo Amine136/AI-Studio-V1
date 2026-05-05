@@ -6,8 +6,10 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
 import AuthenticatedImage from "../../components/AuthenticatedImage";
 import { getHistory, type HistoryEntry } from "../../lib/history";
+import { api } from "../../services/api";
+import type { SystemConfig, PlainChatModelItem } from "../../types";
 
-type GalleryFilter = "all" | "images" | "captions";
+type GalleryFilter = "all_images" | "smart" | "chat";
 
 function isRenderableImageUrl(value?: string): boolean {
   if (!value) return false;
@@ -34,9 +36,9 @@ function formatTime(value: Date) {
 }
 
 const filterTabs: { id: GalleryFilter; label: string }[] = [
-  { id: "all", label: "All Work" },
-  { id: "images", label: "Images" },
-  { id: "captions", label: "Captions" },
+  { id: "all_images", label: "All Images" },
+  { id: "smart", label: "Smart Generation" },
+  { id: "chat", label: "Plain Chat" },
 ];
 
 export default function GalleryPage() {
@@ -44,8 +46,10 @@ export default function GalleryPage() {
   const { user, loading: authLoading } = useAuth();
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
-  const [filter, setFilter] = useState<GalleryFilter>("all");
+  const [filter, setFilter] = useState<GalleryFilter>("all_images");
   const [selectedEntry, setSelectedEntry] = useState<HistoryEntry | null>(null);
+  const [config, setConfig] = useState<SystemConfig | null>(null);
+  const [plainChatModels, setPlainChatModels] = useState<PlainChatModelItem[]>([]);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -64,14 +68,51 @@ export default function GalleryPage() {
     }
   }, [user]);
 
+  const fetchConfigAndModels = useCallback(async () => {
+    try {
+      const [nextConfig, nextModels] = await Promise.all([
+        api.getConfig(),
+        api.getPlainChatModels()
+      ]);
+      setConfig(nextConfig);
+      if (nextModels?.models) {
+        setPlainChatModels(nextModels.models);
+      }
+    } catch (e) {
+      console.error("Failed to load config/models:", e);
+    }
+  }, []);
+
   useEffect(() => {
     if (!user) return;
     void fetchHistory();
-  }, [fetchHistory, user]);
+    void fetchConfigAndModels();
+  }, [fetchHistory, fetchConfigAndModels, user]);
+
+  const resolveModelName = useCallback((rawModel: string | undefined) => {
+    if (!rawModel) return "Unknown model";
+    const modelId = rawModel.replace(/^chat:/, "");
+    
+    // Check plain chat models first
+    const chatModel = plainChatModels.find(m => m.id === modelId);
+    if (chatModel?.displayName) return chatModel.displayName;
+
+    // Check config catalog (image/caption)
+    if (config?.model_catalog) {
+      const imageModels = config.model_catalog.image || {};
+      const captionModels = config.model_catalog.caption || {};
+      
+      if (imageModels[modelId]?.display_name) return imageModels[modelId].display_name;
+      if (captionModels[modelId]?.display_name) return captionModels[modelId].display_name;
+    }
+
+    return modelId;
+  }, [config, plainChatModels]);
 
   const filteredEntries = useMemo(() => {
-    if (filter === "images") return history.filter((entry) => isRenderableImageUrl(entry.imageUrl));
-    if (filter === "captions") return history.filter((entry) => hasCaption(entry.caption));
+    if (filter === "all_images") return history.filter((entry) => isRenderableImageUrl(entry.imageUrl));
+    if (filter === "smart") return history.filter((entry) => isRenderableImageUrl(entry.imageUrl) && !entry.model?.startsWith("chat:"));
+    if (filter === "chat") return history.filter((entry) => isRenderableImageUrl(entry.imageUrl) && entry.model?.startsWith("chat:"));
     return history;
   }, [filter, history]);
 
@@ -97,8 +138,7 @@ export default function GalleryPage() {
             Gallery
           </h1>
           <p className="mt-4 max-w-2xl text-base leading-8 text-[#c2c6d6]">
-            Review your saved generations, inspect prompts, and revisit the captions and images already created inside
-            Vibecraft.
+            Browse and revisit all your generated images, inspect their prompts, and rediscover your visual creations.
           </p>
 
           <div className="mt-8 flex flex-wrap gap-3">
@@ -183,7 +223,7 @@ export default function GalleryPage() {
                 <div>
                   <div className="flex flex-wrap gap-2">
                     <span className="rounded-sm bg-[#2e3447] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-[#b9c8de]">
-                      {featuredEntry.model || "Unknown model"}
+                      {resolveModelName(featuredEntry.model)}
                     </span>
                     <span className="rounded-sm bg-[#2e3447] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-[#b9c8de]">
                       {formatDate(featuredEntry.createdAt)}
@@ -226,7 +266,7 @@ export default function GalleryPage() {
                     </div>
                   )}
                   <div className="absolute left-4 top-4 rounded-sm bg-[#0c1324]/80 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-[#adc6ff]">
-                    {entry.model || "Unknown model"}
+                    {resolveModelName(entry.model)}
                   </div>
                 </div>
 
@@ -262,7 +302,7 @@ export default function GalleryPage() {
               <div className="p-8">
                 <div className="flex flex-wrap gap-2">
                   <span className="rounded-sm bg-[#2e3447] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-[#b9c8de]">
-                    {selectedEntry.model || "Unknown model"}
+                    {resolveModelName(selectedEntry.model)}
                   </span>
                   <span className="rounded-sm bg-[#2e3447] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-[#b9c8de]">
                     {formatDate(selectedEntry.createdAt)}

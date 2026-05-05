@@ -62,7 +62,7 @@ def verify_admin_password(password: str, encoded_hash: str) -> bool:
 
 def _hash_admin_session_token(token: str) -> str:
     secret = _require_admin_session_secret().encode("utf-8")
-    return hashlib.sha256(secret + token.encode("utf-8")).hexdigest()
+    return hmac.new(secret, token.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
 def _admin_account_dict(account: Any) -> dict[str, Any]:

@@ -80,7 +80,8 @@ function groupLedgerEntries(entries: CreditLedgerEntry[]) {
     if (meta.conversation_id) {
       groupKey = `chat_${meta.conversation_id}`;
       if (meta.prompt_preview) {
-        activityLabel = `Chat: "${meta.prompt_preview}"`;
+        const fullLabel = `Chat: "${meta.prompt_preview}"`;
+        activityLabel = fullLabel.length > 20 ? fullLabel.substring(0, 20) + "..." : fullLabel;
       } else {
         activityLabel = "Plain Chat";
       }
