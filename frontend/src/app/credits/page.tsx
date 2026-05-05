@@ -459,7 +459,7 @@ export default function CreditsPage() {
               {redeeming ? "Redeeming..." : "Redeem"}
             </button>
           </div>
-          <p className="mt-4 text-[10px] uppercase tracking-[0.28em] text-[#c2c6d6]/60">Codes are case-sensitive. Single use only.</p>
+          <p className="mt-4 text-[10px] uppercase tracking-[0.28em] text-[#c2c6d6]/60">Codes are sensitive. Single use only.</p>
 
           {codeMessage && (
             <div
