@@ -33,7 +33,14 @@ export default function AppSidebar({ activePath }: { activePath: string }) {
     <>
       <aside className="fixed left-0 top-0 hidden h-screen w-48 flex-col border-r border-white/6 bg-[linear-gradient(180deg,#1a2333_0%,#0c1324_100%)] px-3 py-8 md:flex">
         <div className="mb-10 px-2">
-          <h1 className="font-headline text-xl font-bold tracking-tighter text-[#adc6ff]">Vibecraft</h1>
+          <div className="flex items-center gap-2">
+            <img
+              src="/best-version/logo-192.png?v=20260506-1210"
+              alt="Vibecraft logo"
+              className="h-8 w-8 object-contain"
+            />
+            <h1 className="font-headline text-xl font-bold tracking-tighter text-[#adc6ff]">Vibecraft</h1>
+          </div>
           <p className="mt-1 text-xs uppercase tracking-[0.28em] text-[#b9c8de]/70">Workspace</p>
         </div>
 

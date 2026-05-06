@@ -89,7 +89,14 @@ export default function LandingPage() {
     <main className="bg-[#0c1324] text-[#dce1fb] selection:bg-[#4d8eff]/30">
       <nav className="fixed top-0 z-50 w-full bg-[#0c1324]/80 shadow-xl shadow-blue-900/10 backdrop-blur-xl">
         <div className="mx-auto flex max-w-[1440px] items-center justify-between px-6 py-5 lg:px-12 lg:py-6">
-          <div className="font-headline text-2xl font-bold tracking-tighter text-blue-100">Vibecraft</div>
+          <div className="flex items-center gap-3">
+            <img
+              src="/best-version/logo-192.png?v=20260506-1210"
+              alt="Vibecraft logo"
+              className="h-9 w-9 object-contain"
+            />
+            <div className="font-headline text-2xl font-bold tracking-tighter text-blue-100">Vibecraft</div>
+          </div>
 
           <div className="hidden items-center gap-10 md:flex">
             <a href="#features" className="border-b-2 border-blue-400 pb-1 font-headline text-sm tracking-tight text-blue-200 transition-colors duration-300 hover:text-blue-100">

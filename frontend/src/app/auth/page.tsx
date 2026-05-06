@@ -135,9 +135,16 @@ export default function AuthPage() {
 
       <div className="relative z-10 w-full max-w-md">
         <header className="mb-12 text-center">
-          <h1 className="font-headline mb-2 text-4xl font-bold uppercase tracking-[0.25em] text-[#dce1fb]">
-            Vibecraft
-          </h1>
+          <div className="mb-2 flex items-center justify-center gap-3">
+            <img
+              src="/best-version/logo-192.png?v=20260506-1210"
+              alt="Vibecraft logo"
+              className="h-11 w-11 object-contain"
+            />
+            <h1 className="font-headline text-3xl font-bold uppercase tracking-[0.16em] text-[#dce1fb] sm:text-4xl sm:tracking-[0.25em]">
+              Vibecraft
+            </h1>
+          </div>
           <p className="font-label text-[10px] uppercase tracking-[0.4em] text-[#adc6ff]/60">AI Studio</p>
         </header>
 
