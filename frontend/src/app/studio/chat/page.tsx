@@ -663,13 +663,23 @@ export default function StudioChatPage() {
   const [parameterValues, setParameterValues] = useState<ParameterState>({});
   const [providerSearch, setProviderSearch] = useState("");
   const [modelSearch, setModelSearch] = useState("");
+  const loadingReplyRef = useRef(false);
+  const messageCountRef = useRef(0);
+  const suppressEmptyConversationLoadRef = useRef(false);
+  const hasBootstrappedChatRef = useRef(false);
 
   const searchParams = useSearchParams();
   const forceNewSession = searchParams?.get("new") === "1";
   const requestedConversationId = searchParams?.get("conversation");
 
   useEffect(() => {
+    loadingReplyRef.current = loadingReply;
+    messageCountRef.current = messages.length;
+  }, [loadingReply, messages.length]);
+
+  useEffect(() => {
     if (forceNewSession) {
+      hasBootstrappedChatRef.current = true;
       sessionStorage.removeItem(STORAGE_KEY);
       setPhase("select");
       setMessages([]);
@@ -692,6 +702,10 @@ export default function StudioChatPage() {
     }
 
     if (requestedConversationId) {
+      hasBootstrappedChatRef.current = true;
+      if (requestedConversationId === conversationId) {
+        return;
+      }
       setPhase("chat");
       setMessages([]);
       setSelectedProvider("");
@@ -711,6 +725,11 @@ export default function StudioChatPage() {
       setLastBillingMeta(null);
       return;
     }
+
+    if (hasBootstrappedChatRef.current) {
+      return;
+    }
+    hasBootstrappedChatRef.current = true;
 
     try {
       const saved = sessionStorage.getItem(STORAGE_KEY);
@@ -737,7 +756,7 @@ export default function StudioChatPage() {
     } catch {
       sessionStorage.removeItem(STORAGE_KEY);
     }
-  }, [forceNewSession, requestedConversationId]);
+  }, [conversationId, forceNewSession, requestedConversationId]);
 
   useEffect(() => {
     sessionStorage.setItem(
@@ -865,15 +884,19 @@ export default function StudioChatPage() {
         setLoadingConversation(true);
         const response = await api.getPlainChatConversationMessages(conversationId, 100);
         if (cancelled) return;
-        setMessages(
-          response.messages.map((message) => ({
-            id: message.id,
-            role: message.role,
-            content: formatMessageParts(message.parts),
-            createdAt: message.createdAt,
-            parts: message.parts,
-          })),
-        );
+        const fetchedMessages = response.messages.map((message) => ({
+          id: message.id,
+          role: message.role,
+          content: formatMessageParts(message.parts),
+          createdAt: message.createdAt,
+          parts: message.parts,
+        }));
+
+        // Do not clobber the optimistic first-turn UI with an empty fetch result
+        // while the first reply is still in flight for a newly created conversation.
+        if (!(suppressEmptyConversationLoadRef.current && fetchedMessages.length === 0)) {
+          setMessages(fetchedMessages);
+        }
         setLockedModelId(response.conversation.model || lockedModelId);
         setConversationTitle(normalizeConversationTitle(response.conversation.title));
         setConversationTitleDraft(normalizeConversationTitle(response.conversation.title));
@@ -1132,6 +1155,7 @@ export default function StudioChatPage() {
     try {
       let activeConversationId = conversationId;
       if (!activeConversationId) {
+        suppressEmptyConversationLoadRef.current = true;
         const createdConversation = await api.createPlainChatConversation({
           model: lockedModelId,
           title: normalizedConversationTitle,
@@ -1204,7 +1228,9 @@ export default function StudioChatPage() {
       if (attachedImage?.previewUrl) {
         URL.revokeObjectURL(attachedImage.previewUrl);
       }
+      suppressEmptyConversationLoadRef.current = false;
     } catch (err) {
+      suppressEmptyConversationLoadRef.current = false;
       setMessages((current) => current.slice(0, -1));
       setInputImage(attachedImage);
       setError(err instanceof Error ? err.message : "Could not get a reply.");
@@ -1814,7 +1840,7 @@ export default function StudioChatPage() {
                 <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#adc6ff]/5 to-transparent" />
 
                 <div className="relative p-6">
-                  {loadingConversation ? (
+                  {loadingConversation && messages.length === 0 ? (
                     <div className="flex h-full items-center justify-center">
                       <div className="max-w-xl text-center text-sm text-[#8c909f]">Loading conversation…</div>
                     </div>
@@ -1952,7 +1978,6 @@ export default function StudioChatPage() {
                         (!input.trim() && !inputImage) ||
                         input.trim().length > MAX_CHAT_TEXT_CHARS ||
                         !lockedModelId ||
-                        !conversationId ||
                         loadingReply ||
                         uploadingImage ||
                         loadingConversation ||

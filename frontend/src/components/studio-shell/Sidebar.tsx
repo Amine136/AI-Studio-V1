@@ -43,8 +43,12 @@ export default function StudioSidebar() {
         }`}
       >
         <Link href="/" onClick={close} className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5 shadow-[0_0_30px_rgba(59,130,246,0.18)]">
-            <span className="text-lg font-black text-white">V</span>
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5 p-1.5 shadow-[0_0_30px_rgba(59,130,246,0.18)]">
+            <img
+              src="/best-version/logo-192.png?v=20260506-1210"
+              alt="Vibecraft logo"
+              className="h-full w-full object-contain"
+            />
           </div>
           <div>
             <div className="text-lg font-semibold tracking-tight text-white">Vibecraft</div>

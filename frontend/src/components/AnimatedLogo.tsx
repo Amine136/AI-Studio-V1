@@ -3,7 +3,7 @@ type AnimatedLogoProps = {
   imageClassName?: string;
 };
 
-const LOGO_VERSION = "20260404-1846";
+const LOGO_VERSION = "20260506-1210";
 
 export default function AnimatedLogo({
   sizeClassName = "w-36 h-36",
