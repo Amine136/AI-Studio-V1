@@ -637,7 +637,9 @@ export default function StudioChatPage() {
   const { user, loading: authLoading } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   const [phase, setPhase] = useState<ChatPhase>("select");
+  const [settingsPanelOpen, setSettingsPanelOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [providerGroups, setProviderGroups] = useState<ProviderGroup[]>([]);
@@ -667,10 +669,15 @@ export default function StudioChatPage() {
   const messageCountRef = useRef(0);
   const suppressEmptyConversationLoadRef = useRef(false);
   const hasBootstrappedChatRef = useRef(false);
+  const deletedConversationIdRef = useRef("");
 
   const searchParams = useSearchParams();
   const forceNewSession = searchParams?.get("new") === "1";
   const requestedConversationId = searchParams?.get("conversation");
+  const requestedConversationIsActive =
+    Boolean(requestedConversationId) && requestedConversationId !== deletedConversationIdRef.current;
+  const isBootstrappingRequestedConversation = requestedConversationIsActive && requestedConversationId !== conversationId;
+  const renderPhase: ChatPhase = requestedConversationIsActive ? "chat" : phase;
 
   useEffect(() => {
     loadingReplyRef.current = loadingReply;
@@ -701,7 +708,7 @@ export default function StudioChatPage() {
       return;
     }
 
-    if (requestedConversationId) {
+    if (requestedConversationId && requestedConversationId !== deletedConversationIdRef.current) {
       hasBootstrappedChatRef.current = true;
       if (requestedConversationId === conversationId) {
         return;
@@ -759,16 +766,18 @@ export default function StudioChatPage() {
   }, [conversationId, forceNewSession, requestedConversationId]);
 
   useEffect(() => {
+    if (isBootstrappingRequestedConversation) return;
     sessionStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({ phase, messages, selectedProvider, selectedModel, lockedModelId, conversationId, conversationTitle, parameterValues }),
     );
-  }, [phase, messages, selectedProvider, selectedModel, lockedModelId, conversationId, conversationTitle, parameterValues]);
+  }, [conversationId, conversationTitle, isBootstrappingRequestedConversation, lockedModelId, messages, parameterValues, phase, selectedModel, selectedProvider]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     const url = new URL(window.location.href);
-    const effectiveConversationId = conversationId || requestedConversationId || "";
+    const effectiveConversationId =
+      conversationId || (requestedConversationId !== deletedConversationIdRef.current ? requestedConversationId || "" : "");
     url.searchParams.delete("new");
     if (effectiveConversationId) {
       url.searchParams.set("conversation", effectiveConversationId);
@@ -941,6 +950,10 @@ export default function StudioChatPage() {
       }
     };
   }, [inputImage]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, loadingReply]);
 
   const activeProviderGroup = useMemo(
     () => providerGroups.find((group) => group.provider === selectedProvider) || null,
@@ -1338,6 +1351,7 @@ export default function StudioChatPage() {
 
   async function handleDeleteConversation() {
     if (!conversationId) return;
+    const deletedConversationId = conversationId;
     if (typeof window !== "undefined" && !window.confirm("Delete this conversation? This action cannot be undone.")) {
       return;
     }
@@ -1345,7 +1359,8 @@ export default function StudioChatPage() {
     try {
       setLoadingReply(true);
       setError(null);
-      await api.deletePlainChatConversation(conversationId);
+      await api.deletePlainChatConversation(deletedConversationId);
+      deletedConversationIdRef.current = deletedConversationId;
       setConversationId("");
       setConversationTitle(DEFAULT_CONVERSATION_TITLE);
       setConversationTitleDraft(DEFAULT_CONVERSATION_TITLE);
@@ -1459,7 +1474,7 @@ export default function StudioChatPage() {
                 const nextValue = entry.type === "integer" ? Number.parseInt(event.target.value, 10) : Number.parseFloat(event.target.value);
                 setParameterValues((current) => ({ ...current, [key]: nextValue }));
               }}
-              className="h-2 w-full cursor-pointer appearance-none rounded-full bg-[#2b3347]"
+              className="chat-range-slider"
             />
             <input
               type="number"
@@ -1496,8 +1511,8 @@ export default function StudioChatPage() {
   }
 
   return (
-    <section className="min-h-[calc(100vh-4rem)] overflow-x-hidden px-6 py-8 lg:px-10">
-      {phase === "select" ? (
+    <section className={renderPhase === "chat" ? "h-screen overflow-hidden" : "min-h-[calc(100vh-4rem)] overflow-x-hidden px-6 py-8 lg:px-10"}>
+      {renderPhase === "select" ? (
         <div className="relative mx-auto flex min-h-[calc(100vh-8rem)] max-w-7xl flex-col overflow-hidden rounded-[1.5rem] border border-white/8 bg-[#0c1324] shadow-[0_24px_80px_rgba(0,0,0,0.28)]">
           <div className="pointer-events-none absolute right-[-8rem] top-16 h-[26rem] w-[26rem] rounded-full bg-[#adc6ff]/5 blur-[120px]" />
           <div className="pointer-events-none absolute bottom-0 left-[18%] h-[18rem] w-[18rem] rounded-full bg-[#d0bcff]/5 blur-[100px]" />
@@ -1703,304 +1718,313 @@ export default function StudioChatPage() {
           </div>
         </div>
       ) : (
-        <div className="mx-auto grid max-w-[1600px] grid-cols-1 gap-6 px-4 pb-12 pt-24 sm:px-6 xl:px-8">
-          <header className="fixed left-0 right-0 top-0 z-40 border-b border-white/10 bg-[#0c1324]/90 backdrop-blur-xl md:left-48">
-            <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 xl:px-8">
-              <div className="flex min-w-0 items-center gap-4">
-                <div className="min-w-0">
-                  {editingConversationTitle ? (
-                    <div className="flex min-w-0 items-center gap-2">
-                      <input
-                        type="text"
-                        value={conversationTitleDraft}
-                        onChange={(event) => setConversationTitleDraft(event.target.value)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") {
-                            event.preventDefault();
-                            void handleSaveConversationTitle();
-                          }
-                          if (event.key === "Escape") {
-                            setConversationTitleDraft(normalizedConversationTitle);
-                            setEditingConversationTitle(false);
-                          }
-                        }}
-                        maxLength={120}
-                        className="min-w-0 rounded-md border border-white/15 bg-[#151b2d] px-3 py-1.5 font-headline text-base font-bold tracking-tight text-white outline-none focus:border-[#adc6ff]/40 sm:text-lg"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => void handleSaveConversationTitle()}
-                        className="rounded-md border border-white/15 px-2.5 py-1.5 text-[11px] font-semibold text-[#adc6ff] transition-colors hover:bg-white/5"
-                      >
-                        Save
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="flex min-w-0 items-center gap-2">
-                      <h1 className="truncate font-headline text-base font-bold tracking-tight text-white sm:text-lg">
-                        {displayConversationTitle}
-                      </h1>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setConversationTitleDraft(normalizedConversationTitle);
-                          setEditingConversationTitle(true);
-                        }}
-                        className="rounded-md border border-white/10 p-1 text-[#c2c6d6] transition-colors hover:bg-white/5 hover:text-white"
-                        aria-label="Rename chat"
-                      >
-                        <span className="material-symbols-outlined text-sm">edit</span>
-                      </button>
-                    </div>
-                  )}
-                  <div className="mt-1 text-xs text-[#8c909f]">{lockedModel?.displayName || "Selected model"}</div>
+        <div className="chat-canvas flex h-full flex-col overflow-hidden">
+          <header className="relative z-30 flex h-12 shrink-0 items-center justify-between border-b border-white/[0.06] bg-[#0a0f1e]/80 px-3 backdrop-blur-xl sm:px-5">
+            <div className="flex min-w-0 items-center gap-2.5">
+              {editingConversationTitle ? (
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="text"
+                    value={conversationTitleDraft}
+                    onChange={(event) => setConversationTitleDraft(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        void handleSaveConversationTitle();
+                      }
+                      if (event.key === "Escape") {
+                        setConversationTitleDraft(normalizedConversationTitle);
+                        setEditingConversationTitle(false);
+                      }
+                    }}
+                    maxLength={120}
+                    autoFocus
+                    className="w-36 rounded-lg border border-white/15 bg-white/5 px-2.5 py-1 text-sm font-semibold text-white outline-none focus:border-[#adc6ff]/40 sm:w-52"
+                  />
+                  <button type="button" onClick={() => void handleSaveConversationTitle()} className="chat-topbar-btn !h-7 !w-7 text-[#adc6ff]">
+                    <span className="material-symbols-outlined text-[16px]">check</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setConversationTitleDraft(normalizedConversationTitle);
+                      setEditingConversationTitle(false);
+                    }}
+                    className="chat-topbar-btn !h-7 !w-7"
+                  >
+                    <span className="material-symbols-outlined text-[16px]">close</span>
+                  </button>
                 </div>
-                <div className="hidden h-8 w-px bg-white/10 lg:block" />
-                <div className="hidden flex-wrap items-start gap-4 lg:flex">
-                  <div className="min-w-[140px]">
-                    <span className="block text-[10px] uppercase tracking-[0.14em] text-[#c2c6d6]">Total tokens used</span>
-                    <span className="mt-1 block text-sm font-semibold text-white">
-                      {conversationTotalTokens.toLocaleString()}
-                    </span>
-                  </div>
-                  <div className="min-w-[150px]">
-                    <span className="block text-[10px] uppercase tracking-[0.14em] text-[#c2c6d6]">Cost of conversation</span>
-                    <span className="mt-1 block text-sm font-semibold text-[#adc6ff]">
-                      {`${conversationCostTotal.toFixed(2)} Cr`}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+              ) : (
                 <button
                   type="button"
-                  onClick={() => void handleNewChat()}
-                  className="rounded-md border border-white/15 px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-[#2e3447]/50 sm:text-sm"
+                  onClick={() => {
+                    setConversationTitleDraft(normalizedConversationTitle);
+                    setEditingConversationTitle(true);
+                  }}
+                  className="group flex min-w-0 items-center gap-1.5"
                 >
-                  New Chat
+                  <h1 className="max-w-[180px] truncate text-sm font-semibold text-white sm:max-w-xs">{normalizedConversationTitle}</h1>
+                  <span className="material-symbols-outlined shrink-0 text-[14px] text-white/25 transition-colors group-hover:text-white/60">edit</span>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => void handleDeleteConversation()}
-                  disabled={!conversationId || loadingReply}
-                  className="rounded-md border border-[#5b2028] px-4 py-2 text-xs font-medium text-[#ffb4ab] transition-colors hover:bg-[#5b2028]/20 disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm"
-                >
-                  Delete Chat
-                </button>
-                <Link
-                  href="/studio/start"
-                  className="rounded-md border border-white/15 px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-[#2e3447]/50 sm:text-sm"
-                >
-                  Back to Choice
-                </Link>
-                <div className="flex items-center gap-2 rounded-full border border-white/5 bg-[#23293c] px-3 py-1.5">
-                  <span className="material-symbols-outlined text-sm text-[#adc6ff]" style={{ fontVariationSettings: "'FILL' 1" }}>
-                    bolt
-                  </span>
-                  <span className="text-xs font-bold text-blue-100 sm:text-sm">
-                    {currentCredits === null ? "..." : `${currentCredits.toFixed(2)} Credits`}
-                  </span>
-                </div>
+              )}
+              <span className="hidden text-white/15 sm:inline">.</span>
+              <span className="hidden max-w-[160px] truncate text-[11px] font-medium text-[#6b7a8f] sm:inline">{lockedModel?.displayName || "Model"}</span>
+            </div>
+
+            <div className="flex items-center gap-1">
+              <div className="mr-1.5 hidden items-center gap-2.5 text-[11px] text-[#6b7a8f] lg:flex">
+                <span className="font-mono tabular-nums">
+                  {conversationTotalTokens.toLocaleString()} <span className="text-white/20">tok</span>
+                </span>
+                <span className="text-white/10">.</span>
+                <span className="font-mono tabular-nums text-[#adc6ff]/60">
+                  {conversationCostTotal.toFixed(2)} <span className="text-white/20">Cr</span>
+                </span>
+              </div>
+              <div className="mr-0.5 hidden h-4 w-px bg-white/[0.06] lg:block" />
+
+              <button type="button" onClick={() => void handleNewChat()} title="New Chat" className="chat-topbar-btn">
+                <span className="material-symbols-outlined text-[18px]">add</span>
+              </button>
+              <button type="button" onClick={() => void handleDeleteConversation()} disabled={!conversationId || loadingReply} title="Delete Chat" className="chat-topbar-btn hover:!text-red-400/80">
+                <span className="material-symbols-outlined text-[18px]">delete_outline</span>
+              </button>
+              <Link href="/studio/start" title="Back to Choice" className="chat-topbar-btn">
+                <span className="material-symbols-outlined text-[18px]">arrow_back</span>
+              </Link>
+
+              <div className="mx-0.5 h-4 w-px bg-white/[0.06]" />
+
+              <div className="chat-credits-badge">
+                <span className="material-symbols-outlined text-[13px] text-[#adc6ff]" style={{ fontVariationSettings: "'FILL' 1" }}>bolt</span>
+                <span className="text-[11px] font-bold tabular-nums text-blue-100/80">{currentCredits === null ? "..." : currentCredits.toFixed(2)}</span>
               </div>
 
-              <div className="flex w-full flex-wrap items-start gap-4 lg:hidden">
-                <div className="min-w-[140px]">
-                  <span className="block text-[10px] uppercase tracking-[0.14em] text-[#c2c6d6]">Total tokens used</span>
-                  <span className="mt-1 block text-sm font-semibold text-white">
-                    {conversationTotalTokens.toLocaleString()}
-                  </span>
-                </div>
-                <div className="min-w-[150px]">
-                  <span className="block text-[10px] uppercase tracking-[0.14em] text-[#c2c6d6]">Cost of conversation</span>
-                  <span className="mt-1 block text-sm font-semibold text-[#adc6ff]">
-                    {`${conversationCostTotal.toFixed(2)} Cr`}
-                  </span>
-                </div>
-              </div>
-              {insufficientLockedModelMinimumCredits || insufficientLockedModelExpectedCredits ? (
-                <div className="w-full rounded-md border border-[rgba(255,180,171,0.2)] bg-[rgba(105,0,5,0.18)] px-3 py-2 text-[11px] text-[#ffdad6]">
-                  {insufficientLockedModelMinimumCredits
-                    ? `Minimum required credits: ${lockedModelMinimumCost.toFixed(2)}. Current balance: ${currentCredits?.toFixed(2) ?? "0.00"}.`
-                    : `Expected credits for these settings: ${lockedModelExpectedCost.toFixed(2)}. Current balance: ${currentCredits?.toFixed(2) ?? "0.00"}.`}
-                </div>
-              ) : null}
+              <button type="button" onClick={() => setSettingsPanelOpen((prev) => !prev)} className={`chat-topbar-btn ${settingsPanelOpen ? "!text-[#adc6ff] bg-white/[0.04]" : ""}`} title="Model Settings">
+                <span className="material-symbols-outlined text-[18px]">tune</span>
+              </button>
             </div>
           </header>
 
-          <div className="lg:hidden">{renderModelParamsPanel(true)}</div>
+          <div className="flex items-center justify-center gap-4 border-b border-white/[0.04] bg-[#0a0f1e]/60 px-4 py-1.5 text-[11px] text-[#6b7a8f] lg:hidden">
+            <span className="tabular-nums">{conversationTotalTokens.toLocaleString()} tokens</span>
+            <span className="text-white/10">.</span>
+            <span className="tabular-nums text-[#adc6ff]/60">{conversationCostTotal.toFixed(2)} Cr</span>
+          </div>
 
-          <aside className="fixed bottom-0 top-16 right-0 hidden w-[224px] lg:block">
-            {renderModelParamsPanel(false)}
-          </aside>
-
-          <div className="lg:pr-[248px]">
-            <section className="flex min-w-0 flex-col gap-6 pb-[240px]">
-              <div className="relative flex flex-col overflow-hidden rounded-xl border border-[rgba(173,198,255,0.1)] bg-[rgba(25,31,49,0.7)] p-8 backdrop-blur-[16px]">
-                <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#adc6ff]/5 to-transparent" />
-
-                <div className="relative p-6">
-                  {loadingConversation && messages.length === 0 ? (
-                    <div className="flex h-full items-center justify-center">
-                      <div className="max-w-xl text-center text-sm text-[#8c909f]">Loading conversation…</div>
-                    </div>
-                  ) : messages.length === 0 ? (
-                    <div className="flex h-full items-center justify-center">
-                      <div className="max-w-sm space-y-4 text-center">
-                        <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full border border-white/10 bg-[#2e3447]">
-                          <span className="material-symbols-outlined text-3xl text-[#adc6ff]">chat_bubble</span>
-                        </div>
-                        <h2 className="font-headline text-2xl font-bold text-slate-50">Start the conversation</h2>
-                        <p className="text-sm leading-relaxed text-[#c2c6d6]">
-                          Ask a question, describe an image, or start a brainstorming session with the selected model.
-                        </p>
+          <div className="relative z-10 flex flex-1 overflow-hidden">
+            <div className="flex flex-1 flex-col overflow-hidden">
+              <div className="chat-messages-scroll flex-1 overflow-y-auto">
+                <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
+                  {loadingConversation || isBootstrappingRequestedConversation ? (
+                    <div className="flex min-h-[50vh] items-center justify-center">
+                      <div className="flex items-center gap-2">
+                        <div className="chat-typing-dot" />
+                        <div className="chat-typing-dot" />
+                        <div className="chat-typing-dot" />
                       </div>
                     </div>
+                  ) : messages.length === 0 ? (
+                    <div className="flex min-h-[55vh] flex-col items-center justify-center">
+                      <div className="chat-empty-icon relative flex h-20 w-20 items-center justify-center rounded-3xl border border-white/[0.06] bg-white/[0.025]">
+                        <span className="material-symbols-outlined text-4xl text-[#adc6ff]/40" style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
+                        <div className="chat-empty-icon-glow" />
+                      </div>
+                      <h2 className="mt-6 text-xl font-semibold tracking-[-0.01em] text-white/90">What will you create?</h2>
+                      <p className="mt-2.5 max-w-[320px] text-center text-[13px] leading-relaxed text-[#5a6580]">
+                        Ask a question, describe an image, or start a brainstorming session with {lockedModel?.displayName || "your model"}.
+                      </p>
+                    </div>
                   ) : (
-                    <div className="flex flex-col gap-6">
-                      {messages.map((message) => (
-                        <div key={message.id} className={`flex flex-col ${message.role === "user" ? "items-end" : "items-start"}`}>
-                          <div
-                            className={`max-w-[80%] border p-4 text-on-surface ${
-                              message.role === "user"
-                                ? "rounded-2xl rounded-tr-none border-[#adc6ff]/20 bg-[#adc6ff]/10 text-[#dce1fb]"
-                                : "rounded-2xl rounded-tl-none border-white/10 bg-[#2e3447] text-[#dce1fb]"
-                            }`}
-                          >
-                            <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.18em] opacity-70">
+                    <div className="flex flex-col gap-6 pb-4">
+                      {messages.map((message, idx) => (
+                        <div
+                          key={message.id}
+                          className={`chat-message-in flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
+                          style={{ animationDelay: `${Math.min(idx * 40, 250)}ms` }}
+                        >
+                          <div className={`group relative max-w-[88%] sm:max-w-[78%] ${message.role === "user" ? "chat-msg-user" : "chat-msg-assistant"}`}>
+                            <div className={`chat-msg-label flex items-center gap-2 ${message.role === "user" ? "justify-end text-[#adc6ff]/45" : "text-white/25"}`}>
                               {message.role === "user" ? displayName : lockedModel?.displayName || "Assistant"}
                             </div>
-                            {message.role === "user"
-                              ? <UserMessageContent message={message} />
-                              : <AssistantMessageContent message={message} />}
+                            {message.role === "user" ? <UserMessageContent message={message} /> : <AssistantMessageContent message={message} />}
                           </div>
                         </div>
                       ))}
 
                       {loadingReply ? (
-                        <div className="flex flex-col items-start">
-                          <div className="max-w-[80%] rounded-2xl rounded-tl-none border border-white/10 bg-[#2e3447] p-4 text-[#dce1fb]">
-                            <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.18em] opacity-70">
+                        <div className="chat-message-in flex justify-start">
+                          <div className="chat-msg-assistant">
+                            <div className="chat-msg-label text-white/25">
                               {lockedModel?.displayName || "Assistant"}
                             </div>
-                            <p className="text-sm leading-relaxed text-[#8c909f]">Thinking…</p>
+                            <div className="flex items-center gap-2 py-1">
+                              <div className="chat-typing-dot" />
+                              <div className="chat-typing-dot" />
+                              <div className="chat-typing-dot" />
+                            </div>
                           </div>
                         </div>
                       ) : null}
                     </div>
                   )}
+                  <div ref={messagesEndRef} />
                 </div>
               </div>
 
-              <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-white/10 bg-[#0c1324]/92 px-4 py-4 backdrop-blur-xl md:left-48 md:right-[224px] sm:px-6 xl:px-8">
-                <div className="mx-auto max-w-[1600px]">
-                  <div className="bg-transparent py-1">
-                {error ? (
-                  <div className="mb-4 rounded-lg border border-[#93000a]/30 bg-[#93000a]/10 px-4 py-3 text-sm text-[#ffdad6]">
-                    {error}
-                  </div>
-                ) : null}
-
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp"
-                  className="hidden"
-                  onChange={handleImageUpload}
-                />
-
-                {lockedModel?.supportsImageInput && inputImage ? (
-                  <div className="mb-4 flex items-center justify-between gap-4 rounded-lg border border-white/10 bg-[#151b2d] px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={inputImage.previewUrl} alt={inputImage.name} className="h-12 w-12 rounded-lg object-cover" />
-                      <div>
-                        <div className="text-sm font-semibold text-white">{inputImage.name}</div>
-                      </div>
+              <div className="shrink-0 px-3 pb-4 pt-2 sm:px-5 sm:pb-5">
+                <div className="mx-auto max-w-4xl">
+                  {error ? (
+                    <div className="mb-3 rounded-xl border border-red-500/20 bg-red-500/[0.07] px-4 py-2.5 text-[13px] text-red-200/90">
+                      {error}
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (inputImage?.previewUrl) URL.revokeObjectURL(inputImage.previewUrl);
-                        setInputImage(null);
+                  ) : null}
+
+                  <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={handleImageUpload} />
+
+                  {lockedModel?.supportsImageInput && inputImage ? (
+                    <div className="chat-image-preview mb-3 flex items-center gap-3 px-4 py-3">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={inputImage.previewUrl} alt={inputImage.name} className="h-11 w-11 rounded-xl object-cover ring-1 ring-white/10" />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-[13px] font-medium text-white/80">{inputImage.name}</div>
+                        <div className="text-[11px] text-[#5a6580]">{(inputImage.size / (1024 * 1024)).toFixed(2)} MB</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (inputImage?.previewUrl) URL.revokeObjectURL(inputImage.previewUrl);
+                          setInputImage(null);
+                        }}
+                        className="chat-topbar-btn !h-8 !w-8 text-white/40 hover:!text-red-400/80"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">close</span>
+                      </button>
+                    </div>
+                  ) : null}
+
+                  <div className="chat-composer px-5 py-3.5">
+                    <textarea
+                      ref={textareaRef}
+                      value={input}
+                      onChange={(event) => {
+                        const nextValue = event.target.value;
+                        setInput(nextValue.slice(0, MAX_CHAT_TEXT_CHARS));
+                        if (error && nextValue.length <= MAX_CHAT_TEXT_CHARS) {
+                          setError(null);
+                        }
                       }}
-                      className="rounded-md border border-white/10 bg-[#23293c] px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#33394c]"
-                    >
-                      Remove
-                    </button>
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" && !event.shiftKey) {
+                          event.preventDefault();
+                          void handleSend();
+                        }
+                      }}
+                      placeholder={lockedModel?.supportsImageInput ? "Ask anything, or drop an image..." : "Ask anything..."}
+                      rows={1}
+                      className="w-full resize-none bg-transparent text-[14px] leading-relaxed text-white/90 outline-none placeholder:text-white/20"
+                    />
+
+                    <div className="mt-3 flex items-center justify-between border-t border-white/[0.04] pt-3">
+                      <div className="flex items-center gap-2.5">
+                        {lockedModel?.supportsImageInput ? (
+                          <button
+                            type="button"
+                            onClick={() => fileInputRef.current?.click()}
+                            disabled={uploadingImage || loadingReply}
+                            className="chat-attach-btn"
+                            title="Upload image"
+                          >
+                            <span className="material-symbols-outlined text-[17px]">add_photo_alternate</span>
+                          </button>
+                        ) : null}
+                        <span className={`text-[11px] tabular-nums text-white/12 transition-colors ${remainingChars < 400 ? "!text-red-400/50" : ""} ${input.length > 0 ? "!text-white/20" : ""}`}>
+                          {input.length > 0 ? `${input.length.toLocaleString()} / ${MAX_CHAT_TEXT_CHARS.toLocaleString()}` : ""}
+                        </span>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => void handleSend()}
+                        disabled={
+                          (!input.trim() && !inputImage) ||
+                          input.trim().length > MAX_CHAT_TEXT_CHARS ||
+                          !lockedModelId ||
+                          !conversationId ||
+                          loadingReply ||
+                          uploadingImage ||
+                          loadingConversation
+                        }
+                        className="chat-send-btn"
+                      >
+                        <span>{uploadingImage ? "Uploading..." : "Send"}</span>
+                        <span className="material-symbols-outlined text-[15px]">arrow_upward</span>
+                      </button>
+                    </div>
                   </div>
-                ) : null}
+                </div>
+              </div>
+            </div>
 
-                <div className="rounded-lg border border-white/10 bg-[#070d1f] p-4 transition-all focus-within:border-[#adc6ff]/40">
-                  <textarea
-                    ref={textareaRef}
-                    value={input}
-                    onChange={(event) => {
-                      const nextValue = event.target.value;
-                      setInput(nextValue.slice(0, MAX_CHAT_TEXT_CHARS));
-                      if (error && nextValue.length <= MAX_CHAT_TEXT_CHARS) {
-                        setError(null);
-                      }
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" && !event.shiftKey) {
-                        event.preventDefault();
-                        void handleSend();
-                      }
-                    }}
-                    placeholder={lockedModel?.supportsImageInput ? "Type your message here or ask about the uploaded image…" : "Type your message here…"}
-                    rows={1}
-                    className="w-full resize-none border-none bg-transparent text-sm leading-6 text-white outline-none placeholder:text-[#8c909f]/60"
-                  />
-
-                  <div className="mt-4 flex items-center justify-between border-t border-white/10 pt-4">
-                    <div className="flex items-center gap-4">
-                      {lockedModel?.supportsImageInput ? (
+            {settingsPanelOpen ? (
+              <>
+                <div className="chat-panel-backdrop fixed inset-0 z-40 bg-black/40 lg:hidden" onClick={() => setSettingsPanelOpen(false)} />
+                <aside className="chat-panel-slide fixed bottom-0 right-0 top-0 z-50 flex w-72 flex-col border-l border-white/[0.05] bg-[#080c1a]/95 backdrop-blur-2xl lg:relative lg:bottom-auto lg:top-auto lg:z-auto lg:w-[280px]">
+                  <div className="flex h-12 shrink-0 items-center justify-between border-b border-white/[0.06] px-4">
+                    <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/35">Model Controls</span>
+                    <div className="flex items-center gap-1">
+                      {lockedModelParameters.length > 0 ? (
                         <button
                           type="button"
-                          onClick={() => fileInputRef.current?.click()}
-                          disabled={uploadingImage || loadingReply}
-                          className="rounded-md p-2 text-[#c2c6d6] transition-colors hover:bg-[#2e3447] disabled:cursor-not-allowed disabled:opacity-50"
-                          title="Upload image"
+                          onClick={() => {
+                            if (!lockedModel) return;
+                            setParameterValues(createParameterState(lockedModel.parameterSchema));
+                          }}
+                          className="text-[10px] font-bold uppercase tracking-wider text-[#adc6ff]/60 transition-colors hover:text-[#adc6ff]"
                         >
-                          <span className="material-symbols-outlined">upload_file</span>
+                          Reset
                         </button>
                       ) : null}
-                      <span className={`text-[11px] font-medium uppercase tracking-wider text-[#8c909f] ${remainingChars < 400 ? "!text-[#ffb4ab]" : ""}`}>
-                        {input.length} / {MAX_CHAT_TEXT_CHARS}
-                      </span>
+                      <button type="button" onClick={() => setSettingsPanelOpen(false)} className="chat-topbar-btn !h-7 !w-7">
+                        <span className="material-symbols-outlined text-[16px]">close</span>
+                      </button>
                     </div>
+                  </div>
 
-                    <button
-                      type="button"
-                      onClick={() => void handleSend()}
-                      disabled={
-                        (!input.trim() && !inputImage) ||
-                        input.trim().length > MAX_CHAT_TEXT_CHARS ||
-                        !lockedModelId ||
-                        loadingReply ||
-                        uploadingImage ||
-                        loadingConversation ||
-                        insufficientLockedModelMinimumCredits ||
-                        insufficientLockedModelExpectedCredits
-                      }
-                      className="flex items-center gap-2 rounded-md bg-gradient-to-r from-[#adc6ff] to-[#4d8eff] px-6 py-2 text-sm font-bold text-[#002e6a] transition-all hover:opacity-90 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <span>
-                        {uploadingImage
-                          ? "Uploading…"
-                          : insufficientLockedModelExpectedCredits
-                            ? `Need ${lockedModelExpectedCost.toFixed(2)} Credits`
-                            : "Send"}
-                      </span>
-                      <span className="material-symbols-outlined text-sm">send</span>
-                    </button>
+                  <div className="chat-messages-scroll flex-1 space-y-4 overflow-y-auto px-4 py-5">
+                    {lockedModelParameters.length > 0 ? (
+                      lockedModelParameters.map(([key, entry]) => {
+                        const pricingHint = getChatParamPricingHint(lockedModel, key);
+                        return (
+                          <div key={key} className="chat-settings-group space-y-3">
+                            <div className="flex items-center justify-between gap-2">
+                              <label className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-white/35">
+                                <span>{toParameterLabel(key)}</span>
+                                {pricingHint ? (
+                                  <span className="group relative inline-flex h-3.5 w-3.5 cursor-help items-center justify-center rounded-full border border-white/8 text-[9px] font-bold normal-case tracking-normal text-[#adc6ff]/50">
+                                    ?
+                                    <span className="pointer-events-none absolute left-4 top-full z-20 mt-3 hidden w-max max-w-[200px] whitespace-pre-line rounded-xl border border-white/8 bg-[#0a0f1e] px-3 py-2.5 text-[11px] font-medium normal-case leading-5 tracking-normal text-white/75 shadow-2xl group-hover:block">
+                                      {pricingHint}
+                                    </span>
+                                  </span>
+                                ) : null}
+                              </label>
+                            </div>
+                            {renderParameterControl(key, entry)}
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <div className="chat-settings-group text-center text-[13px] leading-relaxed text-[#5a6580]">
+                        <span className="material-symbols-outlined mb-2 block text-xl text-white/15">settings_suggest</span>
+                        No editable parameters for this model.
+                      </div>
+                    )}
                   </div>
-                </div>
-                  </div>
-                </div>
-              </div>
-            </section>
+                </aside>
+              </>
+            ) : null}
           </div>
         </div>
       )}
