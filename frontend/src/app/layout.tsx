@@ -45,6 +45,7 @@ export default function RootLayout({
       <head>
         <title>Vibecraft — Create with AI</title>
         <meta name="description" content="Vibecraft is an AI-powered creative studio for generating captions, images, and more." />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
         <link rel="icon" href={`/best-version/favicon-32.png?v=${LOGO_VERSION}`} type="image/png" sizes="32x32" />
         <link rel="icon" href={`/best-version/logo-192.png?v=${LOGO_VERSION}`} type="image/png" sizes="192x192" />
         <link rel="apple-touch-icon" href={`/best-version/logo-192.png?v=${LOGO_VERSION}`} />
@@ -57,9 +58,24 @@ export default function RootLayout({
         />
       </head>
       <body className="antialiased">
-        <AuthProvider>
-          {children}
-        </AuthProvider>
+        <div className="desktop-only-gate" role="status" aria-live="polite">
+          <div className="desktop-only-card">
+            <div className="desktop-only-mark" aria-hidden="true">
+              <span className="material-symbols-outlined">desktop_windows</span>
+            </div>
+            <p className="desktop-only-eyebrow">Desktop experience</p>
+            <h1>Vibecraft is available on larger screens right now.</h1>
+            <p>
+              Please open Vibecraft from a laptop or desktop to use the studio.
+              Mobile support is coming soon.
+            </p>
+          </div>
+        </div>
+        <div className="desktop-app-content">
+          <AuthProvider>
+            {children}
+          </AuthProvider>
+        </div>
       </body>
     </html>
   );
