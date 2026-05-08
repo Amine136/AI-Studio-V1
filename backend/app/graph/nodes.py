@@ -1,3 +1,4 @@
+import base64
 import json
 import logging
 import traceback
@@ -9,6 +10,7 @@ from app.graph.plugins import PLUGIN_REGISTRY
 from app.services.llm_client import generate_text, generate_text_payload
 from app.services.image_client import generate_image_url, generate_image_and_text, generate_image_and_text_payload, generate_image_payload
 from app.services.sanitizer import sanitize_user_text
+from app.services.user_files import load_private_user_file, private_file_id_from_url
 from app.core.schema import IntentAnalysis
 
 # Configure logger
@@ -33,6 +35,18 @@ GENERATE_PARAMETER_OPTION_KEY_MAP = {
     "enhancePrompt": "enhancePrompt",
     "outputMimeType": "outputMimeType",
 }
+
+
+def _build_caption_fallback_image_input(image_url: str, owner_uid: str) -> Dict[str, str]:
+    file_id = private_file_id_from_url(image_url)
+    if not file_id:
+        return {"url": image_url}
+
+    file_record, filepath = load_private_user_file(file_id, owner_uid)
+    return {
+        "mime_type": str(file_record["mime_type"] or "image/png"),
+        "data": base64.b64encode(filepath.read_bytes()).decode("ascii"),
+    }
 
 # ---------------------------------------------------------
 # Helper: Merging Logic
@@ -367,7 +381,7 @@ def execute_generation(state: StudioState) -> StudioState:
                     provider,
                     model_id,
                     fallback_prompt,
-                    input_image={"url": generated["image"]},
+                    input_image=_build_caption_fallback_image_input(str(generated["image"]), owner_uid),
                     options=caption_params.get("options") or {},
                 )
                 generated["caption"] = fallback_caption.get("text", "")
