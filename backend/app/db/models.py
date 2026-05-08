@@ -282,6 +282,7 @@ class ChatConversation(Base):
     last_message_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     prompt_tokens_total: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     completion_tokens_total: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    total_cost_micro: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
     total_cost_minor: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     user: Mapped[User] = relationship(back_populates="chat_conversations")
@@ -293,6 +294,7 @@ class ChatConversation(Base):
     __table_args__ = (
         CheckConstraint("prompt_tokens_total >= 0", name="ck_chat_conversations_prompt_tokens_total_nonnegative"),
         CheckConstraint("completion_tokens_total >= 0", name="ck_chat_conversations_completion_tokens_total_nonnegative"),
+        CheckConstraint("total_cost_micro >= 0", name="ck_chat_conversations_total_cost_micro_nonnegative"),
         CheckConstraint("total_cost_minor >= 0", name="ck_chat_conversations_total_cost_minor_nonnegative"),
         Index("ix_chat_conversations_uid_updated_at", "uid", "updated_at"),
         Index("ix_chat_conversations_uid_last_message_at", "uid", "last_message_at"),

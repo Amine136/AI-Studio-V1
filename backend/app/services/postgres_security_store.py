@@ -13,6 +13,7 @@ from app.db.repositories import SecurityRepository
 from app.db.session import session_scope
 
 CREDIT_SCALE = 100
+CHAT_COST_SCALE = 1_000_000
 CODE_PREFIX = "VC-"
 CODE_BODY_LENGTH = 30
 SYSTEM_AUDIT_EMAIL = "system@vibecraft.local"
@@ -1129,6 +1130,11 @@ def add_chat_turn(
         conversation = repo.get_chat_conversation_for_update(uid, conversation_id)
         if conversation is None:
             raise ValueError("CHAT_CONVERSATION_NOT_FOUND")
+        previous_total_cost_minor = int(conversation.total_cost_minor or 0)
+        charged_cost_micro = _credits_to_chat_cost_micro(charged_cost)
+        next_total_cost_micro = max(int(conversation.total_cost_micro or 0) + charged_cost_micro, 0)
+        next_total_cost_minor = _chat_cost_micro_to_minor(next_total_cost_micro)
+        total_cost_minor_delta = next_total_cost_minor - previous_total_cost_minor
         created_at = int(time.time())
         user_entry = repo.add_chat_message(uid, conversation_id, "user", user_parts, created_at=created_at)
         assistant_entry = repo.add_chat_message(uid, conversation_id, "assistant", assistant_parts, created_at=created_at)
@@ -1138,11 +1144,16 @@ def add_chat_turn(
             title=title,
             prompt_tokens_delta=prompt_tokens,
             completion_tokens_delta=completion_tokens,
-            total_cost_minor_delta=_credits_to_minor(charged_cost),
+            total_cost_micro_delta=charged_cost_micro,
+            total_cost_minor=next_total_cost_minor,
         )
         return {
             "user": _chat_message_dict_from_model(user_entry),
             "assistant": _chat_message_dict_from_model(assistant_entry),
+            "costDeltaMinor": total_cost_minor_delta,
+            "chargedCostMicro": charged_cost_micro,
+            "totalCostMicro": next_total_cost_micro,
+            "totalCostMinor": next_total_cost_minor,
         }
 
 
@@ -1454,6 +1465,14 @@ def _minor_to_credits(value: int) -> float:
     return round(int(value) / CREDIT_SCALE, 2)
 
 
+def _credits_to_chat_cost_micro(value: float) -> int:
+    return int(round(float(value) * CHAT_COST_SCALE))
+
+
+def _chat_cost_micro_to_minor(value: int) -> int:
+    return int(round((int(value) / CHAT_COST_SCALE) * CREDIT_SCALE))
+
+
 def _with_activity_metadata(
     metadata: dict[str, Any] | None,
     *,
@@ -1644,6 +1663,7 @@ def _chat_conversation_dict_from_model(entry: Any) -> dict[str, Any]:
         "completionTokensTotal": int(entry.completion_tokens_total or 0),
         "totalTokens": int(entry.prompt_tokens_total or 0) + int(entry.completion_tokens_total or 0),
         "totalCostCredits": _minor_to_credits(int(entry.total_cost_minor or 0)),
+        "totalCostRawCredits": round(int(getattr(entry, "total_cost_micro", 0) or 0) / CHAT_COST_SCALE, 6),
     }
 
 

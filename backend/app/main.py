@@ -27,7 +27,7 @@ from app.services.admin_auth import AdminAuthRateLimitError, authenticate_admin,
 from app.services.apikeymanager_client import ApiKeyManagerProxyError, check_apikeymanager_ready
 from app.services.auth import verify_admin_csrf, verify_admin_session, verify_api_key, verify_firebase_user
 from app.services.catalog_store import catalog_store
-from app.services.chat_service import assemble_plain_chat_context, expected_required_credits_for_plain_chat, list_plain_chat_models, minimum_required_credits_for_plain_chat, normalize_plain_chat_system, prepare_plain_chat_conversation_request, preview_plain_chat_prompt, send_plain_chat, serialize_plain_chat_parts
+from app.services.chat_service import assemble_plain_chat_context, list_plain_chat_models, minimum_required_credits_for_plain_chat, normalize_plain_chat_system, prepare_plain_chat_conversation_request, preview_plain_chat_prompt, send_plain_chat, serialize_plain_chat_parts
 from app.services.security_backend import (
     add_history_entry,
     add_chat_turn,
@@ -829,7 +829,6 @@ def create_plain_chat_conversation_message(
                     f"You need at least {minimum_required:.4f} credits for this chat model."
                 ),
             )
-        expected_required = expected_required_credits_for_plain_chat(model_name, payload.options)
         chat_activity_id = f"chat_turn:{uuid.uuid4()}"
         user_parts = serialize_plain_chat_parts(payload.parts)
         prompt_preview = _derive_plain_chat_title_from_parts(user_parts) or "Plain Chat"
@@ -840,26 +839,6 @@ def create_plain_chat_conversation_message(
             "conversation_id": conversation_id,
             "prompt_preview": prompt_preview,
         }
-        
-        try:
-            current_profile = adjust_credits(
-                user["uid"],
-                -expected_required,
-                "plain_chat_reserve",
-                actor_uid=user["uid"],
-                allow_negative=False,
-                metadata=chat_activity_metadata,
-            )
-        except ValueError as exc:
-            if str(exc) == "INSUFFICIENT_CREDITS":
-                raise HTTPException(
-                    status_code=402,
-                    detail=(
-                        "Insufficient credits for the selected settings. "
-                        f"You need about {expected_required:.4f} credits for this plain chat request."
-                    ),
-                )
-            raise HTTPException(status_code=400, detail=str(exc))
 
         existing_messages = get_chat_messages(user["uid"], conversation_id, 200)
         auto_title = None
@@ -880,26 +859,10 @@ def create_plain_chat_conversation_message(
         try:
             result = send_plain_chat(request_payload, user_uid=str(user["uid"]))
         except Exception:
-            adjust_credits(
-                user["uid"],
-                expected_required,
-                "plain_chat_refund",
-                actor_uid=user["uid"],
-                allow_negative=True,
-                metadata=chat_activity_metadata,
-            )
             raise
 
         assistant_message = result.get("message")
         if not isinstance(assistant_message, dict):
-            adjust_credits(
-                user["uid"],
-                expected_required,
-                "plain_chat_refund",
-                actor_uid=user["uid"],
-                allow_negative=True,
-                metadata=chat_activity_metadata,
-            )
             raise ValueError("CHAT_INVALID_PROVIDER_RESPONSE")
 
         resolved_cost_raw = result.get("resolvedCost")
@@ -907,33 +870,6 @@ def create_plain_chat_conversation_message(
             charged_cost = round(float(resolved_cost_raw or 0), 6)
         except (TypeError, ValueError):
             charged_cost = 0.0
-
-        refund_amount = expected_required - charged_cost
-        
-        if refund_amount != 0.0:
-            current_profile = adjust_credits(
-                user["uid"],
-                refund_amount,
-                "plain_chat_refund" if refund_amount > 0 else "plain_chat_overage",
-                actor_uid=user["uid"],
-                allow_negative=True,
-                metadata={
-                    **chat_activity_metadata,
-                    "route": "plain_chat_conversation",
-                    "model": result.get("model") or conversation.get("model"),
-                    "provider": result.get("provider"),
-                    "billingMode": result.get("billingMode"),
-                    "resolvedCost": charged_cost,
-                    "usage": result.get("usage") or {},
-                    "billing": result.get("billing") or {},
-                    "message_count": len(assembled_messages),
-                    "stored_message_count": len(existing_messages) + 1,
-                    "options": payload.options.model_dump(by_alias=True, exclude_none=True) if payload.options else {},
-                    "prompt_preview": preview_plain_chat_prompt(request_payload),
-                },
-            )
-        else:
-            current_profile = get_user(user["uid"])
 
         persisted_turn = add_chat_turn(
             user["uid"],
@@ -945,6 +881,37 @@ def create_plain_chat_conversation_message(
             completion_tokens=int((result.get("usage") or {}).get("completionTokens") or 0),
             charged_cost=charged_cost,
         )
+        cost_delta_minor = int(persisted_turn.get("costDeltaMinor") or 0)
+
+        if cost_delta_minor != 0:
+            current_profile = adjust_credits(
+                user["uid"],
+                -(cost_delta_minor / 100),
+                "plain_chat_charge",
+                actor_uid=user["uid"],
+                allow_negative=True,
+                metadata={
+                    **chat_activity_metadata,
+                    "route": "plain_chat_conversation",
+                    "model": result.get("model") or conversation.get("model"),
+                    "provider": result.get("provider"),
+                    "billingMode": result.get("billingMode"),
+                    "resolvedCost": charged_cost,
+                    "chargedCostMicro": persisted_turn.get("chargedCostMicro"),
+                    "totalCostMicro": persisted_turn.get("totalCostMicro"),
+                    "totalCostMinor": persisted_turn.get("totalCostMinor"),
+                    "costDeltaMinor": cost_delta_minor,
+                    "usage": result.get("usage") or {},
+                    "billing": result.get("billing") or {},
+                    "message_count": len(assembled_messages),
+                    "stored_message_count": len(existing_messages) + 1,
+                    "options": payload.options.model_dump(by_alias=True, exclude_none=True) if payload.options else {},
+                    "prompt_preview": preview_plain_chat_prompt(request_payload),
+                },
+            )
+        else:
+            current_profile = get_user(user["uid"])
+
         persisted_user_message = persisted_turn["user"]
         persisted_assistant_message = persisted_turn["assistant"]
         refreshed_conversation = get_chat_conversation(user["uid"], conversation_id) or conversation

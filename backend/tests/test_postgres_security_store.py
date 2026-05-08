@@ -215,6 +215,37 @@ def test_credit_activity_groups_adjacent_chat_turns_by_conversation(test_db):
     assert entries[2]["entryCount"] == 1
 
 
+def test_chat_turn_cost_accumulates_before_rounding_to_minor_credits(test_db):
+    uid = "chat-cost-precision-user"
+    store.ensure_user(uid, "chat-cost-precision@example.com", "Chat Cost Precision")
+    conversation = store.create_chat_conversation(uid, "gemini-2.5-flash", [])
+
+    first = store.add_chat_turn(
+        uid,
+        conversation["id"],
+        user_parts=[{"type": "text", "text": "one"}],
+        assistant_parts=[{"type": "text", "text": "first"}],
+        charged_cost=0.0049,
+    )
+    after_first = store.get_chat_conversation(uid, conversation["id"])
+
+    second = store.add_chat_turn(
+        uid,
+        conversation["id"],
+        user_parts=[{"type": "text", "text": "two"}],
+        assistant_parts=[{"type": "text", "text": "second"}],
+        charged_cost=0.0049,
+    )
+    after_second = store.get_chat_conversation(uid, conversation["id"])
+
+    assert first["costDeltaMinor"] == 0
+    assert after_first["totalCostCredits"] == 0.0
+    assert after_first["totalCostRawCredits"] == 0.0049
+    assert second["costDeltaMinor"] == 1
+    assert after_second["totalCostCredits"] == 0.01
+    assert after_second["totalCostRawCredits"] == 0.0098
+
+
 def test_credit_activity_groups_smart_generation_rows(test_db):
     uid = "activity-smart-user"
     store.ensure_user(uid, "activity-smart@example.com", "Activity Smart")

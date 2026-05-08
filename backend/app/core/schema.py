@@ -155,6 +155,7 @@ class PlainChatConversationItem(BaseModel):
     completion_tokens_total: int = Field(default=0, alias="completionTokensTotal")
     total_tokens: int = Field(default=0, alias="totalTokens")
     total_cost_credits: float = Field(default=0, alias="totalCostCredits")
+    total_cost_raw_credits: float = Field(default=0, alias="totalCostRawCredits")
 
     model_config = {"populate_by_name": True}
 
