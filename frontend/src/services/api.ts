@@ -23,6 +23,7 @@ import {
   PlainChatModelListResponse,
   SystemConfig,
   CurrentUserProfile,
+  CreditActivityListResponse,
   CreditLedgerListResponse,
   UserNotificationPreferencesUpdateRequest,
   UserProfileUpdateRequest,
@@ -233,6 +234,19 @@ export const api = {
   getCreditLedger: async (limit = 20): Promise<CreditLedgerListResponse> => {
     try {
       const res = await client.get('/credits/ledger', { params: { limit } });
+      return res.data;
+    } catch (error) {
+      const detail = extractErrorMessage(error);
+      if (detail) {
+        throw new Error(detail);
+      }
+      throw error;
+    }
+  },
+
+  getCreditActivity: async (limit = 20): Promise<CreditActivityListResponse> => {
+    try {
+      const res = await client.get('/credits/activity', { params: { limit } });
       return res.data;
     } catch (error) {
       const detail = extractErrorMessage(error);

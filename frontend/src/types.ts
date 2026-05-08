@@ -205,6 +205,19 @@ export interface CreditLedgerListResponse {
   entries: CreditLedgerEntry[];
 }
 
+export interface CreditActivityEntry {
+  id: string;
+  createdAt: number;
+  activityType: string;
+  activity: string;
+  status: string;
+  deltaMinor: number;
+}
+
+export interface CreditActivityListResponse {
+  entries: CreditActivityEntry[];
+}
+
 export interface UserProfileUpdateRequest {
   username: string;
   bio: string;

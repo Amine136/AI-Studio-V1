@@ -230,6 +230,21 @@ class CreditLedgerEntryResponse(BaseModel):
 class CreditLedgerListResponse(BaseModel):
     entries: List[CreditLedgerEntryResponse] = Field(default_factory=list)
 
+
+class CreditActivityEntryResponse(BaseModel):
+    id: str
+    created_at: int = Field(alias="createdAt")
+    activity_type: str = Field(alias="activityType")
+    activity: str
+    status: str = "COMPLETED"
+    delta_minor: int = Field(alias="deltaMinor")
+
+    model_config = {"populate_by_name": True}
+
+
+class CreditActivityListResponse(BaseModel):
+    entries: List[CreditActivityEntryResponse] = Field(default_factory=list)
+
 class GenerateRequest(BaseModel):
     """Request payload for content generation."""
     user_text: str = Field(

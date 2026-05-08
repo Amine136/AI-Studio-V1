@@ -116,6 +116,214 @@ def test_successful_redeem_resets_consecutive_failed_redeem_streak(test_db, monk
     assert store.get_active_suspension("user-redeem-reset") is None
 
 
+def test_credit_activity_groups_chat_turns_by_conversation(test_db):
+    uid = "activity-chat-user"
+    store.ensure_user(uid, "activity-chat@example.com", "Activity Chat")
+    now = int(time.time())
+
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        for index in range(25):
+            repo.add_ledger_entry(
+                uid=uid,
+                delta_minor=-10,
+                reason="plain_chat_reserve",
+                actor_uid=uid,
+                metadata_json={
+                    "activity_id": f"chat_turn:{index}",
+                    "activity_type": "chat",
+                    "activity_label": f'Chat: "message {index}"',
+                    "conversation_id": "conversation-1",
+                },
+                created_at=now - index,
+            )
+
+    entries = store.list_credit_activity_entries(uid, 20)
+
+    assert len(entries) == 1
+    assert entries[0]["activity"] == 'Chat: "message 0"'
+    assert entries[0]["deltaMinor"] == -250
+    assert entries[0]["entryCount"] == 25
+
+
+def test_credit_activity_groups_adjacent_chat_turns_by_conversation(test_db):
+    uid = "activity-chat-segment-user"
+    store.ensure_user(uid, "activity-chat-segment@example.com", "Activity Chat Segment")
+    now = int(time.time())
+
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        repo.add_ledger_entry(
+            uid=uid,
+            delta_minor=-10,
+            reason="plain_chat_reserve",
+            actor_uid=uid,
+            metadata_json={
+                "activity_id": "chat_turn:first",
+                "activity_type": "chat",
+                "activity_label": 'Chat: "first"',
+                "conversation_id": "conversation-1",
+            },
+            created_at=now + 4,
+        )
+        repo.add_ledger_entry(
+            uid=uid,
+            delta_minor=-20,
+            reason="plain_chat_reserve",
+            actor_uid=uid,
+            metadata_json={
+                "activity_id": "chat_turn:second",
+                "activity_type": "chat",
+                "activity_label": 'Chat: "second"',
+                "conversation_id": "conversation-1",
+            },
+            created_at=now + 3,
+        )
+        repo.add_ledger_entry(
+            uid=uid,
+            delta_minor=100,
+            reason="credit_code_redeem",
+            actor_uid=uid,
+            metadata_json={
+                "activity_id": "credit_code_redeem:one",
+                "activity_type": "credit_code_redeem",
+                "activity_label": "Credit Redeem",
+            },
+            created_at=now + 2,
+        )
+        repo.add_ledger_entry(
+            uid=uid,
+            delta_minor=-30,
+            reason="plain_chat_reserve",
+            actor_uid=uid,
+            metadata_json={
+                "activity_id": "chat_turn:third",
+                "activity_type": "chat",
+                "activity_label": 'Chat: "third"',
+                "conversation_id": "conversation-1",
+            },
+            created_at=now + 1,
+        )
+
+    entries = store.list_credit_activity_entries(uid, 20)
+
+    assert [entry["activityType"] for entry in entries] == ["chat", "credit_code_redeem", "chat"]
+    assert entries[0]["deltaMinor"] == -30
+    assert entries[0]["entryCount"] == 2
+    assert entries[0]["activity"] == 'Chat: "first"'
+    assert entries[2]["deltaMinor"] == -30
+    assert entries[2]["entryCount"] == 1
+
+
+def test_credit_activity_groups_smart_generation_rows(test_db):
+    uid = "activity-smart-user"
+    store.ensure_user(uid, "activity-smart@example.com", "Activity Smart")
+    now = int(time.time())
+
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        repo.add_ledger_entry(
+            uid=uid,
+            delta_minor=-5,
+            reason="smart_analysis_charge",
+            actor_uid=uid,
+            metadata_json={
+                "activity_id": "smart_generation:analyze-1",
+                "activity_type": "smart_generation",
+                "activity_label": "Smart Content Creation",
+                "analyze_session_id": "analyze-1",
+            },
+            analyze_session_id="analyze-1",
+            created_at=now,
+        )
+        repo.add_ledger_entry(
+            uid=uid,
+            delta_minor=-40,
+            reason="generation_reserve",
+            actor_uid=uid,
+            metadata_json={
+                "activity_id": "smart_generation:analyze-1",
+                "activity_type": "smart_generation",
+                "activity_label": "Smart Content Creation",
+                "generation_job_id": "job-1",
+                "analyze_session_id": "analyze-1",
+            },
+            created_at=now + 1,
+        )
+
+    entries = store.list_credit_activity_entries(uid, 20)
+
+    assert len(entries) == 1
+    assert entries[0]["id"] == "smart_generation:analyze-1"
+    assert entries[0]["createdAt"] == now + 1
+    assert entries[0]["activityType"] == "smart_generation"
+    assert entries[0]["activity"] == "Smart Content Creation"
+    assert entries[0]["status"] == "COMPLETED"
+    assert entries[0]["deltaMinor"] == -45
+
+
+def test_credit_activity_supports_old_ledger_metadata(test_db):
+    uid = "activity-old-user"
+    store.ensure_user(uid, "activity-old@example.com", "Activity Old")
+    now = int(time.time())
+
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        repo.add_ledger_entry(
+            uid=uid,
+            delta_minor=-25,
+            reason="generation_reserve",
+            actor_uid=uid,
+            metadata_json={
+                "generation_job_id": "legacy-job",
+                "requested_outputs": ["image", "caption"],
+            },
+            created_at=now,
+        )
+
+    entries = store.list_credit_activity_entries(uid, 20)
+
+    assert entries[0]["id"] == "generation_job:legacy-job"
+    assert entries[0]["activity"] == "Generation"
+    assert entries[0]["deltaMinor"] == -25
+
+
+def test_credit_activity_merges_old_smart_generation_rows(test_db):
+    uid = "activity-old-smart-user"
+    store.ensure_user(uid, "activity-old-smart@example.com", "Activity Old Smart")
+    now = int(time.time())
+
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        repo.add_ledger_entry(
+            uid=uid,
+            delta_minor=-40,
+            reason="generation_reserve",
+            actor_uid=uid,
+            metadata_json={
+                "generation_job_id": "legacy-smart-job",
+                "requested_outputs": ["image", "caption"],
+            },
+            created_at=now + 30,
+        )
+        repo.add_ledger_entry(
+            uid=uid,
+            delta_minor=-5,
+            reason="smart_analysis_charge",
+            actor_uid=uid,
+            metadata_json={"analyze_session_id": "legacy-analyze"},
+            analyze_session_id="legacy-analyze",
+            created_at=now,
+        )
+
+    entries = store.list_credit_activity_entries(uid, 20)
+
+    assert len(entries) == 1
+    assert entries[0]["activityType"] == "smart_generation"
+    assert entries[0]["activity"] == "Smart Content Creation"
+    assert entries[0]["deltaMinor"] == -45
+
+
 def test_ten_consecutive_failed_redeems_trigger_one_hour_suspension(test_db, monkeypatch):
     monkeypatch.setattr(store.settings, "redeem_failed_attempt_limit", 5)
     monkeypatch.setattr(store.settings, "redeem_failed_attempt_window_seconds", 5 * 60)
