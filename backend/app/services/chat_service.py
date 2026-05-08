@@ -286,7 +286,12 @@ def _validate_plain_chat_request(payload: PlainChatRequest, model_entry: dict[st
     supports_image_input = _supports_image_input(model_entry)
 
     for message in payload.messages:
-        _validate_message_parts(message.parts, supports_image_input=supports_image_input)
+        _validate_message_parts(
+            message.parts,
+            supports_image_input=supports_image_input,
+            max_text_chars_per_part=_max_text_chars_for_role(message.role),
+            max_message_chars=_max_message_chars_for_role(message.role),
+        )
     _validate_system_parts(payload.system, supports_image_input=supports_image_input)
 
     total_message_chars = sum(_message_char_count(_serialize_message(message)) for message in payload.messages)
@@ -296,18 +301,38 @@ def _validate_plain_chat_request(payload: PlainChatRequest, model_entry: dict[st
     _validate_plain_chat_options(payload.options, payload.model, model_entry)
 
 
-def _validate_message_parts(parts: list[ChatMessagePart], *, supports_image_input: bool) -> None:
+def _max_text_chars_for_role(role: str) -> int:
+    if role == "assistant":
+        return int(settings.plain_chat_max_response_text_chars_per_part)
+    return int(settings.plain_chat_max_text_chars_per_part)
+
+
+def _max_message_chars_for_role(role: str) -> int:
+    if role == "assistant":
+        return int(settings.plain_chat_max_response_chars)
+    return int(settings.plain_chat_max_message_chars)
+
+
+def _validate_message_parts(
+    parts: list[ChatMessagePart],
+    *,
+    supports_image_input: bool,
+    max_text_chars_per_part: int | None = None,
+    max_message_chars: int | None = None,
+) -> None:
     if not parts:
         raise ValueError("CHAT_MESSAGE_PARTS_REQUIRED")
 
     has_text = False
     total_chars = 0
+    text_limit = int(max_text_chars_per_part or settings.plain_chat_max_text_chars_per_part)
+    message_limit = int(max_message_chars or settings.plain_chat_max_message_chars)
     for part in parts:
         if part.type == "text":
             text = (part.text or "").strip()
             if not text:
                 raise ValueError("CHAT_TEXT_PART_EMPTY")
-            if len(text) > int(settings.plain_chat_max_text_chars_per_part):
+            if len(text) > text_limit:
                 raise ValueError("CHAT_TEXT_PART_TOO_LARGE")
             has_text = True
             total_chars += len(text)
@@ -323,7 +348,7 @@ def _validate_message_parts(parts: list[ChatMessagePart], *, supports_image_inpu
 
     if not has_text and all(part.type != "image_url" for part in parts):
         raise ValueError("CHAT_MESSAGE_EMPTY")
-    if total_chars > int(settings.plain_chat_max_message_chars):
+    if total_chars > message_limit:
         raise ValueError("CHAT_MESSAGE_TOO_LARGE")
 
 
