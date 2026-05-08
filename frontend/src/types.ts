@@ -80,6 +80,7 @@ export interface PlainChatConversationItem {
   completionTokensTotal?: number;
   totalTokens?: number;
   totalCostCredits?: number;
+  totalCostRawCredits?: number;
 }
 
 export interface PlainChatConversationListResponse {

@@ -670,6 +670,7 @@ export default function StudioChatPage() {
   const suppressEmptyConversationLoadRef = useRef(false);
   const hasBootstrappedChatRef = useRef(false);
   const deletedConversationIdRef = useRef("");
+  const failedConversationLoadRef = useRef("");
 
   const searchParams = useSearchParams();
   const forceNewSession = searchParams?.get("new") === "1";
@@ -708,7 +709,11 @@ export default function StudioChatPage() {
       return;
     }
 
-    if (requestedConversationId && requestedConversationId !== deletedConversationIdRef.current) {
+    if (
+      requestedConversationId &&
+      requestedConversationId !== deletedConversationIdRef.current &&
+      requestedConversationId !== failedConversationLoadRef.current
+    ) {
       hasBootstrappedChatRef.current = true;
       if (requestedConversationId === conversationId) {
         return;
@@ -881,7 +886,7 @@ export default function StudioChatPage() {
     return () => {
       cancelled = true;
     };
-  }, [authLoading, lockedModelId, selectedModel, selectedProvider, user]);
+  }, [authLoading, user]);
 
   useEffect(() => {
     let cancelled = false;
@@ -907,6 +912,7 @@ export default function StudioChatPage() {
           setMessages(fetchedMessages);
         }
         setLockedModelId(response.conversation.model || lockedModelId);
+        failedConversationLoadRef.current = "";
         setConversationTitle(normalizeConversationTitle(response.conversation.title));
         setConversationTitleDraft(normalizeConversationTitle(response.conversation.title));
         setEditingConversationTitle(false);
@@ -917,6 +923,7 @@ export default function StudioChatPage() {
         setLastBillingMeta(null);
       } catch (err) {
         if (cancelled) return;
+        failedConversationLoadRef.current = conversationId;
         setError(err instanceof Error ? err.message : "Could not load chat history.");
         setConversationId("");
         setConversationTitle(DEFAULT_CONVERSATION_TITLE);
@@ -941,7 +948,7 @@ export default function StudioChatPage() {
     return () => {
       cancelled = true;
     };
-  }, [conversationId, lockedModelId, phase, user]);
+  }, [conversationId, phase, user]);
 
   useEffect(() => {
     return () => {

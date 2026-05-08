@@ -639,6 +639,7 @@ class SecurityRepository:
             last_message_at=None,
             prompt_tokens_total=0,
             completion_tokens_total=0,
+            total_cost_micro=0,
             total_cost_minor=0,
         )
         self.session.add(entry)
@@ -681,7 +682,8 @@ class SecurityRepository:
         title: str | None = None,
         prompt_tokens_delta: int = 0,
         completion_tokens_delta: int = 0,
-        total_cost_minor_delta: int = 0,
+        total_cost_micro_delta: int = 0,
+        total_cost_minor: int | None = None,
     ) -> ChatConversation:
         now = touched_at or int(time.time())
         if title is not None:
@@ -690,7 +692,9 @@ class SecurityRepository:
         conversation.last_message_at = now
         conversation.prompt_tokens_total = max(int(conversation.prompt_tokens_total or 0) + int(prompt_tokens_delta or 0), 0)
         conversation.completion_tokens_total = max(int(conversation.completion_tokens_total or 0) + int(completion_tokens_delta or 0), 0)
-        conversation.total_cost_minor = max(int(conversation.total_cost_minor or 0) + int(total_cost_minor_delta or 0), 0)
+        conversation.total_cost_micro = max(int(conversation.total_cost_micro or 0) + int(total_cost_micro_delta or 0), 0)
+        if total_cost_minor is not None:
+            conversation.total_cost_minor = max(int(total_cost_minor), 0)
         self.session.flush()
         return conversation
 
