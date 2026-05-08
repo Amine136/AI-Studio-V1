@@ -5,6 +5,7 @@ import json
 import base64
 import time
 import struct
+import uuid
 from pathlib import Path
 from typing import Any, Dict
 from urllib.parse import urlparse
@@ -18,7 +19,7 @@ from slowapi.errors import RateLimitExceeded
 from sqlalchemy import text
 
 from app.config import settings
-from app.core.schema import AdminAuditLogListResponse, AdminAuthFailureSummaryResponse, AdminCreditCodeBatchListResponse, AdminCreditCodeListResponse, AdminGenerationJobItem, AdminGenerationJobListResponse, AdminLoginRequest, AdminReasonRequest, AdminSessionResponse, AdminUserDetailResponse, AdminUserListResponse, CatalogUpdateNotification, CreditLedgerListResponse, DashboardNewsItemResponse, DashboardNewsListResponse, DashboardNewsUpsertRequest, GenerateRequest, GenerationResult, PlainChatConversationCreateRequest, PlainChatConversationItem, PlainChatConversationListResponse, PlainChatConversationMessageCreateRequest, PlainChatConversationMessagesResponse, PlainChatConversationTurnResponse, PlainChatConversationUpdateRequest, PlainChatModelListResponse, SystemConfig, UserNotificationPreferencesUpdateRequest, UserProfileUpdateRequest
+from app.core.schema import AdminAuditLogListResponse, AdminAuthFailureSummaryResponse, AdminCreditCodeBatchListResponse, AdminCreditCodeListResponse, AdminGenerationJobItem, AdminGenerationJobListResponse, AdminLoginRequest, AdminReasonRequest, AdminSessionResponse, AdminUserDetailResponse, AdminUserListResponse, CatalogUpdateNotification, CreditActivityListResponse, CreditLedgerListResponse, DashboardNewsItemResponse, DashboardNewsListResponse, DashboardNewsUpsertRequest, GenerateRequest, GenerationResult, PlainChatConversationCreateRequest, PlainChatConversationItem, PlainChatConversationListResponse, PlainChatConversationMessageCreateRequest, PlainChatConversationMessagesResponse, PlainChatConversationTurnResponse, PlainChatConversationUpdateRequest, PlainChatModelListResponse, SystemConfig, UserNotificationPreferencesUpdateRequest, UserProfileUpdateRequest
 from app.db.session import session_scope
 from app.db.repositories.security import SecurityRepository
 from app.graph.workflow import studio_graph_app
@@ -63,6 +64,7 @@ from app.services.security_backend import (
     list_admin_audit_logs,
     list_admin_generation_jobs,
     list_chat_conversations,
+    list_credit_activity_entries,
     list_credit_ledger_entries,
     list_dashboard_news_items,
     update_chat_conversation_title,
@@ -828,6 +830,16 @@ def create_plain_chat_conversation_message(
                 ),
             )
         expected_required = expected_required_credits_for_plain_chat(model_name, payload.options)
+        chat_activity_id = f"chat_turn:{uuid.uuid4()}"
+        user_parts = serialize_plain_chat_parts(payload.parts)
+        prompt_preview = _derive_plain_chat_title_from_parts(user_parts) or "Plain Chat"
+        chat_activity_metadata = {
+            "activity_id": chat_activity_id,
+            "activity_type": "chat",
+            "activity_label": f'Chat: "{prompt_preview}"',
+            "conversation_id": conversation_id,
+            "prompt_preview": prompt_preview,
+        }
         
         try:
             current_profile = adjust_credits(
@@ -836,7 +848,7 @@ def create_plain_chat_conversation_message(
                 "plain_chat_reserve",
                 actor_uid=user["uid"],
                 allow_negative=False,
-                metadata={"conversation_id": conversation_id}
+                metadata=chat_activity_metadata,
             )
         except ValueError as exc:
             if str(exc) == "INSUFFICIENT_CREDITS":
@@ -850,7 +862,6 @@ def create_plain_chat_conversation_message(
             raise HTTPException(status_code=400, detail=str(exc))
 
         existing_messages = get_chat_messages(user["uid"], conversation_id, 200)
-        user_parts = serialize_plain_chat_parts(payload.parts)
         auto_title = None
         existing_title = _normalize_plain_chat_title(str(conversation.get("title") or DEFAULT_PLAIN_CHAT_TITLE))
         if len(existing_messages) == 0 and existing_title == DEFAULT_PLAIN_CHAT_TITLE:
@@ -875,7 +886,7 @@ def create_plain_chat_conversation_message(
                 "plain_chat_refund",
                 actor_uid=user["uid"],
                 allow_negative=True,
-                metadata={"conversation_id": conversation_id}
+                metadata=chat_activity_metadata,
             )
             raise
 
@@ -887,7 +898,7 @@ def create_plain_chat_conversation_message(
                 "plain_chat_refund",
                 actor_uid=user["uid"],
                 allow_negative=True,
-                metadata={"conversation_id": conversation_id}
+                metadata=chat_activity_metadata,
             )
             raise ValueError("CHAT_INVALID_PROVIDER_RESPONSE")
 
@@ -907,8 +918,8 @@ def create_plain_chat_conversation_message(
                 actor_uid=user["uid"],
                 allow_negative=True,
                 metadata={
+                    **chat_activity_metadata,
                     "route": "plain_chat_conversation",
-                    "conversation_id": conversation_id,
                     "model": result.get("model") or conversation.get("model"),
                     "provider": result.get("provider"),
                     "billingMode": result.get("billingMode"),
@@ -1203,6 +1214,14 @@ def get_user_credit_ledger(request: Request, limit: int = 20, user: Dict[str, An
     del request
     capped_limit = min(max(limit, 1), 50)
     return CreditLedgerListResponse(entries=list_credit_ledger_entries(user["uid"], capped_limit))
+
+
+@app.get("/credits/activity", response_model=CreditActivityListResponse, tags=["Configuration"], summary="Get User Credit Activity")
+@limiter.limit("30/minute")
+def get_user_credit_activity(request: Request, limit: int = 20, user: Dict[str, Any] = Depends(verify_firebase_user)):
+    del request
+    capped_limit = min(max(limit, 1), 50)
+    return CreditActivityListResponse(entries=list_credit_activity_entries(user["uid"], capped_limit))
 
 
 @app.post("/history", tags=["Configuration"], summary="Add User History Entry")

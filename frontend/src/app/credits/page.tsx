@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../services/api";
-import type { CreditLedgerEntry } from "../../types";
+import type { CreditActivityEntry } from "../../types";
 
 
 interface SuspensionState {
@@ -66,97 +66,8 @@ function isRedeemCooldownMessage(message: string) {
   return /reached 5 failed credit code attempts in 5 minutes/i.test(message);
 }
 
-function groupLedgerEntries(entries: CreditLedgerEntry[]) {
-  const groups: Record<string, { id: string, createdAt: number, deltaMinor: number, activity: string }> = {};
-  const groupOrder: string[] = [];
-
-  for (const entry of entries) {
-    const reason = String(entry.reason || "").trim().toLowerCase();
-    const meta = entry.metadata || {};
-    
-    let groupKey = entry.id; 
-    let activityLabel = reason.replace(/_/g, " ");
-    
-    if (meta.conversation_id) {
-      groupKey = `chat_${meta.conversation_id}`;
-      if (meta.prompt_preview) {
-        const fullLabel = `Chat: "${meta.prompt_preview}"`;
-        activityLabel = fullLabel.length > 20 ? fullLabel.substring(0, 20) + "..." : fullLabel;
-      } else {
-        activityLabel = "Plain Chat";
-      }
-    } else if (meta.generation_job_id) {
-      groupKey = `gen_${meta.generation_job_id}`;
-      const outputs = Array.isArray(meta.requested_outputs) ? meta.requested_outputs : [];
-      if (outputs.includes("image") && outputs.includes("caption")) activityLabel = "Generation";
-      else if (outputs.includes("image")) activityLabel = "Image Generation";
-      else if (outputs.includes("caption")) activityLabel = "Caption Generation";
-      else activityLabel = "Generation";
-    } else if (meta.analyze_session_id) {
-      groupKey = `analyze_${meta.analyze_session_id}`;
-      activityLabel = "Smart Analysis";
-    } else if (reason === "credit_code_redeem") {
-      groupKey = entry.id;
-      activityLabel = "Credit Redeem";
-    } else if (reason === "manual_adjustment") {
-      groupKey = entry.id;
-      activityLabel = "Manual Adjustment";
-    }
-
-    if (!groups[groupKey]) {
-      groups[groupKey] = {
-        id: entry.id,
-        createdAt: entry.createdAt || 0,
-        deltaMinor: 0,
-        activity: activityLabel,
-      };
-      groupOrder.push(groupKey);
-    }
-    
-    groups[groupKey].deltaMinor += Number(entry.deltaMinor || 0);
-  }
-  
-  const finalResult: any[] = [];
-  let i = 0;
-  
-  while (i < groupOrder.length) {
-    const key = groupOrder[i];
-    const current = groups[key];
-    
-    if (key.startsWith("gen_")) {
-      let j = i + 1;
-      let isSmart = false;
-      let combinedDelta = current.deltaMinor;
-      
-      if (j < groupOrder.length && groupOrder[j].startsWith("analyze_")) {
-        const next = groups[groupOrder[j]];
-        if (Math.abs(current.createdAt - next.createdAt) < 3600) {
-          combinedDelta += next.deltaMinor;
-          isSmart = true;
-          j++;
-        }
-      }
-      
-      finalResult.push({
-        id: current.id,
-        createdAt: current.createdAt,
-        deltaMinor: combinedDelta,
-        activity: isSmart ? "Smart Content Creation" : current.activity,
-      });
-      i = j;
-      continue;
-    }
-    
-    finalResult.push(current);
-    i++;
-  }
-  
-  return finalResult;
-}
-
-function mapLedgerToUsageEvents(entries: CreditLedgerEntry[]): UsageEvent[] {
-  const grouped = groupLedgerEntries(entries);
-  return grouped.slice(0, 20).map((g) => {
+function mapActivityToUsageEvents(entries: CreditActivityEntry[]): UsageEvent[] {
+  return entries.map((g) => {
     const createdAt = new Date((g.createdAt || 0) * 1000);
     const credits = Math.abs(Number(g.deltaMinor || 0)) / 100;
     const isZero = g.deltaMinor === 0;
@@ -166,7 +77,7 @@ function mapLedgerToUsageEvents(entries: CreditLedgerEntry[]): UsageEvent[] {
       id: g.id,
       date: createdAt.toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" }),
       activity: g.activity,
-      status: "COMPLETED",
+      status: g.status || "COMPLETED",
       amount: `${amountStr} Cr`,
       positive: g.deltaMinor >= 0,
     };
@@ -198,7 +109,7 @@ export default function CreditsPage() {
   const router = useRouter();
   const { user, loading } = useAuth();
 
-  const [history, setHistory] = useState<CreditLedgerEntry[]>([]);
+  const [history, setHistory] = useState<CreditActivityEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [credits, setCredits] = useState<number | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
@@ -237,7 +148,7 @@ export default function CreditsPage() {
     if (!user) return;
     setHistoryLoading(true);
     try {
-      const response = await api.getCreditLedger(20);
+      const response = await api.getCreditActivity(20);
       setHistory(response.entries || []);
     } catch {
       setHistory([]);
@@ -351,7 +262,7 @@ export default function CreditsPage() {
     }
   }, [activateRedeemCooldown, codeInput, fetchBalance, redeemBlockedUntil, redeemCooldownStorageKey, user]);
 
-  const usageEvents = useMemo(() => mapLedgerToUsageEvents(history), [history]);
+  const usageEvents = useMemo(() => mapActivityToUsageEvents(history), [history]);
   const visibleUsageEvents = useMemo(
     () => (showAllTransactions ? usageEvents : usageEvents.slice(0, 5)),
     [showAllTransactions, usageEvents],

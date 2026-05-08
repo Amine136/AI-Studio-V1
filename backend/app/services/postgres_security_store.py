@@ -500,12 +500,21 @@ def adjust_credits(
         user.updated_at = now
         user.last_seen_at = now
 
+        ledger_metadata = dict(metadata or {})
+        if not ledger_metadata.get("activity_id"):
+            ledger_metadata = _with_activity_metadata(
+                ledger_metadata,
+                activity_id=f"{reason}:{uuid.uuid4()}",
+                activity_type=str(reason or "credit_adjustment"),
+                activity_label=str(reason or "Credit Adjustment").replace("_", " ").title(),
+            )
+
         repo.add_ledger_entry(
             uid=uid,
             delta_minor=delta_minor,
             reason=reason,
             actor_uid=actor_uid,
-            metadata_json=metadata or {},
+            metadata_json=ledger_metadata,
             created_at=now,
         )
         session.flush()
@@ -891,7 +900,12 @@ def redeem_credit_code(code: str, uid: str) -> dict[str, Any]:
             delta_minor=credit_code.credits_minor,
             reason="credit_code_redeem",
             actor_uid=uid,
-            metadata_json={"code_preview": credit_code.code_preview},
+            metadata_json=_with_activity_metadata(
+                {"code_preview": credit_code.code_preview},
+                activity_id=f"credit_code_redeem:{code_hash}:{uid}",
+                activity_type="credit_code_redeem",
+                activity_label="Credit Redeem",
+            ),
             code_hash=code_hash,
             created_at=now,
         )
@@ -963,6 +977,86 @@ def list_credit_ledger_entries(uid: str, max_items: int = 20) -> list[dict[str, 
     with session_scope() as session:
         repo = SecurityRepository(session)
         return [_credit_ledger_dict_from_model(entry) for entry in repo.list_credit_ledger_entries(uid, max_items)]
+
+
+def list_credit_activity_entries(uid: str, max_items: int = 20) -> list[dict[str, Any]]:
+    visible_limit = max(1, min(int(max_items), 50))
+    raw_limit = max(200, visible_limit * 10)
+    raw_limit = min(raw_limit, 500)
+
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        ledger_entries = [_credit_ledger_dict_from_model(entry) for entry in repo.list_credit_ledger_entries(uid, raw_limit)]
+
+    groups: dict[str, dict[str, Any]] = {}
+    group_order: list[str] = []
+
+    for entry in ledger_entries:
+        activity = _credit_activity_from_ledger_entry(entry)
+        activity_id = activity["id"]
+        if activity_id not in groups:
+            groups[activity_id] = activity
+            group_order.append(activity_id)
+            continue
+
+        groups[activity_id]["deltaMinor"] += activity["deltaMinor"]
+        groups[activity_id]["entryCount"] = int(groups[activity_id].get("entryCount") or 1) + 1
+        if activity["createdAt"] > groups[activity_id]["createdAt"]:
+            groups[activity_id]["createdAt"] = activity["createdAt"]
+            groups[activity_id]["activity"] = activity["activity"]
+            groups[activity_id]["activityType"] = activity["activityType"]
+
+    ordered = [groups[key] for key in group_order]
+    ordered.sort(key=lambda item: int(item.get("createdAt") or 0), reverse=True)
+
+    merged: list[dict[str, Any]] = []
+    index = 0
+    while index < len(ordered):
+        current = ordered[index]
+        next_item = ordered[index + 1] if index + 1 < len(ordered) else None
+        current_id = str(current.get("id") or "")
+
+        if current.get("activityType") == "chat":
+            chat_group = dict(current)
+            index += 1
+            while index < len(ordered):
+                candidate = ordered[index]
+                if (
+                    candidate.get("activityType") != "chat"
+                    or not chat_group.get("conversationId")
+                    or chat_group.get("conversationId") != candidate.get("conversationId")
+                ):
+                    break
+                chat_group["id"] = f"{candidate['id']}+{chat_group['id']}"
+                chat_group["deltaMinor"] = int(chat_group.get("deltaMinor") or 0) + int(candidate.get("deltaMinor") or 0)
+                chat_group["entryCount"] = int(chat_group.get("entryCount") or 1) + int(candidate.get("entryCount") or 1)
+                if int(candidate.get("createdAt") or 0) > int(chat_group.get("createdAt") or 0):
+                    chat_group["createdAt"] = candidate["createdAt"]
+                    chat_group["activity"] = candidate["activity"]
+                index += 1
+            merged.append(chat_group)
+            continue
+
+        if (
+            current_id.startswith("generation_job:")
+            and next_item is not None
+            and str(next_item.get("id") or "").startswith("smart_generation:")
+            and abs(int(current.get("createdAt") or 0) - int(next_item.get("createdAt") or 0)) < 3600
+        ):
+            merged.append({
+                **current,
+                "id": f"{current_id}+{next_item['id']}",
+                "activityType": "smart_generation",
+                "activity": "Smart Content Creation",
+                "deltaMinor": int(current.get("deltaMinor") or 0) + int(next_item.get("deltaMinor") or 0),
+            })
+            index += 2
+            continue
+
+        merged.append(current)
+        index += 1
+
+    return merged[:visible_limit]
 
 
 def create_chat_conversation(uid: str, model: str, system_parts: list[dict[str, Any]], title: str = "New Chat") -> dict[str, Any]:
@@ -1151,10 +1245,10 @@ def create_analyze_session_with_charge(uid: str, prompt: str, analysis_fee: floa
                 delta_minor=-analysis_fee_minor,
                 reason="smart_analysis_charge",
                 actor_uid=uid,
-                metadata_json={
-                    "analyze_session_id": analyze_session.id,
-                    "analysis_fee": _minor_to_credits(analysis_fee_minor),
-                },
+                metadata_json=_analyze_activity_metadata(
+                    analyze_session.id,
+                    {"analysis_fee": _minor_to_credits(analysis_fee_minor)},
+                ),
                 analyze_session_id=analyze_session.id,
                 created_at=now,
             )
@@ -1249,7 +1343,7 @@ def refund_analyze_session(session_id: str, uid: str) -> dict[str, Any]:
             delta_minor=analyze_session.fee_minor,
             reason="analyze_abandon_refund",
             actor_uid=uid,
-            metadata_json={"analyze_session_id": session_id},
+            metadata_json=_analyze_activity_metadata(session_id),
             analyze_session_id=session_id,
             created_at=now,
         )
@@ -1358,6 +1452,73 @@ def _credits_to_minor(value: float) -> int:
 
 def _minor_to_credits(value: int) -> float:
     return round(int(value) / CREDIT_SCALE, 2)
+
+
+def _with_activity_metadata(
+    metadata: dict[str, Any] | None,
+    *,
+    activity_id: str,
+    activity_type: str,
+    activity_label: str,
+) -> dict[str, Any]:
+    payload = dict(metadata or {})
+    payload.setdefault("activity_id", activity_id)
+    payload.setdefault("activity_type", activity_type)
+    payload.setdefault("activity_label", activity_label)
+    return payload
+
+
+def _analyze_activity_metadata(analyze_session_id: str, extra: dict[str, Any] | None = None) -> dict[str, Any]:
+    return _with_activity_metadata(
+        {
+            **(extra or {}),
+            "analyze_session_id": analyze_session_id,
+        },
+        activity_id=f"smart_generation:{analyze_session_id}",
+        activity_type="smart_generation",
+        activity_label="Smart Content Creation",
+    )
+
+
+def _generation_activity_metadata(
+    generation_job_id: str,
+    requested_outputs: list[str] | None = None,
+    request_payload: dict[str, Any] | None = None,
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    user_preferences = (request_payload or {}).get("user_preferences")
+    analyze_session_id = ""
+    if isinstance(user_preferences, dict):
+        analyze_session_id = str(user_preferences.get("analyze_session_id") or "").strip()
+
+    outputs = list(requested_outputs or [])
+    if "image" in outputs and "caption" in outputs:
+        label = "Generation"
+    elif "image" in outputs:
+        label = "Image Generation"
+    elif "caption" in outputs:
+        label = "Caption Generation"
+    else:
+        label = "Generation"
+
+    activity_id = f"generation_job:{generation_job_id}"
+    activity_type = "generation"
+    if analyze_session_id:
+        activity_id = f"smart_generation:{analyze_session_id}"
+        activity_type = "smart_generation"
+        label = "Smart Content Creation"
+
+    return _with_activity_metadata(
+        {
+            **(extra or {}),
+            "generation_job_id": generation_job_id,
+            "requested_outputs": outputs,
+            **({"analyze_session_id": analyze_session_id} if analyze_session_id else {}),
+        },
+        activity_id=activity_id,
+        activity_type=activity_type,
+        activity_label=label,
+    )
 
 
 def _normalize_profile_username(value: str) -> str:
@@ -1497,6 +1658,66 @@ def _credit_ledger_dict_from_model(entry: Any) -> dict[str, Any]:
         "codeHash": entry.code_hash,
         "analyzeSessionId": entry.analyze_session_id,
         "createdAt": int(entry.created_at or 0),
+    }
+
+
+def _credit_activity_from_ledger_entry(entry: dict[str, Any]) -> dict[str, Any]:
+    metadata = entry.get("metadata") if isinstance(entry.get("metadata"), dict) else {}
+    reason = str(entry.get("reason") or "").strip().lower()
+
+    activity_id = str(metadata.get("activity_id") or "").strip()
+    activity_type = str(metadata.get("activity_type") or "").strip()
+    activity_label = str(metadata.get("activity_label") or "").strip()
+
+    if not activity_id:
+        generation_job_id = str(metadata.get("generation_job_id") or "").strip()
+        analyze_session_id = str(metadata.get("analyze_session_id") or entry.get("analyzeSessionId") or "").strip()
+        conversation_id = str(metadata.get("conversation_id") or "").strip()
+
+        if generation_job_id:
+            activity_id = f"generation_job:{generation_job_id}"
+            activity_type = activity_type or "generation"
+            requested_outputs = metadata.get("requested_outputs")
+            if isinstance(requested_outputs, list):
+                if "image" in requested_outputs and "caption" in requested_outputs:
+                    activity_label = activity_label or "Generation"
+                elif "image" in requested_outputs:
+                    activity_label = activity_label or "Image Generation"
+                elif "caption" in requested_outputs:
+                    activity_label = activity_label or "Caption Generation"
+            activity_label = activity_label or "Generation"
+        elif analyze_session_id:
+            activity_id = f"smart_generation:{analyze_session_id}"
+            activity_type = activity_type or "smart_generation"
+            activity_label = activity_label or "Smart Content Creation"
+        elif conversation_id:
+            activity_id = f"conversation:{conversation_id}"
+            activity_type = activity_type or "chat"
+            prompt_preview = str(metadata.get("prompt_preview") or "").strip()
+            activity_label = activity_label or (f'Chat: "{prompt_preview[:80]}"' if prompt_preview else "Plain Chat")
+        else:
+            activity_id = f"ledger:{entry.get('id')}"
+
+    if not activity_type:
+        activity_type = reason or "credit"
+
+    if not activity_label:
+        if reason == "credit_code_redeem":
+            activity_label = "Credit Redeem"
+        elif reason == "manual_adjustment":
+            activity_label = "Manual Adjustment"
+        else:
+            activity_label = (reason or "Credit Activity").replace("_", " ").title()
+
+    return {
+        "id": activity_id,
+        "createdAt": int(entry.get("createdAt") or 0),
+        "activityType": activity_type,
+        "activity": activity_label,
+        "status": "COMPLETED",
+        "deltaMinor": int(entry.get("deltaMinor") or 0),
+        "conversationId": str(metadata.get("conversation_id") or "").strip() or None,
+        "entryCount": 1,
     }
 
 
@@ -1720,10 +1941,7 @@ def reserve_generation_credits(
             delta_minor=-reserved_minor,
             reason="generation_reserve",
             actor_uid=uid,
-            metadata_json={
-                "generation_job_id": job.id,
-                "requested_outputs": requested_outputs,
-            },
+            metadata_json=_generation_activity_metadata(job.id, requested_outputs, request_payload),
             created_at=now,
         )
         session.flush()
@@ -1776,10 +1994,12 @@ def capture_generation_credits(job_id: str, actual_cost: float) -> dict[str, Any
                 delta_minor=refund_minor,
                 reason="generation_refund",
                 actor_uid=user.uid,
-                metadata_json={
-                    "generation_job_id": job.id,
-                    "refunded_minor": refund_minor,
-                },
+                metadata_json=_generation_activity_metadata(
+                    job.id,
+                    list(job.requested_outputs_json or []),
+                    dict(job.request_payload_json or {}),
+                    {"refunded_minor": refund_minor},
+                ),
                 created_at=now,
             )
         elif refund_minor < 0:
@@ -1790,10 +2010,12 @@ def capture_generation_credits(job_id: str, actual_cost: float) -> dict[str, Any
                 delta_minor=-overage_minor,
                 reason="generation_overage_charge",
                 actor_uid=user.uid,
-                metadata_json={
-                    "generation_job_id": job.id,
-                    "overage_minor": overage_minor,
-                },
+                metadata_json=_generation_activity_metadata(
+                    job.id,
+                    list(job.requested_outputs_json or []),
+                    dict(job.request_payload_json or {}),
+                    {"overage_minor": overage_minor},
+                ),
                 created_at=now,
             )
 
@@ -1805,10 +2027,12 @@ def capture_generation_credits(job_id: str, actual_cost: float) -> dict[str, Any
             delta_minor=0,
             reason="generation_capture",
             actor_uid=user.uid,
-            metadata_json={
-                "generation_job_id": job.id,
-                "captured_minor": actual_minor,
-            },
+            metadata_json=_generation_activity_metadata(
+                job.id,
+                list(job.requested_outputs_json or []),
+                dict(job.request_payload_json or {}),
+                {"captured_minor": actual_minor},
+            ),
             created_at=now,
         )
         repo.add_admin_audit_log(
@@ -1874,11 +2098,15 @@ def release_generation_credits(job_id: str, failure_reason: str | None = None, c
             delta_minor=job.reserved_minor,
             reason="generation_release",
             actor_uid=user.uid,
-            metadata_json={
-                "generation_job_id": job.id,
-                "failure_reason": failure_reason,
-                "released_minor": job.reserved_minor,
-            },
+            metadata_json=_generation_activity_metadata(
+                job.id,
+                list(job.requested_outputs_json or []),
+                dict(job.request_payload_json or {}),
+                {
+                    "failure_reason": failure_reason,
+                    "released_minor": job.reserved_minor,
+                },
+            ),
             created_at=now,
         )
         repo.add_admin_audit_log(
