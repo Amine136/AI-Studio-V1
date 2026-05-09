@@ -80,12 +80,21 @@ function getNumericBounds(entry: PlainChatParameterSchemaEntry) {
   return { min, max };
 }
 
-function getDefaultParameterValue(entry: PlainChatParameterSchemaEntry): ParameterValue | null {
+function getDefaultParameterValue(entry: PlainChatParameterSchemaEntry, key?: string): ParameterValue | null {
   if (entry.recommendedDefault !== undefined) {
     return entry.recommendedDefault;
   }
+  if (entry.default !== undefined) {
+    return entry.default;
+  }
   if (entry.value !== undefined) {
     return entry.value;
+  }
+  if (key === "imageSize" || key === "sampleImageSize") {
+    const enumValues = Array.isArray(entry.values) ? entry.values.map((value) => String(value).trim().toUpperCase()) : [];
+    if (enumValues.includes("1K")) {
+      return "1K";
+    }
   }
   return null;
 }
@@ -118,7 +127,7 @@ function isRenderableParameterEntry(entry: PlainChatParameterSchemaEntry) {
 
 function getVisibleModelParameters(schema?: Record<string, PlainChatParameterSchemaEntry>) {
   return Object.entries(schema || {})
-    .filter(([key, entry]) => key !== "modelId" && typeof entry === "object" && entry !== null && isRenderableParameterEntry(entry))
+    .filter(([key, entry]) => key !== "modelId" && key !== "sampleCount" && typeof entry === "object" && entry !== null && isRenderableParameterEntry(entry))
     .sort(([a], [b]) => a.localeCompare(b));
 }
 
@@ -131,7 +140,7 @@ function getCreateVisibleModelParameters(
 
 function createParameterState(schema?: Record<string, PlainChatParameterSchemaEntry>): ParameterState {
   return getVisibleModelParameters(schema).reduce<ParameterState>((acc, [key, entry]) => {
-    const defaultValue = getDefaultParameterValue(entry);
+    const defaultValue = getDefaultParameterValue(entry, key);
     if (defaultValue !== null) {
       acc[key] = defaultValue;
     }
@@ -162,7 +171,7 @@ function getSchemaDisplayDefault(
 ): string | null {
   const entry = schema?.[key];
   if (!entry) return null;
-  const value = getDefaultParameterValue(entry);
+  const value = getDefaultParameterValue(entry, key);
   if (value === null || value === undefined || value === "") return null;
   return String(value);
 }

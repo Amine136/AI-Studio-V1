@@ -22,7 +22,6 @@ MODEL_PARAMETER_OPTION_KEY_MAP = {
     "imageSize": "imageSize",
     "sampleImageSize": "sampleImageSize",
     "aspectRatio": "aspectRatio",
-    "sampleCount": "sampleCount",
     "seed": "seed",
     "addWatermark": "addWatermark",
     "enhancePrompt": "enhancePrompt",
@@ -84,16 +83,22 @@ def expected_required_credits_for_plain_chat(model_name: str, options: PlainChat
     else:
         raw_options = {}
 
+    parameter_schema = settings.get_model_parameter_schema(model_name, model_entry)
+    effective_options = {
+        **_default_image_size_options(parameter_schema),
+        **raw_options,
+    }
+
     sample_variant = _resolve_expected_variant_price(
         expected.get("sampleImageSizePrices") if isinstance(expected.get("sampleImageSizePrices"), dict) else None,
-        raw_options.get("sampleImageSize"),
+        effective_options.get("sampleImageSize"),
     )
     if sample_variant is not None:
         return sample_variant
 
     image_variant = _resolve_expected_variant_price(
         expected.get("imageSizePrices") if isinstance(expected.get("imageSizePrices"), dict) else None,
-        raw_options.get("imageSize"),
+        effective_options.get("imageSize"),
     )
     if image_variant is not None:
         return image_variant
@@ -103,6 +108,24 @@ def expected_required_credits_for_plain_chat(model_name: str, options: PlainChat
         return round(base_price, 4)
 
     return minimum
+
+
+def _default_image_size_options(parameter_schema: dict[str, Any]) -> dict[str, Any]:
+    defaults: dict[str, Any] = {}
+    for key in ("sampleImageSize", "imageSize"):
+        entry = parameter_schema.get(key)
+        if not isinstance(entry, dict):
+            continue
+        value = entry.get("recommendedDefault")
+        if value is None:
+            value = entry.get("default")
+        if value is None:
+            value = entry.get("value")
+        if value is None and "1K" in [str(item).upper() for item in entry.get("values", []) if str(item).strip()]:
+            value = "1K"
+        if value is not None:
+            defaults[key] = value
+    return defaults
 
 
 def normalize_plain_chat_system(model_name: str, parts: list[ChatMessagePart]) -> list[dict[str, Any]]:
@@ -571,9 +594,6 @@ def _normalized_options(
 
     if options.aspect_ratio is not None:
         payload["aspectRatio"] = str(options.aspect_ratio)
-
-    if options.sample_count is not None:
-        payload["sampleCount"] = int(options.sample_count)
 
     if options.seed is not None:
         payload["seed"] = int(options.seed)
