@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Fragment, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import { useAuth } from "../../../context/AuthContext";
 import InteractiveAuthenticatedImage from "../../../components/InteractiveAuthenticatedImage";
@@ -64,7 +64,6 @@ const CHAT_PARAMETER_KEY_MAP = {
   imageSize: "imageSize",
   sampleImageSize: "sampleImageSize",
   aspectRatio: "aspectRatio",
-  sampleCount: "sampleCount",
   seed: "seed",
   addWatermark: "addWatermark",
   enhancePrompt: "enhancePrompt",
@@ -474,17 +473,20 @@ function getNumericBounds(entry: PlainChatParameterSchemaEntry) {
   return { min, max };
 }
 
-function getDefaultParameterValue(entry: PlainChatParameterSchemaEntry): ParameterValue | null {
-  if (entry.key === "imageSize" || entry.key === "sampleImageSize") {
+function getDefaultParameterValue(entry: PlainChatParameterSchemaEntry, key?: string): ParameterValue | null {
+  if (entry.recommendedDefault !== undefined) {
+    return entry.recommendedDefault;
+  }
+  if (entry.default !== undefined) {
+    return entry.default;
+  }
+  if (entry.value !== undefined) return entry.value;
+  if (key === "imageSize" || key === "sampleImageSize") {
     const enumValues = Array.isArray(entry.values) ? entry.values.map((value) => String(value).trim().toUpperCase()) : [];
     if (enumValues.includes("1K")) {
       return "1K";
     }
   }
-  if (entry.recommendedDefault !== undefined) {
-    return entry.recommendedDefault;
-  }
-  if (entry.value !== undefined) return entry.value;
   return null;
 }
 
@@ -516,7 +518,7 @@ function isRenderableParameterEntry(entry: PlainChatParameterSchemaEntry) {
 
 function getVisibleChatParameters(schema: Record<string, PlainChatParameterSchemaEntry>) {
   return Object.entries(schema)
-    .filter(([key, entry]) => key !== "modelId" && typeof entry === "object" && entry !== null && isRenderableParameterEntry(entry))
+    .filter(([key, entry]) => key !== "modelId" && key !== "sampleCount" && typeof entry === "object" && entry !== null && isRenderableParameterEntry(entry))
     .sort(([a], [b]) => {
       const aSupported = Number(a in CHAT_PARAMETER_KEY_MAP);
       const bSupported = Number(b in CHAT_PARAMETER_KEY_MAP);
@@ -529,7 +531,7 @@ function getVisibleChatParameters(schema: Record<string, PlainChatParameterSchem
 
 function createParameterState(schema: Record<string, PlainChatParameterSchemaEntry>): ParameterState {
   return getVisibleChatParameters(schema).reduce<ParameterState>((acc, [key, entry]) => {
-    const defaultValue = getDefaultParameterValue(entry);
+    const defaultValue = getDefaultParameterValue(entry, key);
     if (defaultValue !== null) {
       acc[key] = defaultValue;
     }
@@ -635,6 +637,7 @@ async function normalizeUploadImage(file: File): Promise<File> {
 
 export default function StudioChatPage() {
   const { user, loading: authLoading } = useAuth();
+  const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -1337,6 +1340,16 @@ export default function StudioChatPage() {
     try {
       setLoadingReply(true);
       setError(null);
+      hasBootstrappedChatRef.current = true;
+      suppressEmptyConversationLoadRef.current = true;
+      if (conversationId) {
+        deletedConversationIdRef.current = conversationId;
+      }
+      if (typeof window !== "undefined") {
+        sessionStorage.removeItem(STORAGE_KEY);
+      }
+      router.replace("/studio/chat");
+      setPhase("chat");
       setConversationId("");
       setConversationTitle(DEFAULT_CONVERSATION_TITLE);
       setConversationTitleDraft(DEFAULT_CONVERSATION_TITLE);
@@ -1958,7 +1971,6 @@ export default function StudioChatPage() {
                           (!input.trim() && !inputImage) ||
                           input.trim().length > MAX_CHAT_TEXT_CHARS ||
                           !lockedModelId ||
-                          !conversationId ||
                           loadingReply ||
                           uploadingImage ||
                           loadingConversation

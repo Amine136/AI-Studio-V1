@@ -29,7 +29,6 @@ GENERATE_PARAMETER_OPTION_KEY_MAP = {
     "imageSize": "imageSize",
     "sampleImageSize": "sampleImageSize",
     "aspectRatio": "aspectRatio",
-    "sampleCount": "sampleCount",
     "seed": "seed",
     "addWatermark": "addWatermark",
     "enhancePrompt": "enhancePrompt",
@@ -552,12 +551,16 @@ def _normalize_generation_model_parameters(
     model_entry: Dict[str, Any],
     raw_params: Dict[str, Any] | None,
 ) -> Dict[str, Dict[str, Any]]:
-    del task_name
-    params = raw_params or {}
-    if not isinstance(params, dict) or not params:
+    parameter_schema = settings.get_model_parameter_schema(model_name, model_entry)
+    params = raw_params if isinstance(raw_params, dict) else {}
+    if task_name == "image":
+        params = {
+            **_default_image_size_parameters(parameter_schema),
+            **params,
+        }
+    if not params:
         return {"options": {}, "image_config": {}}
 
-    parameter_schema = settings.get_model_parameter_schema(model_name, model_entry)
     normalized_options: Dict[str, Any] = {}
     normalized_image_config: Dict[str, Any] = {}
 
@@ -572,7 +575,7 @@ def _normalize_generation_model_parameters(
             normalized_options[option_key] = int(raw_value)
         elif option_key in {"temperature", "topP", "presencePenalty", "frequencyPenalty"}:
             normalized_options[option_key] = float(raw_value)
-        elif option_key in {"thinkingBudget", "sampleCount", "seed"}:
+        elif option_key in {"thinkingBudget", "seed"}:
             normalized_options[option_key] = int(raw_value)
         elif option_key in {"addWatermark", "enhancePrompt"}:
             normalized_options[option_key] = bool(raw_value)
@@ -588,6 +591,25 @@ def _normalize_generation_model_parameters(
         normalized_image_config["aspect_ratio"] = aspect_ratio
 
     return {"options": normalized_options, "image_config": normalized_image_config}
+
+
+def _default_image_size_parameters(parameter_schema: Dict[str, Any]) -> Dict[str, Any]:
+    defaults: Dict[str, Any] = {}
+    for key in ("sampleImageSize", "imageSize"):
+        entry = parameter_schema.get(key)
+        if not isinstance(entry, dict):
+            continue
+        value = entry.get("recommendedDefault")
+        if value is None:
+            value = entry.get("default")
+        if value is None:
+            value = entry.get("value")
+        values = entry.get("values")
+        if value is None and isinstance(values, list) and any(str(item).strip().upper() == "1K" for item in values):
+            value = "1K"
+        if value is not None:
+            defaults[key] = value
+    return defaults
 
 
 def format_delivery(state: StudioState) -> StudioState:

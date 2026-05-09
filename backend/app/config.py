@@ -11,7 +11,6 @@ CREATE_FLOW_IMAGE_PARAM_KEYS = {
     "aspectRatio",
     "imageSize",
     "sampleImageSize",
-    "sampleCount",
     "seed",
     "addWatermark",
     "enhancePrompt",
@@ -310,6 +309,13 @@ class Config:
         if "gemini" in normalized_name and "image" in normalized_name:
             normalized_schema.pop("presencePenalty", None)
             normalized_schema.pop("frequencyPenalty", None)
+
+        # Imagen through the Google AI Gemini API rejects these Vertex-only controls.
+        if "imagen" in normalized_name:
+            normalized_schema.pop("sampleCount", None)
+            normalized_schema.pop("addWatermark", None)
+            normalized_schema.pop("enhancePrompt", None)
+            normalized_schema.pop("seed", None)
 
         return normalized_schema
 

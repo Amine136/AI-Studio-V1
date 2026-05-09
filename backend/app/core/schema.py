@@ -75,7 +75,6 @@ class PlainChatOptions(BaseModel):
     image_size: Optional[str] = Field(default=None, alias="imageSize", max_length=20)
     sample_image_size: Optional[str] = Field(default=None, alias="sampleImageSize", max_length=20)
     aspect_ratio: Optional[str] = Field(default=None, alias="aspectRatio", max_length=20)
-    sample_count: Optional[int] = Field(default=None, alias="sampleCount", ge=1, le=32)
     seed: Optional[int] = Field(default=None, ge=1, le=2_147_483_647)
     add_watermark: Optional[bool] = Field(default=None, alias="addWatermark")
     enhance_prompt: Optional[bool] = Field(default=None, alias="enhancePrompt")
