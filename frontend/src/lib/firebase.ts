@@ -3,7 +3,7 @@ import { getAuth } from "firebase/auth";
 
 const firebaseConfig = {
     apiKey: "AIzaSyD_kNHn-n5LdyG8WESDN44dwn4pXmCr7Ew",
-    authDomain: "portfolio-645a8.firebaseapp.com",
+    authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "portfolio-645a8.firebaseapp.com",
     projectId: "portfolio-645a8",
     storageBucket: "portfolio-645a8.firebasestorage.app",
     messagingSenderId: "634345037897",
