@@ -78,6 +78,10 @@ function normalizeConversationTitle(value?: string | null): string {
   return normalized || DEFAULT_CONVERSATION_TITLE;
 }
 
+function getImageDisplayName(name: string): string {
+  return name.replace(/\.[^./\\]+$/, "");
+}
+
 function formatConversationTitle(value: string): string {
   if (value.length <= 15) return value;
   return `${value.slice(0, 15)}...`;
@@ -1908,8 +1912,7 @@ export default function StudioChatPage() {
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={inputImage.previewUrl} alt={inputImage.name} className="h-11 w-11 rounded-xl object-cover ring-1 ring-white/10" />
                       <div className="min-w-0 flex-1">
-                        <div className="truncate text-[13px] font-medium text-white/80">{inputImage.name}</div>
-                        <div className="text-[11px] text-[#5a6580]">{(inputImage.size / (1024 * 1024)).toFixed(2)} MB</div>
+                        <div className="truncate text-[13px] font-medium text-white/80">{getImageDisplayName(inputImage.name)}</div>
                       </div>
                       <button
                         type="button"

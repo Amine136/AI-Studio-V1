@@ -53,6 +53,10 @@ function isRenderableImageUrl(value?: string): boolean {
   return value.startsWith("http://") || value.startsWith("https://") || value.startsWith("/");
 }
 
+function getImageDisplayName(name: string): string {
+  return name.replace(/\.[^./\\]+$/, "");
+}
+
 function getParameterStep(entry: PlainChatParameterSchemaEntry) {
   return entry.type === "integer" ? 1 : 0.01;
 }
@@ -1650,7 +1654,7 @@ export default function Home() {
                     </div>
                     {inputImage ? (
                       <>
-                        <p className="max-w-full truncate text-[11px] font-medium text-white">{inputImage.name}</p>
+                        <p className="max-w-full truncate text-[11px] font-medium text-white">{getImageDisplayName(inputImage.name)}</p>
                         <div className="mt-2 flex gap-2">
                           <button
                             type="button"
