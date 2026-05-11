@@ -138,12 +138,26 @@ def rate_limit_key(request: Request) -> str:
     uid = _decode_bearer_uid(request)
     if uid:
         return f"user:{uid}"
-    return f"ip:{get_remote_address(request)}"
+    return f"ip:{_get_client_ip(request)}"
+
+
+def _get_client_ip(request: Request) -> str:
+    forwarded_for = request.headers.get("x-forwarded-for", "")
+    if forwarded_for:
+        first_ip = forwarded_for.split(",", 1)[0].strip()
+        if first_ip:
+            return first_ip
+
+    real_ip = request.headers.get("x-real-ip", "").strip()
+    if real_ip:
+        return real_ip
+
+    return get_remote_address(request)
 
 
 def _enforce_mode_specific_generate_limits(request: Request, payload: GenerateRequest, user: Dict[str, Any], *, direct_generation: bool) -> None:
     uid = str(user["uid"])
-    ip = get_remote_address(request)
+    ip = _get_client_ip(request)
 
     if payload.mode == "quick":
         user_key = f"generate:quick:user:{uid}"
@@ -263,7 +277,7 @@ def _enforce_mode_specific_generate_limits(request: Request, payload: GenerateRe
 
 def _enforce_plain_chat_limits(request: Request, user: Dict[str, Any]) -> None:
     uid = str(user["uid"])
-    ip = get_remote_address(request)
+    ip = _get_client_ip(request)
     user_key = f"chat:plain:user:{uid}"
     ip_key = f"chat:plain:ip:{ip}"
     burst_user_key = f"chat:plain:burst:user:{uid}"
@@ -1050,7 +1064,7 @@ def admin_login(request: Request, payload: AdminLoginRequest, response: Response
         token, session = authenticate_admin(
             payload.username,
             payload.password,
-            ip_address=get_remote_address(request),
+            ip_address=_get_client_ip(request),
         )
     except AdminAuthRateLimitError as exc:
         _enforce_admin_login_min_latency(started_at)
@@ -2896,7 +2910,7 @@ def _verify_uploaded_image_cleanup_health() -> None:
 
 
 def _enforce_upload_limits(request: Request, uid: str) -> None:
-    ip = get_remote_address(request)
+    ip = _get_client_ip(request)
     user_key = f"upload:user:{uid}"
     ip_key = f"upload:ip:{ip}"
     window_seconds = settings.upload_window_seconds
