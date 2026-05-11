@@ -291,7 +291,7 @@ export default function SettingsPage() {
                     maxLength={500}
                     onChange={(event) => setBio(event.target.value.slice(0, 500))}
                     className="w-full resize-none rounded-sm border border-transparent bg-[#070d1f] px-4 py-3 text-[#dce1fb] outline-none transition placeholder:text-[#8c909f] focus:border-[#adc6ff]/35"
-                    placeholder="Tell people what you build, explore, or create with Vibecraft."
+                    placeholder="what you build, explore or create with vibecraft"
                   />
                   <div className="flex items-start justify-between gap-4 text-[11px] text-[#8c909f]">
                     <span>{profileNote}</span>
