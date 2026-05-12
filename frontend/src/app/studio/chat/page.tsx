@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Fragment, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import { useAuth } from "../../../context/AuthContext";
 import InteractiveAuthenticatedImage from "../../../components/InteractiveAuthenticatedImage";
+import { isRenderableImageUrl } from "../../../components/AuthenticatedImage";
 import { api } from "../../../services/api";
 import { addHistoryEntry } from "../../../lib/history";
 import type { BillingBreakdown, BillingUsage, ModelPricingSummary, PlainChatModelItem, PlainChatParameterSchemaEntry, PlainChatPart, PlainChatTurnMeta, UploadedImageResult } from "../../../types";
@@ -252,7 +253,7 @@ function AssistantMessageContent({ message }: { message: ChatMessage }) {
   const textParts = (message.parts || [])
     .filter((part) => part.type === "text" && typeof part.text === "string" && part.text.trim())
     .map((part) => (part.text || "").trim());
-  const imageParts = (message.parts || []).filter((part) => part.type === "image_url" && typeof part.url === "string" && part.url.trim());
+  const imageParts = (message.parts || []).filter((part) => part.type === "image_url" && typeof part.url === "string" && isRenderableImageUrl(part.url.trim()));
 
   if (!message.parts?.length) {
     return <MarkdownMessage content={message.content} />;
@@ -284,7 +285,7 @@ function UserMessageContent({ message }: { message: ChatMessage }) {
   const textParts = (message.parts || [])
     .filter((part) => part.type === "text" && typeof part.text === "string" && part.text.trim())
     .map((part) => (part.text || "").trim());
-  const imageParts = (message.parts || []).filter((part) => part.type === "image_url" && typeof part.url === "string" && part.url.trim());
+  const imageParts = (message.parts || []).filter((part) => part.type === "image_url" && typeof part.url === "string" && isRenderableImageUrl(part.url.trim()));
 
   if (!message.parts?.length) {
     return <p className="whitespace-pre-wrap text-sm leading-7">{message.content}</p>;

@@ -33,6 +33,7 @@ import { auth } from '../lib/firebase';
 import { getAdminCsrfToken, isAdminHost } from '../lib/admin';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
+const NETWORK_ERROR_MESSAGE = 'Connection interrupted. Check your internet connection and try again.';
 
 // Create axios instance with default headers
 const client = axios.create({
@@ -65,6 +66,10 @@ client.interceptors.request.use(async (config) => {
 function extractErrorMessage(error: unknown): string | undefined {
   if (!axios.isAxiosError(error)) return undefined;
 
+  if (!error.response && (error.code === 'ERR_NETWORK' || error.code === 'ECONNABORTED' || error.message.toLowerCase().includes('timeout'))) {
+    return NETWORK_ERROR_MESSAGE;
+  }
+
   const payload = error.response?.data;
   if (typeof payload?.detail === 'string') return payload.detail;
   if (typeof payload?.message === 'string') return payload.message;
@@ -72,6 +77,19 @@ function extractErrorMessage(error: unknown): string | undefined {
   if (typeof payload?.meta?.error_message === 'string') return payload.meta.error_message;
   return undefined;
 }
+
+function normalizeApiError(error: unknown): Error {
+  const detail = extractErrorMessage(error);
+  if (detail) return new Error(detail);
+  if (error instanceof TypeError) return new Error(NETWORK_ERROR_MESSAGE);
+  if (error instanceof Error) return error;
+  return new Error('Request failed. Please try again.');
+}
+
+client.interceptors.response.use(
+  (response) => response,
+  (error) => Promise.reject(normalizeApiError(error)),
+);
 
 function shouldLogApiError(error: unknown): boolean {
   if (!axios.isAxiosError(error)) return true;
@@ -479,7 +497,7 @@ export const api = {
       if (shouldLogApiError(error)) {
         console.error("Upload Error:", error);
       }
-      throw error;
+      throw normalizeApiError(error);
     }
   },
 
@@ -499,7 +517,7 @@ export const api = {
       if (detail) {
         throw new Error(detail);
       }
-      throw error;
+      throw normalizeApiError(error);
     }
   }
 };

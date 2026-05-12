@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { useAuth } from "../context/AuthContext";
-import { fetchAuthenticatedAsset, isPrivateFileUrl } from "./AuthenticatedImage";
+import { fetchAuthenticatedAsset, isPrivateFileUrl, isRenderableImageUrl } from "./AuthenticatedImage";
 
 function inferExtensionFromType(mimeType?: string | null): string {
   if (mimeType === "image/jpeg") return "jpg";
@@ -36,9 +36,10 @@ export default function InteractiveAuthenticatedImage({
   errorClassName?: string;
 }) {
   const { user } = useAuth();
+  const isRenderable = isRenderableImageUrl(src);
   const isPrivate = isPrivateFileUrl(src);
-  const [resolvedSrc, setResolvedSrc] = useState<string | null>(isPrivate ? null : src);
-  const [status, setStatus] = useState<"loading" | "ready" | "error">(isPrivate ? "loading" : "ready");
+  const [resolvedSrc, setResolvedSrc] = useState<string | null>(isPrivate ? null : isRenderable ? src : null);
+  const [status, setStatus] = useState<"loading" | "ready" | "error">(isPrivate ? "loading" : isRenderable ? "ready" : "error");
   const [resolvedMimeType, setResolvedMimeType] = useState<string | null>(null);
   const [isZoomOpen, setIsZoomOpen] = useState(false);
   const [portalReady, setPortalReady] = useState(false);
@@ -48,6 +49,12 @@ export default function InteractiveAuthenticatedImage({
   }, []);
 
   useEffect(() => {
+    if (!isRenderable) {
+      setResolvedSrc(null);
+      setResolvedMimeType(null);
+      setStatus("error");
+      return;
+    }
     if (!isPrivate) {
       setResolvedSrc(src);
       setResolvedMimeType(null);
@@ -92,7 +99,7 @@ export default function InteractiveAuthenticatedImage({
         URL.revokeObjectURL(objectUrl);
       }
     };
-  }, [isPrivate, src, user]);
+  }, [isPrivate, isRenderable, src, user]);
 
   const activeSrc = resolvedSrc || src;
   const downloadName = useMemo(() => buildDownloadName(src, resolvedMimeType), [resolvedMimeType, src]);

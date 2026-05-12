@@ -206,9 +206,9 @@ export default function GalleryPage() {
               onClick={() => setSelectedEntry(featuredEntry)}
               className="grid w-full gap-0 overflow-hidden rounded-md border border-white/8 bg-[#151b2d] text-left transition-transform hover:-translate-y-1 lg:grid-cols-[1.1fr_0.9fr]"
             >
-              <div className="relative min-h-[320px] overflow-hidden bg-[#070d1f]">
+              <div className="relative flex min-h-[320px] max-h-[72vh] items-center justify-center overflow-hidden bg-[#070d1f]">
                 {isRenderableImageUrl(featuredEntry.imageUrl) ? (
-                  <AuthenticatedImage src={featuredEntry.imageUrl || ""} alt={featuredEntry.prompt} className="h-full w-full object-contain transition-transform duration-700 hover:scale-105" />
+                  <AuthenticatedImage src={featuredEntry.imageUrl || ""} alt={featuredEntry.prompt} className="max-h-[72vh] w-full object-contain transition-transform duration-700 hover:scale-105" />
                 ) : (
                   <div className="flex h-full min-h-[320px] items-center justify-center text-white/20">
                     <span className="material-symbols-outlined text-[88px]">description</span>
@@ -290,9 +290,9 @@ export default function GalleryPage() {
             onClick={(event) => event.stopPropagation()}
           >
             <div className="grid lg:grid-cols-[1.05fr_0.95fr]">
-              <div className="flex min-h-[320px] max-h-[80vh] items-center justify-center bg-[#070d1f]">
-                {isRenderableImageUrl(selectedEntry.imageUrl) ? (
-                  <AuthenticatedImage src={selectedEntry.imageUrl || ""} alt={selectedEntry.prompt} className="h-full w-full object-contain" />
+                <div className="flex min-h-[320px] max-h-[80vh] items-center justify-center overflow-hidden bg-[#070d1f]">
+                  {isRenderableImageUrl(selectedEntry.imageUrl) ? (
+                  <AuthenticatedImage src={selectedEntry.imageUrl || ""} alt={selectedEntry.prompt} className="max-h-[80vh] w-full object-contain" />
                 ) : (
                   <div className="flex min-h-[320px] items-center justify-center text-white/20">
                     <span className="material-symbols-outlined text-[96px]">description</span>
