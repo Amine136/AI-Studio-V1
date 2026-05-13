@@ -49,6 +49,7 @@ from app.services.security_backend import (
     deactivate_user_account,
     delete_chat_conversation,
     delete_dashboard_news_item,
+    delete_history_entries_by_image_urls,
     disable_credit_code_batch,
     disable_credit_code,
     enable_credit_code,
@@ -775,6 +776,7 @@ def delete_plain_chat_conversation_item(
     deleted = delete_chat_conversation(user["uid"], conversation_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Chat conversation not found")
+    delete_history_entries_by_image_urls(user["uid"], image_urls)
     _delete_chat_conversation_images(image_urls)
     return Response(status_code=204)
 

@@ -19,6 +19,7 @@ from app.services.postgres_security_store import (  # noqa: F401
     deactivate_user_account,
     delete_chat_conversation,
     delete_dashboard_news_item,
+    delete_history_entries_by_image_urls,
     disable_credit_code_batch,
     disable_credit_code,
     enable_credit_code,

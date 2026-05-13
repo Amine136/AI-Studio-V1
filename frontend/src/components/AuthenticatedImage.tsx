@@ -9,6 +9,11 @@ export function isPrivateFileUrl(url?: string): boolean {
   return url.includes("/api/files/");
 }
 
+export function isRenderableImageUrl(value?: string): boolean {
+  if (!value) return false;
+  return value.startsWith("http://") || value.startsWith("https://") || value.startsWith("/");
+}
+
 export async function fetchAuthenticatedAsset(user: { getIdToken: () => Promise<string> } | null, src: string): Promise<Blob> {
   const headers: HeadersInit = {};
   if (isPrivateFileUrl(src)) {
@@ -35,15 +40,21 @@ export default function AuthenticatedImage({
   className: string;
 }) {
   const { user } = useAuth();
+  const isRenderable = isRenderableImageUrl(src);
   const isPrivate = isPrivateFileUrl(src);
-  const [resolvedSrc, setResolvedSrc] = useState<string | null>(isPrivate ? null : src);
-  const [status, setStatus] = useState<"loading" | "ready" | "error">(isPrivate ? "loading" : "ready");
+  const [resolvedSrc, setResolvedSrc] = useState<string | null>(isPrivate ? null : isRenderable ? src : null);
+  const [status, setStatus] = useState<"loading" | "ready" | "error">(isPrivate ? "loading" : isRenderable ? "ready" : "error");
 
   useEffect(() => {
     let objectUrl: string | null = null;
     let revoked = false;
 
     async function resolvePrivateImage() {
+      if (!isRenderable) {
+        setResolvedSrc(null);
+        setStatus("error");
+        return;
+      }
       if (!isPrivate) {
         setResolvedSrc(src);
         setStatus("ready");
@@ -78,9 +89,9 @@ export default function AuthenticatedImage({
         URL.revokeObjectURL(objectUrl);
       }
     };
-  }, [isPrivate, src, user]);
+  }, [isPrivate, isRenderable, src, user]);
 
-  if (isPrivate && status === "loading") {
+  if (status === "loading") {
     return (
       <div className="flex min-h-40 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 py-6 text-xs text-white/60">
         Loading image...
@@ -88,7 +99,7 @@ export default function AuthenticatedImage({
     );
   }
 
-  if (isPrivate && status === "error") {
+  if (status === "error") {
     return (
       <div className="flex min-h-40 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 py-6 text-xs text-white/60">
         Private image unavailable

@@ -6,7 +6,7 @@ import time
 import uuid
 from typing import Any
 
-from sqlalchemy import case, func, select
+from sqlalchemy import case, delete, func, select
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
@@ -625,6 +625,19 @@ class SecurityRepository:
                 .limit(max_items)
             ).scalars()
         )
+
+    def delete_history_entries_by_image_urls(self, uid: str, image_urls: set[str]) -> int:
+        normalized_urls = {url.strip() for url in image_urls if url and url.strip()}
+        if not normalized_urls:
+            return 0
+        result = self.session.execute(
+            delete(HistoryEntry).where(
+                HistoryEntry.uid == uid,
+                HistoryEntry.image_url.in_(normalized_urls),
+            )
+        )
+        self.session.flush()
+        return int(result.rowcount or 0)
 
     def create_chat_conversation(self, uid: str, model: str, system_parts: list[dict[str, Any]], title: str = "New Chat") -> ChatConversation:
         now = int(time.time())
