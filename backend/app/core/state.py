@@ -31,7 +31,7 @@ class StudioState(TypedDict, total=False):
     user_text: str                       # Raw input: "Futuristic city in rain"
     owner_uid: str                       # Authenticated owner for private file access
     requested_outputs: List[OutputType]  # What to generate: ["image", "caption"]
-    input_image: Optional[InputImage]    # Optional uploaded image used as multimodal input
+    input_images: List[InputImage]       # Optional uploaded images used as multimodal input
     
     # Official tracking of user model choices
     user_preferences: Dict[str, str]     # e.g. {"image_model": "imagen-4.0-fast-generate-001"}

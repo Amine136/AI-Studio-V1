@@ -101,7 +101,7 @@ def ingest_input(state: StudioState) -> StudioState:
     
     req_outputs = state.get("requested_outputs") or ["image", "caption"]
     user_prefs = state.get("user_preferences", {})
-    input_image = state.get("input_image")
+    input_images = state.get("input_images") or []
     model_parameters = state.get("model_parameters", {})
     
     # Status Logic
@@ -113,7 +113,7 @@ def ingest_input(state: StudioState) -> StudioState:
     return {
         "user_text": user_text,
         "requested_outputs": req_outputs,
-        "input_image": input_image,
+        "input_images": input_images,
         "user_preferences": user_prefs,
         "model_parameters": model_parameters,
         "status": next_status
@@ -158,7 +158,7 @@ def analyze_intent(state: StudioState) -> StudioState:
     logger.info("🧠 [Step 3/6] ANALYZE INTENT: Understanding user request...")
     
     user_text = state["user_text"]
-    input_image = state.get("input_image")
+    input_images = state.get("input_images") or []
     system_llm_model = settings.system_llm_model 
     
     # We still pass the options so Gemini knows *what* values to pick
@@ -179,7 +179,7 @@ def analyze_intent(state: StudioState) -> StudioState:
         system_llm_model, 
         prompt, 
         response_schema=IntentAnalysis,
-        input_image=input_image,
+        input_images=input_images,
     )
     
     try:
@@ -285,7 +285,7 @@ def execute_generation(state: StudioState) -> StudioState:
     total_cost = 0.0
     billing_components: list[dict[str, Any]] = []
     total_requests = len(state.get("model_requests", []))
-    input_image = state.get("input_image")
+    input_images = state.get("input_images") or []
     requested_outputs = state.get("requested_outputs", [])
     assigned_models = state.get("assigned_models", {})
     content_spec = state.get("content_spec", {})
@@ -293,7 +293,7 @@ def execute_generation(state: StudioState) -> StudioState:
     owner_uid = str(state.get("owner_uid") or "")
 
     shared_multimodal_model = (
-        input_image
+        input_images
         and "caption" in requested_outputs
         and "image" in requested_outputs
         and assigned_models.get("caption")
@@ -348,7 +348,7 @@ def execute_generation(state: StudioState) -> StudioState:
                     "aspect_ratio": content_spec.get("aspect_ratio", "16:9"),
                     **merged_image_config,
                 },
-                input_image=input_image,
+                input_images=input_images,
                 options=merged_options,
             )
             generated["image"] = bundle.get("image", "")
@@ -368,36 +368,69 @@ def execute_generation(state: StudioState) -> StudioState:
             )
             if "caption" in requested_outputs and not str(generated.get("caption") or "").strip() and str(generated.get("image") or "").strip():
                 logger.info("   │  ├─ Shared multimodal returned no text; requesting fallback caption from generated image...")
-                fallback_prompt = str(content_spec.get("caption_prompt") or "").strip() or (
+                base_fallback_prompt = str(content_spec.get("caption_prompt") or "").strip() or (
                     "Write a concise description of the generated image."
                 )
                 fallback_prompt = (
-                    f"{fallback_prompt}\n\n"
+                    f"{base_fallback_prompt}\n\n"
                     "Base the caption on the generated image itself. "
                     "Return only the final caption text."
                 )
-                fallback_caption = generate_text_payload(
-                    provider,
-                    model_id,
-                    fallback_prompt,
-                    input_image=_build_caption_fallback_image_input(str(generated["image"]), owner_uid),
-                    options=caption_params.get("options") or {},
-                )
-                generated["caption"] = fallback_caption.get("text", "")
-                fallback_cost = _parse_resolved_cost(fallback_caption.get("resolvedCost"))
-                total_cost += fallback_cost
-                billing_components.append(
-                    {
-                        "task": "caption_fallback",
-                        "provider": fallback_caption.get("provider") or provider,
-                        "model": fallback_caption.get("model") or model_id,
-                        "billingMode": fallback_caption.get("billingMode"),
-                        "resolvedCost": fallback_cost,
-                        "usage": fallback_caption.get("usage") or {},
-                        "billing": fallback_caption.get("billing") or {},
-                    }
-                )
-                logger.info("   │  └─ ✅ Fallback caption request succeeded")
+                try:
+                    fallback_caption = generate_text_payload(
+                        provider,
+                        model_id,
+                        fallback_prompt,
+                        input_images=[_build_caption_fallback_image_input(str(generated["image"]), owner_uid)],
+                        options=caption_params.get("options") or {},
+                    )
+                    generated["caption"] = fallback_caption.get("text", "")
+                    fallback_cost = _parse_resolved_cost(fallback_caption.get("resolvedCost"))
+                    total_cost += fallback_cost
+                    billing_components.append(
+                        {
+                            "task": "caption_fallback",
+                            "provider": fallback_caption.get("provider") or provider,
+                            "model": fallback_caption.get("model") or model_id,
+                            "billingMode": fallback_caption.get("billingMode"),
+                            "resolvedCost": fallback_cost,
+                            "usage": fallback_caption.get("usage") or {},
+                            "billing": fallback_caption.get("billing") or {},
+                        }
+                    )
+                    logger.info("   │  └─ ✅ Fallback caption request succeeded")
+                except Exception as fallback_error:
+                    logger.warning(f"   │  ├─ ⚠️ Image-based fallback caption failed: {fallback_error}")
+                    text_only_prompt = (
+                        f"{base_fallback_prompt}\n\n"
+                        "The generated image was delivered successfully, but you cannot inspect it in this fallback. "
+                        "Write a concise caption based only on the creative brief. Return only the caption text."
+                    )
+                    try:
+                        fallback_caption = generate_text_payload(
+                            provider,
+                            model_id,
+                            text_only_prompt,
+                            options=caption_params.get("options") or {},
+                        )
+                        generated["caption"] = fallback_caption.get("text", "")
+                        fallback_cost = _parse_resolved_cost(fallback_caption.get("resolvedCost"))
+                        total_cost += fallback_cost
+                        billing_components.append(
+                            {
+                                "task": "caption_text_only_fallback",
+                                "provider": fallback_caption.get("provider") or provider,
+                                "model": fallback_caption.get("model") or model_id,
+                                "billingMode": fallback_caption.get("billingMode"),
+                                "resolvedCost": fallback_cost,
+                                "usage": fallback_caption.get("usage") or {},
+                                "billing": fallback_caption.get("billing") or {},
+                            }
+                        )
+                        logger.info("   │  └─ ✅ Text-only fallback caption request succeeded")
+                    except Exception as text_fallback_error:
+                        logger.warning(f"   │  └─ ⚠️ Text-only fallback caption failed: {text_fallback_error}")
+                        generated["caption"] = base_fallback_prompt
             logger.info("   │  └─ ✅ Shared multimodal request succeeded")
             return {
                 "generated_assets": generated,
@@ -458,7 +491,7 @@ def execute_generation(state: StudioState) -> StudioState:
                     owner_uid=owner_uid,
                     model_type=model_type,
                     image_config=image_config,
-                    input_image=input_image,
+                    input_images=input_images,
                     options=param_config.get("options"),
                 )
                 result = result_payload.get("image", "")
@@ -473,7 +506,7 @@ def execute_generation(state: StudioState) -> StudioState:
                     provider,
                     model_id,
                     prompt,
-                    input_image=input_image,
+                    input_images=input_images,
                     options=param_config.get("options"),
                 )
                 result = result_payload.get("text", "")

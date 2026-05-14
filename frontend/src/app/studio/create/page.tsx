@@ -25,13 +25,15 @@ interface Toast {
 }
 
 interface UploadedImageState {
-  fileId: string;
+  localId: string;
+  fileId?: string;
   name: string;
   mimeType: string;
-  url: string;
+  url?: string;
   previewUrl: string;
   size: number;
   originalSize: number;
+  uploading?: boolean;
 }
 
 interface SuspensionState {
@@ -45,8 +47,9 @@ type ParameterState = Record<string, ParameterValue>;
 type OutputParameterValues = Record<OutputType, ParameterState>;
 
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
-const MAX_PROXY_IMAGE_DIMENSION = 1536;
-const MAX_PROXY_IMAGE_BYTES = 1_800_000;
+const MAX_INPUT_IMAGES = 4;
+const MAX_PROXY_IMAGE_DIMENSION = 768;
+const MAX_PROXY_IMAGE_BYTES = 120_000;
 
 function isRenderableImageUrl(value?: string): boolean {
   if (!value) return false;
@@ -410,12 +413,12 @@ async function normalizeUploadImage(file: File): Promise<File> {
     let quality = outputType === "image/webp" ? 0.86 : 0.82;
     let blob = await canvasToBlob(canvas, outputType, quality);
 
-    while (blob.size > MAX_PROXY_IMAGE_BYTES && quality && quality > 0.5) {
+    while (blob.size > MAX_PROXY_IMAGE_BYTES && quality && quality > 0.35) {
       quality -= 0.08;
       blob = await canvasToBlob(canvas, outputType, quality);
     }
 
-    if (blob.size >= file.size) {
+    if (blob.size >= file.size && file.size <= MAX_PROXY_IMAGE_BYTES) {
       return file;
     }
 
@@ -433,6 +436,7 @@ export default function Home() {
   const selectedMode = "smart" as const;
   const creditsRef = useRef<CreditsDisplayHandle>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const inputImagesRef = useRef<UploadedImageState[]>([]);
   const hasAppliedTemplatePrefill = useRef(false);
 
   // --- Auth Gate ---
@@ -461,7 +465,7 @@ export default function Home() {
   // Model Catalog (with costs)
   const [modelCatalog, setModelCatalog] = useState<Record<string, Record<string, ModelCatalogEntry>>>({});
   const [smartAnalysisFee, setSmartAnalysisFee] = useState<number>(0.05);
-  const [inputImage, setInputImage] = useState<UploadedImageState | null>(null);
+  const [inputImages, setInputImages] = useState<UploadedImageState[]>([]);
 
   // Current credit balance (synced from CreditsDisplay)
   const [currentCredits, setCurrentCredits] = useState<number | null>(null);
@@ -584,12 +588,14 @@ export default function Home() {
   }, [accountReady, suspension, refreshConfig, captureSuspension]);
 
   useEffect(() => {
+    inputImagesRef.current = inputImages;
+  }, [inputImages]);
+
+  useEffect(() => {
     return () => {
-      if (inputImage?.previewUrl) {
-        URL.revokeObjectURL(inputImage.previewUrl);
-      }
+      inputImagesRef.current.forEach((image) => URL.revokeObjectURL(image.previewUrl));
     };
-  }, [inputImage]);
+  }, []);
 
   useEffect(() => {
     if (hasAppliedTemplatePrefill.current) return;
@@ -707,7 +713,17 @@ export default function Home() {
   const missingRequiredModel =
     (selectedOutputs.includes("caption") && !selectedCaptionModel) ||
     (selectedOutputs.includes("image") && !selectedImageModel);
-  const usesSharedNanoBanana = Boolean(inputImage && selectedOutputs.includes("caption") && selectedOutputs.includes("image"));
+  const hasInputImages = inputImages.length > 0;
+  const hasUploadingInputImages = inputImages.some((image) => image.uploading);
+  const inputImagePayloads = inputImages
+    .filter((image) => image.fileId && image.url)
+    .map((image) => ({
+      file_id: image.fileId,
+      name: image.name,
+      mime_type: image.mimeType,
+      url: image.url!,
+    }));
+  const usesSharedNanoBanana = Boolean(hasInputImages && selectedOutputs.includes("caption") && selectedOutputs.includes("image"));
   const primaryEngineLabel = usesSharedNanoBanana && selectedImageModelEntry
     ? selectedImageModelEntry.display_name || selectedImageModel
     : (selectedImageModelEntry?.display_name || selectedCaptionModelEntry?.display_name || selectedImageModel || selectedCaptionModel || "Smart Pipeline");
@@ -742,7 +758,7 @@ export default function Home() {
     return Object.entries(entries)
       .filter(([, model]) => {
         const wantsImageOutput = selectedOutputs.includes("image");
-        if (inputImage && wantsImageOutput) {
+        if (hasInputImages && wantsImageOutput) {
           return isGeminiImageModel(model);
         }
         if (wantsImageOutput) {
@@ -751,7 +767,7 @@ export default function Home() {
         return isGeminiTextOnlyModel(model);
       })
       .map(([id]) => id);
-  }, [inputImage, modelCatalog, selectedOutputs]);
+  }, [hasInputImages, modelCatalog, selectedOutputs]);
 
   const filteredImageModels = useMemo(() => {
     const entries = modelCatalog.image || {};
@@ -760,13 +776,13 @@ export default function Home() {
         if (!selectedOutputs.includes("image")) {
           return false;
         }
-        if (inputImage) {
+        if (hasInputImages) {
           return isGeminiImageModel(model);
         }
         return isImageCapableModel(model);
       })
       .map(([id]) => id);
-  }, [inputImage, modelCatalog, selectedOutputs]);
+  }, [hasInputImages, modelCatalog, selectedOutputs]);
 
   const sharedMultimodalModels = usesSharedNanoBanana
     ? filteredImageModels.filter((modelId) => filteredCaptionModels.includes(modelId))
@@ -901,27 +917,49 @@ export default function Home() {
 
   // --- Helpers ---
   const handleImageUpload = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
-    const originalFile = event.target.files?.[0];
-    if (!originalFile) return;
+    const selectedFiles = Array.from(event.target.files || []);
+    if (selectedFiles.length === 0) return;
 
-    if (!["image/png", "image/jpeg", "image/webp"].includes(originalFile.type)) {
-      showToast("Only PNG, JPEG, and WEBP images are supported.");
+    const slotsAvailable = MAX_INPUT_IMAGES - inputImagesRef.current.length;
+    if (slotsAvailable <= 0) {
+      showToast(`Attach at most ${MAX_INPUT_IMAGES} images.`);
       event.target.value = "";
       return;
     }
 
-    if (originalFile.size > MAX_UPLOAD_BYTES) {
-      showToast("Image must be 10 MB or smaller.");
-      event.target.value = "";
-      return;
+    const filesToUpload = selectedFiles.slice(0, slotsAvailable);
+    if (selectedFiles.length > slotsAvailable) {
+      showToast(`Only ${MAX_INPUT_IMAGES} images can be attached.`);
     }
 
     try {
-      const file = await normalizeUploadImage(originalFile);
-      const uploaded = await api.uploadInputImage(file);
-      setInputImage((prev) => {
-        if (prev?.previewUrl) URL.revokeObjectURL(prev.previewUrl);
-        return {
+      for (const originalFile of filesToUpload) {
+        if (!["image/png", "image/jpeg", "image/webp"].includes(originalFile.type)) {
+          throw new Error("Only PNG, JPEG, and WEBP images are supported.");
+        }
+        if (originalFile.size > MAX_UPLOAD_BYTES) {
+          throw new Error("Each image must be 10 MB or smaller.");
+        }
+      }
+      const pendingImages: UploadedImageState[] = filesToUpload.map((originalFile) => ({
+        localId: crypto.randomUUID(),
+        name: originalFile.name,
+        mimeType: originalFile.type,
+        previewUrl: URL.createObjectURL(originalFile),
+        size: originalFile.size,
+        originalSize: originalFile.size,
+        uploading: true,
+      }));
+      setInputImages((prev) => [...prev, ...pendingImages].slice(0, MAX_INPUT_IMAGES));
+
+      const nextImages: UploadedImageState[] = [];
+      for (const originalFile of filesToUpload) {
+        const file = await normalizeUploadImage(originalFile);
+        const uploaded = await api.uploadInputImage(file);
+        const pendingImage = pendingImages[nextImages.length];
+        URL.revokeObjectURL(pendingImage.previewUrl);
+        nextImages.push({
+          localId: pendingImage.localId,
           fileId: uploaded.id,
           name: uploaded.name || file.name,
           mimeType: uploaded.mime_type || file.type,
@@ -929,12 +967,15 @@ export default function Home() {
           previewUrl: URL.createObjectURL(file),
           size: uploaded.size || file.size,
           originalSize: originalFile.size,
-        };
-      });
-      if (file.size < originalFile.size) {
-        showToast("Image optimized for upload.", "success");
+        });
       }
+      setInputImages((prev) => prev.map((image) => nextImages.find((nextImage) => nextImage.localId === image.localId) || image));
     } catch (error) {
+      setInputImages((prev) => prev.filter((image) => {
+        const keep = !image.uploading;
+        if (!keep) URL.revokeObjectURL(image.previewUrl);
+        return keep;
+      }));
       if (captureSuspension(error)) {
         return;
       }
@@ -945,10 +986,18 @@ export default function Home() {
     }
   }, [captureSuspension]);
 
-  const clearInputImage = useCallback(() => {
-    setInputImage((prev) => {
-      if (prev?.previewUrl) URL.revokeObjectURL(prev.previewUrl);
-      return null;
+  const removeInputImage = useCallback((localId: string) => {
+    setInputImages((prev) => prev.filter((image) => {
+      const keep = image.localId !== localId;
+      if (!keep) URL.revokeObjectURL(image.previewUrl);
+      return keep;
+    }));
+  }, []);
+
+  const clearInputImages = useCallback(() => {
+    setInputImages((prev) => {
+      prev.forEach((image) => URL.revokeObjectURL(image.previewUrl));
+      return [];
     });
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
@@ -982,12 +1031,7 @@ export default function Home() {
         user_text: effectiveText,
         requested_outputs: selectedOutputs,
         mode: "smart",
-        input_image: inputImage ? {
-          file_id: inputImage.fileId,
-          name: inputImage.name,
-          mime_type: inputImage.mimeType,
-          url: inputImage.url,
-        } : null,
+        input_images: inputImagePayloads,
         user_preferences: {
           image_model: effectiveImageModel,
           caption_model: effectiveCaptionModel,
@@ -1045,12 +1089,7 @@ export default function Home() {
         user_text: userText,
         requested_outputs: selectedOutputs,
         mode: "smart",
-        input_image: inputImage ? {
-          file_id: inputImage.fileId,
-          name: inputImage.name,
-          mime_type: inputImage.mimeType,
-          url: inputImage.url,
-        } : null,
+        input_images: inputImagePayloads,
         status: "generating",
         user_preferences: {
           image_model: effectiveImageModel,
@@ -1173,7 +1212,7 @@ export default function Home() {
     setFinalMeta(null);
     setUserText("");
     setModelParameterValues({ image: {}, caption: {} });
-    clearInputImage();
+    clearInputImages();
   };
 
   const handleBackFromReview = async () => {
@@ -1212,7 +1251,7 @@ export default function Home() {
   }, [selectedCaptionModel, selectedImageModel, user]);
 
   const handleOpenModePicker = () => {
-    if (!userText.trim() || selectedOutputs.length === 0 || loading) {
+    if (!userText.trim() || selectedOutputs.length === 0 || loading || hasUploadingInputImages) {
       return;
     }
     setDraftImageModel(selectedImageModel);
@@ -1617,6 +1656,7 @@ export default function Home() {
                 <input
                   ref={fileInputRef}
                   type="file"
+                  multiple
                   accept="image/png,image/jpeg,image/webp"
                   className="hidden"
                   onChange={handleImageUpload}
@@ -1634,10 +1674,10 @@ export default function Home() {
                   className="group relative min-h-[120px] flex-grow cursor-pointer"
                 >
                   <div className="absolute inset-0 rounded-xl border-2 border-dashed border-[#424754]/50 transition-colors group-hover:border-[#adc6ff]/50" />
-                  {inputImage ? (
+                  {hasInputImages ? (
                     <>
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={inputImage.previewUrl} alt={inputImage.name} className="absolute inset-2 h-[calc(100%-1rem)] w-[calc(100%-1rem)] rounded-lg object-cover opacity-50" />
+                      <img src={inputImages[0].previewUrl} alt={inputImages[0].name} className="absolute inset-2 h-[calc(100%-1rem)] w-[calc(100%-1rem)] rounded-lg object-cover opacity-50" />
                       <div className="absolute inset-0 rounded-xl bg-[linear-gradient(180deg,rgba(7,13,31,0.2),rgba(7,13,31,0.85))]" />
                     </>
                   ) : (
@@ -1649,12 +1689,37 @@ export default function Home() {
                   <div className="relative flex h-full flex-col items-center justify-center p-3 text-center">
                     <div className="mb-2 flex h-9 w-9 items-center justify-center rounded-full bg-[#23293c] transition-transform group-hover:scale-105">
                       <span className="material-symbols-outlined text-xl text-[#c2c6d6] transition-colors group-hover:text-[#adc6ff]">
-                        {inputImage ? "image" : "cloud_upload"}
+                        {hasInputImages ? "image" : "cloud_upload"}
                       </span>
                     </div>
-                    {inputImage ? (
+                    {hasInputImages ? (
                       <>
-                        <p className="max-w-full truncate text-[11px] font-medium text-white">{getImageDisplayName(inputImage.name)}</p>
+                        <div className="flex max-w-full flex-nowrap items-center justify-center gap-1.5">
+                          {inputImages.map((image) => (
+                            <div key={image.localId} className="group/thumb relative h-8 w-8 shrink-0 overflow-hidden rounded-md border border-white/10 bg-black/20">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={image.previewUrl} alt={image.name} className="h-full w-full object-cover" />
+                              {image.uploading ? (
+                                <div className="absolute inset-0 flex items-center justify-center bg-black/55">
+                                  <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                                </div>
+                              ) : null}
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  removeInputImage(image.localId);
+                                }}
+                                className="absolute right-0.5 top-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-black/70 text-[9px] text-white opacity-0 transition group-hover/thumb:opacity-100"
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                        <p className="mt-1.5 max-w-full truncate text-[10px] font-medium text-white">
+                          {inputImages.length} / {MAX_INPUT_IMAGES} images attached
+                        </p>
                         <div className="mt-2 flex gap-2">
                           <button
                             type="button"
@@ -1664,13 +1729,13 @@ export default function Home() {
                             }}
                             className="rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-[10px] font-semibold text-white transition hover:bg-white/10"
                           >
-                            Replace
+                            Add
                           </button>
                           <button
                             type="button"
                             onClick={(event) => {
                               event.stopPropagation();
-                              clearInputImage();
+                              clearInputImages();
                             }}
                             className="rounded-md border border-white/10 bg-[#93000a]/20 px-3 py-1.5 text-[10px] font-semibold text-[#ffdad6] transition hover:bg-[#93000a]/30"
                           >
@@ -1684,7 +1749,7 @@ export default function Home() {
                         <p className="text-[10px] text-[#c2c6d6]">
                           or <span className="text-[#adc6ff]">browse</span>
                         </p>
-                        <p className="mt-2 text-[8px] uppercase tracking-widest text-[#8c909f]">Max 10MB • JPG, PNG</p>
+                        <p className="mt-2 text-[8px] uppercase tracking-widest text-[#8c909f]">Max 10MB • JPG, PNG, WEBP</p>
                       </>
                     )}
                   </div>
@@ -1732,12 +1797,14 @@ export default function Home() {
               </div>
               <button
                 onClick={handleOpenModePicker}
-                disabled={loading || !userText.trim() || selectedOutputs.length === 0}
+                disabled={loading || hasUploadingInputImages || !userText.trim() || selectedOutputs.length === 0}
                 className="group flex items-center gap-3 rounded-md bg-gradient-to-r from-[#adc6ff] to-[#4d8eff] px-8 py-2.5 font-headline text-sm font-bold text-[#00285d] transition-all hover:shadow-[0_0_20px_rgba(77,142,255,0.2)] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <span>
                   {loading
                     ? "Preparing..."
+                    : hasUploadingInputImages
+                        ? "Uploading..."
                     : missingRequiredModel
                         ? "Model unavailable"
                         : "Next"}
@@ -1773,12 +1840,12 @@ export default function Home() {
               <section className="mb-10">
                 <div className="group relative overflow-hidden rounded-[1.25rem] border border-white/5 bg-surface-container-high px-6 py-6 shadow-[0_20px_60px_rgba(0,0,0,0.2)]">
                   <div className="absolute inset-0 overflow-hidden">
-                    {inputImage ? (
+                    {hasInputImages ? (
                       <>
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
-                          src={inputImage.previewUrl}
-                          alt={inputImage.name}
+                          src={inputImages[0].previewUrl}
+                          alt={inputImages[0].name}
                           className="h-full w-full scale-105 object-cover opacity-[0.14] transition-transform duration-700 group-hover:scale-110"
                         />
                         <div className="absolute inset-0 bg-[linear-gradient(115deg,rgba(12,19,36,0.92),rgba(12,19,36,0.72)_45%,rgba(12,19,36,0.94))]" />
@@ -1820,9 +1887,9 @@ export default function Home() {
                           Caption
                         </span>
                       )}
-                      {inputImage && (
+                      {hasInputImages && (
                         <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[#c2c6d6]">
-                          Reference Image Attached
+                          {inputImages.length} Reference Images Attached
                         </span>
                       )}
                     </div>
@@ -2383,11 +2450,13 @@ export default function Home() {
                   <button
                     type="button"
                     onClick={handleModeContinue}
-                    disabled={loading || insufficientDraftSmartCredits}
+                    disabled={loading || hasUploadingInputImages || insufficientDraftSmartCredits}
                     className="flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[#adc6ff] to-[#4d8eff] py-4 text-sm font-bold tracking-wide text-[#002e6a] shadow-[0_8px_20px_rgba(77,142,255,0.3)] transition-all active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {loading ? (
                       <LoadingSpinner text="Preparing..." />
+                    ) : hasUploadingInputImages ? (
+                      "Uploading images..."
                     ) : insufficientDraftSmartCredits ? (
                       `Insufficient Credits (${draftMinimumRequiredCredits.toFixed(2)} needed)`
                     ) : (

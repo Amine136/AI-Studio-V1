@@ -102,6 +102,8 @@ from app.services.user_files import (
     private_file_url_prefix,
 )
 
+MAX_INPUT_IMAGES = 4
+
 SYSTEM_AUDIT_EMAIL = "system@vibecraft.local"
 IMAGES_DIR = GENERATED_IMAGES_DIR
 DEFAULT_PLAIN_CHAT_TITLE = "New Chat"
@@ -1758,6 +1760,8 @@ def generate_content(request: Request, payload: GenerateRequest, user: Dict[str,
     try:
         catalog_store.get_catalog()
         _validate_generate_request(payload)
+        request_input_images = _normalize_request_input_images(payload)
+        request_input_image_metadata = [image.model_dump() for image in request_input_images]
         effective_status = _resolve_generation_status(payload)
         direct_generation = effective_status == "generating"
         current_profile = get_user(user["uid"])
@@ -1858,7 +1862,8 @@ def generate_content(request: Request, payload: GenerateRequest, user: Dict[str,
                     "status": effective_status,
                     "mode": payload.mode,
                     "user_corrections": payload.user_corrections or {},
-                    "input_image": payload.input_image.model_dump() if payload.input_image else None,
+                    "input_image": request_input_image_metadata[0] if len(request_input_image_metadata) == 1 else None,
+                    "input_images": request_input_image_metadata,
                 },
                 status="processing",
             )
@@ -1878,7 +1883,8 @@ def generate_content(request: Request, payload: GenerateRequest, user: Dict[str,
                         "status": effective_status,
                         "mode": payload.mode,
                         "user_corrections": payload.user_corrections or {},
-                        "input_image": payload.input_image.model_dump() if payload.input_image else None,
+                        "input_image": request_input_image_metadata[0] if len(request_input_image_metadata) == 1 else None,
+                        "input_images": request_input_image_metadata,
                         "image_model": (payload.user_preferences or {}).get("image_model"),
                         "caption_model": (payload.user_preferences or {}).get("caption_model"),
                     },
@@ -1908,13 +1914,13 @@ def generate_content(request: Request, payload: GenerateRequest, user: Dict[str,
                     ) from exc
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-        input_image = _prepare_input_image(payload.input_image, str(user["uid"]))
+        input_images = _prepare_input_images(request_input_images, str(user["uid"]))
 
         initial_state = {
             "user_text": payload.user_text,
             "owner_uid": str(user["uid"]),
             "requested_outputs": payload.requested_outputs,
-            "input_image": input_image,
+            "input_images": input_images,
             "user_preferences": payload.user_preferences or {},
             "model_parameters": payload.model_parameters or {},
             "status": effective_status,
@@ -2206,6 +2212,8 @@ def _plain_chat_error_message(error_code: str) -> str:
         return "The selected chat model does not support image input."
     if error_code == "CHAT_IMAGE_URL_INVALID":
         return "Only Vibecraft uploaded image URLs are allowed."
+    if error_code == "CHAT_TOO_MANY_IMAGES":
+        return f"Attach at most {MAX_INPUT_IMAGES} images per message."
     if error_code == "CHAT_REQUEST_TOO_LARGE":
         return "This chat request is too large."
     if error_code == "CHAT_TEXT_PART_TOO_LARGE":
@@ -2294,11 +2302,14 @@ def _validate_generate_request(payload: GenerateRequest) -> None:
     if not requested:
         raise HTTPException(status_code=400, detail="At least one output must be selected")
 
-    if payload.input_image:
-        _validate_input_image(payload.input_image)
+    input_images = _normalize_request_input_images(payload)
+    if len(input_images) > MAX_INPUT_IMAGES:
+        raise HTTPException(status_code=400, detail=f"At most {MAX_INPUT_IMAGES} input images are allowed")
+    for input_image in input_images:
+        _validate_input_image(input_image)
 
     prefs = payload.user_preferences or {}
-    has_input_image = payload.input_image is not None
+    has_input_images = len(input_images) > 0
     wants_caption = "caption" in requested
     wants_image = "image" in requested
 
@@ -2310,7 +2321,7 @@ def _validate_generate_request(payload: GenerateRequest) -> None:
         if caption_model:
             caption_entry = settings.model_catalog.get("caption", {}).get(caption_model, {})
             if wants_image:
-                if has_input_image:
+                if has_input_images:
                     if not _is_gemini_image_model(caption_entry):
                         raise HTTPException(
                             status_code=400,
@@ -2330,7 +2341,7 @@ def _validate_generate_request(payload: GenerateRequest) -> None:
 
     if wants_image:
         image_model = _resolve_model_choice("image", prefs)
-        if image_model and has_input_image:
+        if image_model and has_input_images:
             image_entry = settings.model_catalog.get("image", {}).get(image_model, {})
             if not _is_gemini_image_model(image_entry):
                 raise HTTPException(
@@ -2345,7 +2356,7 @@ def _validate_generate_request(payload: GenerateRequest) -> None:
                     detail="For image output, the selected image model must support image generation.",
                 )
 
-    if has_input_image and wants_caption and wants_image:
+    if has_input_images and wants_caption and wants_image:
         caption_model = _resolve_model_choice("caption", prefs)
         image_model = _resolve_model_choice("image", prefs)
         if not caption_model or not image_model or caption_model != image_model:
@@ -2785,6 +2796,12 @@ def _validate_input_image(input_image) -> None:
     raise HTTPException(status_code=400, detail="Uploaded image reference is required")
 
 
+def _normalize_request_input_images(payload: GenerateRequest) -> list:
+    if payload.input_images is not None:
+        return list(payload.input_images or [])
+    return [payload.input_image] if payload.input_image else []
+
+
 def _is_gemini_text_model(model_entry: Dict[str, Any]) -> bool:
     provider = model_entry.get("provider")
     output_modalities = set(model_entry.get("output_modalities") or [])
@@ -2803,6 +2820,15 @@ def _is_gemini_image_model(model_entry: Dict[str, Any]) -> bool:
 def _is_image_capable_model(model_entry: Dict[str, Any]) -> bool:
     output_modalities = set(model_entry.get("output_modalities") or [])
     return "IMAGE" in output_modalities
+
+
+def _prepare_input_images(input_images, owner_uid: str) -> list[Dict[str, str]]:
+    prepared: list[Dict[str, str]] = []
+    for input_image in input_images or []:
+        prepared_image = _prepare_input_image(input_image, owner_uid)
+        if prepared_image:
+            prepared.append(prepared_image)
+    return prepared
 
 
 def _prepare_input_image(input_image, owner_uid: str) -> Dict[str, str] | None:

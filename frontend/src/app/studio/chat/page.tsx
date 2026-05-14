@@ -22,13 +22,15 @@ interface ChatMessage {
 }
 
 interface UploadedImageState {
-  fileId: string;
+  localId: string;
+  fileId?: string;
   name: string;
   mimeType: string;
-  url: string;
+  url?: string;
   previewUrl: string;
   size: number;
   originalSize: number;
+  uploading?: boolean;
 }
 
 interface ChatModelOption {
@@ -48,8 +50,9 @@ interface ProviderGroup {
 
 const STORAGE_KEY = "studio-simple-chat-v2";
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
-const MAX_PROXY_IMAGE_DIMENSION = 1536;
-const MAX_PROXY_IMAGE_BYTES = 1_800_000;
+const MAX_INPUT_IMAGES = 4;
+const MAX_PROXY_IMAGE_DIMENSION = 768;
+const MAX_PROXY_IMAGE_BYTES = 120_000;
 const MAX_CHAT_TEXT_CHARS = 4000;
 const DEFAULT_CONVERSATION_TITLE = "New Chat";
 const CHAT_PARAMETER_KEY_MAP = {
@@ -304,9 +307,12 @@ function UserMessageContent({ message }: { message: ChatMessage }) {
               src={part.url!}
               alt={`User upload ${index + 1}`}
               wrapperClassName="rounded-xl border border-black/10"
-              imageClassName="max-h-56 w-auto object-cover shadow-[0_8px_24px_rgba(0,0,0,0.18)]"
-              loadingClassName="flex min-h-40 min-w-40 items-center justify-center rounded-xl border border-black/10 bg-black/5 px-4 py-6 text-xs text-black/60"
-              errorClassName="flex min-h-40 min-w-40 items-center justify-center rounded-xl border border-black/10 bg-black/5 px-4 py-6 text-xs text-black/60"
+              imageClassName="h-20 w-20 object-cover shadow-[0_8px_18px_rgba(0,0,0,0.16)]"
+              loadingClassName="flex h-20 w-20 items-center justify-center rounded-xl border border-black/10 bg-black/5 text-xs text-black/60"
+              errorClassName="flex h-20 w-20 items-center justify-center rounded-xl border border-black/10 bg-black/5 text-xs text-black/60"
+              controls="open"
+              controlButtonClassName="h-6 w-6"
+              controlIconClassName="text-[13px]"
             />
           ))}
         </div>
@@ -626,12 +632,12 @@ async function normalizeUploadImage(file: File): Promise<File> {
     let quality = outputType === "image/webp" ? 0.86 : 0.82;
     let blob = await canvasToBlob(canvas, outputType, quality);
 
-    while (blob.size > MAX_PROXY_IMAGE_BYTES && quality && quality > 0.5) {
+    while (blob.size > MAX_PROXY_IMAGE_BYTES && quality && quality > 0.35) {
       quality -= 0.08;
       blob = await canvasToBlob(canvas, outputType, quality);
     }
 
-    if (blob.size >= file.size) return file;
+    if (blob.size >= file.size && file.size <= MAX_PROXY_IMAGE_BYTES) return file;
 
     const nextName = file.name.replace(/\.(png|jpg|jpeg|webp)$/i, outputType === "image/webp" ? ".webp" : "$&");
     return new File([blob], nextName, { type: outputType });
@@ -662,7 +668,7 @@ export default function StudioChatPage() {
   const [loadingReply, setLoadingReply] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [loadingConversation, setLoadingConversation] = useState(false);
-  const [inputImage, setInputImage] = useState<UploadedImageState | null>(null);
+  const [inputImages, setInputImages] = useState<UploadedImageState[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [currentCredits, setCurrentCredits] = useState<number | null>(null);
   const [conversationPromptTokens, setConversationPromptTokens] = useState(0);
@@ -679,6 +685,7 @@ export default function StudioChatPage() {
   const hasBootstrappedChatRef = useRef(false);
   const deletedConversationIdRef = useRef("");
   const failedConversationLoadRef = useRef("");
+  const inputImagesRef = useRef<UploadedImageState[]>([]);
 
   const searchParams = useSearchParams();
   const forceNewSession = searchParams?.get("new") === "1";
@@ -707,7 +714,7 @@ export default function StudioChatPage() {
       setConversationTitleDraft(DEFAULT_CONVERSATION_TITLE);
       setEditingConversationTitle(false);
       setInput("");
-      setInputImage(null);
+      clearAttachedImages();
       setError(null);
       setConversationPromptTokens(0);
       setConversationCompletionTokens(0);
@@ -736,7 +743,7 @@ export default function StudioChatPage() {
       setConversationTitleDraft(DEFAULT_CONVERSATION_TITLE);
       setEditingConversationTitle(false);
       setInput("");
-      setInputImage(null);
+      clearAttachedImages();
       setError(null);
       setConversationPromptTokens(0);
       setConversationCompletionTokens(0);
@@ -959,12 +966,14 @@ export default function StudioChatPage() {
   }, [conversationId, phase, user]);
 
   useEffect(() => {
+    inputImagesRef.current = inputImages;
+  }, [inputImages]);
+
+  useEffect(() => {
     return () => {
-      if (inputImage?.previewUrl) {
-        URL.revokeObjectURL(inputImage.previewUrl);
-      }
+      inputImagesRef.current.forEach((image) => URL.revokeObjectURL(image.previewUrl));
     };
-  }, [inputImage]);
+  }, []);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -1069,30 +1078,72 @@ export default function StudioChatPage() {
     textarea.style.overflowY = textarea.scrollHeight > maxHeight ? "auto" : "hidden";
   }, [input]);
 
-  async function handleImageUpload(event: ChangeEvent<HTMLInputElement>) {
-    const originalFile = event.target.files?.[0];
-    if (!originalFile) return;
+  function removeAttachedImage(localId: string) {
+    setInputImages((current) => current.filter((image) => {
+      const keep = image.localId !== localId;
+      if (!keep) URL.revokeObjectURL(image.previewUrl);
+      return keep;
+    }));
+  }
 
-    if (!["image/png", "image/jpeg", "image/webp"].includes(originalFile.type)) {
-      setError("Only PNG, JPEG, and WEBP images are supported.");
+  function clearAttachedImages() {
+    setInputImages((current) => {
+      current.forEach((image) => URL.revokeObjectURL(image.previewUrl));
+      return [];
+    });
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  }
+
+  async function handleImageUpload(event: ChangeEvent<HTMLInputElement>) {
+    const selectedFiles = Array.from(event.target.files || []);
+    if (selectedFiles.length === 0) return;
+
+    const slotsAvailable = MAX_INPUT_IMAGES - inputImagesRef.current.length;
+    if (slotsAvailable <= 0) {
+      setError(`Attach at most ${MAX_INPUT_IMAGES} images per message.`);
       event.target.value = "";
       return;
     }
 
-    if (originalFile.size > MAX_UPLOAD_BYTES) {
-      setError("Image must be 10 MB or smaller.");
-      event.target.value = "";
-      return;
+    const filesToUpload = selectedFiles.slice(0, slotsAvailable);
+    if (selectedFiles.length > slotsAvailable) {
+      setError(`Only ${MAX_INPUT_IMAGES} images can be attached.`);
     }
 
     try {
       setUploadingImage(true);
-      setError(null);
-      const file = await normalizeUploadImage(originalFile);
-      const uploaded: UploadedImageResult = await api.uploadInputImage(file);
-      setInputImage((prev) => {
-        if (prev?.previewUrl) URL.revokeObjectURL(prev.previewUrl);
-        return {
+      if (selectedFiles.length <= slotsAvailable) {
+        setError(null);
+      }
+      for (const originalFile of filesToUpload) {
+        if (!["image/png", "image/jpeg", "image/webp"].includes(originalFile.type)) {
+          throw new Error("Only PNG, JPEG, and WEBP images are supported.");
+        }
+        if (originalFile.size > MAX_UPLOAD_BYTES) {
+          throw new Error("Each image must be 10 MB or smaller.");
+        }
+      }
+      const pendingImages: UploadedImageState[] = filesToUpload.map((originalFile) => ({
+        localId: crypto.randomUUID(),
+        name: originalFile.name,
+        mimeType: originalFile.type,
+        previewUrl: URL.createObjectURL(originalFile),
+        size: originalFile.size,
+        originalSize: originalFile.size,
+        uploading: true,
+      }));
+      setInputImages((current) => [...current, ...pendingImages].slice(0, MAX_INPUT_IMAGES));
+
+      const nextImages: UploadedImageState[] = [];
+      for (const originalFile of filesToUpload) {
+        const file = await normalizeUploadImage(originalFile);
+        const uploaded: UploadedImageResult = await api.uploadInputImage(file);
+        const pendingImage = pendingImages[nextImages.length];
+        URL.revokeObjectURL(pendingImage.previewUrl);
+        nextImages.push({
+          localId: pendingImage.localId,
           fileId: uploaded.id,
           name: uploaded.name || file.name,
           mimeType: uploaded.mime_type || file.type,
@@ -1100,9 +1151,15 @@ export default function StudioChatPage() {
           previewUrl: URL.createObjectURL(file),
           size: uploaded.size || file.size,
           originalSize: originalFile.size,
-        };
-      });
+        });
+      }
+      setInputImages((current) => current.map((image) => nextImages.find((nextImage) => nextImage.localId === image.localId) || image));
     } catch (err) {
+      setInputImages((current) => current.filter((image) => {
+        const keep = !image.uploading;
+        if (!keep) URL.revokeObjectURL(image.previewUrl);
+        return keep;
+      }));
       setError(err instanceof Error ? err.message : "Could not upload image.");
     } finally {
       setUploadingImage(false);
@@ -1133,7 +1190,7 @@ export default function StudioChatPage() {
       setPhase("chat");
       setMessages([]);
       setInput("");
-      setInputImage(null);
+      clearAttachedImages();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not start a chat.");
     } finally {
@@ -1147,7 +1204,7 @@ export default function StudioChatPage() {
       setError(`Your message is too long. Maximum ${MAX_CHAT_TEXT_CHARS} characters.`);
       return;
     }
-    if ((!text && !inputImage) || !lockedModelId || loadingReply || !user) return;
+    if ((!text && inputImages.length === 0) || !lockedModelId || loadingReply || !user) return;
     if (insufficientLockedModelMinimumCredits) {
       setError(`You need at least ${lockedModelMinimumCost.toFixed(2)} credits to use this chat model.`);
       return;
@@ -1157,13 +1214,16 @@ export default function StudioChatPage() {
       return;
     }
 
-    const attachedImage = inputImage;
+    const inputBeforeSend = input;
+    const attachedImages = inputImages.filter((image) => image.url);
     const parts: PlainChatPart[] = [];
     if (text) {
       parts.push({ type: "text", text });
     }
-    if (lockedModel?.supportsImageInput && attachedImage) {
-      parts.push({ type: "image_url", url: attachedImage.url });
+    if (lockedModel?.supportsImageInput) {
+      attachedImages.forEach((image) => {
+        parts.push({ type: "image_url", url: image.url! });
+      });
     }
 
     const optimisticUserMessage: ChatMessage = {
@@ -1176,7 +1236,7 @@ export default function StudioChatPage() {
 
     setMessages((current) => [...current, optimisticUserMessage]);
     setInput("");
-    setInputImage(null);
+    setInputImages([]);
     setLoadingReply(true);
     setError(null);
 
@@ -1253,14 +1313,13 @@ export default function StudioChatPage() {
       if (typeof response.meta?.current_balance === "number") {
         setCurrentCredits(response.meta.current_balance);
       }
-      if (attachedImage?.previewUrl) {
-        URL.revokeObjectURL(attachedImage.previewUrl);
-      }
+      attachedImages.forEach((image) => URL.revokeObjectURL(image.previewUrl));
       suppressEmptyConversationLoadRef.current = false;
     } catch (err) {
       suppressEmptyConversationLoadRef.current = false;
       setMessages((current) => current.slice(0, -1));
-      setInputImage(attachedImage);
+      setInput(inputBeforeSend);
+      setInputImages(attachedImages);
       setError(err instanceof Error ? err.message : "Could not get a reply.");
     } finally {
       setLoadingReply(false);
@@ -1366,7 +1425,7 @@ export default function StudioChatPage() {
       setLastBillingMeta(null);
       setMessages([]);
       setInput("");
-      setInputImage(null);
+      clearAttachedImages();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not start a new chat.");
     } finally {
@@ -1397,7 +1456,7 @@ export default function StudioChatPage() {
       setLastBillingMeta(null);
       setMessages([]);
       setInput("");
-      setInputImage(null);
+      clearAttachedImages();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not delete this chat.");
     } finally {
@@ -1906,21 +1965,38 @@ export default function StudioChatPage() {
                     </div>
                   ) : null}
 
-                  <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={handleImageUpload} />
+                  <input ref={fileInputRef} type="file" multiple accept="image/png,image/jpeg,image/webp" className="hidden" onChange={handleImageUpload} />
 
-                  {lockedModel?.supportsImageInput && inputImage ? (
-                    <div className="chat-image-preview mb-3 flex items-center gap-3 px-4 py-3">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={inputImage.previewUrl} alt={inputImage.name} className="h-11 w-11 rounded-xl object-cover ring-1 ring-white/10" />
+                  {lockedModel?.supportsImageInput && inputImages.length > 0 ? (
+                    <div className="chat-image-preview mb-3 flex items-center gap-3 px-4 py-2.5">
+                      <div className="flex shrink-0 flex-nowrap items-center gap-1.5">
+                        {inputImages.map((image) => (
+                          <div key={image.localId} className="relative h-8 w-8 shrink-0 overflow-hidden rounded-lg ring-1 ring-white/10">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={image.previewUrl} alt={image.name} className="h-full w-full object-cover" />
+                            {image.uploading ? (
+                              <div className="absolute inset-0 flex items-center justify-center bg-black/55">
+                                <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                              </div>
+                            ) : null}
+                            <button
+                              type="button"
+                              onClick={() => removeAttachedImage(image.localId)}
+                              className="absolute right-0.5 top-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-black/70 text-[9px] text-white"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ))}
+                      </div>
                       <div className="min-w-0 flex-1">
-                        <div className="truncate text-[13px] font-medium text-white/80">{getImageDisplayName(inputImage.name)}</div>
+                        <div className="truncate text-[13px] font-medium text-white/80">
+                          {inputImages.length} / {MAX_INPUT_IMAGES} images attached
+                        </div>
                       </div>
                       <button
                         type="button"
-                        onClick={() => {
-                          if (inputImage?.previewUrl) URL.revokeObjectURL(inputImage.previewUrl);
-                          setInputImage(null);
-                        }}
+                        onClick={clearAttachedImages}
                         className="chat-topbar-btn !h-8 !w-8 text-white/40 hover:!text-red-400/80"
                       >
                         <span className="material-symbols-outlined text-[16px]">close</span>
@@ -1972,7 +2048,7 @@ export default function StudioChatPage() {
                         type="button"
                         onClick={() => void handleSend()}
                         disabled={
-                          (!input.trim() && !inputImage) ||
+                          (!input.trim() && inputImages.length === 0) ||
                           input.trim().length > MAX_CHAT_TEXT_CHARS ||
                           !lockedModelId ||
                           loadingReply ||

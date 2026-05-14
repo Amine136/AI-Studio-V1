@@ -9,6 +9,8 @@ from app.core.schema import ChatMessage, ChatMessagePart, PlainChatOptions, Plai
 from app.services.apikeymanager_client import generate_chat_via_proxy
 from app.services.user_files import load_private_user_file, private_file_id_from_url, private_file_url_prefix
 
+MAX_CHAT_INPUT_IMAGES = 4
+
 SAFE_GENERATED_FILENAME = re.compile(r"^[0-9a-f-]{36}\.(png|jpg|webp)$")
 MODEL_PARAMETER_OPTION_KEY_MAP = {
     "temperature": "temperature",
@@ -350,6 +352,7 @@ def _validate_message_parts(
     total_chars = 0
     text_limit = int(max_text_chars_per_part or settings.plain_chat_max_text_chars_per_part)
     message_limit = int(max_message_chars or settings.plain_chat_max_message_chars)
+    image_count = 0
     for part in parts:
         if part.type == "text":
             text = (part.text or "").strip()
@@ -366,6 +369,9 @@ def _validate_message_parts(
             raise ValueError("CHAT_IMAGE_URL_REQUIRED")
         if not supports_image_input:
             raise ValueError("CHAT_MODEL_DOES_NOT_SUPPORT_IMAGE_INPUT")
+        image_count += 1
+        if image_count > MAX_CHAT_INPUT_IMAGES:
+            raise ValueError("CHAT_TOO_MANY_IMAGES")
         _validate_uploaded_image_url(image_url)
         total_chars += len(image_url)
 

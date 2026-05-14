@@ -264,7 +264,11 @@ class GenerateRequest(BaseModel):
     )
     input_image: Optional[InputImage] = Field(
         default=None,
-        description="Optional uploaded image used as multimodal input"
+        description="Legacy optional uploaded image used as multimodal input"
+    )
+    input_images: Optional[List[InputImage]] = Field(
+        default=None,
+        description="Optional uploaded images used as multimodal input, maximum 4"
     )
     user_preferences: Optional[Dict[str, str]] = Field(
         default={},
@@ -291,12 +295,14 @@ class GenerateRequest(BaseModel):
                     "user_text": "A sleek tech product on a minimalist desk",
                     "requested_outputs": ["image", "caption"],
                     "mode": "smart",
-                    "input_image": {
-                        "fileId": "123e4567-e89b-12d3-a456-426614174000",
-                        "name": "reference.png",
-                        "mime_type": "image/png",
-                        "url": "https://vibecraft.ouni.space/api/files/123e4567-e89b-12d3-a456-426614174000"
-                    },
+                    "input_images": [
+                        {
+                            "fileId": "123e4567-e89b-12d3-a456-426614174000",
+                            "name": "reference.png",
+                            "mime_type": "image/png",
+                            "url": "https://vibecraft.ouni.space/api/files/123e4567-e89b-12d3-a456-426614174000"
+                        }
+                    ],
                     "user_preferences": {"platform": "LinkedIn", "brand_voice": "Professional"}
                 }
             ]

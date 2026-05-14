@@ -7,7 +7,7 @@ def generate_text(
     model_id: str, 
     prompt: str, 
     response_schema: Optional[Any] = None,
-    input_image: Optional[dict[str, str]] = None,
+    input_images: Optional[list[dict[str, str]]] = None,
     options: Optional[dict[str, Any]] = None,
 ) -> str:
     """
@@ -21,7 +21,7 @@ def generate_text(
         model_id,
         prompt,
         response_schema,
-        input_image=input_image,
+        input_images=input_images,
         options=options,
     )
     print(f"llm answer: {answer}")
@@ -33,7 +33,7 @@ def generate_text_payload(
     model_id: str,
     prompt: str,
     response_schema: Optional[Any] = None,
-    input_image: Optional[dict[str, str]] = None,
+    input_images: Optional[list[dict[str, str]]] = None,
     options: Optional[dict[str, Any]] = None,
 ) -> dict:
     return generate_text_payload_via_proxy(
@@ -41,6 +41,6 @@ def generate_text_payload(
         model_id,
         prompt,
         response_schema,
-        input_image=input_image,
+        input_images=input_images,
         options=options,
     )
