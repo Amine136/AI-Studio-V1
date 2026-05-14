@@ -269,6 +269,7 @@ export interface GenerateRequest {
   requested_outputs: OutputType[];
   mode?: GenerationMode;
   input_image?: InputImagePayload | null;
+  input_images?: InputImagePayload[] | null;
   user_preferences?: Record<string, string>; // e.g. { "image_model": "dalle-3" }
   user_corrections?: Record<string, any>;    // e.g. { "lighting": "Natural" }
   model_parameters?: Record<string, Record<string, string | number | boolean>>;

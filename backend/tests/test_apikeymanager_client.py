@@ -111,3 +111,19 @@ def test_check_apikeymanager_ready_uses_ready_endpoint(monkeypatch):
 
     assert payload["status"] == "ready"
     assert seen["url"] == "http://apikeymanager.local/health/ready"
+
+
+def test_build_input_parts_includes_multiple_images_before_text():
+    parts = apikeymanager_client._build_input_parts(
+        "describe these",
+        input_images=[
+            {"url": "https://example.test/one.png"},
+            {"mime_type": "image/webp", "data": "abc123"},
+        ],
+    )
+
+    assert parts == [
+        {"type": "image_url", "url": "https://example.test/one.png"},
+        {"type": "image", "mimeType": "image/webp", "data": "abc123"},
+        {"type": "text", "text": "describe these"},
+    ]

@@ -196,13 +196,14 @@ def generate_text_via_proxy(
     prompt: str,
     response_schema: Optional[Any] = None,
     input_image: Optional[Dict[str, str]] = None,
+    input_images: Optional[list[Dict[str, str]]] = None,
     options: Optional[Dict[str, Any]] = None,
 ) -> str:
     prompt_text = _build_json_schema_prompt(prompt, response_schema) if response_schema else prompt
     payload = {
         "model": model_id,
         "provider": provider,
-        "input": _build_input_parts(prompt_text, input_image),
+        "input": _build_input_parts(prompt_text, input_image=input_image, input_images=input_images),
     }
     if options:
         payload["options"] = options
@@ -217,13 +218,14 @@ def generate_text_payload_via_proxy(
     prompt: str,
     response_schema: Optional[Any] = None,
     input_image: Optional[Dict[str, str]] = None,
+    input_images: Optional[list[Dict[str, str]]] = None,
     options: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     prompt_text = _build_json_schema_prompt(prompt, response_schema) if response_schema else prompt
     payload = {
         "model": model_id,
         "provider": provider,
-        "input": _build_input_parts(prompt_text, input_image),
+        "input": _build_input_parts(prompt_text, input_image=input_image, input_images=input_images),
     }
     if options:
         payload["options"] = options
@@ -276,6 +278,7 @@ def generate_image_via_proxy(
     owner_uid: str,
     image_config: Optional[Dict[str, Any]] = None,
     input_image: Optional[Dict[str, str]] = None,
+    input_images: Optional[list[Dict[str, str]]] = None,
     options: Optional[Dict[str, Any]] = None,
 ) -> str:
     image_config = image_config or {}
@@ -302,7 +305,7 @@ def generate_image_via_proxy(
     payload = {
         "model": model_id,
         "provider": provider,
-        "input": _build_input_parts(prompt, input_image),
+        "input": _build_input_parts(prompt, input_image=input_image, input_images=input_images),
         "options": resolved_options,
     }
     data = _post_proxy(payload)
@@ -327,6 +330,7 @@ def generate_image_payload_via_proxy(
     owner_uid: str,
     image_config: Optional[Dict[str, Any]] = None,
     input_image: Optional[Dict[str, str]] = None,
+    input_images: Optional[list[Dict[str, str]]] = None,
     options: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     image_config = image_config or {}
@@ -353,7 +357,7 @@ def generate_image_payload_via_proxy(
     payload = {
         "model": model_id,
         "provider": provider,
-        "input": _build_input_parts(prompt, input_image),
+        "input": _build_input_parts(prompt, input_image=input_image, input_images=input_images),
         "options": resolved_options,
     }
     data = _post_proxy(payload)
@@ -389,6 +393,7 @@ def generate_text_and_image_via_proxy(
     owner_uid: str,
     image_config: Optional[Dict[str, Any]] = None,
     input_image: Optional[Dict[str, str]] = None,
+    input_images: Optional[list[Dict[str, str]]] = None,
     options: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, str]:
     image_config = image_config or {}
@@ -407,7 +412,7 @@ def generate_text_and_image_via_proxy(
     payload = {
         "model": model_id,
         "provider": provider,
-        "input": _build_input_parts(prompt, input_image),
+        "input": _build_input_parts(prompt, input_image=input_image, input_images=input_images),
         "options": resolved_options,
     }
     data = _post_proxy(payload)
@@ -437,6 +442,7 @@ def generate_text_and_image_payload_via_proxy(
     owner_uid: str,
     image_config: Optional[Dict[str, Any]] = None,
     input_image: Optional[Dict[str, str]] = None,
+    input_images: Optional[list[Dict[str, str]]] = None,
     options: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     image_config = image_config or {}
@@ -455,7 +461,7 @@ def generate_text_and_image_payload_via_proxy(
     payload = {
         "model": model_id,
         "provider": provider,
-        "input": _build_input_parts(prompt, input_image),
+        "input": _build_input_parts(prompt, input_image=input_image, input_images=input_images),
         "options": resolved_options,
     }
     data = _post_proxy(payload)
@@ -483,18 +489,22 @@ def generate_text_and_image_payload_via_proxy(
     }
 
 
-def _build_input_parts(prompt: str, input_image: Optional[Dict[str, str]] = None) -> list[Dict[str, str]]:
+def _build_input_parts(
+    prompt: str,
+    input_image: Optional[Dict[str, str]] = None,
+    input_images: Optional[list[Dict[str, str]]] = None,
+) -> list[Dict[str, str]]:
     parts: list[Dict[str, str]] = []
-    if input_image:
-        image_url = input_image.get("url")
+    for image in (input_images if input_images is not None else ([input_image] if input_image else [])):
+        image_url = image.get("url")
         if image_url:
             parts.append({"type": "image_url", "url": image_url})
-        elif input_image.get("mime_type") and input_image.get("data"):
+        elif image.get("mime_type") and image.get("data"):
             parts.append(
                 {
                     "type": "image",
-                    "mimeType": input_image["mime_type"],
-                    "data": input_image["data"],
+                    "mimeType": image["mime_type"],
+                    "data": image["data"],
                 }
             )
     parts.append({"type": "text", "text": prompt})

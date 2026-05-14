@@ -14,7 +14,7 @@ def generate_image_url(
     owner_uid: str,
     model_type: str = "",
     image_config: dict = None,
-    input_image: dict | None = None,
+    input_images: list[dict] | None = None,
     options: dict | None = None,
 ) -> str:
     """Sends image generation through ApiKeyManager."""
@@ -24,7 +24,7 @@ def generate_image_url(
         prompt,
         owner_uid=owner_uid,
         image_config=image_config,
-        input_image=input_image,
+        input_images=input_images,
         options=options,
     )
 
@@ -36,7 +36,7 @@ def generate_image_and_text(
     *,
     owner_uid: str,
     image_config: dict = None,
-    input_image: dict | None = None,
+    input_images: list[dict] | None = None,
     options: dict | None = None,
 ) -> dict[str, str]:
     """Sends a single multimodal generation request through ApiKeyManager."""
@@ -46,7 +46,7 @@ def generate_image_and_text(
         prompt,
         owner_uid=owner_uid,
         image_config=image_config,
-        input_image=input_image,
+        input_images=input_images,
         options=options,
     )
 
@@ -59,7 +59,7 @@ def generate_image_payload(
     owner_uid: str,
     model_type: str = "",
     image_config: dict = None,
-    input_image: dict | None = None,
+    input_images: list[dict] | None = None,
     options: dict | None = None,
 ) -> dict:
     del model_type
@@ -69,7 +69,7 @@ def generate_image_payload(
         prompt,
         owner_uid=owner_uid,
         image_config=image_config,
-        input_image=input_image,
+        input_images=input_images,
         options=options,
     )
 
@@ -81,7 +81,7 @@ def generate_image_and_text_payload(
     *,
     owner_uid: str,
     image_config: dict = None,
-    input_image: dict | None = None,
+    input_images: list[dict] | None = None,
     options: dict | None = None,
 ) -> dict:
     return generate_text_and_image_payload_via_proxy(
@@ -90,6 +90,6 @@ def generate_image_and_text_payload(
         prompt,
         owner_uid=owner_uid,
         image_config=image_config,
-        input_image=input_image,
+        input_images=input_images,
         options=options,
     )

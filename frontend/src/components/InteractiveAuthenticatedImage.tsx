@@ -27,6 +27,9 @@ export default function InteractiveAuthenticatedImage({
   wrapperClassName,
   loadingClassName,
   errorClassName,
+  controls = "all",
+  controlButtonClassName = "h-9 w-9",
+  controlIconClassName = "text-[18px]",
 }: {
   src: string;
   alt: string;
@@ -34,6 +37,9 @@ export default function InteractiveAuthenticatedImage({
   wrapperClassName: string;
   loadingClassName?: string;
   errorClassName?: string;
+  controls?: "all" | "open";
+  controlButtonClassName?: string;
+  controlIconClassName?: string;
 }) {
   const { user } = useAuth();
   const isRenderable = isRenderableImageUrl(src);
@@ -142,30 +148,34 @@ export default function InteractiveAuthenticatedImage({
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={activeSrc} alt={alt} className={imageClassName} />
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
-        <div className="absolute right-3 top-3 flex gap-2 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
-          <button
-            type="button"
-            onClick={() => setIsZoomOpen(true)}
-            className="flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-black/45 text-white backdrop-blur hover:bg-black/65"
-            aria-label="Zoom image"
-          >
-            <span className="material-symbols-outlined text-[18px]">zoom_in</span>
-          </button>
-          <button
-            type="button"
-            onClick={handleDownload}
-            className="flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-black/45 text-white backdrop-blur hover:bg-black/65"
-            aria-label="Download image"
-          >
-            <span className="material-symbols-outlined text-[18px]">download</span>
-          </button>
+        <div className="absolute right-2 top-2 flex gap-2 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+          {controls === "all" ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setIsZoomOpen(true)}
+                className={`flex ${controlButtonClassName} items-center justify-center rounded-full border border-white/20 bg-black/45 text-white backdrop-blur hover:bg-black/65`}
+                aria-label="Zoom image"
+              >
+                <span className={`material-symbols-outlined ${controlIconClassName}`}>zoom_in</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleDownload}
+                className={`flex ${controlButtonClassName} items-center justify-center rounded-full border border-white/20 bg-black/45 text-white backdrop-blur hover:bg-black/65`}
+                aria-label="Download image"
+              >
+                <span className={`material-symbols-outlined ${controlIconClassName}`}>download</span>
+              </button>
+            </>
+          ) : null}
           <button
             type="button"
             onClick={handleOpenInNewTab}
-            className="flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-black/45 text-white backdrop-blur hover:bg-black/65"
+            className={`flex ${controlButtonClassName} items-center justify-center rounded-full border border-white/20 bg-black/45 text-white backdrop-blur hover:bg-black/65`}
             aria-label="Open image in new tab"
           >
-            <span className="material-symbols-outlined text-[18px]">open_in_new</span>
+            <span className={`material-symbols-outlined ${controlIconClassName}`}>open_in_new</span>
           </button>
         </div>
       </div>

@@ -8,7 +8,7 @@ from fastapi import HTTPException
 
 from app.db.repositories import SecurityRepository
 from app.db.session import session_scope
-from app.main import _is_valid_generated_image_result, _prepare_input_image
+from app.main import _is_valid_generated_image_result, _prepare_input_image, _prepare_input_images
 from app.services.user_files import load_private_user_file, save_generated_output_for_owner
 
 
@@ -43,6 +43,49 @@ def test_prepare_input_image_reads_private_uploaded_file(test_db, monkeypatch, t
         "mime_type": "image/png",
         "data": base64.b64encode(image_bytes).decode("ascii"),
     }
+
+
+def test_prepare_input_images_reads_multiple_private_uploaded_files(test_db, monkeypatch, tmp_path):
+    upload_dir = tmp_path / "uploaded_images"
+    upload_dir.mkdir()
+    first_filename = "c" * 32 + ".png"
+    second_filename = "d" * 32 + ".webp"
+    first_bytes = b"\x89PNG\r\n\x1a\nfirst"
+    second_bytes = b"RIFFxxxxWEBPsecond"
+    (upload_dir / first_filename).write_bytes(first_bytes)
+    (upload_dir / second_filename).write_bytes(second_bytes)
+    monkeypatch.setattr("app.main.UPLOADED_IMAGES_DIR", upload_dir)
+    monkeypatch.setattr("app.services.user_files.UPLOADED_IMAGES_DIR", upload_dir)
+
+    with session_scope() as db:
+        repo = SecurityRepository(db)
+        repo.ensure_user("multi-user", "multi@example.com", "Multi User")
+        first_entry = repo.create_user_file(
+            owner_uid="multi-user",
+            storage_path=first_filename,
+            kind="uploaded_input",
+            mime_type="image/png",
+            file_id="323e4567-e89b-12d3-a456-426614174000",
+        )
+        second_entry = repo.create_user_file(
+            owner_uid="multi-user",
+            storage_path=second_filename,
+            kind="uploaded_input",
+            mime_type="image/webp",
+            file_id="423e4567-e89b-12d3-a456-426614174000",
+        )
+
+    payloads = [
+        SimpleNamespace(file_id=str(first_entry.id), url=None, mime_type="image/png"),
+        SimpleNamespace(file_id=str(second_entry.id), url=None, mime_type="image/webp"),
+    ]
+
+    resolved = _prepare_input_images(payloads, "multi-user")
+
+    assert resolved == [
+        {"mime_type": "image/png", "data": base64.b64encode(first_bytes).decode("ascii")},
+        {"mime_type": "image/webp", "data": base64.b64encode(second_bytes).decode("ascii")},
+    ]
 
 
 def test_private_uploaded_file_is_owner_scoped(test_db, monkeypatch, tmp_path):
