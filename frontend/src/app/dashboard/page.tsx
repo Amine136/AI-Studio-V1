@@ -248,7 +248,7 @@ export default function DashboardPage() {
   useEffect(() => {
     const intervalId = window.setInterval(() => {
       setActiveTemplateIndex((current) => (current + 1) % dashboardTemplates.length);
-    }, 3000);
+    }, 6000);
 
     return () => window.clearInterval(intervalId);
   }, []);
@@ -261,7 +261,7 @@ export default function DashboardPage() {
 
     const intervalId = window.setInterval(() => {
       setActiveNewsIndex((current) => (current + 1) % newsItems.length);
-    }, 3000);
+    }, 6000);
 
     return () => window.clearInterval(intervalId);
   }, [newsItems]);

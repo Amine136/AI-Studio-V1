@@ -26,6 +26,7 @@ export default function AdminPage() {
     const [loading, setLoading] = useState(true);
     const [loadError, setLoadError] = useState("");
     const [users, setUsers] = useState<AdminUserListItem[]>([]);
+    const [totalUsers, setTotalUsers] = useState(0);
     const [codes, setCodes] = useState<AdminCreditCodeItem[]>([]);
     const [logs, setLogs] = useState<AdminAuditLogItem[]>([]);
     const [warnings, setWarnings] = useState<CatalogWarningItem[]>([]);
@@ -39,7 +40,7 @@ export default function AdminPage() {
             setLoadError("");
             try {
                 const [userResponse, codeResponse, logResponse, configResponse] = await Promise.all([
-                    api.getAdminUsers({ limit: 6 }),
+                    api.getAdminUsers({ limit: 200 }),
                     api.getAdminCodes(),
                     api.getAdminLogs({ limit: 4 }),
                     api.getConfig(),
@@ -47,6 +48,7 @@ export default function AdminPage() {
 
                 if (cancelled) return;
                 setUsers(userResponse.users ?? []);
+                setTotalUsers(userResponse.total ?? 0);
                 setCodes(codeResponse.codes ?? []);
                 setLogs(logResponse.logs ?? []);
                 setWarnings(configResponse.catalog_warnings ?? []);
@@ -86,6 +88,7 @@ export default function AdminPage() {
     const userTrend = users.length ? `${Math.round((activeUsers / users.length) * 100)}% active` : "0% active";
     const creditTrend = users.length ? `${Math.round((fundedUsers / users.length) * 100)}% funded` : "0% funded";
     const codeTrend = codes.length ? `${Math.round((activeCodes / codes.length) * 100)}% redeemable` : "0% redeemable";
+    const recentUsers = useMemo(() => users.slice(0, 6), [users]);
 
     if (sessionLoading || !session) {
         if (!sessionLoading && sessionError) {
@@ -145,7 +148,7 @@ export default function AdminPage() {
                 <div className="grid grid-cols-1 gap-4 mb-6 sm:grid-cols-2 xl:grid-cols-3 animate-fade-in-up" style={{ animationDelay: "80ms" }}>
                     <StatCard
                         label="Total Users"
-                        value={String(users.length)}
+                        value={String(totalUsers)}
                         trend={userTrend}
                         accent="blue"
                         icon={
@@ -203,13 +206,13 @@ export default function AdminPage() {
                     <OverviewTable
                         title="Recent Users"
                         subtitle="Latest accounts and balance state"
-                        meta={`${users.length} loaded`}
+                        meta={`${recentUsers.length} loaded`}
                         action={
                             <button onClick={() => router.push("/users")} className="admin-gradient-btn">
                                 More details
                             </button>
                         }
-                        hasItems={users.length > 0}
+                        hasItems={recentUsers.length > 0}
                         loading={loading}
                         emptyText={loadError || "No users available"}
                     >
@@ -222,7 +225,7 @@ export default function AdminPage() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {users.map((item) => (
+                                {recentUsers.map((item) => (
                                     <tr key={item.uid} className="admin-dashboard-row">
                                         <td>
                                             <div className="admin-user-cell">

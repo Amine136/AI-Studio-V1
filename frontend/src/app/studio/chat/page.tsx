@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Fragment, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type ChangeEvent, type ClipboardEvent, type ReactNode } from "react";
 import { useAuth } from "../../../context/AuthContext";
 import InteractiveAuthenticatedImage from "../../../components/InteractiveAuthenticatedImage";
 import { isRenderableImageUrl } from "../../../components/AuthenticatedImage";
@@ -1096,14 +1096,12 @@ export default function StudioChatPage() {
     }
   }
 
-  async function handleImageUpload(event: ChangeEvent<HTMLInputElement>) {
-    const selectedFiles = Array.from(event.target.files || []);
+  async function uploadInputImageFiles(selectedFiles: File[]) {
     if (selectedFiles.length === 0) return;
 
     const slotsAvailable = MAX_INPUT_IMAGES - inputImagesRef.current.length;
     if (slotsAvailable <= 0) {
       setError(`Attach at most ${MAX_INPUT_IMAGES} images per message.`);
-      event.target.value = "";
       return;
     }
 
@@ -1163,8 +1161,25 @@ export default function StudioChatPage() {
       setError(err instanceof Error ? err.message : "Could not upload image.");
     } finally {
       setUploadingImage(false);
-      event.target.value = "";
     }
+  }
+
+  async function handleImageUpload(event: ChangeEvent<HTMLInputElement>) {
+    await uploadInputImageFiles(Array.from(event.target.files || []));
+    event.target.value = "";
+  }
+
+  function handleImagePaste(event: ClipboardEvent<HTMLTextAreaElement>) {
+    if (!lockedModel?.supportsImageInput) return;
+
+    const pastedFiles = Array.from(event.clipboardData.items)
+      .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => file !== null);
+
+    if (pastedFiles.length === 0) return;
+    event.preventDefault();
+    void uploadInputImageFiles(pastedFiles);
   }
 
   async function handleStartChat() {
@@ -2015,6 +2030,7 @@ export default function StudioChatPage() {
                           setError(null);
                         }
                       }}
+                      onPaste={handleImagePaste}
                       onKeyDown={(event) => {
                         if (event.key === "Enter" && !event.shiftKey) {
                           event.preventDefault();

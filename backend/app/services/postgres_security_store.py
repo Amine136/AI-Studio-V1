@@ -197,6 +197,11 @@ def list_users() -> list[dict[str, Any]]:
 
 
 def search_users(query: str = "", limit: int = 100) -> list[dict[str, Any]]:
+    users, _total = search_users_with_total(query, limit)
+    return users
+
+
+def search_users_with_total(query: str = "", limit: int = 100) -> tuple[list[dict[str, Any]], int]:
     normalized_query = query.strip().lower()
     bounded_limit = min(max(int(limit), 1), 200)
     users = [_with_active_suspension_state(user) for user in list_users()]
@@ -208,7 +213,7 @@ def search_users(query: str = "", limit: int = 100) -> list[dict[str, Any]]:
             or normalized_query in str(user.get("displayName", "")).lower()
             or normalized_query in str(user.get("uid", "")).lower()
         ]
-    return users[:bounded_limit]
+    return users[:bounded_limit], len(users)
 
 
 def get_admin_user_detail(uid: str) -> dict[str, Any] | None:
