@@ -1,7 +1,7 @@
 // frontend/src/app/page.tsx
 "use client";
 
-import { useState, useEffect, useRef, useMemo, useCallback, type ChangeEvent } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback, type ChangeEvent, type ClipboardEvent } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "../../../services/api";
@@ -916,14 +916,12 @@ export default function Home() {
   }, []);
 
   // --- Helpers ---
-  const handleImageUpload = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
-    const selectedFiles = Array.from(event.target.files || []);
+  const uploadInputImageFiles = useCallback(async (selectedFiles: File[]) => {
     if (selectedFiles.length === 0) return;
 
     const slotsAvailable = MAX_INPUT_IMAGES - inputImagesRef.current.length;
     if (slotsAvailable <= 0) {
       showToast(`Attach at most ${MAX_INPUT_IMAGES} images.`);
-      event.target.value = "";
       return;
     }
 
@@ -981,10 +979,24 @@ export default function Home() {
       }
       console.error("Image upload error:", error);
       showToast(getErrorMessage(error, "Could not process that image."));
-    } finally {
-      event.target.value = "";
     }
   }, [captureSuspension]);
+
+  const handleImageUpload = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
+    await uploadInputImageFiles(Array.from(event.target.files || []));
+    event.target.value = "";
+  }, [uploadInputImageFiles]);
+
+  const handleImagePaste = useCallback((event: ClipboardEvent<HTMLTextAreaElement>) => {
+    const pastedFiles = Array.from(event.clipboardData.items)
+      .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => file !== null);
+
+    if (pastedFiles.length === 0) return;
+    event.preventDefault();
+    void uploadInputImageFiles(pastedFiles);
+  }, [uploadInputImageFiles]);
 
   const removeInputImage = useCallback((localId: string) => {
     setInputImages((prev) => prev.filter((image) => {
@@ -1351,7 +1363,6 @@ export default function Home() {
                   <label className="text-[9px] font-bold uppercase tracking-wider text-slate-500">
                     {formatParameterLabel(key)}
                   </label>
-                  {entry.note && <span className="text-[10px] text-slate-500">{entry.note}</span>}
                 </div>
                 <button
                   type="button"
@@ -1371,7 +1382,6 @@ export default function Home() {
                   <label className="text-[9px] font-bold uppercase tracking-wider text-slate-500">
                     {formatParameterLabel(key)}
                   </label>
-                  {entry.note && <span className="text-[10px] text-slate-500">{entry.note}</span>}
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {(entry.values || []).map((option) => {
@@ -1643,6 +1653,7 @@ export default function Home() {
                     placeholder="Describe what you want to create..."
                     value={userText}
                     onChange={(e) => setUserText(e.target.value)}
+                    onPaste={handleImagePaste}
                   />
                   <div className="pointer-events-none absolute bottom-3 right-4 flex items-center gap-2 opacity-40">
                     <span className="material-symbols-outlined text-[10px]">keyboard_command_key</span>

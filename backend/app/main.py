@@ -74,7 +74,7 @@ from app.services.security_backend import (
     list_credit_codes,
     list_gift_code_status_summaries,
     list_users,
-    search_users,
+    search_users_with_total,
     mark_generation_job_awaiting_review,
     preload_security_store,
     redeem_credit_code,
@@ -1266,10 +1266,10 @@ def admin_list_users(
     _admin: Dict[str, Any] = Depends(verify_admin_session),
 ):
     del request
-    users = search_users(q, limit)
+    users, total = search_users_with_total(q, limit)
     return {
         "users": users,
-        "total": len(users),
+        "total": total,
         "search": q.strip(),
     }
 

@@ -47,6 +47,7 @@ from app.services.postgres_security_store import (  # noqa: F401
     list_chat_conversations,
     list_credit_activity_entries,
     search_users,
+    search_users_with_total,
     suspend_user,
     unsuspend_user,
     update_dashboard_news_item,

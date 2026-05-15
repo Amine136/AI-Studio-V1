@@ -20,6 +20,16 @@ function hasCaption(value?: string) {
   return Boolean(value && value.trim().length);
 }
 
+function splitCaptionWords(value?: string) {
+  return value?.trim().split(/\s+/).filter(Boolean) ?? [];
+}
+
+function getCaptionPreview(value?: string, maxWords = 30) {
+  const words = splitCaptionWords(value);
+  if (words.length <= maxWords) return value?.trim() ?? "";
+  return `${words.slice(0, maxWords).join(" ")}...`;
+}
+
 function formatDate(value: Date) {
   return value.toLocaleDateString("en-US", {
     month: "short",
@@ -48,6 +58,7 @@ export default function GalleryPage() {
   const [historyLoading, setHistoryLoading] = useState(true);
   const [filter, setFilter] = useState<GalleryFilter>("all_images");
   const [selectedEntry, setSelectedEntry] = useState<HistoryEntry | null>(null);
+  const [showFullCaption, setShowFullCaption] = useState(false);
   const [config, setConfig] = useState<SystemConfig | null>(null);
   const [plainChatModels, setPlainChatModels] = useState<PlainChatModelItem[]>([]);
 
@@ -120,6 +131,12 @@ export default function GalleryPage() {
   const gridEntries = featuredEntry ? filteredEntries.slice(1) : [];
   const imageCount = history.filter((entry) => isRenderableImageUrl(entry.imageUrl)).length;
   const captionCount = history.filter((entry) => hasCaption(entry.caption)).length;
+  const selectedCaptionWords = splitCaptionWords(selectedEntry?.caption);
+  const hasLongSelectedCaption = selectedCaptionWords.length > 30;
+
+  useEffect(() => {
+    setShowFullCaption(false);
+  }, [selectedEntry?.id]);
 
   if (authLoading || !user) {
     return (
@@ -317,7 +334,22 @@ export default function GalleryPage() {
                 {hasCaption(selectedEntry.caption) ? (
                   <div className="mt-6">
                     <div className="text-xs font-bold uppercase tracking-[0.22em] text-[#8c909f]">Caption</div>
-                    <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-[#c2c6d6]">{selectedEntry.caption}</p>
+                    <div className={`mt-3 rounded-sm bg-[#070d1f]/45 px-3 py-2 ${showFullCaption ? "max-h-44 overflow-y-auto" : ""}`}>
+                      <p className="whitespace-pre-wrap text-sm leading-7 text-[#c2c6d6]">
+                        {showFullCaption || !hasLongSelectedCaption
+                          ? selectedEntry.caption
+                          : getCaptionPreview(selectedEntry.caption)}
+                      </p>
+                    </div>
+                    {hasLongSelectedCaption ? (
+                      <button
+                        type="button"
+                        onClick={() => setShowFullCaption((current) => !current)}
+                        className="mt-3 text-sm font-medium text-[#adc6ff] transition hover:text-[#dce1fb]"
+                      >
+                        {showFullCaption ? "Read less" : "Read more"}
+                      </button>
+                    ) : null}
                   </div>
                 ) : null}
 
