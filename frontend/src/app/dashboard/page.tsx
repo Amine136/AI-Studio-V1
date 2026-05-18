@@ -325,19 +325,19 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="space-y-12">
+    <div className="space-y-8 sm:space-y-12">
       <section className="relative">
         <div className="space-y-2">
-          <h2 className="font-headline text-4xl font-bold tracking-tighter text-blue-100">
-            Welcome back, {user.displayName?.split(" ")[0] || user.email?.split("@")[0] || "Creator"}
+          <h2 className="font-headline text-2xl font-bold tracking-tighter text-blue-100 sm:text-4xl">
+            Welcome, {user.displayName?.split(" ")[0] || user.email?.split("@")[0] || "Creator"}
           </h2>
-          <p className="text-lg text-[#c2c6d6]">Your studio is ready for new dimensions.</p>
+          <p className="text-sm text-[#c2c6d6] sm:text-lg">Your studio is ready for new dimensions.</p>
         </div>
 
-        <div className="mt-8 grid grid-cols-12 gap-6">
-          <div className="relative col-span-12 min-h-[240px] overflow-hidden rounded-xl border border-white/5 bg-[#151b2d] p-8 xl:col-span-8">
+        <div className="mt-6 grid grid-cols-12 gap-4 sm:mt-8 sm:gap-6">
+          <div className="relative col-span-12 min-h-[220px] overflow-hidden rounded-xl border border-white/5 bg-[#151b2d] p-5 sm:min-h-[240px] sm:p-8 xl:col-span-8">
             <div className="absolute right-0 top-0 -mr-32 -mt-32 h-64 w-64 rounded-full bg-[#adc6ff]/10 blur-[80px]" />
-            <div className="relative z-10 h-full min-h-[176px]">
+            <div className="relative z-10 h-full min-h-[180px] sm:min-h-[176px]">
               {dashboardTemplates.map((template, index) => {
                 const isActive = index === activeTemplateIndex;
                 return (
@@ -349,14 +349,14 @@ export default function DashboardPage() {
                     }`}
                   >
                     <div>
-                      <span className="mb-4 block text-sm font-bold uppercase tracking-widest text-[#adc6ff]">
+                      <span className="mb-3 block text-xs font-bold uppercase tracking-widest text-[#adc6ff] sm:mb-4 sm:text-sm">
                         Quick Start Templates
                       </span>
-                      <h3 className="mb-3 font-headline text-3xl font-bold text-blue-100">{template.title}</h3>
-                      <p className="max-w-xl text-base leading-7 text-[#c2c6d6]">{template.description}</p>
+                      <h3 className="mb-2 font-headline text-2xl font-bold text-blue-100 sm:mb-3 sm:text-3xl">{template.title}</h3>
+                      <p className="max-w-xl text-sm leading-6 text-[#c2c6d6] sm:text-base sm:leading-7">{template.description}</p>
                     </div>
 
-                    <div className="flex items-end justify-between gap-4">
+                    <div className="flex items-end justify-between gap-3">
                       <div className="flex gap-2">
                         {dashboardTemplates.map((item, dotIndex) => (
                           <span
@@ -369,7 +369,7 @@ export default function DashboardPage() {
                       </div>
                       <Link
                         href={template.href}
-                        className="rounded-md border border-[#adc6ff]/30 bg-[#adc6ff] px-6 py-3 text-sm font-bold text-[#032a61] transition-colors hover:bg-[#c1d5ff]"
+                        className="rounded-md border border-[#adc6ff]/30 bg-[#adc6ff] px-4 py-2.5 text-sm font-bold text-[#032a61] transition-colors hover:bg-[#c1d5ff] sm:px-6 sm:py-3"
                       >
                         Use Template
                       </Link>
@@ -380,19 +380,19 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          <div className="col-span-12 flex flex-col items-center justify-center space-y-4 rounded-xl border border-[#adc6ff]/10 bg-[#2e3447] p-8 text-center xl:col-span-4">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#571bc1]/30">
+          <div className="col-span-12 flex items-center justify-between gap-4 rounded-xl border border-[#adc6ff]/10 bg-[#2e3447] p-5 text-left sm:flex-col sm:justify-center sm:space-y-4 sm:p-8 sm:text-center xl:col-span-4">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#571bc1]/30 sm:h-16 sm:w-16">
               <span className="material-symbols-outlined text-3xl text-[#d0bcff]" style={{ fontVariationSettings: "'FILL' 1" }}>
                 bolt
               </span>
             </div>
             <div>
-              <span className="font-headline text-4xl font-bold text-blue-100">
+              <span className="font-headline text-2xl font-bold text-blue-100 sm:text-4xl">
                 {currentCredits === null ? "..." : currentCredits.toFixed(2)}
               </span>
               <p className="mt-1 text-sm font-medium text-[#c2c6d6]">Available Credits</p>
             </div>
-            <Link href="/credits" className="w-full rounded-md border border-white/5 bg-[#23293c] py-2 text-xs font-bold uppercase tracking-widest transition-all hover:border-[#adc6ff]/40">
+            <Link href="/credits" className="shrink-0 rounded-md border border-white/5 bg-[#23293c] px-4 py-2 text-xs font-bold uppercase tracking-widest transition-all hover:border-[#adc6ff]/40 sm:w-full">
               Top Up Balance
             </Link>
           </div>
@@ -400,17 +400,17 @@ export default function DashboardPage() {
       </section>
 
       <section className="space-y-6">
-        <div className="flex items-end justify-between">
-          <h3 className="font-headline text-2xl font-bold tracking-tight">Latest Generations</h3>
+        <div className="flex items-end justify-between gap-3">
+          <h3 className="font-headline text-xl font-bold tracking-tight sm:text-2xl">Latest Generations</h3>
           <Link href="/gallery" className="flex items-center gap-1 text-sm font-medium text-[#adc6ff] hover:underline">
             Explore Gallery <span className="material-symbols-outlined text-sm">arrow_forward</span>
           </Link>
         </div>
 
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-4">
+        <div className="flex snap-x snap-mandatory gap-4 overflow-x-auto pb-2 pr-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:grid md:grid-cols-4 md:overflow-visible md:pr-0 md:pb-0 2xl:grid-cols-5">
           {historyLoading
             ? Array.from({ length: 4 }).map((_, index) => (
-                <div key={index} className="group cursor-pointer">
+                <div key={index} className="group w-[58vw] max-w-[220px] shrink-0 snap-start cursor-pointer md:w-auto md:max-w-none">
                   <div className="relative mb-3 aspect-[4/5] overflow-hidden rounded-xl border border-white/5 bg-[#151b2d]">
                     <div className="flex h-full w-full items-center justify-center bg-[#151b2d] text-white/20">
                       <span className="material-symbols-outlined text-[72px]">hourglass_top</span>
@@ -421,7 +421,7 @@ export default function DashboardPage() {
                 </div>
               ))
             : latestItems.map((entry) => (
-                <div key={entry.id} className="group cursor-pointer">
+                <div key={entry.id} className="group w-[58vw] max-w-[220px] shrink-0 snap-start cursor-pointer md:w-auto md:max-w-none">
                   <div className="relative mb-3 aspect-[4/5] overflow-hidden rounded-xl border border-white/5 bg-[#151b2d]">
                     {isRenderableImageUrl(entry.imageUrl) ? (
                       <AuthenticatedImage src={entry.imageUrl || ""} alt={entry.prompt} className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110" />
@@ -445,10 +445,10 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      <div className="grid grid-cols-12 gap-10">
+      <div className="grid grid-cols-12 gap-8 sm:gap-10">
         <section className="col-span-12 space-y-6 xl:col-span-8">
-          <div className="flex items-center gap-3">
-            <h3 className="font-headline text-2xl font-bold tracking-tight">Available Models</h3>
+          <div className="flex flex-wrap items-center gap-3">
+            <h3 className="font-headline text-xl font-bold tracking-tight sm:text-2xl">Available Models</h3>
             <span className="rounded bg-[#adc6ff]/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-[#adc6ff]">
               New Arrivals
             </span>
@@ -456,7 +456,7 @@ export default function DashboardPage() {
 
           {featuredModel ? (
             <div className="overflow-hidden rounded-xl border border-[#adc6ff]/20 bg-[#151b2d]">
-              <div className="space-y-6 p-8">
+              <div className="space-y-5 p-5 sm:space-y-6 sm:p-8">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-4">
                     <div className="flex h-14 w-14 items-center justify-center rounded-lg bg-[#4d8eff]/20">
@@ -465,8 +465,8 @@ export default function DashboardPage() {
                       </span>
                     </div>
                     <div>
-                      <h4 className="font-headline text-xl font-bold text-blue-100">{featuredModel.name}</h4>
-                      <div className="mt-1 flex gap-3">
+                      <h4 className="font-headline text-lg font-bold text-blue-100 sm:text-xl">{featuredModel.name}</h4>
+                      <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
                         <span className="flex items-center gap-1 text-[10px] font-bold uppercase text-[#c2c6d6]">
                           <span className="h-1 w-1 rounded-full bg-[#adc6ff]" />
                           {formatProviderName(featuredModel.provider)}
@@ -482,29 +482,6 @@ export default function DashboardPage() {
 
                 <p className="max-w-2xl leading-relaxed text-[#dce1fb]">{featuredModel.description}</p>
 
-                <div className="grid grid-cols-2 gap-4 border-y border-white/5 py-4">
-                  <div>
-                    <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-slate-500">Input Formats</p>
-                    <div className="flex gap-2">
-                      {(featuredModel.inputModalities.length ? featuredModel.inputModalities : ["TEXT"]).map((item) => (
-                        <span key={item} className="rounded-full bg-[#191f31] px-3 py-1 text-xs font-medium">
-                          {item.toUpperCase()}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <p className="mb-1 text-[10px] font-bold uppercase tracking-widest text-slate-500">Output Formats</p>
-                    <div className="flex gap-2">
-                      {(featuredModel.outputModalities.length ? featuredModel.outputModalities : ["TEXT"]).map((item) => (
-                        <span key={item} className="rounded-full bg-[#191f31] px-3 py-1 text-xs font-medium">
-                          {item.toUpperCase()}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
                 <Link href="/studio/start" className="block w-full rounded-xl bg-[linear-gradient(135deg,#adc6ff_0%,#4d8eff_100%)] py-3 text-center font-bold text-[#002e6a] transition-opacity hover:opacity-90">
                   Launch {featuredModel.name} Studio
                 </Link>
@@ -517,15 +494,15 @@ export default function DashboardPage() {
               <Link
                 key={model.id}
                 href="/studio"
-                className="group flex items-center justify-between rounded-xl border border-white/5 bg-[#070d1f] p-5 transition-colors hover:bg-[#151b2d]"
+                className="group flex items-center justify-between gap-3 rounded-xl border border-white/5 bg-[#070d1f] p-4 transition-colors hover:bg-[#151b2d] sm:p-5"
               >
                 <div className="flex items-center gap-4">
                   <div className={`flex h-10 w-10 items-center justify-center rounded ${index === 0 ? "bg-[#571bc1]/20 text-[#d0bcff]" : "bg-[#8392a6]/20 text-[#b9c8de]"}`}>
                     <span className="material-symbols-outlined">{index === 0 ? "brush" : "high_quality"}</span>
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <h5 className="font-bold text-blue-100">{model.name}</h5>
-                    <p className="text-xs text-[#c2c6d6]">{model.description}</p>
+                    <p className="line-clamp-2 text-xs text-[#c2c6d6]">{model.description}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-6">
@@ -538,7 +515,7 @@ export default function DashboardPage() {
 
         <aside className="col-span-12 space-y-8 xl:col-span-4">
           <section className="space-y-4">
-            <h3 className="font-headline text-2xl font-bold tracking-tight">Studio News</h3>
+            <h3 className="font-headline text-xl font-bold tracking-tight sm:text-2xl">Studio News</h3>
             <div className="relative h-48 overflow-hidden rounded-xl border border-blue-400/20 bg-[#151b2d]">
               {newsItems.map((item, index) => (
                 <div
@@ -575,7 +552,7 @@ export default function DashboardPage() {
           </section>
 
           <section className="space-y-6">
-            <h3 className="font-headline text-2xl font-bold tracking-tight">System Updates</h3>
+            <h3 className="font-headline text-xl font-bold tracking-tight sm:text-2xl">System Updates</h3>
             <div className="space-y-6">
               <div className="relative overflow-hidden rounded-xl border border-white/5 bg-[#191f31] p-6">
                 <div className="absolute right-0 top-0 p-2">

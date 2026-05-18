@@ -147,8 +147,8 @@ export default function InteractiveAuthenticatedImage({
       <div className={`group relative overflow-hidden ${wrapperClassName}`}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={activeSrc} alt={alt} className={imageClassName} />
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
-        <div className="absolute right-2 top-2 flex gap-2 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent opacity-100 transition-opacity duration-200" />
+        <div className="absolute right-2 top-2 flex gap-2 opacity-100 transition-opacity duration-200">
           {controls === "all" ? (
             <>
               <button

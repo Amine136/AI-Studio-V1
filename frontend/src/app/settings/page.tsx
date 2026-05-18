@@ -52,6 +52,7 @@ export default function SettingsPage() {
   const [deactivationError, setDeactivationError] = useState<string | null>(null);
   const [showDeactivateConfirm, setShowDeactivateConfirm] = useState(false);
   const [deactivatingAccount, setDeactivatingAccount] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
   const displayName = user?.displayName || user?.email?.split("@")[0] || "Vibecraft User";
   const email = user?.email || "No email available";
   const photoUrl = user?.photoURL || null;
@@ -181,23 +182,34 @@ export default function SettingsPage() {
     }
   }
 
+  async function handleSignOut() {
+    if (signingOut) return;
+    setSigningOut(true);
+    try {
+      await signOutUser();
+      router.replace("/auth");
+    } finally {
+      setSigningOut(false);
+    }
+  }
+
   return (
-    <div className="space-y-12">
+    <div className="space-y-8 sm:space-y-12">
       <section id="account">
-        <div className="mb-8">
+        <div className="mb-6 sm:mb-8">
           <div>
-            <h3 className="font-headline text-4xl font-bold tracking-tight text-[#dce1fb]">Account</h3>
+            <h3 className="font-headline text-3xl font-bold tracking-tight text-[#dce1fb] sm:text-4xl">Account</h3>
             <p className="mt-2 max-w-md text-[#c2c6d6]">
               Manage your public profile and core identity within the Vibecraft ecosystem.
             </p>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-          <div className="lg:col-span-4 rounded-md bg-[#151b2d] p-8 text-center">
-            <div className="relative mx-auto w-fit">
+        <div className="overflow-hidden rounded-2xl border border-white/8 bg-[#151b2d]">
+          <div className="flex flex-col gap-5 border-b border-white/8 bg-[radial-gradient(circle_at_top_left,rgba(173,198,255,0.14),transparent_34%),#151b2d] p-5 sm:flex-row sm:items-center sm:p-8">
+            <div className="relative shrink-0">
               <div
-                className="h-32 w-32 overflow-hidden rounded-md ring-2 ring-offset-4 ring-offset-[#151b2d]"
+                className="h-20 w-20 overflow-hidden rounded-2xl ring-2 ring-offset-4 ring-offset-[#151b2d] sm:h-24 sm:w-24"
                 style={{
                   border: `1px solid ${accentPalette.ring}`,
                   boxShadow: `0 0 0 3px ${accentPalette.soft}`,
@@ -208,41 +220,31 @@ export default function SettingsPage() {
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={photoUrl} alt={displayName} className="h-full w-full object-cover" />
                 ) : (
-                  <div className="flex h-full w-full items-center justify-center bg-[#1f2b42] text-3xl font-black" style={{ color: accentPalette.solid }}>
+                  <div className="flex h-full w-full items-center justify-center bg-[#1f2b42] text-2xl font-black" style={{ color: accentPalette.solid }}>
                     {initialsFromName(displayName)}
                   </div>
                 )}
               </div>
-              <button
-                type="button"
-                className="absolute bottom-0 right-0 rounded-md bg-[#adc6ff] p-2 text-[#002e6a] shadow-lg transition-transform hover:scale-110"
-              >
-                <span className="material-symbols-outlined text-sm">edit</span>
-              </button>
             </div>
 
-            <div className="mt-6">
+            <div className="min-w-0">
               <h4 className="text-xl font-bold text-[#dce1fb]">{displayName}</h4>
-              <p className="text-sm text-[#c2c6d6]">@{savedUsername || editableUsername || "vibecraft"}</p>
+              <p className="mt-1 text-sm text-[#c2c6d6]">@{savedUsername || editableUsername || "vibecraft"}</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <span className="rounded-full bg-[#2e3447] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-[#b9c8de]">
+                  Workspace
+                </span>
+                <span className="rounded-full bg-[#2e3447] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-[#b9c8de]">
+                  Verified
+                </span>
+              </div>
+              {savedBio || bio ? (
+                <p className="mt-3 max-w-2xl text-sm leading-6 text-[#d4e4fa]">{savedBio || bio}</p>
+              ) : null}
             </div>
-
-            <div className="mt-6 flex flex-wrap justify-center gap-2">
-              <span className="rounded-full bg-[#2e3447] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-[#b9c8de]">
-                Workspace
-              </span>
-              <span className="rounded-full bg-[#2e3447] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-[#b9c8de]">
-                Verified
-              </span>
-            </div>
-
-            {savedBio || bio ? (
-              <p className="font-headline mt-6 text-[15px] leading-relaxed tracking-[0.01em] text-[#d4e4fa]">
-                {savedBio || bio}
-              </p>
-            ) : null}
           </div>
 
-          <div className="space-y-8 rounded-md bg-[#151b2d] p-8 lg:col-span-8">
+          <div className="space-y-6 p-5 sm:space-y-8 sm:p-8">
             <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
               <div className="space-y-2">
                 <label className="block text-xs font-bold uppercase tracking-[0.22em] text-[#8c909f]">Full Name</label>
@@ -293,7 +295,7 @@ export default function SettingsPage() {
                     className="w-full resize-none rounded-sm border border-transparent bg-[#070d1f] px-4 py-3 text-[#dce1fb] outline-none transition placeholder:text-[#8c909f] focus:border-[#adc6ff]/35"
                     placeholder="what you build, explore or create with vibecraft"
                   />
-                  <div className="flex items-start justify-between gap-4 text-[11px] text-[#8c909f]">
+                  <div className="flex flex-col gap-2 text-[11px] text-[#8c909f] sm:flex-row sm:items-start sm:justify-between sm:gap-4">
                     <span>{profileNote}</span>
                     <span className="shrink-0">{bio.length}/500</span>
                   </div>
@@ -301,7 +303,7 @@ export default function SettingsPage() {
               </div>
             </div>
 
-            <div className="flex items-center justify-between border-t border-white/8 pt-4 text-[11px] text-[#8c909f]">
+            <div className="flex flex-col gap-2 border-t border-white/8 pt-4 text-[11px] text-[#8c909f] sm:flex-row sm:items-center sm:justify-between">
               <span>
                 {profileChangesRemaining === null
                   ? "Profile changes are limited to 2 per month."
@@ -311,7 +313,7 @@ export default function SettingsPage() {
               {!profileSaveError && profileSaveSuccess ? <span className="text-[#adc6ff]">{profileSaveSuccess}</span> : null}
             </div>
 
-            <div className="flex justify-end pt-4">
+            <div className="flex justify-end pt-2 sm:pt-4">
               <button
                 type="button"
                 onClick={() => void handleProfileSave()}
@@ -329,17 +331,17 @@ export default function SettingsPage() {
 
       <section id="preferences" className="pt-8">
         <div className="mb-8">
-          <h3 className="font-headline text-3xl font-bold tracking-tight text-[#dce1fb]">Preferences</h3>
+          <h3 className="font-headline text-2xl font-bold tracking-tight text-[#dce1fb] sm:text-3xl">Preferences</h3>
           <p className="mt-2 text-[#c2c6d6]">Tailor the Studio environment to your creative workflow.</p>
         </div>
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 lg:gap-6">
           <div className="overflow-hidden rounded-md bg-[#151b2d] lg:col-span-2">
-            <div className="border-b border-white/8 px-8 py-6">
+            <div className="border-b border-white/8 px-5 py-5 sm:px-8 sm:py-6">
               <h4 className="text-lg font-bold text-[#dce1fb]">Notifications</h4>
             </div>
-            <div className="space-y-6 p-8">
-              <div className="flex items-center justify-between">
+            <div className="space-y-6 p-5 sm:p-8">
+              <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="font-medium text-[#dce1fb]">AI General News</p>
                   <p className="text-xs text-[#c2c6d6]">Email updates about major AI news and general ecosystem shifts.</p>
@@ -362,7 +364,7 @@ export default function SettingsPage() {
                   />
                 </button>
               </div>
-              <div className="flex items-center justify-between">
+              <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="font-medium text-[#dce1fb]">Platform News and Model Updates</p>
                   <p className="text-xs text-[#c2c6d6]">New Vibecraft features, platform changes, and newly added AI models.</p>
@@ -392,9 +394,9 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          <div className="flex flex-col rounded-md bg-[#151b2d] p-8">
+          <div className="flex flex-col rounded-md bg-[#151b2d] p-5 sm:p-8">
             <h4 className="mb-6 text-lg font-bold text-[#dce1fb]">Accent Color</h4>
-            <div className="grid flex-1 grid-cols-3 gap-4">
+            <div className="grid max-w-[220px] grid-cols-3 gap-3">
               {[
                 { id: "blue", color: "bg-[#adc6ff]" },
                 { id: "violet", color: "bg-[#d0bcff]" },
@@ -432,13 +434,13 @@ export default function SettingsPage() {
 
       <section id="legal" className="pt-8">
         <div className="mb-8">
-          <h3 className="font-headline text-3xl font-bold tracking-tight text-[#dce1fb]">Legal</h3>
+          <h3 className="font-headline text-2xl font-bold tracking-tight text-[#dce1fb] sm:text-3xl">Legal</h3>
           <p className="mt-2 text-[#c2c6d6]">Review our guidelines, privacy commitment, and terms of service.</p>
         </div>
 
-        <div className="overflow-hidden rounded-md border border-white/8 bg-[#151b2d]">
+        <div className="overflow-hidden rounded-2xl border border-white/8 bg-[#151b2d]">
           <div className="divide-y divide-white/8">
-            <Link href="/privacy" className="group flex items-center justify-between p-6 transition-colors hover:bg-white/[0.03]">
+            <Link href="/privacy" className="group flex items-center justify-between p-4 transition-colors hover:bg-white/[0.03] sm:p-6">
               <div className="flex items-center gap-4">
                 <div className="flex h-10 w-10 items-center justify-center rounded-sm bg-[#2e3447] text-[#adc6ff]">
                   <span className="material-symbols-outlined">shield_lock</span>
@@ -451,7 +453,7 @@ export default function SettingsPage() {
               <span className="material-symbols-outlined text-[#8c909f] transition-colors group-hover:text-[#adc6ff]">chevron_right</span>
             </Link>
 
-            <Link href="/policy" className="group flex items-center justify-between p-6 transition-colors hover:bg-white/[0.03]">
+            <Link href="/policy" className="group flex items-center justify-between p-4 transition-colors hover:bg-white/[0.03] sm:p-6">
               <div className="flex items-center gap-4">
                 <div className="flex h-10 w-10 items-center justify-center rounded-sm bg-[#2e3447] text-[#adc6ff]">
                   <span className="material-symbols-outlined">description</span>
@@ -464,7 +466,7 @@ export default function SettingsPage() {
               <span className="material-symbols-outlined text-[#8c909f] transition-colors group-hover:text-[#adc6ff]">chevron_right</span>
             </Link>
 
-            <Link href="/privacy" className="group flex items-center justify-between p-6 transition-colors hover:bg-white/[0.03]">
+            <Link href="/privacy" className="group flex items-center justify-between p-4 transition-colors hover:bg-white/[0.03] sm:p-6">
               <div className="flex items-center gap-4">
                 <div className="flex h-10 w-10 items-center justify-center rounded-sm bg-[#2e3447] text-[#adc6ff]">
                   <span className="material-symbols-outlined">cookie</span>
@@ -480,8 +482,28 @@ export default function SettingsPage() {
         </div>
       </section>
 
-      <section className="pb-12 pt-16">
-        <div className="flex flex-col items-start justify-between gap-6 rounded-md border border-[#93000a]/30 bg-[#93000a]/10 p-8 md:flex-row md:items-center">
+      <section className="pt-8">
+        <div className="flex flex-col items-start justify-between gap-5 rounded-2xl border border-white/8 bg-[#151b2d] p-5 sm:flex-row sm:items-center sm:p-8">
+          <div>
+            <h4 className="text-xl font-bold text-[#dce1fb]">Session</h4>
+            <p className="mt-1 text-sm text-[#c2c6d6]">End your current session securely.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void handleSignOut()}
+            disabled={signingOut}
+            className={`inline-flex items-center gap-2 rounded-sm border border-white/10 bg-[#070d1f] px-5 py-2.5 text-sm font-bold text-[#dce1fb] transition ${
+              signingOut ? "cursor-not-allowed opacity-70" : "hover:border-[#adc6ff]/35 hover:text-[#adc6ff]"
+            }`}
+          >
+            <span className="material-symbols-outlined text-lg">{signingOut ? "hourglass_top" : "logout"}</span>
+            {signingOut ? "Signing Out..." : "Sign Out"}
+          </button>
+        </div>
+      </section>
+
+      <section className="pb-12 pt-8 sm:pt-12">
+        <div className="flex flex-col items-start justify-between gap-6 rounded-2xl border border-[#93000a]/30 bg-[#93000a]/10 p-5 sm:p-8 md:flex-row md:items-center">
           <div>
             <h4 className="text-xl font-bold text-[#ffb4ab]">Deactivate Account</h4>
             <p className="mt-1 text-sm text-[#c2c6d6]">

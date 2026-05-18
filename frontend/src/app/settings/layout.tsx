@@ -18,10 +18,10 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
 
   return (
     <RequireActiveUser>
-      <div className="flex min-h-screen bg-[#0c1324] text-[#dce1fb] selection:bg-[#adc6ff]/30">
+      <div className="flex min-h-screen overflow-x-hidden bg-[#0c1324] text-[#dce1fb] selection:bg-[#adc6ff]/30">
         <AppSidebar activePath="/settings" />
 
-        <main className="flex min-w-0 flex-1 flex-col md:ml-48">
+        <main className="flex min-w-0 flex-1 flex-col lg:ml-48">
           <header className="sticky top-0 z-40 flex h-16 items-center justify-between border-b border-white/10 bg-[#0c1324]/80 px-4 font-headline shadow-[0_16px_40px_rgba(0,0,0,0.2)] backdrop-blur-xl sm:px-8">
             <div className="flex items-center gap-4">
               <h2 className="text-xl font-bold tracking-tight text-[#dce1fb]">Studio Settings</h2>
@@ -45,7 +45,7 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
             </div>
           </header>
 
-          <div className="mx-auto w-full max-w-6xl space-y-12 p-8 lg:p-12">{children}</div>
+          <div className="mx-auto w-full max-w-6xl space-y-8 px-4 pb-28 pt-8 sm:space-y-12 sm:p-8 lg:p-12">{children}</div>
         </main>
       </div>
     </RequireActiveUser>

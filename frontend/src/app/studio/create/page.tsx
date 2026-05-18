@@ -1561,7 +1561,7 @@ export default function Home() {
         />
       </div>
 
-      <div className={`mx-auto flex max-w-6xl flex-col px-8 py-6 ${step === "INPUT" ? "min-h-full justify-start" : "min-h-full justify-start"}`}>
+      <div className={`mx-auto flex max-w-[1520px] flex-col px-4 py-5 sm:px-8 sm:py-6 2xl:px-12 ${step === "INPUT" ? "min-h-full justify-start" : "min-h-full justify-start"}`}>
         {step !== "INPUT" && step !== "REVIEW" && step !== "RESULT" && (
           <div className="mx-auto mb-8 max-w-3xl">
             <StepIndicator currentStep={step} />
@@ -1570,25 +1570,35 @@ export default function Home() {
 
         {step === "INPUT" && (
           <>
-            <div className="mb-10 flex items-center justify-center gap-4 overflow-x-auto">
-              <div className="flex items-center gap-3 rounded-full border border-primary bg-primary/10 px-6 py-2 shadow-[0_0_20px_rgba(77,142,255,0.15)]">
+            <div className="mb-4 lg:hidden">
+              <div className="flex items-center justify-between">
+                <p className="font-headline text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Step 1 of 3</p>
+                <Link href="/studio/start" className="inline-flex items-center gap-1 text-xs text-slate-400 transition hover:text-white">
+                  <span className="material-symbols-outlined text-sm">arrow_back</span>
+                  Back
+                </Link>
+              </div>
+              <h2 className="mt-2 font-headline text-xl font-bold text-white">Idea</h2>
+            </div>
+            <div className="mb-10 hidden items-center justify-center gap-4 overflow-x-auto pb-1 lg:flex">
+              <div className="flex shrink-0 items-center gap-3 rounded-full border border-primary bg-primary/10 px-4 py-2 shadow-[0_0_20px_rgba(77,142,255,0.15)] sm:px-6">
                 <span className="material-symbols-outlined text-sm text-primary">check_circle</span>
                 <span className="font-headline text-xs font-bold uppercase tracking-widest text-white">Idea</span>
               </div>
-              <div className="h-px w-12 bg-outline-variant/30" />
-              <div className="flex items-center gap-3 rounded-full border border-transparent bg-surface-container-low px-6 py-2">
+              <div className="h-px w-8 shrink-0 bg-outline-variant/30 sm:w-12" />
+              <div className="flex shrink-0 items-center gap-3 rounded-full border border-transparent bg-surface-container-low px-4 py-2 sm:px-6">
                 <span className="material-symbols-outlined text-sm text-slate-600">settings_input_component</span>
                 <span className="font-headline text-xs font-bold uppercase tracking-widest text-slate-600">Optimize</span>
               </div>
-              <div className="h-px w-12 bg-outline-variant/30" />
-              <div className="flex items-center gap-3 rounded-full border border-transparent bg-surface-container-low px-6 py-2">
+              <div className="h-px w-8 shrink-0 bg-outline-variant/30 sm:w-12" />
+              <div className="flex shrink-0 items-center gap-3 rounded-full border border-transparent bg-surface-container-low px-4 py-2 sm:px-6">
                 <span className="material-symbols-outlined text-sm text-slate-600">auto_awesome</span>
                 <span className="font-headline text-xs font-bold uppercase tracking-widest text-slate-600">Results</span>
               </div>
             </div>
 
-            <header className="mb-6">
-              <h1 className="font-headline text-[32px] font-bold leading-tight tracking-tighter text-white">
+            <header className="mb-4 sm:mb-6 2xl:mx-auto 2xl:w-full 2xl:max-w-[1240px]">
+              <h1 className="font-headline text-2xl font-bold leading-tight tracking-tighter text-white sm:text-[32px]">
                 Architect your{" "}
                 <span className="bg-gradient-to-r from-[#adc6ff] via-[#d0bcff] to-[#4d8eff] bg-clip-text text-transparent">
                   visual identity.
@@ -1596,7 +1606,7 @@ export default function Home() {
               </h1>
             </header>
 
-            <section className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
+            <section className="mb-5 grid grid-cols-3 gap-2 sm:mb-6 sm:gap-4 2xl:mx-auto 2xl:w-full 2xl:max-w-[1240px]">
               {[
                 {
                   key: "caption",
@@ -1622,14 +1632,14 @@ export default function Home() {
               ].map((option) => (
                 <button key={option.key} type="button" onClick={option.onClick} className="group relative cursor-pointer text-left">
                   <div className={`absolute -inset-0.5 rounded-xl bg-gradient-to-br from-[#adc6ff] to-[#d0bcff] transition duration-500 ${option.active ? "opacity-20" : "opacity-0 group-hover:opacity-10"}`} />
-                  <div className={`relative flex flex-col items-start gap-2 rounded-xl border px-4 py-3 transition-all duration-300 ${option.active ? "border-[#adc6ff]/40 bg-[#151b2de6]" : "border-white/5 bg-[rgba(21,27,45,0.7)] backdrop-blur-[20px]"}`}>
+                  <div className={`relative flex h-full flex-col items-start gap-2 rounded-xl border px-3 py-3 transition-all duration-300 sm:px-4 ${option.active ? "border-[#adc6ff]/40 bg-[#151b2de6]" : "border-white/5 bg-[rgba(21,27,45,0.7)] backdrop-blur-[20px]"}`}>
                     <div className={`flex h-7 w-7 items-center justify-center rounded-lg ${option.active ? "bg-[#adc6ff] text-[#002e6a]" : "bg-[#2e3447] text-[#adc6ff]"}`}>
                       <span className="material-symbols-outlined text-base" style={option.active ? { fontVariationSettings: "'FILL' 1" } : undefined}>
                         {option.icon}
                       </span>
                     </div>
                     <div>
-                      <h3 className="text-sm font-bold text-white">{option.title}</h3>
+                      <h3 className="text-xs font-bold text-white sm:text-sm">{option.title}</h3>
                     </div>
                     <div className="mt-0.5 h-0.5 w-full overflow-hidden rounded-full bg-[#191f31]">
                       <div className={`h-full bg-[#adc6ff] transition-all duration-700 ${option.active ? "w-full" : "w-0 group-hover:w-full"}`} />
@@ -1639,8 +1649,8 @@ export default function Home() {
               ))}
             </section>
 
-            <div className="mb-5 grid min-h-0 flex-grow grid-cols-1 items-start gap-5 lg:grid-cols-5">
-              <div className="flex h-full flex-col lg:col-span-3">
+            <div className="mb-5 grid min-h-0 flex-grow grid-cols-1 items-start gap-5 md:grid-cols-[minmax(0,1fr)_280px] lg:grid-cols-5 2xl:mx-auto 2xl:w-full 2xl:max-w-[1240px] 2xl:grid-cols-[minmax(0,1fr)_260px] 2xl:justify-end">
+              <div className="flex h-full flex-col lg:col-span-3 2xl:col-span-1">
                 <div className="mb-1.5 flex items-end justify-between">
                   <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#c2c6d6]">Creative Brief</label>
                   <span className="text-[8px] text-[#adc6ff]/60">AI Optimized Processing</span>
@@ -1662,7 +1672,7 @@ export default function Home() {
                 </div>
               </div>
 
-              <div className="flex h-full flex-col lg:col-span-2">
+              <div className="flex h-full flex-col lg:col-span-2 2xl:col-span-1">
                 <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.2em] text-[#c2c6d6]">Reference Assets</label>
                 <input
                   ref={fileInputRef}
@@ -1769,7 +1779,7 @@ export default function Home() {
             </div>
 
             {(insufficientCredits || missingRequiredModel) && (
-              <div className="mt-8 rounded-xl border border-red-500/20 bg-red-500/5 p-4">
+              <div className="mt-8 rounded-xl border border-red-500/20 bg-red-500/5 p-4 2xl:mx-auto 2xl:w-full 2xl:max-w-[1240px]">
                 <div className="flex items-start gap-3">
                   <div className="mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-red-500/10 text-sm text-red-300">
                     ⚠
@@ -1788,7 +1798,7 @@ export default function Home() {
               </div>
             )}
 
-            <footer className="mt-8 flex flex-row items-center justify-between gap-4 border-t border-white/5 pt-4">
+            <footer className="mt-6 flex flex-col items-stretch gap-4 border-t border-white/5 pt-4 sm:mt-8 sm:flex-row sm:items-center sm:justify-between 2xl:mx-auto 2xl:w-full 2xl:max-w-[1240px]">
               <div className="flex items-center gap-3">
                 <div className="flex -space-x-2">
                   {[
@@ -1804,12 +1814,11 @@ export default function Home() {
                     +12k
                   </div>
                 </div>
-                <p className="text-[10px] italic text-[#c2c6d6]">Join 12,000+ architects creating today</p>
               </div>
               <button
                 onClick={handleOpenModePicker}
                 disabled={loading || hasUploadingInputImages || !userText.trim() || selectedOutputs.length === 0}
-                className="group flex items-center gap-3 rounded-md bg-gradient-to-r from-[#adc6ff] to-[#4d8eff] px-8 py-2.5 font-headline text-sm font-bold text-[#00285d] transition-all hover:shadow-[0_0_20px_rgba(77,142,255,0.2)] disabled:cursor-not-allowed disabled:opacity-50"
+                className="group flex w-full items-center justify-center gap-3 rounded-md bg-gradient-to-r from-[#adc6ff] to-[#4d8eff] px-8 py-2.5 font-headline text-sm font-bold text-[#00285d] transition-all hover:shadow-[0_0_20px_rgba(77,142,255,0.2)] disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
               >
                 <span>
                   {loading
@@ -1826,30 +1835,37 @@ export default function Home() {
           </>
         )}
 
-        <div className={`mx-auto ${step === "REVIEW" ? "max-w-5xl" : "max-w-3xl"}`}>
+        <div className={`mx-auto w-full ${step === "REVIEW" ? "max-w-[1320px]" : step === "RESULT" ? "max-w-[1320px]" : "max-w-[1180px]"}`}>
 
           {/* ─── STEP 2: REVIEW ─── */}
           {step === "REVIEW" && (
-            <div className="animate-fade-in-up pb-36">
-              <div className="mb-12 flex items-center justify-center gap-4 overflow-x-auto">
-                <div className="flex items-center gap-3 rounded-full border border-primary/20 bg-surface-container-high px-6 py-2">
+            <div className="animate-fade-in-up pb-24 sm:pb-36">
+              <div className="mb-5 sm:hidden">
+                <p className="font-headline text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Step 2 of 3</p>
+                <div className="mt-2 flex items-center justify-between">
+                  <h2 className="font-headline text-xl font-bold text-white">Optimize</h2>
+                  <span className="text-xs text-slate-500">Idea complete</span>
+                </div>
+              </div>
+              <div className="mb-12 hidden items-center justify-center gap-4 overflow-x-auto pb-1 sm:flex">
+                <div className="flex shrink-0 items-center gap-3 rounded-full border border-primary/20 bg-surface-container-high px-4 py-2 sm:px-6">
                   <span className="material-symbols-outlined text-sm text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
                   <span className="font-headline text-xs font-bold uppercase tracking-widest text-primary">Idea</span>
                 </div>
-                <div className="h-px w-12 bg-outline-variant/30" />
-                <div className="flex items-center gap-3 rounded-full border border-primary bg-primary/10 px-6 py-2 shadow-[0_0_20px_rgba(77,142,255,0.15)]">
+                <div className="h-px w-8 shrink-0 bg-outline-variant/30 sm:w-12" />
+                <div className="flex shrink-0 items-center gap-3 rounded-full border border-primary bg-primary/10 px-4 py-2 shadow-[0_0_20px_rgba(77,142,255,0.15)] sm:px-6">
                   <span className="material-symbols-outlined text-sm text-primary">settings_input_component</span>
                   <span className="font-headline text-xs font-bold uppercase tracking-widest text-white">Optimize</span>
                 </div>
-                <div className="h-px w-12 bg-outline-variant/30" />
-                <div className="flex items-center gap-3 rounded-full border border-transparent bg-surface-container-low px-6 py-2">
+                <div className="h-px w-8 shrink-0 bg-outline-variant/30 sm:w-12" />
+                <div className="flex shrink-0 items-center gap-3 rounded-full border border-transparent bg-surface-container-low px-4 py-2 sm:px-6">
                   <span className="material-symbols-outlined text-sm text-slate-600">auto_awesome</span>
                   <span className="font-headline text-xs font-bold uppercase tracking-widest text-slate-600">Results</span>
                 </div>
               </div>
 
-              <section className="mb-10">
-                <div className="group relative overflow-hidden rounded-[1.25rem] border border-white/5 bg-surface-container-high px-6 py-6 shadow-[0_20px_60px_rgba(0,0,0,0.2)]">
+              <section className="mb-6 sm:mb-10">
+                <div className="group relative overflow-hidden rounded-[1.25rem] border border-white/5 bg-surface-container-high px-5 py-5 shadow-[0_20px_60px_rgba(0,0,0,0.2)] sm:px-6 sm:py-6">
                   <div className="absolute inset-0 overflow-hidden">
                     {hasInputImages ? (
                       <>
@@ -1883,7 +1899,7 @@ export default function Home() {
                       </span>
                     </div>
 
-                    <h2 className="max-w-3xl font-headline text-xl font-bold leading-tight tracking-tight text-white md:text-[1.7rem]">
+                    <h2 className="max-w-3xl break-words font-headline text-lg font-bold leading-tight tracking-tight text-white sm:text-xl md:text-[1.7rem]">
                       {userText || "Your creative direction will appear here."}
                     </h2>
 
@@ -1908,14 +1924,14 @@ export default function Home() {
                 </div>
               </section>
 
-              <div className={`grid grid-cols-1 gap-8 ${selectedOutputs.includes("image") && selectedOutputs.includes("caption") ? "xl:grid-cols-2" : "max-w-3xl"}`}>
+              <div className={`grid grid-cols-1 gap-6 sm:gap-8 ${selectedOutputs.includes("image") && selectedOutputs.includes("caption") ? "xl:grid-cols-2" : "max-w-4xl"}`}>
                 {selectedOutputs.includes("image") && (
                   <section className="flex flex-col gap-6">
-                    <div className="flex items-baseline justify-between">
-                      <h3 className="font-headline text-2xl font-bold tracking-tight text-white">Image</h3>
+                    <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
+                      <h3 className="font-headline text-xl font-bold tracking-tight text-white sm:text-2xl">Image</h3>
                       <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Asset Parameters</span>
                     </div>
-                    <div className="rounded-xl border border-[rgba(140,144,159,0.1)] bg-[rgba(25,31,49,0.7)] p-6 backdrop-blur-xl">
+                    <div className="rounded-xl border border-[rgba(140,144,159,0.1)] bg-[rgba(25,31,49,0.7)] p-4 backdrop-blur-xl sm:p-6">
                       <div className="flex flex-col gap-6">
                         <div className="flex flex-col gap-3">
                           <label className="font-headline text-xs font-bold uppercase tracking-widest text-slate-400">Generated Prompt for Image</label>
@@ -1927,7 +1943,7 @@ export default function Home() {
                         </div>
 
                         <div className="flex flex-col gap-3">
-                          <div className="flex items-center justify-between">
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                             <label className="font-headline text-[10px] font-bold uppercase tracking-widest text-slate-500">Image Configuration</label>
                             <span className="rounded-full border border-[#4d8eff]/20 bg-[#4d8eff]/10 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-[#adc6ff]">
                               {selectedImageModelEntry?.display_name || selectedImageModel || "No model"}
@@ -1998,11 +2014,11 @@ export default function Home() {
 
                 {selectedOutputs.includes("caption") && (
                   <section className="flex flex-col gap-6">
-                    <div className="flex items-baseline justify-between">
-                      <h3 className="font-headline text-2xl font-bold tracking-tight text-white">Caption</h3>
+                    <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
+                      <h3 className="font-headline text-xl font-bold tracking-tight text-white sm:text-2xl">Caption</h3>
                       <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Copywriting Parameters</span>
                     </div>
-                    <div className="rounded-xl border border-[rgba(140,144,159,0.1)] bg-[rgba(25,31,49,0.7)] p-6 backdrop-blur-xl">
+                    <div className="rounded-xl border border-[rgba(140,144,159,0.1)] bg-[rgba(25,31,49,0.7)] p-4 backdrop-blur-xl sm:p-6">
                       <div className="flex flex-col gap-6">
                         <div className="flex flex-col gap-3">
                           <label className="font-headline text-xs font-bold uppercase tracking-widest text-slate-400">Generated Prompt for Caption</label>
@@ -2014,7 +2030,7 @@ export default function Home() {
                         </div>
 
                         <div className="flex flex-col gap-3">
-                          <div className="flex items-center justify-between">
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                             <label className="font-headline text-[10px] font-bold uppercase tracking-widest text-slate-500">Caption Configuration</label>
                             <span className="rounded-full border border-[#d0bcff]/20 bg-[#d0bcff]/10 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-[#d0bcff]">
                               {selectedCaptionModelEntry?.display_name || selectedCaptionModel || "No model"}
@@ -2088,9 +2104,9 @@ export default function Home() {
                 )}
               </div>
 
-              <footer className="mt-10 px-4 pb-4 pt-2 md:px-6">
+              <footer className="mt-8 px-0 pb-4 pt-2 sm:mt-10 md:px-6">
                 <div className="mx-auto max-w-5xl">
-                  <div className="flex flex-col items-start justify-between gap-5 rounded-[1.35rem] border border-white/10 bg-[#11182a]/92 px-6 py-4 shadow-[0_18px_60px_rgba(0,0,0,0.42)] backdrop-blur-xl lg:flex-row lg:items-center">
+                  <div className="flex flex-col items-start justify-between gap-5 rounded-[1.35rem] border border-white/10 bg-[#11182a]/92 px-4 py-4 shadow-[0_18px_60px_rgba(0,0,0,0.42)] backdrop-blur-xl sm:px-6 lg:flex-row lg:items-center">
                     <div className="flex items-center gap-4">
                       <button type="button" onClick={handleBackFromReview} className="group flex items-center gap-2 text-slate-400 transition-colors hover:text-white">
                         <span className="material-symbols-outlined text-lg">arrow_back</span>
@@ -2111,7 +2127,7 @@ export default function Home() {
                       <button
                         onClick={handleGenerate}
                         disabled={loading || insufficientExpectedCredits}
-                        className="rounded-lg bg-gradient-to-r from-primary to-primary-container px-10 py-4 font-headline text-sm font-bold uppercase tracking-[0.2em] text-on-primary-container shadow-[0_0_30px_rgba(77,142,255,0.3)] transition-all hover:shadow-[0_0_45px_rgba(77,142,255,0.4)] active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="w-full rounded-lg bg-gradient-to-r from-primary to-primary-container px-6 py-4 font-headline text-sm font-bold uppercase tracking-[0.2em] text-on-primary-container shadow-[0_0_30px_rgba(77,142,255,0.3)] transition-all hover:shadow-[0_0_45px_rgba(77,142,255,0.4)] active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:px-10"
                       >
                         {loading ? "Generating..." : insufficientExpectedCredits ? `Need ${expectedGenerationCredits.toFixed(4)} Credits` : "Generate Results"}
                       </button>
@@ -2125,7 +2141,14 @@ export default function Home() {
           {/* ─── STEP 3: RESULT ─── */}
           {step === "RESULT" && (
             <div className="animate-scale-in space-y-10 pb-20">
-              <div className="mb-16 flex items-center justify-center gap-4 overflow-x-auto">
+              <div className="mb-5 sm:hidden">
+                <p className="font-headline text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Step 3 of 3</p>
+                <div className="mt-2 flex items-center justify-between">
+                  <h2 className="font-headline text-xl font-bold text-white">Result</h2>
+                  <span className="text-xs text-slate-500">Complete</span>
+                </div>
+              </div>
+              <div className="mb-16 hidden items-center justify-center gap-4 overflow-x-auto sm:flex">
                 <div className="flex items-center gap-3 rounded-full border border-primary/20 bg-surface-container-high px-6 py-2">
                   <span className="material-symbols-outlined text-sm text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
                   <span className="font-headline text-xs font-bold uppercase tracking-widest text-primary">Idea</span>
@@ -2144,12 +2167,12 @@ export default function Home() {
 
               <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
                 <div className="max-w-3xl">
-                  <h1 className="font-display text-4xl font-extrabold tracking-tighter text-on-surface">
+                  <h1 className="font-display text-3xl font-extrabold tracking-tighter text-on-surface sm:text-4xl">
                     Generated Result
                   </h1>
                   <div className="mt-4 space-y-2">
                     <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-outline">Original Request:</p>
-                    <p className="max-w-2xl text-lg font-medium leading-relaxed text-on-surface-variant">
+                    <p className="max-w-2xl break-words text-sm font-medium leading-6 text-on-surface-variant sm:text-lg sm:leading-relaxed">
                       {userText.trim() || "No original request provided."}
                     </p>
                   </div>
@@ -2166,63 +2189,8 @@ export default function Home() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-12 items-start gap-8">
-                <div className="col-span-12 space-y-6 lg:col-span-4">
-                  <section className="rounded-xl border border-white/10 bg-[#151b2d] p-6 shadow-[0_10px_30px_rgba(0,0,0,0.18)]">
-                    <h3 className="mb-6 text-[10px] font-bold uppercase tracking-[0.2em] text-outline">Usage &amp; Billing</h3>
-                    <div className="grid grid-cols-1 gap-4">
-                      <div className="rounded-lg border border-white/5 bg-[#191f31] p-5">
-                        <p className="mb-1 text-[10px] text-on-surface-variant">Generation Cost</p>
-                        <p className="font-display text-lg font-bold leading-tight text-on-surface sm:text-xl lg:text-2xl">
-                          {actualChargedCost > 0 ? `${actualChargedCost.toFixed(4)} credits` : "—"}
-                        </p>
-                      </div>
-                      <div className="rounded-lg border border-white/5 bg-[#191f31] p-5">
-                        <p className="mb-1 text-[10px] text-on-surface-variant">Tokens Used</p>
-                        <p className="font-display text-2xl font-bold text-on-surface">
-                          {totalTokensUsed > 0 ? totalTokensUsed.toLocaleString() : "—"}
-                        </p>
-                      </div>
-                    </div>
-                  </section>
-
-                  <section className="rounded-xl border border-white/10 bg-[#151b2d] p-6 shadow-[0_10px_30px_rgba(0,0,0,0.18)]">
-                    <h3 className="mb-4 text-[10px] font-bold uppercase tracking-[0.2em] text-outline">Inference Engine</h3>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-secondary-container/30 text-secondary">
-                          <span className="material-symbols-outlined">bolt</span>
-                        </div>
-                        <div>
-                          <p className="text-sm font-bold text-on-surface">{primaryEngineLabel}</p>
-                          <p className="text-[10px] text-on-surface-variant">Usage-based generation engine</p>
-                        </div>
-                      </div>
-                      <span className="material-symbols-outlined text-outline">verified</span>
-                    </div>
-                  </section>
-
-                  <section className="rounded-xl border border-white/10 bg-[#151b2d] p-6 shadow-[0_10px_30px_rgba(0,0,0,0.18)]">
-                    <h3 className="mb-4 text-[10px] font-bold uppercase tracking-[0.2em] text-outline">Technical Specifications</h3>
-                    <div className="space-y-3 rounded-lg border border-white/5 bg-[#191f31] p-4">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-on-surface-variant">Aspect Ratio</span>
-                        <span className="text-xs font-bold text-on-surface">{aspectRatioValue}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-on-surface-variant">Resolution</span>
-                        <span className="text-xs font-bold text-on-surface">{resolutionValue}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-on-surface-variant">Seed</span>
-                        <span className="font-mono text-xs text-on-surface">{seedValue}</span>
-                      </div>
-                    </div>
-                  </section>
-
-                </div>
-
-                <div className="col-span-12 space-y-8 lg:col-span-8">
+              <div className="grid grid-cols-12 items-start gap-6 sm:gap-8">
+                <div className="col-span-12 space-y-8 lg:order-2 lg:col-span-8">
                   <div className="group glass-panel relative aspect-[16/10] overflow-hidden rounded-[1.25rem]">
                     {finalResults.image ? (
                       <>
@@ -2251,7 +2219,7 @@ export default function Home() {
                   </div>
 
                   {finalResults.caption && (
-                    <div className="relative rounded-[1.25rem] border border-white/10 bg-[#151b2d] p-8 shadow-[0_10px_30px_rgba(0,0,0,0.18)]">
+                    <div className="relative rounded-[1.25rem] border border-white/10 bg-[#151b2d] p-5 shadow-[0_10px_30px_rgba(0,0,0,0.18)] sm:p-8">
                       <h3 className="mb-4 text-[10px] font-bold uppercase tracking-[0.2em] text-outline">AI Generated Caption</h3>
                       <p className="mb-6 max-w-3xl text-lg font-light italic leading-relaxed text-on-surface-variant">
                         &quot;{finalResults.caption}&quot;
@@ -2273,6 +2241,61 @@ export default function Home() {
                       </button>
                     </div>
                   )}
+                </div>
+
+                <div className="col-span-12 space-y-6 lg:order-1 lg:col-span-4">
+                  <section className="rounded-xl border border-white/10 bg-[#151b2d] p-4 shadow-[0_10px_30px_rgba(0,0,0,0.18)] sm:p-6">
+                    <h3 className="mb-4 text-[10px] font-bold uppercase tracking-[0.2em] text-outline">Technical Specifications</h3>
+                    <div className="space-y-3 rounded-lg border border-white/5 bg-[#191f31] p-4">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-on-surface-variant">Aspect Ratio</span>
+                        <span className="text-xs font-bold text-on-surface">{aspectRatioValue}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-on-surface-variant">Resolution</span>
+                        <span className="text-xs font-bold text-on-surface">{resolutionValue}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-on-surface-variant">Seed</span>
+                        <span className="font-mono text-xs text-on-surface">{seedValue}</span>
+                      </div>
+                    </div>
+                  </section>
+
+                  <section className="rounded-xl border border-white/10 bg-[#151b2d] p-4 shadow-[0_10px_30px_rgba(0,0,0,0.18)] sm:p-6">
+                    <h3 className="mb-6 text-[10px] font-bold uppercase tracking-[0.2em] text-outline">Usage &amp; Billing</h3>
+                    <div className="grid grid-cols-1 gap-4">
+                      <div className="rounded-lg border border-white/5 bg-[#191f31] p-5">
+                        <p className="mb-1 text-[10px] text-on-surface-variant">Generation Cost</p>
+                        <p className="font-display text-lg font-bold leading-tight text-on-surface sm:text-xl lg:text-2xl">
+                          {actualChargedCost > 0 ? `${actualChargedCost.toFixed(4)} credits` : "—"}
+                        </p>
+                      </div>
+                      <div className="hidden rounded-lg border border-white/5 bg-[#191f31] p-5 sm:block">
+                        <p className="mb-1 text-[10px] text-on-surface-variant">Tokens Used</p>
+                        <p className="font-display text-2xl font-bold text-on-surface">
+                          {totalTokensUsed > 0 ? totalTokensUsed.toLocaleString() : "—"}
+                        </p>
+                      </div>
+                    </div>
+                  </section>
+
+                  <section className="hidden rounded-xl border border-white/10 bg-[#151b2d] p-4 shadow-[0_10px_30px_rgba(0,0,0,0.18)] sm:block sm:p-6">
+                    <h3 className="mb-4 text-[10px] font-bold uppercase tracking-[0.2em] text-outline">Inference Engine</h3>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-secondary-container/30 text-secondary">
+                          <span className="material-symbols-outlined">bolt</span>
+                        </div>
+                        <div>
+                          <p className="text-sm font-bold text-on-surface">{primaryEngineLabel}</p>
+                          <p className="text-[10px] text-on-surface-variant">Usage-based generation engine</p>
+                        </div>
+                      </div>
+                      <span className="material-symbols-outlined text-outline">verified</span>
+                    </div>
+                  </section>
+
                 </div>
               </div>
             </div>
