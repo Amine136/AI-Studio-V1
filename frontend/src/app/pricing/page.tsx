@@ -217,60 +217,24 @@ export default function PricingPage() {
       <div className="pointer-events-none fixed left-[-10%] top-[-10%] z-0 h-[40%] w-[40%] rounded-full bg-[#3b82f6]/5 blur-[120px]" />
       <div className="pointer-events-none fixed bottom-[-10%] right-[-10%] z-0 h-[40%] w-[40%] rounded-full bg-[#8b5cf6]/5 blur-[120px]" />
 
-      <div className="relative z-10 mx-auto w-full max-w-5xl space-y-20 px-6 py-16 md:py-24">
+      <div className="relative z-10 mx-auto w-full max-w-5xl space-y-12 px-4 py-8 sm:px-6 sm:py-16 md:space-y-20 md:py-24">
         {/* Header */}
         <header className="mx-auto max-w-2xl text-center animate-fade-in-up">
-          <h1 className="mb-6 font-headline text-5xl font-bold tracking-tighter leading-tight gradient-text md:text-6xl">
+          <h1 className="mb-4 font-headline text-4xl font-bold tracking-tighter leading-tight gradient-text sm:mb-6 md:text-6xl">
             Model Pricing
           </h1>
-          <p className="text-lg leading-relaxed text-[#94a3b8] md:text-xl">
+          <p className="text-sm leading-6 text-[#94a3b8] sm:text-lg sm:leading-relaxed md:text-xl">
             Transparent, usage-based pricing. Pay only for the tokens you compute and the images you generate.
           </p>
         </header>
 
-        {/* Workflow Basics — Fee Overview */}
-        <section className="animate-fade-in-up" style={{ animationDelay: "80ms" }}>
-          <div className="mb-6 flex items-center gap-4 pl-4">
-            <span className="material-symbols-outlined text-3xl text-[#22c55e]" style={{ fontVariationSettings: "'FILL' 1" }}>
-              tune
-            </span>
-            <h2 className="font-headline text-3xl font-semibold tracking-tight">Workflow Basics</h2>
-          </div>
-
-          <div className="pricing-table-wrapper">
-            <div className="pricing-table-glow" style={{ background: "linear-gradient(to bottom, rgba(34,197,94,0.18), transparent 60%)" }} />
-            <div className="pricing-table-inner">
-              <div className="grid grid-cols-1 gap-0 sm:grid-cols-3">
-                <div className="border-b border-white/[0.06] px-8 py-6 sm:border-b-0 sm:border-r">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#94a3b8]">Smart Analysis Fee</p>
-                  <p className="mt-2 text-2xl font-bold tracking-tight text-white">
-                    {pricingLoading ? <span className="inline-block h-7 w-20 animate-shimmer rounded-md" /> : systemConfig ? formatPrice(systemConfig.smart_analysis_fee) : "—"}
-                  </p>
-                </div>
-                <div className="border-b border-white/[0.06] px-8 py-6 sm:border-b-0 sm:border-r">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#94a3b8]">Min. Text Generation</p>
-                  <p className="mt-2 text-2xl font-bold tracking-tight text-white">
-                    {pricingLoading ? <span className="inline-block h-7 w-20 animate-shimmer rounded-md" /> : systemConfig ? formatPrice(systemConfig.minimum_text_generation_cost) : "—"}
-                  </p>
-                </div>
-                <div className="px-8 py-6">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#94a3b8]">Min. Image Generation</p>
-                  <p className="mt-2 text-2xl font-bold tracking-tight text-white">
-                    {pricingLoading ? <span className="inline-block h-7 w-20 animate-shimmer rounded-md" /> : systemConfig ? formatPrice(systemConfig.minimum_image_generation_cost) : "—"}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
         {/* ── Text Models ── */}
         <section className="animate-fade-in-up" style={{ animationDelay: "160ms" }}>
-          <div className="mb-6 flex items-center gap-4 pl-4">
+          <div className="mb-4 flex items-center gap-3 sm:mb-6 sm:gap-4 sm:pl-4">
             <span className="material-symbols-outlined text-3xl text-[#3b82f6]" style={{ fontVariationSettings: "'FILL' 1" }}>
               description
             </span>
-            <h2 className="font-headline text-3xl font-semibold tracking-tight">Text Models</h2>
+            <h2 className="font-headline text-2xl font-semibold tracking-tight sm:text-3xl">Text Models</h2>
             <span className="ml-auto text-[10px] uppercase tracking-[0.22em] text-[#64748b]">Per 1M Tokens</span>
           </div>
 
@@ -282,7 +246,7 @@ export default function PricingPage() {
               ) : textModels.length ? (
                 <>
                   {/* Header */}
-                  <div className="grid grid-cols-12 gap-4 border-b border-white/[0.06] px-8 py-5">
+                  <div className="hidden grid-cols-12 gap-4 border-b border-white/[0.06] px-8 py-5 sm:grid">
                     <div className="col-span-4 text-xs font-bold uppercase tracking-[0.15em] text-[#94a3b8]">Model Name</div>
                     <div className="col-span-3 text-right text-xs font-bold uppercase tracking-[0.15em] text-[#94a3b8]">
                       Input <span className="ml-1 font-normal normal-case tracking-normal text-[#64748b]">/ 1M tokens</span>
@@ -298,21 +262,21 @@ export default function PricingPage() {
                   {textModels.map((model, idx) => (
                     <div
                       key={model.id}
-                      className={`grid grid-cols-12 gap-4 px-8 py-5 transition-colors duration-200 hover:bg-white/[0.02] ${
+                      className={`grid gap-3 px-5 py-4 transition-colors duration-200 hover:bg-white/[0.02] sm:grid-cols-12 sm:gap-4 sm:px-8 sm:py-5 ${
                         idx < textModels.length - 1 ? "border-b border-white/[0.06]" : ""
                       }`}
                     >
-                      <div className="col-span-4 flex items-center gap-3">
+                      <div className="flex items-center gap-3 sm:col-span-4">
                         <span className="font-headline text-base font-medium text-[#f1f5f9]">{model.name}</span>
                       </div>
-                      <div className="col-span-3 flex items-center justify-end text-[#94a3b8]">
-                        {formatPrice(model.inputTokenPrice)}
+                      <div className="flex items-center justify-between text-[#94a3b8] sm:col-span-3 sm:justify-end">
+                        <span className="text-xs uppercase text-[#64748b] sm:hidden">Input</span>{formatPrice(model.inputTokenPrice)}
                       </div>
-                      <div className="col-span-3 flex items-center justify-end text-[#94a3b8]">
-                        {formatPrice(model.outputTokenPrice)}
+                      <div className="flex items-center justify-between text-[#94a3b8] sm:col-span-3 sm:justify-end">
+                        <span className="text-xs uppercase text-[#64748b] sm:hidden">Output</span>{formatPrice(model.outputTokenPrice)}
                       </div>
-                      <div className="col-span-2 flex items-center justify-end text-[#64748b]">
-                        {model.cachedInputTokenPrice ? formatPrice(model.cachedInputTokenPrice) : "—"}
+                      <div className="flex items-center justify-between text-[#64748b] sm:col-span-2 sm:justify-end">
+                        <span className="text-xs uppercase sm:hidden">Cached</span>{model.cachedInputTokenPrice ? formatPrice(model.cachedInputTokenPrice) : "—"}
                       </div>
                     </div>
                   ))}
@@ -328,11 +292,11 @@ export default function PricingPage() {
 
         {/* ── Image Models ── */}
         <section className="animate-fade-in-up" style={{ animationDelay: "240ms" }}>
-          <div className="mb-6 flex items-center gap-4 pl-4">
+          <div className="mb-4 flex items-center gap-3 sm:mb-6 sm:gap-4 sm:pl-4">
             <span className="material-symbols-outlined text-3xl text-[#8b5cf6]" style={{ fontVariationSettings: "'FILL' 1" }}>
               image
             </span>
-            <h2 className="font-headline text-3xl font-semibold tracking-tight">Image Models</h2>
+            <h2 className="font-headline text-2xl font-semibold tracking-tight sm:text-3xl">Image Models</h2>
             <span className="ml-auto text-[10px] uppercase tracking-[0.22em] text-[#64748b]">Per Image</span>
           </div>
 
@@ -382,7 +346,7 @@ export default function PricingPage() {
 
         {/* Info Footer */}
         <section className="animate-fade-in-up mx-auto max-w-3xl" style={{ animationDelay: "320ms" }}>
-          <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-8 py-6 text-center">
+          <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-5 py-5 text-center sm:px-8 sm:py-6">
             <p className="text-sm leading-relaxed text-[#64748b]">
               All prices are in <span className="font-semibold text-[#94a3b8]">Credits (Cr)</span>. Text model costs are per 1 million tokens processed. Image model costs are per generated image at the specified resolution. Smart Creation adds the analysis fee before applying model costs. Prices update in real time from the server.
             </p>

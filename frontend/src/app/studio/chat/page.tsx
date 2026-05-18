@@ -1610,9 +1610,9 @@ export default function StudioChatPage() {
   }
 
   return (
-    <section className={renderPhase === "chat" ? "h-screen overflow-hidden" : "min-h-[calc(100vh-4rem)] overflow-x-hidden px-6 py-8 lg:px-10"}>
+    <section className={renderPhase === "chat" ? "h-dvh overflow-hidden" : "min-h-[calc(100vh-4rem)] overflow-x-hidden px-4 py-4 sm:px-6 sm:py-8 lg:px-10"}>
       {renderPhase === "select" ? (
-        <div className="relative mx-auto flex min-h-[calc(100vh-8rem)] max-w-7xl flex-col overflow-hidden rounded-[1.5rem] border border-white/8 bg-[#0c1324] shadow-[0_24px_80px_rgba(0,0,0,0.28)]">
+        <div className="relative mx-auto flex min-h-[calc(100vh-6rem)] max-w-[1600px] flex-col overflow-hidden rounded-[1.25rem] border border-white/8 bg-[#0c1324] shadow-[0_24px_80px_rgba(0,0,0,0.28)] sm:min-h-[calc(100vh-8rem)] sm:rounded-[1.5rem]">
           <div className="pointer-events-none absolute right-[-8rem] top-16 h-[26rem] w-[26rem] rounded-full bg-[#adc6ff]/5 blur-[120px]" />
           <div className="pointer-events-none absolute bottom-0 left-[18%] h-[18rem] w-[18rem] rounded-full bg-[#d0bcff]/5 blur-[100px]" />
 
@@ -1673,13 +1673,13 @@ export default function StudioChatPage() {
             </aside>
 
             <main className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
-              <header className="flex flex-col justify-between gap-4 px-8 pb-6 pt-10 xl:flex-row xl:items-baseline xl:px-12 xl:pt-12">
+              <header className="flex flex-col justify-between gap-4 px-4 pb-4 pt-5 sm:px-8 sm:pb-6 sm:pt-10 xl:flex-row xl:items-baseline xl:px-12 xl:pt-12">
                 <div className="flex flex-col gap-4">
                   <div className="flex flex-col gap-4 xl:flex-row xl:items-center">
-                    <h2 className="font-headline text-2xl font-bold tracking-tight text-on-surface xl:text-3xl">
+                    <h2 className="font-headline text-xl font-bold tracking-tight text-on-surface sm:text-2xl xl:text-3xl">
                       {visibleActiveProviderGroup?.provider || selectedProvider || "Select a Provider"}
                     </h2>
-                    <div className="relative min-w-[280px] max-w-md xl:ml-6">
+                    <div className="relative w-full max-w-md xl:ml-6">
                       <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-lg text-slate-500 transition-colors group-focus-within:text-primary">
                         search
                       </span>
@@ -1696,7 +1696,7 @@ export default function StudioChatPage() {
                 <div />
               </header>
 
-              <section className="max-w-5xl px-8 pb-28 xl:px-12">
+              <section className="max-w-6xl px-4 pb-24 sm:px-8 sm:pb-28 xl:px-12">
                 <div className="flex flex-col gap-[10px]">
                   {loadingConfig ? (
                     <div className="rounded-xl border border-outline-variant/10 bg-surface-container-low p-8 text-sm text-on-surface-variant">
@@ -1717,7 +1717,7 @@ export default function StudioChatPage() {
                             setSelectedProvider(visibleActiveProviderGroup.provider);
                             setSelectedModel(model.id);
                           }}
-                          className={`group relative w-full cursor-pointer rounded-md border bg-[#16192a] px-5 py-4 text-left transition-colors duration-200 ${
+                          className={`group relative w-full cursor-pointer rounded-md border bg-[#16192a] px-4 py-3.5 text-left transition-colors duration-200 sm:px-5 sm:py-4 ${
                             !affordable
                               ? "cursor-not-allowed border-[rgba(255,255,255,0.05)] bg-[#131624] opacity-55"
                               : active
@@ -1732,7 +1732,7 @@ export default function StudioChatPage() {
                                   {model.displayName}
                                 </h3>
                               </div>
-                              <p className="mb-3 max-w-xl text-[13px] font-normal leading-5 text-[#8b8fa8]">
+                              <p className="mb-3 hidden max-w-xl text-[13px] font-normal leading-5 text-[#8b8fa8] sm:block">
                                 {model.description || "Usage-based conversational model for plain chat."}
                               </p>
                               {!affordable ? (
@@ -1740,7 +1740,7 @@ export default function StudioChatPage() {
                                   Need at least {minimumCost.toFixed(2)} credits.
                                 </p>
                               ) : null}
-                              <div className="flex flex-wrap gap-2">
+                              <div className="hidden flex-wrap gap-2 sm:flex">
                                 <span className="rounded-full border border-[rgba(255,255,255,0.15)] bg-transparent px-3 py-1 text-[10px] font-medium uppercase tracking-[0.05em] text-[#8b8fa8]">
                                   {model.provider}
                                 </span>
@@ -1756,17 +1756,17 @@ export default function StudioChatPage() {
                               </div>
                             </div>
                             <div className="flex flex-col items-end gap-4">
-                              <span className="rounded-full bg-[#202433] px-2.5 py-1 text-[10px] font-medium text-[#8b8fa8]">
+                              <span className="hidden rounded-full bg-[#202433] px-2.5 py-1 text-[10px] font-medium text-[#8b8fa8] sm:inline-flex">
                                 Usage-Based
                               </span>
                               {active ? (
-                                <div className="flex h-10 w-10 items-center justify-center rounded-md bg-[#eef2ff] text-[#0f1117]">
+                                <div className="flex h-8 w-8 items-center justify-center rounded-md bg-[#eef2ff] text-[#0f1117] sm:h-10 sm:w-10">
                                   <span className="material-symbols-outlined text-[18px]" style={{ fontVariationSettings: "'FILL' 1" }}>
                                     check
                                   </span>
                                 </div>
                               ) : (
-                                <div className="flex h-10 w-10 items-center justify-center rounded-md border border-[rgba(255,255,255,0.12)] text-[#747b93]">
+                                <div className="flex h-8 w-8 items-center justify-center rounded-md border border-[rgba(255,255,255,0.12)] text-[#747b93] sm:h-10 sm:w-10">
                                   <span className="material-symbols-outlined text-[18px]">check</span>
                                 </div>
                               )}
@@ -1783,7 +1783,7 @@ export default function StudioChatPage() {
                 </div>
               </section>
 
-              <footer className="sticky bottom-0 flex flex-col justify-between gap-4 border-t border-outline-variant/10 bg-slate-950/80 px-8 py-6 backdrop-blur-md xl:flex-row xl:items-center xl:px-12">
+              <footer className="sticky bottom-0 flex flex-col justify-between gap-4 border-t border-outline-variant/10 bg-slate-950/80 px-4 py-4 backdrop-blur-md sm:px-8 sm:py-6 xl:flex-row xl:items-center xl:px-12">
                 <div className="flex items-center gap-6">
                   <Link
                     href="/studio/start"
@@ -1794,7 +1794,7 @@ export default function StudioChatPage() {
                   </Link>
                 </div>
                 <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:gap-6">
-                  <div className="flex items-center gap-6">
+                  <div className="hidden items-center gap-6 sm:flex">
                     <span className="cursor-default text-[13px] font-normal text-[rgba(255,255,255,0.35)]">
                       Documentation
                     </span>
@@ -1806,7 +1806,7 @@ export default function StudioChatPage() {
                     type="button"
                     onClick={() => void handleStartChat()}
                     disabled={!visibleSelectedModelOption || loadingConfig || loadingReply || insufficientSelectedModelCredits}
-                    className="flex items-center gap-2 rounded-[5px] bg-gradient-to-br from-[#adc6ff] to-[#4d8eff] px-8 py-3 font-headline text-sm font-bold text-[#002e6a] shadow-[0_0_24px_rgba(77,142,255,0.18)] transition-all duration-300 hover:scale-105 hover:shadow-[0_0_32px_rgba(77,142,255,0.28)] active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="flex w-full items-center justify-center gap-2 rounded-[5px] bg-gradient-to-br from-[#adc6ff] to-[#4d8eff] px-8 py-3 font-headline text-sm font-bold text-[#002e6a] shadow-[0_0_24px_rgba(77,142,255,0.18)] transition-all duration-300 hover:scale-105 hover:shadow-[0_0_32px_rgba(77,142,255,0.28)] active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
                   >
                     <span>{loadingReply ? "Starting…" : insufficientSelectedModelCredits ? `Need ${selectedModelMinimumCost.toFixed(2)} Credits` : "Next Step"}</span>
                     <span className="material-symbols-outlined text-sm">chevron_right</span>
@@ -1818,7 +1818,7 @@ export default function StudioChatPage() {
         </div>
       ) : (
         <div className="chat-canvas flex h-full flex-col overflow-hidden">
-          <header className="relative z-30 flex h-12 shrink-0 items-center justify-between border-b border-white/[0.06] bg-[#0a0f1e]/80 px-3 backdrop-blur-xl sm:px-5">
+          <header className="relative z-30 flex h-12 shrink-0 items-center justify-between border-b border-white/[0.06] bg-[#0a0f1e]/80 px-2.5 backdrop-blur-xl sm:px-5">
             <div className="flex min-w-0 items-center gap-2.5">
               {editingConversationTitle ? (
                 <div className="flex items-center gap-1.5">
@@ -1863,7 +1863,7 @@ export default function StudioChatPage() {
                   }}
                   className="group flex min-w-0 items-center gap-1.5"
                 >
-                  <h1 className="max-w-[180px] truncate text-sm font-semibold text-white sm:max-w-xs">{normalizedConversationTitle}</h1>
+                  <h1 className="max-w-[128px] truncate text-sm font-semibold text-white sm:max-w-xs">{normalizedConversationTitle}</h1>
                   <span className="material-symbols-outlined shrink-0 text-[14px] text-white/25 transition-colors group-hover:text-white/60">edit</span>
                 </button>
               )}
@@ -1871,7 +1871,7 @@ export default function StudioChatPage() {
               <span className="hidden max-w-[160px] truncate text-[11px] font-medium text-[#6b7a8f] sm:inline">{lockedModel?.displayName || "Model"}</span>
             </div>
 
-            <div className="flex items-center gap-1">
+            <div className={`items-center gap-1 ${editingConversationTitle ? "hidden sm:flex" : "flex"}`}>
               <div className="mr-1.5 hidden items-center gap-2.5 text-[11px] text-[#6b7a8f] lg:flex">
                 <span className="font-mono tabular-nums">
                   {conversationTotalTokens.toLocaleString()} <span className="text-white/20">tok</span>
@@ -1915,7 +1915,7 @@ export default function StudioChatPage() {
           <div className="relative z-10 flex flex-1 overflow-hidden">
             <div className="flex flex-1 flex-col overflow-hidden">
               <div className="chat-messages-scroll flex-1 overflow-y-auto">
-                <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
+                <div className="mx-auto max-w-4xl px-3 py-6 sm:px-6 sm:py-8 lg:px-8">
                   {loadingConversation || isBootstrappingRequestedConversation ? (
                     <div className="flex min-h-[50vh] items-center justify-center">
                       <div className="flex items-center gap-2">
@@ -1972,7 +1972,7 @@ export default function StudioChatPage() {
                 </div>
               </div>
 
-              <div className="shrink-0 px-3 pb-4 pt-2 sm:px-5 sm:pb-5">
+              <div className="shrink-0 px-2.5 pb-3 pt-2 sm:px-5 sm:pb-5">
                 <div className="mx-auto max-w-4xl">
                   {error ? (
                     <div className="mb-3 rounded-xl border border-red-500/20 bg-red-500/[0.07] px-4 py-2.5 text-[13px] text-red-200/90">
@@ -2019,7 +2019,7 @@ export default function StudioChatPage() {
                     </div>
                   ) : null}
 
-                  <div className="chat-composer px-5 py-3.5">
+                  <div className="chat-composer px-4 py-3 sm:px-5 sm:py-3.5">
                     <textarea
                       ref={textareaRef}
                       value={input}
@@ -2084,8 +2084,8 @@ export default function StudioChatPage() {
 
             {settingsPanelOpen ? (
               <>
-                <div className="chat-panel-backdrop fixed inset-0 z-40 bg-black/40 lg:hidden" onClick={() => setSettingsPanelOpen(false)} />
-                <aside className="chat-panel-slide fixed bottom-0 right-0 top-0 z-50 flex w-72 flex-col border-l border-white/[0.05] bg-[#080c1a]/95 backdrop-blur-2xl lg:relative lg:bottom-auto lg:top-auto lg:z-auto lg:w-[280px]">
+                <div className="chat-panel-backdrop fixed inset-0 z-40 bg-black/20 backdrop-blur-[1px] lg:hidden" onClick={() => setSettingsPanelOpen(false)} />
+                <aside className="chat-panel-slide fixed bottom-0 right-0 top-0 z-50 flex w-[56vw] min-w-[210px] max-w-[280px] flex-col border-l border-white/[0.05] bg-[#080c1a]/95 backdrop-blur-2xl sm:w-72 lg:relative lg:bottom-auto lg:top-auto lg:z-auto lg:w-[280px]">
                   <div className="flex h-12 shrink-0 items-center justify-between border-b border-white/[0.06] px-4">
                     <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/35">Model Controls</span>
                     <div className="flex items-center gap-1">

@@ -31,6 +31,7 @@ export default function StudioHomePage() {
   const [conversations, setConversations] = useState<PlainChatConversationItem[]>([]);
   const [plainChatModels, setPlainChatModels] = useState<PlainChatModelItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [expandedConversationIds, setExpandedConversationIds] = useState<string[]>([]);
 
   useEffect(() => {
     if (!user) return;
@@ -101,31 +102,31 @@ export default function StudioHomePage() {
   }
 
   return (
-    <section className="min-h-[calc(100vh-4rem)] px-6 py-8 lg:px-10">
-      <div className="mx-auto max-w-7xl space-y-8">
+    <section className="min-h-[calc(100vh-4rem)] px-4 py-8 sm:px-6 lg:px-10">
+      <div className="mx-auto max-w-[1500px] space-y-6 sm:space-y-8">
         <section className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-          <div className="rounded-2xl border border-white/8 bg-[linear-gradient(135deg,rgba(21,27,45,0.96),rgba(12,19,36,0.94))] p-8 shadow-[0_30px_80px_-30px_rgba(0,0,0,0.6)]">
+          <div className="rounded-2xl border border-white/8 bg-[linear-gradient(135deg,rgba(21,27,45,0.96),rgba(12,19,36,0.94))] p-5 shadow-[0_30px_80px_-30px_rgba(0,0,0,0.6)] sm:p-8">
             <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-[#adc6ff]/20 bg-[#adc6ff]/10 px-4 py-2 text-[10px] font-bold uppercase tracking-[0.22em] text-[#adc6ff]">
               Studio Home
             </div>
-            <h1 className="font-headline text-4xl font-bold tracking-tight text-white lg:text-5xl">
+            <h1 className="font-headline text-3xl font-bold tracking-tight text-white sm:text-4xl lg:text-5xl">
               Ignite Your Creative Vision
             </h1>
-            <p className="mt-4 max-w-2xl text-base leading-7 text-[#c2c6d6] lg:text-lg">
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-[#c2c6d6] sm:mt-4 sm:text-base sm:leading-7 lg:text-lg">
               Welcome to your creative command center
             </p>
 
-            <div className="mt-8 flex flex-col gap-4 sm:flex-row">
+            <div className="mt-6 flex flex-col gap-3 sm:mt-8 sm:flex-row sm:gap-4">
               <Link
                 href="/studio/start"
-                className="inline-flex items-center justify-center gap-3 rounded-xl bg-gradient-to-r from-[#adc6ff] to-[#4d8eff] px-8 py-4 font-headline text-base font-bold text-[#00285d] shadow-[0_20px_40px_-20px_rgba(77,142,255,0.5)] transition-all hover:brightness-110"
+                className="inline-flex items-center justify-center gap-3 rounded-xl bg-gradient-to-r from-[#adc6ff] to-[#4d8eff] px-6 py-3.5 font-headline text-base font-bold text-[#00285d] shadow-[0_20px_40px_-20px_rgba(77,142,255,0.5)] transition-all hover:brightness-110 sm:px-8 sm:py-4"
               >
                 <span className="material-symbols-outlined text-xl">add_circle</span>
-                Start Project
+                Start Generation
               </Link>
               <Link
                 href="/gallery"
-                className="inline-flex items-center justify-center gap-3 rounded-xl border border-white/10 bg-[#191f31] px-8 py-4 text-base font-semibold text-white transition-colors hover:bg-[#23293c]"
+                className="inline-flex items-center justify-center gap-3 rounded-xl border border-white/10 bg-[#191f31] px-6 py-3.5 text-base font-semibold text-white transition-colors hover:bg-[#23293c] sm:px-8 sm:py-4"
               >
                 <span className="material-symbols-outlined text-xl">photo_library</span>
                 Open Gallery
@@ -133,31 +134,31 @@ export default function StudioHomePage() {
             </div>
           </div>
 
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-1">
-            <div className="rounded-2xl border border-white/8 bg-[#151b2d] p-6">
+          <div className="grid gap-6 sm:grid-cols-2 sm:items-start lg:grid-cols-1">
+            <div className="self-start rounded-2xl border border-white/8 bg-[#151b2d] p-5 sm:p-6">
               <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#adc6ff]">Current Credits</div>
-              <div className="mt-4 font-headline text-5xl font-bold text-white">
+              <div className="mt-3 font-headline text-4xl font-bold text-white sm:mt-4 sm:text-5xl">
                 {credits === null ? "..." : credits.toFixed(2)}
               </div>
             </div>
 
-            <div className="rounded-2xl border border-white/8 bg-[#151b2d] p-6">
+            <div className="rounded-2xl border border-white/8 bg-[#151b2d] p-5 sm:p-6">
               <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#adc6ff]">Usage Snapshot</div>
-              <div className="mt-5 grid grid-cols-2 gap-4">
-                <div className="rounded-xl bg-[#191f31] p-4">
-                  <div className="text-3xl font-bold text-white">{history.length + conversations.length}</div>
+              <div className="mt-4 grid grid-cols-2 gap-3 sm:mt-5 sm:gap-4">
+                <div className="rounded-xl bg-[#191f31] p-3 sm:p-4">
+                  <div className="text-2xl font-bold text-white sm:text-3xl">{history.length + conversations.length}</div>
                   <div className="mt-1 text-xs uppercase tracking-widest text-[#c2c6d6]">Recent Items</div>
                 </div>
-                <div className="rounded-xl bg-[#191f31] p-4">
-                  <div className="text-3xl font-bold text-white">{imageCount}</div>
+                <div className="rounded-xl bg-[#191f31] p-3 sm:p-4">
+                  <div className="text-2xl font-bold text-white sm:text-3xl">{imageCount}</div>
                   <div className="mt-1 text-xs uppercase tracking-widest text-[#c2c6d6]">Images</div>
                 </div>
-                <div className="rounded-xl bg-[#191f31] p-4">
-                  <div className="text-3xl font-bold text-white">{captionCount}</div>
+                <div className="rounded-xl bg-[#191f31] p-3 sm:p-4">
+                  <div className="text-2xl font-bold text-white sm:text-3xl">{captionCount}</div>
                   <div className="mt-1 text-xs uppercase tracking-widest text-[#c2c6d6]">Captions</div>
                 </div>
-                  <div className="rounded-xl bg-[#191f31] p-4">
-                  <div className="text-3xl font-bold text-white">{recentConversations.length > 0 ? "Live" : "-"}</div>
+                  <div className="rounded-xl bg-[#191f31] p-3 sm:p-4">
+                  <div className="text-2xl font-bold text-white sm:text-3xl">{recentConversations.length > 0 ? "Live" : "-"}</div>
                   <div className="mt-1 text-xs uppercase tracking-widest text-[#c2c6d6]">Studio State</div>
                 </div>
               </div>
@@ -167,10 +168,10 @@ export default function StudioHomePage() {
 
         <section>
           <div className="rounded-2xl border border-white/8 bg-[#151b2d]">
-            <div className="flex items-center justify-between border-b border-white/8 px-6 py-5">
+            <div className="flex items-center justify-between gap-3 border-b border-white/8 px-5 py-4 sm:px-6 sm:py-5">
               <div>
                 <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#adc6ff]">Recent Usage</div>
-                <h2 className="mt-2 font-headline text-2xl font-bold text-white">Plain Chat History</h2>
+                <h2 className="mt-2 font-headline text-xl font-bold text-white sm:text-2xl">Plain Chat History</h2>
               </div>
               <Link href="/studio/chat" className="text-sm font-semibold text-[#adc6ff] transition-colors hover:text-white">
                 Open chat
@@ -182,61 +183,141 @@ export default function StudioHomePage() {
                 recentConversations.map((conversation) => (
                   <div
                     key={conversation.id}
-                    onClick={() => {
-                      router.push(`/studio/chat?conversation=${encodeURIComponent(conversation.id)}`);
-                    }}
-                    className="grid cursor-pointer grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_auto_auto_auto_auto] items-center gap-4 px-6 py-4 transition-colors hover:bg-white/[0.03]"
+                    className="px-5 py-4 transition-colors hover:bg-white/[0.03] sm:px-6"
                   >
-                    <div className="min-w-0">
-                      <div className="text-[10px] uppercase tracking-[0.18em] text-[#8c909f]">Name</div>
-                      <div className="mt-1 truncate font-medium text-white">
-                        {conversation.title || "New Chat"}
-                      </div>
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-[10px] uppercase tracking-[0.18em] text-[#8c909f]">Model used</div>
-                      <div className="mt-1 truncate font-medium text-white">
-                        {plainChatModelLookup.get(conversation.model) || plainChatModelLookup.get((conversation.model || "").toLowerCase()) || conversation.model || "Chat model"}
-                      </div>
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-[10px] uppercase tracking-[0.18em] text-[#8c909f]">Last change</div>
-                      <div className="mt-1 truncate text-sm text-[#c2c6d6]">
-                        {formatHistoryDate(new Date((conversation.lastMessageAt || conversation.updatedAt) * 1000))}
-                      </div>
-                    </div>
-                    <div className="flex min-w-0 items-center justify-between gap-3">
-                      <div>
-                        <div className="text-[10px] uppercase tracking-[0.18em] text-[#8c909f]">Credits charged</div>
-                        <div className="mt-1 font-medium text-white">
-                          {(conversation.totalCostCredits || 0).toFixed(2)} Cr
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-end gap-2 text-[#adc6ff]">
-                      <span className="material-symbols-outlined">arrow_forward</span>
-                    </div>
-                    <div className="flex items-center justify-end">
+                    <div className="lg:hidden">
                       <button
                         type="button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          void handleDeleteConversation(conversation.id);
-                        }}
-                        className="rounded-md border border-[#5b2028] p-2 text-[#ffb4ab] transition-colors hover:bg-[#5b2028]/20"
-                        aria-label={`Delete ${conversation.title || "conversation"}`}
+                        onClick={() =>
+                          setExpandedConversationIds((current) =>
+                            current.includes(conversation.id)
+                              ? current.filter((id) => id !== conversation.id)
+                              : [...current, conversation.id],
+                          )
+                        }
+                        className="flex w-full items-center justify-between gap-3 text-left"
                       >
-                        <span className="material-symbols-outlined text-[18px]">delete</span>
+                        <div className="min-w-0">
+                          <div className="text-[10px] uppercase tracking-[0.18em] text-[#8c909f]">Name</div>
+                          <div className="mt-1 truncate font-medium text-white">
+                            {conversation.title || "New Chat"}
+                          </div>
+                        </div>
+                        <span
+                          className={`material-symbols-outlined text-[#adc6ff] transition-transform ${
+                            expandedConversationIds.includes(conversation.id) ? "rotate-180" : ""
+                          }`}
+                        >
+                          expand_more
+                        </span>
                       </button>
+
+                      {expandedConversationIds.includes(conversation.id) ? (
+                        <div className="mt-4 grid gap-4 rounded-xl border border-white/8 bg-[#101728] p-4">
+                          <div className="min-w-0">
+                            <div className="text-[10px] uppercase tracking-[0.18em] text-[#8c909f]">Model used</div>
+                            <div className="mt-1 truncate font-medium text-white">
+                              {plainChatModelLookup.get(conversation.model) ||
+                                plainChatModelLookup.get((conversation.model || "").toLowerCase()) ||
+                                conversation.model ||
+                                "Chat model"}
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="min-w-0">
+                              <div className="text-[10px] uppercase tracking-[0.18em] text-[#8c909f]">Last change</div>
+                              <div className="mt-1 text-sm text-[#c2c6d6]">
+                                {formatHistoryDate(new Date((conversation.lastMessageAt || conversation.updatedAt) * 1000))}
+                              </div>
+                            </div>
+                            <div className="min-w-0">
+                              <div className="text-[10px] uppercase tracking-[0.18em] text-[#8c909f]">Credits charged</div>
+                              <div className="mt-1 font-medium text-white">
+                                {(conversation.totalCostCredits || 0).toFixed(2)} Cr
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between gap-3">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                router.push(`/studio/chat?conversation=${encodeURIComponent(conversation.id)}`);
+                              }}
+                              className="inline-flex items-center gap-2 text-sm font-semibold text-[#adc6ff]"
+                            >
+                              Open chat
+                              <span className="material-symbols-outlined text-base">arrow_forward</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleDeleteConversation(conversation.id)}
+                              className="rounded-md border border-[#5b2028] p-2 text-[#ffb4ab] transition-colors hover:bg-[#5b2028]/20"
+                              aria-label={`Delete ${conversation.title || "conversation"}`}
+                            >
+                              <span className="material-symbols-outlined text-[18px]">delete</span>
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div
+                      onClick={() => {
+                        router.push(`/studio/chat?conversation=${encodeURIComponent(conversation.id)}`);
+                      }}
+                      className="hidden cursor-pointer gap-4 lg:grid lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_auto_auto_auto_auto] lg:items-center"
+                    >
+                      <div className="min-w-0">
+                        <div className="text-[10px] uppercase tracking-[0.18em] text-[#8c909f]">Name</div>
+                        <div className="mt-1 truncate font-medium text-white">
+                          {conversation.title || "New Chat"}
+                        </div>
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-[10px] uppercase tracking-[0.18em] text-[#8c909f]">Model used</div>
+                        <div className="mt-1 truncate font-medium text-white">
+                          {plainChatModelLookup.get(conversation.model) || plainChatModelLookup.get((conversation.model || "").toLowerCase()) || conversation.model || "Chat model"}
+                        </div>
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-[10px] uppercase tracking-[0.18em] text-[#8c909f]">Last change</div>
+                        <div className="mt-1 truncate text-sm text-[#c2c6d6]">
+                          {formatHistoryDate(new Date((conversation.lastMessageAt || conversation.updatedAt) * 1000))}
+                        </div>
+                      </div>
+                      <div className="flex min-w-0 items-center justify-between gap-3">
+                        <div>
+                          <div className="text-[10px] uppercase tracking-[0.18em] text-[#8c909f]">Credits charged</div>
+                          <div className="mt-1 font-medium text-white">
+                            {(conversation.totalCostCredits || 0).toFixed(2)} Cr
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-end gap-2 text-[#adc6ff]">
+                        <span className="material-symbols-outlined">arrow_forward</span>
+                      </div>
+                      <div className="flex items-center justify-end lg:justify-self-end">
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void handleDeleteConversation(conversation.id);
+                          }}
+                          className="rounded-md border border-[#5b2028] p-2 text-[#ffb4ab] transition-colors hover:bg-[#5b2028]/20"
+                          aria-label={`Delete ${conversation.title || "conversation"}`}
+                        >
+                          <span className="material-symbols-outlined text-[18px]">delete</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))
               ) : null}
 
               {loading ? (
-                <div className="px-6 py-10 text-sm text-[#8c909f]">Loading plain chat history…</div>
+                <div className="px-5 py-8 text-sm text-[#8c909f] sm:px-6 sm:py-10">Loading plain chat history…</div>
               ) : recentConversations.length === 0 ? (
-                <div className="px-6 py-10 text-sm text-[#8c909f]">No recent plain chat conversations yet.</div>
+                <div className="px-5 py-8 text-sm text-[#8c909f] sm:px-6 sm:py-10">No recent plain chat conversations yet.</div>
               ) : null}
             </div>
           </div>

@@ -313,20 +313,16 @@ export default function CreditsPage() {
   }
 
   return (
-    <main className="mx-auto max-w-[1440px] px-6 py-12 sm:px-8">
-      <section className="mb-16">
+    <main className="mx-auto max-w-[1440px] px-4 py-8 sm:px-8 sm:py-12">
+      <section className="mb-10 sm:mb-16">
         <div className="flex flex-col justify-between gap-8 md:flex-row md:items-end">
           <div className="max-w-2xl">
-            <h1 className="font-headline text-5xl font-bold tracking-tighter text-blue-50 md:text-7xl">Fuel Your Vision</h1>
-            <p className="mt-4 max-w-lg text-lg leading-relaxed text-[#c2c6d6]">
-              Manage your resources and power your generative workflows with precision. Live credit balance, redeem codes,
-              and recent account activity all in one place.
-            </p>
+            <h1 className="font-headline text-4xl font-bold tracking-tighter text-blue-50 sm:text-5xl md:text-7xl">Fuel Your Vision</h1>
           </div>
 
-          <div className="min-w-[300px] rounded-xl border border-white/10 bg-[rgba(25,31,49,0.7)] p-8 backdrop-blur-xl">
+          <div className="rounded-xl border border-white/10 bg-[rgba(25,31,49,0.7)] p-4 backdrop-blur-xl sm:min-w-[260px] sm:p-6">
             <span className="text-xs font-semibold uppercase tracking-[0.28em] text-[#adc6ff]">Available Balance</span>
-            <div className="mt-2 text-5xl font-bold tracking-tight text-white">
+            <div className="mt-2 text-3xl font-bold tracking-tight text-white sm:text-4xl">
               {credits === null ? "..." : `${credits.toFixed(2)} Cr`}
             </div>
             <div className="mt-4 h-1 w-full overflow-hidden rounded-full bg-[#2e3447]">
@@ -339,11 +335,11 @@ export default function CreditsPage() {
         </div>
       </section>
 
-      <section id="redeem-code" className="mb-24">
+      <section id="redeem-code" className="mb-12 sm:mb-24">
         <h2 className="mb-8 flex items-center gap-3 font-headline text-2xl font-bold tracking-tight text-blue-50">
           <span className="h-px w-8 bg-[#adc6ff]" /> Redeem Code
         </h2>
-        <div className="max-w-2xl rounded-xl border border-white/10 bg-[rgba(25,31,49,0.7)] p-8 backdrop-blur-xl">
+        <div className="max-w-2xl rounded-xl border border-white/10 bg-[rgba(25,31,49,0.7)] p-5 backdrop-blur-xl sm:p-8">
           <p className="mb-6 text-sm text-[#c2c6d6]">Enter a credit code or a gift code to instantly top up your balance.</p>
           <div className="flex flex-col gap-4 sm:flex-row">
             <div className="relative flex-grow">
@@ -393,25 +389,24 @@ export default function CreditsPage() {
 
 
 
-      <section className="mb-24">
+      <section className="mb-12 sm:mb-24">
         <div>
           <div className="mb-8 flex items-center justify-between">
             <h2 className="font-headline text-2xl font-bold tracking-tight text-blue-50">Recent History</h2>
           </div>
-          <div className="overflow-hidden rounded-xl border border-white/10">
+          <div className="hidden overflow-hidden rounded-xl border border-white/10 sm:block">
             <table className="w-full text-left">
               <thead className="bg-[#23293c] text-xs uppercase tracking-[0.22em] text-[#c2c6d6]">
                 <tr>
                   <th className="px-6 py-4 font-semibold">Date</th>
                   <th className="px-6 py-4 font-semibold">Activity</th>
-                  <th className="px-6 py-4 font-semibold">Status</th>
                   <th className="px-6 py-4 text-right font-semibold">Amount</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/10 bg-[#151b2d]/50">
                 {historyLoading ? (
                   <tr>
-                    <td colSpan={4} className="px-6 py-8 text-sm text-[#c2c6d6]">
+                    <td colSpan={3} className="px-6 py-8 text-sm text-[#c2c6d6]">
                       Loading recent usage…
                     </td>
                   </tr>
@@ -422,23 +417,39 @@ export default function CreditsPage() {
                       <td className="px-6 py-5">
                         <p className="font-medium text-white">{event.activity}</p>
                       </td>
-                      <td className="px-6 py-5">
-                        <span className="rounded-full border border-blue-500/20 bg-blue-500/10 px-2 py-0.5 text-[10px] text-blue-400">
-                          {event.status}
-                        </span>
-                      </td>
                       <td className={`px-6 py-5 text-right ${event.positive ? "text-[#adc6ff]" : "text-[#c2c6d6]"}`}>{event.amount}</td>
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={4} className="px-6 py-8 text-sm text-[#c2c6d6]">
+                    <td colSpan={3} className="px-6 py-8 text-sm text-[#c2c6d6]">
                       No recent credit transactions yet. Your balance changes will appear here.
                     </td>
                   </tr>
                 )}
               </tbody>
             </table>
+          </div>
+          <div className="space-y-3 sm:hidden">
+            {historyLoading ? (
+              <div className="rounded-xl border border-white/10 bg-[#151b2d]/50 p-5 text-sm text-[#c2c6d6]">Loading recent usage…</div>
+            ) : visibleUsageEvents.length ? (
+              visibleUsageEvents.map((event) => (
+                <div key={event.id} className="rounded-xl border border-white/10 bg-[#151b2d]/50 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-medium text-white">{event.activity}</p>
+                      <p className="mt-1 text-xs text-[#c2c6d6]">{event.date}</p>
+                    </div>
+                    <span className={`text-sm font-semibold ${event.positive ? "text-[#adc6ff]" : "text-[#c2c6d6]"}`}>{event.amount}</span>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="rounded-xl border border-white/10 bg-[#151b2d]/50 p-5 text-sm text-[#c2c6d6]">
+                No recent credit transactions yet. Your balance changes will appear here.
+              </div>
+            )}
           </div>
           {hiddenTransactionCount > 0 ? (
             <div className="mt-4 flex justify-end">
@@ -454,9 +465,9 @@ export default function CreditsPage() {
         </div>
       </section>
 
-      <section className="mx-auto mb-24 max-w-4xl">
-        <h2 className="mb-12 text-center font-headline text-3xl font-bold tracking-tighter text-blue-50">Usage Questions</h2>
-        <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
+      <section className="mx-auto mb-12 max-w-4xl sm:mb-24">
+        <h2 className="mb-6 text-center font-headline text-2xl font-bold tracking-tighter text-blue-50 sm:mb-12 sm:text-3xl">Usage Questions</h2>
+        <div className="grid grid-cols-1 gap-4 sm:gap-8 md:grid-cols-2">
           {faqItems.map((item) => (
             <div key={item.title} className="rounded-lg border-l-2 border-[#adc6ff] bg-[#151b2d] p-6">
               <h3 className="mb-3 font-semibold text-white">{item.title}</h3>

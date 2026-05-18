@@ -58,24 +58,9 @@ export default function RootLayout({
         />
       </head>
       <body className="antialiased">
-        <div className="desktop-only-gate" role="status" aria-live="polite">
-          <div className="desktop-only-card">
-            <div className="desktop-only-mark" aria-hidden="true">
-              <span className="material-symbols-outlined">desktop_windows</span>
-            </div>
-            <p className="desktop-only-eyebrow">Desktop experience</p>
-            <h1>Vibecraft is available on larger screens right now.</h1>
-            <p>
-              Please open Vibecraft from a laptop or desktop to use the studio.
-              Mobile support is coming soon.
-            </p>
-          </div>
-        </div>
-        <div className="desktop-app-content">
-          <AuthProvider>
-            {children}
-          </AuthProvider>
-        </div>
+        <AuthProvider>
+          {children}
+        </AuthProvider>
       </body>
     </html>
   );

@@ -14,7 +14,7 @@ const navItems = [
   { href: "/settings", label: "Settings", icon: "tune" },
 ];
 
-export default function AppSidebar({ activePath }: { activePath: string }) {
+export default function AppSidebar({ activePath, hideMobileNav = false }: { activePath: string; hideMobileNav?: boolean }) {
   const router = useRouter();
   const [signingOut, setSigningOut] = useState(false);
 
@@ -31,7 +31,7 @@ export default function AppSidebar({ activePath }: { activePath: string }) {
 
   return (
     <>
-      <aside className="fixed left-0 top-0 hidden h-screen w-48 flex-col border-r border-white/6 bg-[linear-gradient(180deg,#1a2333_0%,#0c1324_100%)] px-3 py-8 md:flex">
+      <aside className="fixed left-0 top-0 hidden h-screen w-48 flex-col border-r border-white/6 bg-[linear-gradient(180deg,#1a2333_0%,#0c1324_100%)] px-3 py-8 lg:flex">
         <div className="mb-10 px-2">
           <div className="flex items-center gap-2">
             <img
@@ -81,22 +81,24 @@ export default function AppSidebar({ activePath }: { activePath: string }) {
         </div>
       </aside>
 
-      <nav className="fixed bottom-0 left-0 z-50 flex h-20 w-full items-center justify-around bg-slate-900/90 px-4 backdrop-blur-xl md:hidden">
-        {navItems.map((item) => {
-          const active = item.href === activePath;
-          return (
-            <Link key={item.label} href={item.href} className={`flex flex-col items-center gap-1 ${active ? "text-blue-300" : "text-slate-500"}`}>
-              <span
-                className="material-symbols-outlined"
-                style={active ? { fontVariationSettings: "'FILL' 1" } : undefined}
-              >
-                {item.icon}
-              </span>
-              <span className="text-[10px] font-bold uppercase tracking-tighter">{item.label}</span>
-            </Link>
-          );
-        })}
-      </nav>
+      {hideMobileNav ? null : (
+        <nav className="fixed bottom-0 left-0 z-50 grid h-20 w-full grid-cols-6 items-center border-t border-white/10 bg-slate-900/95 px-2 backdrop-blur-xl lg:hidden">
+          {navItems.map((item) => {
+            const active = item.href === activePath;
+            return (
+              <Link key={item.label} href={item.href} className={`flex min-w-0 flex-col items-center gap-1 ${active ? "text-blue-300" : "text-slate-500"}`}>
+                <span
+                  className="material-symbols-outlined"
+                  style={active ? { fontVariationSettings: "'FILL' 1" } : undefined}
+                >
+                  {item.icon}
+                </span>
+                <span className="truncate text-[9px] font-bold uppercase tracking-tighter">{item.label}</span>
+              </Link>
+            );
+          })}
+        </nav>
+      )}
     </>
   );
 }
