@@ -5,8 +5,10 @@ import secrets
 import time
 import uuid
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
+
+from sqlalchemy.exc import IntegrityError
 
 from app.config import settings
 from app.db.repositories import SecurityRepository
@@ -23,6 +25,7 @@ PROFILE_USERNAME_ALLOWED_RE = re.compile(r"[^a-z0-9._-]+")
 PROFILE_USERNAME_MAX_LENGTH = 15
 PROFILE_BIO_MAX_LENGTH = 500
 PROFILE_CHANGE_LIMIT_PER_MONTH = 2
+PROFILE_SAVE_ATTEMPT_LIMIT_PER_DAY = 10
 
 
 def preload_postgres() -> None:
@@ -99,6 +102,8 @@ def update_user_profile(uid: str, *, username: str, bio: str) -> dict[str, Any]:
     now = int(time.time())
     key, reset_at = _profile_change_bucket_key(uid, now)
 
+    _record_profile_save_attempt(uid, now)
+
     with session_scope() as session:
         repo = SecurityRepository(session)
         user = repo.get_user_for_update(uid)
@@ -110,6 +115,10 @@ def update_user_profile(uid: str, *, username: str, bio: str) -> dict[str, Any]:
             result = _user_dict_from_model(user)
             result.update(_profile_change_status_from_bucket(repo.get_rate_limit_bucket(key), now, reset_at))
             return result
+
+        existing_user = repo.get_user_by_username(normalized_username)
+        if existing_user is not None and str(existing_user.uid) != str(uid):
+            raise ValueError("PROFILE_USERNAME_TAKEN")
 
         bucket = repo.get_rate_limit_bucket_for_update(key)
         if bucket is None or int(bucket.reset_at) <= now:
@@ -123,7 +132,10 @@ def update_user_profile(uid: str, *, username: str, bio: str) -> dict[str, Any]:
             session.flush()
             used = int(bucket.count)
 
-        repo.update_user_profile(user, username=normalized_username, bio=normalized_bio, updated_at=now)
+        try:
+            repo.update_user_profile(user, username=normalized_username, bio=normalized_bio, updated_at=now)
+        except IntegrityError as exc:
+            raise ValueError("PROFILE_USERNAME_TAKEN") from exc
         result = _user_dict_from_model(user)
         result.update(
             {
@@ -1569,6 +1581,27 @@ def _profile_change_bucket_key(uid: str, now: int) -> tuple[str, int]:
     else:
         next_month = datetime(year, month + 1, 1, tzinfo=timezone.utc)
     return f"profile_update:{uid}:{year:04d}{month:02d}", int(next_month.timestamp())
+
+
+def _profile_save_attempt_bucket_key(uid: str, now: int) -> tuple[str, int]:
+    dt = datetime.fromtimestamp(now, tz=timezone.utc)
+    next_day = datetime(dt.year, dt.month, dt.day, tzinfo=timezone.utc) + timedelta(days=1)
+    return f"profile_update_attempt:{uid}:{dt.year:04d}{dt.month:02d}{dt.day:02d}", int(next_day.timestamp())
+
+
+def _record_profile_save_attempt(uid: str, now: int) -> None:
+    daily_key, daily_reset_at = _profile_save_attempt_bucket_key(uid, now)
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        daily_bucket = repo.get_rate_limit_bucket_for_update(daily_key)
+        if daily_bucket is None or int(daily_bucket.reset_at) <= now:
+            repo.upsert_rate_limit_bucket(daily_key, 1, daily_reset_at)
+            return
+        if int(daily_bucket.count) >= PROFILE_SAVE_ATTEMPT_LIMIT_PER_DAY:
+            raise ValueError("PROFILE_DAILY_UPDATE_LIMIT")
+        daily_bucket.count += 1
+        daily_bucket.updated_at = now
+        session.flush()
 
 
 def _profile_change_status_from_bucket(bucket: Any, now: int, reset_at: int) -> dict[str, Any]:

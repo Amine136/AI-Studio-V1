@@ -1133,7 +1133,7 @@ def get_current_user_profile(request: Request, user: Dict[str, Any] = Depends(ve
 
 
 @app.patch("/me", tags=["Configuration"], summary="Update Current User Profile")
-@limiter.limit("10/minute")
+@limiter.limit("15/minute")
 def update_current_user_profile(
     request: Request,
     payload: UserProfileUpdateRequest,
@@ -1145,6 +1145,10 @@ def update_current_user_profile(
         code = str(exc)
         if code == "PROFILE_USERNAME_REQUIRED":
             raise HTTPException(status_code=400, detail="Username is required") from exc
+        if code == "PROFILE_USERNAME_TAKEN":
+            raise HTTPException(status_code=409, detail="Username is already taken") from exc
+        if code == "PROFILE_DAILY_UPDATE_LIMIT":
+            raise HTTPException(status_code=429, detail="Profile updates are limited to 10 per day") from exc
         if code == "PROFILE_UPDATE_LIMIT":
             raise HTTPException(status_code=429, detail="Profile changes are limited to 2 per month") from exc
         raise HTTPException(status_code=400, detail="Invalid profile update") from exc

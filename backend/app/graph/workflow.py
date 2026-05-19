@@ -21,6 +21,12 @@ def route_after_review(state: StudioState) -> str:
         return "continue_to_build"
     return "end"
 
+def route_after_analyze(state: StudioState) -> str:
+    """Stop immediately if intent analysis failed."""
+    if state.get("status") == "error":
+        return "stop_with_error"
+    return "continue_to_review"
+
 def build_studio_graph():
     """Constructs the executable StateGraph."""
     graph = StateGraph(StudioState)
@@ -38,7 +44,14 @@ def build_studio_graph():
     graph.add_edge(START, "ingest")
     graph.add_edge("ingest", "assign_models")
     graph.add_edge("assign_models", "analyze_intent")
-    graph.add_edge("analyze_intent", "prepare_ui")
+    graph.add_conditional_edges(
+        "analyze_intent",
+        route_after_analyze,
+        {
+            "stop_with_error": "deliver",
+            "continue_to_review": "prepare_ui",
+        }
+    )
 
     # 3. Conditional Logic
     graph.add_conditional_edges(

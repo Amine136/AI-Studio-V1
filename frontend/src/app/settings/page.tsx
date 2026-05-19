@@ -49,6 +49,7 @@ export default function SettingsPage() {
   const [profileSaveSuccess, setProfileSaveSuccess] = useState<string | null>(null);
   const [savingProfile, setSavingProfile] = useState(false);
   const [profileSaveCooldown, setProfileSaveCooldown] = useState(false);
+  const [profileDailyLimitReached, setProfileDailyLimitReached] = useState(false);
   const [notificationsError, setNotificationsError] = useState<string | null>(null);
   const [notificationsSuccess, setNotificationsSuccess] = useState<string | null>(null);
   const [savingNotifications, setSavingNotifications] = useState(false);
@@ -128,9 +129,10 @@ export default function SettingsPage() {
     "Google authentication is currently the only live user sign-in method. Update your Google profile if you want Vibecraft to reflect a new name or image.";
   const accentPalette = ACCENT_OPTIONS[accent];
   const isProfileDirty = editableUsername !== savedUsername || bio !== savedBio;
+  const profileSaveDisabled = !isProfileDirty || savingProfile || profileSaveCooldown || profileDailyLimitReached;
 
   async function handleProfileSave() {
-    if (!isProfileDirty || savingProfile || profileSaveCooldown || profileSaveInFlightRef.current) return;
+    if (profileSaveDisabled || profileSaveInFlightRef.current) return;
     profileSaveInFlightRef.current = true;
     setProfileSaveCooldown(true);
     setSavingProfile(true);
@@ -152,7 +154,11 @@ export default function SettingsPage() {
       );
       setProfileSaveSuccess("Profile updated.");
     } catch (error) {
-      setProfileSaveError(error instanceof Error ? error.message : "Failed to update profile.");
+      const message = error instanceof Error ? error.message : "Failed to update profile.";
+      if (message.toLowerCase().includes("limited to 10 per day")) {
+        setProfileDailyLimitReached(true);
+      }
+      setProfileSaveError(message);
     } finally {
       setSavingProfile(false);
       if (profileSaveCooldownTimerRef.current) {
@@ -339,12 +345,12 @@ export default function SettingsPage() {
               <button
                 type="button"
                 onClick={() => void handleProfileSave()}
-                disabled={!isProfileDirty || savingProfile || profileSaveCooldown}
+                disabled={profileSaveDisabled}
                 className={`rounded-sm bg-[linear-gradient(90deg,#adc6ff,#4d8eff)] px-8 py-3 text-sm font-bold tracking-wide text-[#002e6a] transition ${
-                  !isProfileDirty || savingProfile || profileSaveCooldown ? "cursor-not-allowed opacity-60" : "hover:brightness-110"
+                  profileSaveDisabled ? "cursor-not-allowed opacity-60" : "hover:brightness-110"
                 }`}
               >
-                {savingProfile ? "Saving..." : "Update Profile"}
+                {savingProfile ? "Saving..." : profileDailyLimitReached ? "Daily Limit Reached" : "Update Profile"}
               </button>
             </div>
           </div>

@@ -79,7 +79,7 @@ class Config:
             "SECURITY_DB_PATH",
             str(self.DATA_DIR / "security.sqlite3"),
         )
-        self.smart_analysis_fee = float(os.getenv("SMART_ANALYSIS_FEE", "0.05"))
+        self.smart_analysis_fee = float(os.getenv("SMART_ANALYSIS_FEE", "0.1"))
         self.pending_analyze_session_ttl_seconds = int(os.getenv("PENDING_ANALYZE_SESSION_TTL_SECONDS", str(15 * 60)))
         self.max_pending_analyze_sessions_per_user = int(os.getenv("MAX_PENDING_ANALYZE_SESSIONS_PER_USER", "2"))
         self.quick_generate_user_limit = int(os.getenv("QUICK_GENERATE_USER_LIMIT", "50"))
@@ -130,8 +130,22 @@ class Config:
 
         # System model settings used for the intent-analysis step.
         self.system_llm_provider = os.getenv("SYSTEM_LLM_PROVIDER", "google-gemini")
-        self.system_llm_model = os.getenv("SYSTEM_LLM_MODEL", "gemini-3.1-flash-lite-preview")
-        self.fallback_llm_model = os.getenv("FALLBACK_LLM_MODEL", "gemini-3-flash-preview")
+        self.system_llm_models = [
+            model.strip()
+            for model in os.getenv(
+                "SYSTEM_LLM_MODELS",
+                "gemini-3-flash-preview,gemini-3.1-flash-lite-preview",
+            ).split(",")
+            if model.strip()
+        ]
+        self.system_llm_model = os.getenv(
+            "SYSTEM_LLM_MODEL",
+            self.system_llm_models[0] if self.system_llm_models else "gemini-3-flash-preview",
+        )
+        self.fallback_llm_model = os.getenv(
+            "FALLBACK_LLM_MODEL",
+            self.system_llm_models[1] if len(self.system_llm_models) > 1 else "gemini-3.1-flash-lite-preview",
+        )
 
         # Authentication
         self.api_key = os.getenv("API_KEY")
