@@ -8,6 +8,8 @@ import re
 from datetime import datetime, timezone
 from typing import Any
 
+from sqlalchemy.exc import IntegrityError
+
 from app.config import settings
 from app.db.repositories import SecurityRepository
 from app.db.session import session_scope
@@ -111,6 +113,10 @@ def update_user_profile(uid: str, *, username: str, bio: str) -> dict[str, Any]:
             result.update(_profile_change_status_from_bucket(repo.get_rate_limit_bucket(key), now, reset_at))
             return result
 
+        existing_user = repo.get_user_by_username(normalized_username)
+        if existing_user is not None and str(existing_user.uid) != str(uid):
+            raise ValueError("PROFILE_USERNAME_TAKEN")
+
         bucket = repo.get_rate_limit_bucket_for_update(key)
         if bucket is None or int(bucket.reset_at) <= now:
             repo.upsert_rate_limit_bucket(key, 1, reset_at)
@@ -123,7 +129,10 @@ def update_user_profile(uid: str, *, username: str, bio: str) -> dict[str, Any]:
             session.flush()
             used = int(bucket.count)
 
-        repo.update_user_profile(user, username=normalized_username, bio=normalized_bio, updated_at=now)
+        try:
+            repo.update_user_profile(user, username=normalized_username, bio=normalized_bio, updated_at=now)
+        except IntegrityError as exc:
+            raise ValueError("PROFILE_USERNAME_TAKEN") from exc
         result = _user_dict_from_model(user)
         result.update(
             {

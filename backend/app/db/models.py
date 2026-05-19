@@ -10,6 +10,9 @@ from app.db.base import Base
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = (
+        Index("ux_users_username", "username", unique=True),
+    )
 
     uid: Mapped[str] = mapped_column(String(128), primary_key=True)
     email: Mapped[str] = mapped_column(String(320), default="", nullable=False)

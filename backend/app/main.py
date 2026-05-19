@@ -1145,6 +1145,8 @@ def update_current_user_profile(
         code = str(exc)
         if code == "PROFILE_USERNAME_REQUIRED":
             raise HTTPException(status_code=400, detail="Username is required") from exc
+        if code == "PROFILE_USERNAME_TAKEN":
+            raise HTTPException(status_code=409, detail="Username is already taken") from exc
         if code == "PROFILE_UPDATE_LIMIT":
             raise HTTPException(status_code=429, detail="Profile changes are limited to 2 per month") from exc
         raise HTTPException(status_code=400, detail="Invalid profile update") from exc
