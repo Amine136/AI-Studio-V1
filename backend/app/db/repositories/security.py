@@ -322,14 +322,6 @@ class SecurityRepository:
     def get_user(self, uid: str) -> User | None:
         return self.session.get(User, uid)
 
-    def get_user_by_username(self, username: str) -> User | None:
-        normalized = str(username or "").strip().lower()
-        if not normalized:
-            return None
-        return self.session.execute(
-            select(User).where(User.username == normalized)
-        ).scalar_one_or_none()
-
     def get_user_for_update(self, uid: str) -> User | None:
         return self.session.execute(
             select(User).where(User.uid == uid).with_for_update()
