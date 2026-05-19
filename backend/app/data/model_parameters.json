@@ -59,6 +59,18 @@
   }
 }, 
 {
+  "model_id": "gemini-3.5-flash",
+  "thinking_level": {
+    "type": "enum",
+    "values": ["minimal", "low", "medium", "high"],
+    "default": "high"
+  },
+  "media_resolution": {
+    "type": "enum",
+    "values": ["low", "medium", "high", "ultra_high"]
+  }
+}, 
+{
   "model_id": "gemini-3.1-flash-lite-preview",
   "temperature": {
     "type": "float",
