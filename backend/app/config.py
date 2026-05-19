@@ -79,7 +79,7 @@ class Config:
             "SECURITY_DB_PATH",
             str(self.DATA_DIR / "security.sqlite3"),
         )
-        self.smart_analysis_fee = float(os.getenv("SMART_ANALYSIS_FEE", "0.05"))
+        self.smart_analysis_fee = float(os.getenv("SMART_ANALYSIS_FEE", "0.1"))
         self.pending_analyze_session_ttl_seconds = int(os.getenv("PENDING_ANALYZE_SESSION_TTL_SECONDS", str(15 * 60)))
         self.max_pending_analyze_sessions_per_user = int(os.getenv("MAX_PENDING_ANALYZE_SESSIONS_PER_USER", "2"))
         self.quick_generate_user_limit = int(os.getenv("QUICK_GENERATE_USER_LIMIT", "50"))
@@ -116,8 +116,8 @@ class Config:
         self.upload_window_seconds = int(os.getenv("UPLOAD_WINDOW_SECONDS", str(15 * 60)))
         self.minimum_text_generation_cost = float(os.getenv("MINIMUM_TEXT_GENERATION_COST", "0.005"))
         self.minimum_image_generation_cost = float(os.getenv("MINIMUM_IMAGE_GENERATION_COST", "0.25"))
-        self.new_account_usage_cap_first_24h = float(os.getenv("NEW_ACCOUNT_USAGE_CAP_FIRST_24H", "1.0"))
-        self.daily_usage_cap = float(os.getenv("DAILY_USAGE_CAP", "5.0"))
+        self.new_account_usage_cap_first_24h = float(os.getenv("NEW_ACCOUNT_USAGE_CAP_FIRST_24H", "30.0"))
+        self.daily_usage_cap = float(os.getenv("DAILY_USAGE_CAP", "30.0"))
         self.max_redeemed_codes_per_day = int(os.getenv("MAX_REDEEMED_CODES_PER_DAY", "4"))
         self.max_redeemed_codes_per_week = int(os.getenv("MAX_REDEEMED_CODES_PER_WEEK", "10"))
         self.redeem_failed_attempt_limit = int(os.getenv("REDEEM_FAILED_ATTEMPT_LIMIT", "5"))
@@ -130,8 +130,22 @@ class Config:
 
         # System model settings used for the intent-analysis step.
         self.system_llm_provider = os.getenv("SYSTEM_LLM_PROVIDER", "google-gemini")
-        self.system_llm_model = os.getenv("SYSTEM_LLM_MODEL", "gemini-3.1-flash-lite-preview")
-        self.fallback_llm_model = os.getenv("FALLBACK_LLM_MODEL", "gemini-3-flash-preview")
+        self.system_llm_models = [
+            model.strip()
+            for model in os.getenv(
+                "SYSTEM_LLM_MODELS",
+                "gemini-3-flash-preview,gemini-3.1-flash-lite-preview",
+            ).split(",")
+            if model.strip()
+        ]
+        self.system_llm_model = os.getenv(
+            "SYSTEM_LLM_MODEL",
+            self.system_llm_models[0] if self.system_llm_models else "gemini-3-flash-preview",
+        )
+        self.fallback_llm_model = os.getenv(
+            "FALLBACK_LLM_MODEL",
+            self.system_llm_models[1] if len(self.system_llm_models) > 1 else "gemini-3.1-flash-lite-preview",
+        )
 
         # Authentication
         self.api_key = os.getenv("API_KEY")

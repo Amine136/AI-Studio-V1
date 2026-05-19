@@ -464,7 +464,7 @@ export default function Home() {
 
   // Model Catalog (with costs)
   const [modelCatalog, setModelCatalog] = useState<Record<string, Record<string, ModelCatalogEntry>>>({});
-  const [smartAnalysisFee, setSmartAnalysisFee] = useState<number>(0.05);
+  const [smartAnalysisFee, setSmartAnalysisFee] = useState<number>(0.1);
   const [inputImages, setInputImages] = useState<UploadedImageState[]>([]);
 
   // Current credit balance (synced from CreditsDisplay)
@@ -551,7 +551,7 @@ export default function Home() {
   const applyConfig = useCallback((cfg: SystemConfig) => {
     const nextCatalog = cfg.model_catalog || {};
     setModelCatalog(nextCatalog);
-    setSmartAnalysisFee(Number((cfg.smart_analysis_fee ?? 0.05).toFixed(2)));
+    setSmartAnalysisFee(Number((cfg.smart_analysis_fee ?? 0.1).toFixed(2)));
 
     const nextImageModels = Object.keys(nextCatalog.image || {});
     const nextCaptionModels = Object.keys(nextCatalog.caption || {});
@@ -1061,6 +1061,11 @@ export default function Home() {
         setPendingAnalyzeSessionId(response.meta?.analyze_session_id || null);
         setAnalyzeAbandonFee(response.meta?.analyze_abandon_fee || 0);
         setStep("REVIEW");
+      } else if (response.status === "error") {
+        showToast(
+          response.meta?.error_message ||
+            "This service is temporarily unavailable. Please try again later."
+        );
       }
     } catch (error) {
       if (captureSuspension(error)) {

@@ -343,7 +343,7 @@ class SystemConfig(BaseModel):
         description="Catalog of available AI models and their capabilities"
     )
     smart_analysis_fee: float = Field(
-        default=0.05,
+        default=0.1,
         description="Fixed fee charged when Smart mode starts the analysis/review step."
     )
     minimum_text_generation_cost: float = Field(

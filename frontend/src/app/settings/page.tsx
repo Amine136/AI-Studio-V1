@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { type CSSProperties, useEffect, useState } from "react";
+import { type CSSProperties, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../services/api";
@@ -13,6 +13,8 @@ import {
   persistAccentColor,
   readAccentColorFromCookie,
 } from "../../lib/accentColor";
+
+const PROFILE_SAVE_COOLDOWN_MS = 1200;
 
 function formatDate(value?: string | null) {
   if (!value) return "Not available";
@@ -46,6 +48,8 @@ export default function SettingsPage() {
   const [profileSaveError, setProfileSaveError] = useState<string | null>(null);
   const [profileSaveSuccess, setProfileSaveSuccess] = useState<string | null>(null);
   const [savingProfile, setSavingProfile] = useState(false);
+  const [profileSaveCooldown, setProfileSaveCooldown] = useState(false);
+  const [profileDailyLimitReached, setProfileDailyLimitReached] = useState(false);
   const [notificationsError, setNotificationsError] = useState<string | null>(null);
   const [notificationsSuccess, setNotificationsSuccess] = useState<string | null>(null);
   const [savingNotifications, setSavingNotifications] = useState(false);
@@ -53,6 +57,8 @@ export default function SettingsPage() {
   const [showDeactivateConfirm, setShowDeactivateConfirm] = useState(false);
   const [deactivatingAccount, setDeactivatingAccount] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const profileSaveInFlightRef = useRef(false);
+  const profileSaveCooldownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const displayName = user?.displayName || user?.email?.split("@")[0] || "Vibecraft User";
   const email = user?.email || "No email available";
   const photoUrl = user?.photoURL || null;
@@ -67,6 +73,14 @@ export default function SettingsPage() {
     const savedAccent = readAccentColorFromCookie();
     setAccent(savedAccent);
     applyAccentColorToDocument(savedAccent);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (profileSaveCooldownTimerRef.current) {
+        clearTimeout(profileSaveCooldownTimerRef.current);
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -115,9 +129,12 @@ export default function SettingsPage() {
     "Google authentication is currently the only live user sign-in method. Update your Google profile if you want Vibecraft to reflect a new name or image.";
   const accentPalette = ACCENT_OPTIONS[accent];
   const isProfileDirty = editableUsername !== savedUsername || bio !== savedBio;
+  const profileSaveDisabled = !isProfileDirty || savingProfile || profileSaveCooldown || profileDailyLimitReached;
 
   async function handleProfileSave() {
-    if (!isProfileDirty || savingProfile) return;
+    if (profileSaveDisabled || profileSaveInFlightRef.current) return;
+    profileSaveInFlightRef.current = true;
+    setProfileSaveCooldown(true);
     setSavingProfile(true);
     setProfileSaveError(null);
     setProfileSaveSuccess(null);
@@ -137,9 +154,20 @@ export default function SettingsPage() {
       );
       setProfileSaveSuccess("Profile updated.");
     } catch (error) {
-      setProfileSaveError(error instanceof Error ? error.message : "Failed to update profile.");
+      const message = error instanceof Error ? error.message : "Failed to update profile.";
+      if (message.toLowerCase().includes("limited to 10 per day")) {
+        setProfileDailyLimitReached(true);
+      }
+      setProfileSaveError(message);
     } finally {
       setSavingProfile(false);
+      if (profileSaveCooldownTimerRef.current) {
+        clearTimeout(profileSaveCooldownTimerRef.current);
+      }
+      profileSaveCooldownTimerRef.current = setTimeout(() => {
+        profileSaveInFlightRef.current = false;
+        setProfileSaveCooldown(false);
+      }, PROFILE_SAVE_COOLDOWN_MS);
     }
   }
 
@@ -317,12 +345,12 @@ export default function SettingsPage() {
               <button
                 type="button"
                 onClick={() => void handleProfileSave()}
-                disabled={!isProfileDirty || savingProfile}
+                disabled={profileSaveDisabled}
                 className={`rounded-sm bg-[linear-gradient(90deg,#adc6ff,#4d8eff)] px-8 py-3 text-sm font-bold tracking-wide text-[#002e6a] transition ${
-                  !isProfileDirty || savingProfile ? "cursor-not-allowed opacity-60" : "hover:brightness-110"
+                  profileSaveDisabled ? "cursor-not-allowed opacity-60" : "hover:brightness-110"
                 }`}
               >
-                {savingProfile ? "Saving..." : "Update Profile"}
+                {savingProfile ? "Saving..." : profileDailyLimitReached ? "Daily Limit Reached" : "Update Profile"}
               </button>
             </div>
           </div>

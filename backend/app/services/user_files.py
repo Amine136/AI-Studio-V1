@@ -43,7 +43,7 @@ def private_file_url(file_id: str) -> str:
 
 
 def generated_image_url_prefixes() -> list[str]:
-    prefixes: list[str] = []
+    prefixes: list[str] = ["/images/", "/generated-images/"]
     if settings.public_backend_base_url:
         prefixes.append(f"{settings.public_backend_base_url}/images/")
         prefixes.append(f"{settings.public_backend_base_url}/generated-images/")

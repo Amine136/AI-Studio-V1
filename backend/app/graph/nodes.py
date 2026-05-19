@@ -8,6 +8,7 @@ from app.core.state import StudioState, ContentSpec, OutputType
 from app.config import settings
 from app.graph.plugins import PLUGIN_REGISTRY
 from app.services.llm_client import generate_text, generate_text_payload
+from app.services.apikeymanager_client import ApiKeyManagerProxyError
 from app.services.image_client import generate_image_url, generate_image_and_text, generate_image_and_text_payload, generate_image_payload
 from app.services.sanitizer import sanitize_user_text
 from app.services.user_files import load_private_user_file, private_file_id_from_url
@@ -159,7 +160,11 @@ def analyze_intent(state: StudioState) -> StudioState:
     
     user_text = state["user_text"]
     input_images = state.get("input_images") or []
-    system_llm_model = settings.system_llm_model 
+    system_llm_models = list(getattr(settings, "system_llm_models", None) or [])
+    if not system_llm_models:
+        system_llm_models = [settings.system_llm_model]
+        if settings.fallback_llm_model and settings.fallback_llm_model not in system_llm_models:
+            system_llm_models.append(settings.fallback_llm_model)
     
     # We still pass the options so Gemini knows *what* values to pick
     vocab_str = json.dumps(settings.field_options, indent=2)
@@ -171,24 +176,43 @@ def analyze_intent(state: StudioState) -> StudioState:
     else:
         prompt = f"Analyze: {user_text}. Options: {vocab_str}."
     
-    logger.info(f"   ├─ Using model: {system_llm_model}")
-    
-    # CALL WITH SCHEMA ENFORCEMENT
-    raw_response = generate_text(
-        settings.system_llm_provider, 
-        system_llm_model, 
-        prompt, 
-        response_schema=IntentAnalysis,
-        input_images=input_images,
-    )
-    
-    try:
-        clean_json = raw_response.replace("```json", "").replace("```", "").strip()
-        extracted_data = json.loads(clean_json)
-        logger.info("   └─ ✅ Intent extracted successfully")
-    except Exception as e:
-        logger.warning(f"   └─ ⚠️ JSON Parse Error: {e}")
-        extracted_data = {}
+    extracted_data: dict[str, Any] | None = None
+    last_error: Exception | None = None
+    for index, system_llm_model in enumerate(system_llm_models):
+        logger.info(f"   ├─ Using analyze model {index + 1}/{len(system_llm_models)}: {system_llm_model}")
+        try:
+            raw_response = generate_text(
+                settings.system_llm_provider,
+                system_llm_model,
+                prompt,
+                response_schema=IntentAnalysis,
+                input_images=input_images,
+            )
+            clean_json = raw_response.replace("```json", "").replace("```", "").strip()
+            parsed = json.loads(clean_json)
+            if not isinstance(parsed, dict) or not parsed:
+                raise ValueError("Analyze model returned empty intent data")
+            extracted_data = parsed
+            logger.info(f"   └─ ✅ Intent extracted successfully with {system_llm_model}")
+            break
+        except Exception as exc:
+            last_error = exc
+            logger.warning(f"   ├─ ⚠️ Analyze model failed: {system_llm_model}: {exc}")
+
+    if extracted_data is None:
+        logger.error("   └─ ❌ All analyze models failed")
+        return {
+            "status": "error",
+            "failure_reason": "analyze_models_unavailable",
+            "error_message": "This service is temporarily unavailable. Please try again later.",
+            "final_response": {
+                "meta": {
+                    "failure_reason": "analyze_models_unavailable",
+                    "error_message": "This service is temporarily unavailable. Please try again later.",
+                    "provider_error": last_error.to_metadata() if isinstance(last_error, ApiKeyManagerProxyError) else None,
+                },
+            },
+        }
 
     return {"extracted_intent": extracted_data}
 
