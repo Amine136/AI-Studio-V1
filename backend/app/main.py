@@ -561,6 +561,11 @@ def cleanup_uploaded_images_on_startup():
     summary="Get Generated Image",
     description="Retrieve a generated output image by filename. Only generated image filenames are accepted."
 )
+@app.get(
+    "/generated-images/{filename}",
+    tags=["Generation"],
+    include_in_schema=False
+)
 def get_image(filename: str):
     """Serves generated images with filename validation."""
     if not SAFE_GENERATED_FILENAME.match(filename):
@@ -1841,16 +1846,9 @@ def generate_content(request: Request, payload: GenerateRequest, user: Dict[str,
                         ),
                     ) from exc
                 if str(exc) == "USAGE_CAP_REACHED":
-                    user_created_at = int((current_profile or {}).get("createdAt") or 0)
-                    now = int(time.time())
-                    if user_created_at and now < user_created_at + (24 * 60 * 60):
-                        raise HTTPException(
-                            status_code=429,
-                            detail="This new account reached its first-24-hours usage limit of 1 credit. Please wait until the first day passes.",
-                        ) from exc
                     raise HTTPException(
                         status_code=429,
-                        detail="This account reached its daily usage limit of 5 credits. Please try again later.",
+                        detail="This account reached its daily usage limit of 30 credits. Please try again later.",
                     ) from exc
                 if str(exc) == "INSUFFICIENT_CREDITS":
                     raise HTTPException(status_code=402, detail="Insufficient credits") from exc
@@ -1897,16 +1895,9 @@ def generate_content(request: Request, payload: GenerateRequest, user: Dict[str,
                 generation_job_id = str(reserve_result["job"]["id"])
             except ValueError as exc:
                 if str(exc) == "USAGE_CAP_REACHED":
-                    user_created_at = int((current_profile or {}).get("createdAt") or 0)
-                    now = int(time.time())
-                    if user_created_at and now < user_created_at + (24 * 60 * 60):
-                        raise HTTPException(
-                            status_code=429,
-                            detail="This new account reached its first-24-hours usage limit of 1 credit. Please wait until the first day passes.",
-                        ) from exc
                     raise HTTPException(
                         status_code=429,
-                        detail="This account reached its daily usage limit of 5 credits. Please try again later.",
+                        detail="This account reached its daily usage limit of 30 credits. Please try again later.",
                     ) from exc
                 if str(exc) == "INSUFFICIENT_CREDITS":
                     raise HTTPException(
@@ -2062,16 +2053,9 @@ def generate_content(request: Request, payload: GenerateRequest, user: Dict[str,
                 ),
             ) from exc
         if str(exc) == "USAGE_CAP_REACHED":
-            user_created_at = int((user.get("profile") or {}).get("createdAt") or 0)
-            now = int(time.time())
-            if user_created_at and now < user_created_at + (24 * 60 * 60):
-                raise HTTPException(
-                    status_code=429,
-                    detail="This new account reached its first-24-hours usage limit of 1 credit. Please wait until the first day passes.",
-                ) from exc
             raise HTTPException(
                 status_code=429,
-                detail="This account reached its daily usage limit of 5 credits. Please try again later.",
+                detail="This account reached its daily usage limit of 30 credits. Please try again later.",
             ) from exc
         if str(exc) == "INSUFFICIENT_CREDITS":
             raise HTTPException(status_code=402, detail="Insufficient credits") from exc

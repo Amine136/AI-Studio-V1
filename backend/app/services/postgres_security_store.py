@@ -1216,9 +1216,6 @@ def _enforce_pending_analyze_session_limit(repo: SecurityRepository, uid: str, *
 
 
 def _current_usage_cap_minor(user_created_at: int, *, now: int) -> tuple[int, int]:
-    first_24h_window_end = int(user_created_at) + (24 * 60 * 60)
-    if now < first_24h_window_end:
-        return _credits_to_minor(settings.new_account_usage_cap_first_24h), int(user_created_at)
     return _credits_to_minor(settings.daily_usage_cap), now - (24 * 60 * 60)
 
 

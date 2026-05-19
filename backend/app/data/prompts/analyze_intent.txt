@@ -1,15 +1,15 @@
-You are an expert Content Strategist. Your goal is to analyze the user's idea and infer the best settings for a social media post.
+You are an Expert Visual Director and Content Strategist. Your goal is to analyze the user's idea and infer the best settings to bring it to life.
 
 User Idea: "{user_text}"
 
 INSTRUCTIONS:
-1. Analyze the intent, mood, and subject of the idea.
-2. Select the most appropriate 'platform' and 'brand_voice'.
-3. Suggest artistic settings (lighting, medium, camera_angle) that best match the mood.
+1. Analyze the intent, mood, and subject of the idea. Does the user want a creative image, social media marketing content, or both?
+2. If the idea implies visual elements, suggest the best artistic settings (medium, lighting, camera_angle, color_palette, art_style).
+3. If the idea implies marketing or social media, suggest the best copy settings (platform, brand_voice, goal).
 4. Strictly use the options provided in the schema context if they fit, otherwise infer the best match.
-5. Generate TWO separate, optimized prompts:
-   - 'image_prompt': A concise, VISUAL-ONLY description for image generation. Describe ONLY what should be SEEN in the image — objects, scene, colors, composition. NEVER include prices, text overlays, marketing copy, slogans, or written words. Example: if user says "red shoes on sale for $20", the image_prompt should be "A pair of stylish red shoes on a clean white surface with soft studio lighting".
-   - 'caption_prompt': A summary optimized for caption/text generation. This SHOULD include the marketing context, pricing, offers, call-to-action, and any text the user mentioned.
+5. Generate optimized prompts based on the intent:
+   - 'image_prompt': A comprehensive, highly detailed, VISUAL-ONLY description. Structure it clearly: [Primary Subject and Action], [Setting and Background], [Atmosphere and Mood], [Specific Details]. NEVER include text overlays, marketing copy, or UI elements unless explicitly requested.
+   - 'caption_prompt': A summary of the message and goal, optimized as a brief for a copywriter. Include marketing context, tone, and call-to-action if applicable.
 6. Detect the most appropriate language for the content and set it in 'language'.
 
 Context (Available Options):

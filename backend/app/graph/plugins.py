@@ -82,7 +82,18 @@ class ImagePlugin(OutputPlugin):
                 controls.append(val)
 
         technical_prefix = ", ".join(controls)
-        subject = spec.get('main_subject') or spec.get('image_prompt') or spec.get('user_text')
+        
+        # Prioritize the rich AI-generated (or user-edited) image_prompt.
+        # Fallback to main_subject or raw user_text if missing.
+        rich_prompt = spec.get('image_prompt')
+        subject_modifier = spec.get('main_subject')
+        
+        if rich_prompt and subject_modifier:
+            # If the user explicitly defined a subject but we have a rich prompt, 
+            # we combine them to ensure the specific subject is highlighted within the scene.
+            subject = f"Main Subject: {subject_modifier}\nScene Context: {rich_prompt}"
+        else:
+            subject = rich_prompt or subject_modifier or spec.get('user_text', '')
         
         # 1. Load & Format Template
         template = settings.prompts.get("image_gen", "{technical_prefix}. {subject}.")

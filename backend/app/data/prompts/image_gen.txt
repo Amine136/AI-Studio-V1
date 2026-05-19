@@ -1,1 +1,6 @@
-{technical_prefix}. {subject}.
+Please generate an image based on the following detailed description:
+
+Description: {subject}
+
+Strictly adhere to the following technical and stylistic constraints to refine the final look:
+Style & Parameters: {technical_prefix}
