@@ -23,8 +23,6 @@ CREATE_FLOW_TEXT_PARAM_KEYS = {
     "maxOutputTokens",
     "thinkingBudget",
     "thinkingLevel",
-    "presencePenalty",
-    "frequencyPenalty",
     "mediaResolution",
     "promptCacheKey",
 }
@@ -305,24 +303,14 @@ class Config:
         if isinstance(top_p, dict) and "recommendedDefault" not in top_p and "default" in top_p:
             top_p["recommendedDefault"] = top_p["default"]
 
-        presence_penalty = normalized_schema.get("presencePenalty")
-        if isinstance(presence_penalty, dict):
-            presence_penalty["recommendedDefault"] = 0
-
-        frequency_penalty = normalized_schema.get("frequencyPenalty")
-        if isinstance(frequency_penalty, dict):
-            frequency_penalty["recommendedDefault"] = 0
+        normalized_schema.pop("presencePenalty", None)
+        normalized_schema.pop("frequencyPenalty", None)
 
         thinking_level = normalized_schema.get("thinkingLevel")
         if isinstance(thinking_level, dict):
             thinking_level["recommendedDefault"] = "low"
 
         normalized_schema.pop("candidateCount", None)
-
-        # Gemini image-generation models reject penalty fields in live upstream requests.
-        if "gemini" in normalized_name and "image" in normalized_name:
-            normalized_schema.pop("presencePenalty", None)
-            normalized_schema.pop("frequencyPenalty", None)
 
         # Imagen through the Google AI Gemini API rejects these Vertex-only controls.
         if "imagen" in normalized_name:
