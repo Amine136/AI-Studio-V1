@@ -27,6 +27,7 @@ from app.services.admin_auth import AdminAuthRateLimitError, authenticate_admin,
 from app.services.apikeymanager_client import ApiKeyManagerProxyError, check_apikeymanager_ready
 from app.services.auth import verify_admin_csrf, verify_admin_session, verify_api_key, verify_firebase_user
 from app.services.catalog_store import catalog_store
+from app.services.model_visibility import filter_catalog, list_model_visibility, update_model_visibility
 from app.services.chat_service import assemble_plain_chat_context, list_plain_chat_models, minimum_required_credits_for_plain_chat, normalize_plain_chat_system, prepare_plain_chat_conversation_request, preview_plain_chat_prompt, send_plain_chat, serialize_plain_chat_parts
 from app.services.security_backend import (
     add_history_entry,
@@ -655,7 +656,7 @@ def get_system_config(request: Request, _=Depends(verify_api_key)):
     - **field_options**: Available options for platforms, styles, lighting, etc.
     - **model_catalog**: Available AI models for generation tasks
     """
-    model_catalog = _catalog_with_parameter_schemas(catalog_store.get_catalog())
+    model_catalog = _catalog_with_parameter_schemas(filter_catalog(catalog_store.get_catalog()))
     return SystemConfig(
         field_options=settings.field_options,
         model_catalog=model_catalog,
@@ -671,7 +672,7 @@ def get_system_config(request: Request, _=Depends(verify_api_key)):
     response_model=PlainChatModelListResponse,
     tags=["Chat"],
     summary="List Plain Chat Models",
-    description="Return chat-capable text models for the dedicated plain-chat flow.",
+    description="Return available catalog models for the dedicated plain-chat flow.",
 )
 @limiter.limit("30/minute")
 def list_plain_chat_model_options(request: Request, user: Dict[str, Any] = Depends(verify_firebase_user)):
@@ -1063,6 +1064,46 @@ def catalog_updated_webhook(
         "version": result["version"],
         "updated_at": result["updated_at"],
     }
+
+
+@app.get("/admin/model-visibility", tags=["Configuration"], summary="Get Model Visibility For Admin")
+@limiter.limit("20/minute")
+def admin_get_model_visibility(request: Request, _admin: Dict[str, Any] = Depends(verify_admin_session)):
+    del request
+    catalog = catalog_store.get_catalog()
+    return list_model_visibility(catalog)
+
+
+@app.patch("/admin/model-visibility", tags=["Configuration"], summary="Update Model Visibility For Admin")
+@limiter.limit("20/minute")
+def admin_update_model_visibility(
+    request: Request,
+    payload: Dict[str, Any],
+    admin: Dict[str, Any] = Depends(verify_admin_session),
+    _csrf: None = Depends(verify_admin_csrf),
+):
+    del request
+    disabled_model_ids = payload.get("disabledModelIds", [])
+    disabled_provider_ids = payload.get("disabledProviderIds", [])
+    if not isinstance(disabled_model_ids, list):
+        raise HTTPException(status_code=400, detail="disabledModelIds must be a list")
+    if not isinstance(disabled_provider_ids, list):
+        raise HTTPException(status_code=400, detail="disabledProviderIds must be a list")
+    update_model_visibility(disabled_model_ids, disabled_provider_ids)
+    catalog = catalog_store.get_catalog()
+    add_admin_audit_log(
+        admin_uid=admin.get("adminId"),
+        admin_email=admin.get("email") or "admin",
+        action="model_visibility_update",
+        target_type="model_visibility",
+        target_id="global",
+        reason="Updated model availability from admin panel",
+        metadata={
+            "disabledModelIds": disabled_model_ids,
+            "disabledProviderIds": disabled_provider_ids,
+        },
+    )
+    return list_model_visibility(catalog)
 
 
 @app.post("/admin-auth/login", response_model=AdminSessionResponse, tags=["Admin Authentication"], summary="Login To Admin Portal")

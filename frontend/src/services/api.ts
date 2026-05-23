@@ -7,6 +7,7 @@ import {
   AdminCreditCodeBatchListResponse,
   AdminCreditCodeListResponse,
   AdminGenerationJobListResponse,
+  AdminModelVisibilityResponse,
   AdminUserListResponse,
   DashboardNewsListResponse,
   DashboardNewsItem,
@@ -315,6 +316,16 @@ export const api = {
 
   getAdminUsers: async (params?: { q?: string; limit?: number }): Promise<AdminUserListResponse> => {
     const res = await client.get('/admin/users', { params });
+    return res.data;
+  },
+
+  getAdminModelVisibility: async (): Promise<AdminModelVisibilityResponse> => {
+    const res = await client.get('/admin/model-visibility');
+    return res.data;
+  },
+
+  updateAdminModelVisibility: async (disabledModelIds: string[], disabledProviderIds: string[]): Promise<AdminModelVisibilityResponse> => {
+    const res = await client.patch('/admin/model-visibility', { disabledModelIds, disabledProviderIds });
     return res.data;
   },
 

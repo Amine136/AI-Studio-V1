@@ -196,6 +196,7 @@ export default function AdminPage() {
                             <QuickAccessButton label="Users" onClick={() => router.push("/users")} icon="users" />
                             <QuickAccessButton label="Codes" onClick={() => router.push("/codes")} icon="codes" />
                             <QuickAccessButton label="News" onClick={() => router.push("/news")} icon="news" />
+                            <QuickAccessButton label="Models" onClick={() => router.push("/models")} icon="models" />
                             <QuickAccessButton label="Logs" onClick={() => router.push("/logs")} icon="logs" />
                             <QuickAccessButton label="Warnings" onClick={() => router.push("/warnings")} icon="warnings" />
                         </div>
@@ -429,7 +430,7 @@ function QuickAccessButton({
 }: {
     label: string;
     onClick: () => void;
-    icon: "users" | "codes" | "news" | "logs" | "warnings";
+    icon: "users" | "codes" | "news" | "models" | "logs" | "warnings";
 }) {
     return (
         <button
@@ -456,6 +457,15 @@ function QuickAccessButton({
                         <path d="M8 9h8" />
                         <path d="M8 13h8" />
                         <path d="M8 17h5" />
+                    </svg>
+                ) : icon === "models" ? (
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M4 7h16" />
+                        <path d="M4 12h16" />
+                        <path d="M4 17h16" />
+                        <circle cx="8" cy="7" r="2" />
+                        <circle cx="16" cy="12" r="2" />
+                        <circle cx="10" cy="17" r="2" />
                     </svg>
                 ) : icon === "warnings" ? (
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

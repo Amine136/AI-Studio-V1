@@ -6,7 +6,8 @@ from urllib.parse import urlparse
 
 from app.config import settings
 from app.core.schema import ChatMessage, ChatMessagePart, PlainChatOptions, PlainChatRequest
-from app.services.apikeymanager_client import generate_chat_via_proxy
+from app.services.apikeymanager_client import generate_chat_via_proxy, generate_image_payload_via_proxy
+from app.services.model_visibility import is_model_enabled
 from app.services.user_files import load_private_user_file, private_file_id_from_url, private_file_url_prefix
 
 MAX_CHAT_INPUT_IMAGES = 4
@@ -38,7 +39,7 @@ def list_plain_chat_models() -> list[dict[str, Any]]:
         if not isinstance(task_models, dict):
             continue
         for model_name, model_entry in task_models.items():
-            if not isinstance(model_entry, dict) or not _is_text_capable_model(model_entry):
+            if not isinstance(model_entry, dict) or not is_model_enabled(model_name, model_entry):
                 continue
             models[model_name] = {
                 "id": model_name,
@@ -200,7 +201,7 @@ def resolve_plain_chat_model(model_name: str) -> tuple[str, dict[str, Any]]:
         if not isinstance(task_models, dict):
             continue
         model_entry = task_models.get(requested)
-        if isinstance(model_entry, dict) and _is_text_capable_model(model_entry):
+        if isinstance(model_entry, dict) and is_model_enabled(requested, model_entry):
             return task_name, model_entry
 
     raise ValueError("CHAT_MODEL_NOT_FOUND")
@@ -216,22 +217,54 @@ def send_plain_chat(payload: PlainChatRequest, *, user_uid: str) -> dict[str, An
     if not model_id:
         raise ValueError("CHAT_MODEL_ID_MISSING")
 
+    if _is_image_only_output_model(model_entry):
+        one_shot_payload = PlainChatRequest(
+            model=payload.model,
+            messages=[payload.messages[-1]] if payload.messages else [],
+            options=payload.options,
+        )
+        _validate_plain_chat_request(one_shot_payload, model_entry)
+        request_options = _normalized_options(
+            one_shot_payload.options,
+            provider=provider,
+            model_id=model_id,
+            model_entry=model_entry,
+            messages=one_shot_payload.messages,
+        )
+        image_result = generate_image_payload_via_proxy(
+            provider,
+            model_id,
+            preview_plain_chat_prompt(one_shot_payload),
+            owner_uid=user_uid,
+            options=request_options,
+        )
+        assistant_parts: list[dict[str, Any]] = []
+        if str(image_result.get("text") or "").strip():
+            assistant_parts.append({"type": "text", "text": str(image_result.get("text"))})
+        if str(image_result.get("image") or "").strip():
+            assistant_parts.append({"type": "image_url", "url": str(image_result.get("image"))})
+        return {
+            **image_result,
+            "message": {"role": "assistant", "parts": assistant_parts},
+        }
+
     _validate_plain_chat_request(payload, model_entry)
 
-    request_payload: dict[str, Any] = {
-        "model": model_id,
-        "provider": provider,
-        "system": _system_parts(payload.system, user_uid=user_uid),
-        "messages": _serialize_request_messages(payload.messages, user_uid=user_uid),
-    }
-
-    request_payload["options"] = _normalized_options(
+    request_options = _normalized_options(
         payload.options,
         provider=provider,
         model_id=model_id,
         model_entry=model_entry,
         messages=payload.messages,
     )
+
+    request_payload: dict[str, Any] = {
+        "model": model_id,
+        "provider": provider,
+        "system": _system_parts(payload.system, user_uid=user_uid),
+        "messages": _serialize_request_messages(payload.messages, user_uid=user_uid),
+        "options": request_options,
+    }
 
     result = generate_chat_via_proxy(request_payload, owner_uid=user_uid)
     result["message"] = _sanitize_provider_message(result.get("message"))
@@ -425,14 +458,14 @@ def _load_private_uploaded_image_data(file_id: str, *, user_uid: str) -> tuple[s
     return str(file_record["mime_type"]), base64.b64encode(image_bytes).decode("ascii")
 
 
-def _is_text_capable_model(model_entry: dict[str, Any]) -> bool:
-    output_modalities = set(model_entry.get("output_modalities") or [])
-    return not output_modalities or "TEXT" in output_modalities
-
-
 def _supports_image_input(model_entry: dict[str, Any]) -> bool:
     input_modalities = set(model_entry.get("input_modalities") or [])
     return "IMAGE" in input_modalities or model_entry.get("type") == "gemini-image"
+
+
+def _is_image_only_output_model(model_entry: dict[str, Any]) -> bool:
+    output_modalities = set(model_entry.get("output_modalities") or [])
+    return "IMAGE" in output_modalities and "TEXT" not in output_modalities
 
 
 def _parse_billing_float(value: Any) -> float | None:

@@ -167,6 +167,40 @@ export interface PlainChatTurnMeta {
   [key: string]: any;
 }
 
+export interface AdminModelVisibilityItem {
+  id: string;
+  displayName: string;
+  provider: string;
+  description?: string;
+  inputModalities: string[];
+  outputModalities: string[];
+  enabled: boolean;
+  disabledByProvider?: boolean;
+}
+
+export interface AdminModelVisibilityProvider {
+  id: string;
+  displayName: string;
+  total: number;
+  enabled: boolean;
+  disabled: number;
+}
+
+export interface AdminModelVisibilityTask {
+  task: string;
+  models: AdminModelVisibilityItem[];
+}
+
+export interface AdminModelVisibilityResponse {
+  tasks: AdminModelVisibilityTask[];
+  providers: AdminModelVisibilityProvider[];
+  disabledModelIds: string[];
+  disabledProviderIds: string[];
+  total: number;
+  enabled: number;
+  disabled: number;
+}
+
 export interface CurrentUserProfile {
   uid: string;
   email: string;
