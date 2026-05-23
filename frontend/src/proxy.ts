@@ -7,6 +7,7 @@ const ADMIN_REDIRECTS = new Map<string, string>([
   ["/", "/admin"],
   ["/login", "/admin/login"],
   ["/news", "/admin/news"],
+  ["/models", "/admin/models"],
   ["/users", "/admin/users"],
   ["/codes", "/admin/codes"],
   ["/logs", "/admin/logs"],

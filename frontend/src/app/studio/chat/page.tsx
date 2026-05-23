@@ -1794,21 +1794,13 @@ export default function StudioChatPage() {
                   </Link>
                 </div>
                 <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:gap-6">
-                  <div className="hidden items-center gap-6 sm:flex">
-                    <span className="cursor-default text-[13px] font-normal text-[rgba(255,255,255,0.35)]">
-                      Documentation
-                    </span>
-                    <span className="cursor-default text-[13px] font-normal text-[rgba(255,255,255,0.35)]">
-                      System Status
-                    </span>
-                  </div>
                   <button
                     type="button"
                     onClick={() => void handleStartChat()}
                     disabled={!visibleSelectedModelOption || loadingConfig || loadingReply || insufficientSelectedModelCredits}
                     className="flex w-full items-center justify-center gap-2 rounded-[5px] bg-gradient-to-br from-[#adc6ff] to-[#4d8eff] px-8 py-3 font-headline text-sm font-bold text-[#002e6a] shadow-[0_0_24px_rgba(77,142,255,0.18)] transition-all duration-300 hover:scale-105 hover:shadow-[0_0_32px_rgba(77,142,255,0.28)] active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
                   >
-                    <span>{loadingReply ? "Starting…" : insufficientSelectedModelCredits ? `Need ${selectedModelMinimumCost.toFixed(2)} Credits` : "Next Step"}</span>
+                    <span>{loadingReply ? "Starting…" : insufficientSelectedModelCredits ? `Need ${selectedModelMinimumCost.toFixed(2)} Credits` : "Start Chatting"}</span>
                     <span className="material-symbols-outlined text-sm">chevron_right</span>
                   </button>
                 </div>

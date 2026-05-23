@@ -61,6 +61,9 @@ export default function AdminSubpage({ title, description, children }: AdminSubp
                         <button onClick={() => router.push("/news")} className="btn-secondary px-4 py-2 text-sm">
                             News
                         </button>
+                        <button onClick={() => router.push("/models")} className="btn-secondary px-4 py-2 text-sm">
+                            Models
+                        </button>
                         <button onClick={() => router.push("/warnings")} className="btn-secondary px-4 py-2 text-sm">
                             Warnings
                         </button>

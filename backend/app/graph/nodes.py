@@ -6,6 +6,7 @@ from typing import Dict, Any, List
 
 from app.core.state import StudioState, ContentSpec, OutputType
 from app.config import settings
+from app.services.model_visibility import filter_catalog
 from app.graph.plugins import PLUGIN_REGISTRY
 from app.services.llm_client import generate_text, generate_text_payload
 from app.services.apikeymanager_client import ApiKeyManagerProxyError
@@ -134,7 +135,7 @@ def assign_models(state: StudioState) -> StudioState:
         user_choice = user_prefs.get(f"{task}_model") or user_prefs.get(task)
         
         # 2. Get Valid Models (Safe Access)
-        valid_models = settings.model_catalog.get(task, {})
+        valid_models = filter_catalog(settings.model_catalog).get(task, {})
         
         # 3. Assign
         if user_choice and user_choice in valid_models:
