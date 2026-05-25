@@ -32,6 +32,12 @@ MODEL_PARAMETER_OPTION_KEY_MAP = {
 }
 
 
+def _normalize_modalities(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item).strip().upper() for item in value if str(item).strip()]
+
+
 def list_plain_chat_models() -> list[dict[str, Any]]:
     models: dict[str, dict[str, Any]] = {}
 
@@ -47,6 +53,8 @@ def list_plain_chat_models() -> list[dict[str, Any]]:
                 "description": str(model_entry.get("description") or ""),
                 "provider": str(model_entry.get("provider") or ""),
                 "supportsImageInput": _supports_image_input(model_entry),
+                "inputModalities": _normalize_modalities(model_entry.get("input_modalities")),
+                "outputModalities": _normalize_modalities(model_entry.get("output_modalities")),
                 "parameterSchema": settings.get_model_parameter_schema(model_name, model_entry),
                 "pricing": _derive_plain_chat_model_pricing_summary(model_entry),
             }
