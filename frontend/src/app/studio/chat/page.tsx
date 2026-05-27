@@ -39,6 +39,8 @@ interface ChatModelOption {
   description?: string;
   provider: string;
   supportsImageInput: boolean;
+  inputModalities: string[];
+  outputModalities: string[];
   parameterSchema: Record<string, PlainChatParameterSchemaEntry>;
   pricing?: ModelPricingSummary;
 }
@@ -345,9 +347,32 @@ function toChatModelOption(model: PlainChatModelItem): ChatModelOption {
     description: model.description,
     provider: toProviderLabel(model.provider),
     supportsImageInput: Boolean(model.supportsImageInput),
+    inputModalities: Array.isArray(model.inputModalities) ? model.inputModalities : [],
+    outputModalities: Array.isArray(model.outputModalities) ? model.outputModalities : [],
     parameterSchema: model.parameterSchema || {},
     pricing: model.pricing,
   };
+}
+
+function isOneShotImageModel(model: ChatModelOption | null): boolean {
+  if (!model) return false;
+  const outputModalities = model.outputModalities.map((value) => value.toUpperCase());
+  return outputModalities.includes("IMAGE") && !outputModalities.includes("TEXT");
+}
+
+function getModelFeatureLabels(model: ChatModelOption): string[] {
+  const inputModalities = model.inputModalities.map((value) => value.toUpperCase());
+  const outputModalities = model.outputModalities.map((value) => value.toUpperCase());
+  const labels: string[] = [];
+
+  if (inputModalities.includes("TEXT") && inputModalities.includes("IMAGE")) {
+    labels.push("Multimodal");
+  }
+
+  if (outputModalities.includes("IMAGE")) {
+    labels.push("Image generation");
+  }
+  return labels;
 }
 
 function getChatParamPricingHint(model: ChatModelOption | null, key: string) {
@@ -1038,6 +1063,8 @@ export default function StudioChatPage() {
     [lockedModel, parameterValues],
   );
 
+  const lockedModelIsOneShotImage = isOneShotImageModel(lockedModel);
+
   const insufficientSelectedModelCredits = currentCredits !== null && currentCredits < selectedModelMinimumCost;
   const insufficientLockedModelMinimumCredits = currentCredits !== null && currentCredits < lockedModelMinimumCost;
   const insufficientLockedModelExpectedCredits = currentCredits !== null && currentCredits < lockedModelExpectedCost;
@@ -1612,36 +1639,32 @@ export default function StudioChatPage() {
   return (
     <section className={renderPhase === "chat" ? "h-dvh overflow-hidden" : "min-h-[calc(100vh-4rem)] overflow-x-hidden px-4 py-4 sm:px-6 sm:py-8 lg:px-10"}>
       {renderPhase === "select" ? (
-        <div className="relative mx-auto flex min-h-[calc(100vh-6rem)] max-w-[1600px] flex-col overflow-hidden rounded-[1.25rem] border border-white/8 bg-[#0c1324] shadow-[0_24px_80px_rgba(0,0,0,0.28)] sm:min-h-[calc(100vh-8rem)] sm:rounded-[1.5rem]">
-          <div className="pointer-events-none absolute right-[-8rem] top-16 h-[26rem] w-[26rem] rounded-full bg-[#adc6ff]/5 blur-[120px]" />
-          <div className="pointer-events-none absolute bottom-0 left-[18%] h-[18rem] w-[18rem] rounded-full bg-[#d0bcff]/5 blur-[100px]" />
+        <div className="relative mx-auto flex min-h-[calc(100vh-6rem)] max-w-[1600px] flex-col overflow-hidden rounded-2xl border border-[#424754]/40 bg-[#051424] shadow-[0_24px_80px_rgba(0,0,0,0.28)] sm:min-h-[calc(100vh-8rem)]">
+          <div className="pointer-events-none absolute right-[-10rem] top-[-8rem] h-[34rem] w-[34rem] rounded-full bg-[#adc6ff]/10 blur-[120px]" />
+          <div className="pointer-events-none absolute bottom-[-10rem] left-[20%] h-[24rem] w-[24rem] rounded-full bg-[#4d8eff]/5 blur-[100px]" />
 
-          <div className="flex flex-1 overflow-hidden">
-            <aside className="hidden w-72 flex-shrink-0 border-r border-white/6 bg-slate-900/35 px-4 py-8 backdrop-blur-xl lg:flex lg:flex-col">
-              <div className="mb-10 px-2">
-                <h1 className="bg-gradient-to-br from-blue-200 to-blue-500 bg-clip-text font-headline text-xl font-bold text-transparent">
-                  Engineered AI
-                </h1>
-                <p className="mt-1 font-headline text-[10px] uppercase tracking-widest text-on-surface opacity-60">
-                  Provider Selection
-                </p>
+          <div className="relative z-10 flex flex-1 flex-col px-4 py-5 sm:px-6 sm:py-7 lg:px-8">
+            <section className="mb-10">
+              <div className="mb-6 flex flex-col gap-2">
+                <p className="font-mono text-[11px] font-medium uppercase tracking-[0.18em] text-[#8c909f]">Plain Chat</p>
+                <h1 className="font-headline text-3xl font-bold tracking-tight text-[#d4e4fa] sm:text-4xl">Engineered AI</h1>
               </div>
 
-              <div className="mb-6 px-2 text-on-surface-variant transition-colors focus-within:text-primary">
-                <div className="relative">
-                  <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-lg opacity-50">search</span>
+              <div className="mb-7 max-w-2xl">
+                <div className="group relative rounded-full shadow-[0_0_15px_rgba(173,198,255,0.16)]">
+                  <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-[#8c909f] transition-colors group-focus-within:text-[#adc6ff]">search</span>
                   <input
                     type="text"
-                    value={providerSearch}
-                    onChange={(event) => setProviderSearch(event.target.value)}
-                    placeholder="Search providers..."
-                    className="w-full rounded-xl border border-outline-variant/20 bg-[#0a0d1a] py-2.5 pl-10 pr-4 text-sm placeholder:text-slate-600 focus:border-primary/40 focus:outline-none focus:ring-1 focus:ring-primary/40"
+                    value={modelSearch}
+                    onChange={(event) => setModelSearch(event.target.value)}
+                    placeholder="Search across all models..."
+                    className="w-full rounded-full border border-[#424754]/50 bg-[#010f1f]/65 py-3 pl-12 pr-6 text-sm text-[#d4e4fa] backdrop-blur-sm placeholder:text-[#8c909f]/55 transition-all focus:border-[#adc6ff] focus:outline-none focus:ring-2 focus:ring-[#adc6ff]/20"
                   />
                 </div>
               </div>
 
-              <nav className="flex-1 space-y-2">
-                {visibleProviderGroups.map((group) => {
+              <div className="flex gap-4 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                {providerGroups.map((group) => {
                   const active = (visibleActiveProviderGroup?.provider || selectedProvider) === group.provider;
                   return (
                     <button
@@ -1651,162 +1674,119 @@ export default function StudioChatPage() {
                         setSelectedProvider(group.provider);
                         setSelectedModel(group.models[0]?.id || "");
                       }}
-                      className={`group flex w-full scale-[0.99] items-center justify-between rounded-xl px-4 py-3 text-left transition-all duration-300 active:scale-95 ${
+                      className={`flex flex-shrink-0 items-center gap-3 rounded-2xl border px-5 py-3 text-left backdrop-blur-xl transition-all duration-300 ${
                         active
-                          ? "border-r-2 border-blue-500 bg-blue-500/5 font-bold text-blue-400"
-                          : "font-medium text-slate-500 hover:bg-slate-800/60 hover:text-slate-300"
+                          ? "border-[#adc6ff] bg-[#adc6ff]/10 text-[#d4e4fa] shadow-[0_0_15px_rgba(173,198,255,0.2)]"
+                          : "border-[#334155]/45 bg-[#0f172a]/40 text-[#c2c6d6] hover:border-[#adc6ff]/70 hover:bg-[#1c2b3c]/55 hover:text-[#d4e4fa]"
                       }`}
                     >
-                      <div className="flex items-center gap-3">
-                        <span className="material-symbols-outlined text-xl">{getProviderIcon(group.provider)}</span>
-                        <span className="font-headline text-sm uppercase tracking-widest">{group.provider}</span>
-                      </div>
-                      <span className={`text-[10px] ${active ? "opacity-80" : "opacity-40 group-hover:opacity-100"}`}>
-                        {group.models.length} models
+                      <span className={`material-symbols-outlined text-[21px] ${active ? "text-[#adc6ff]" : "text-[#c2c6d6]"}`} style={active ? { fontVariationSettings: "'FILL' 1" } : undefined}>
+                        {getProviderIcon(group.provider)}
                       </span>
+                      <span className="font-mono text-[12px] font-medium uppercase tracking-wider">{group.provider}</span>
+                      {active ? (
+                        <span className="material-symbols-outlined text-[18px] text-[#adc6ff]">check_circle</span>
+                      ) : (
+                        <span className="rounded-full bg-[#273647]/70 px-2 py-0.5 text-[10px] text-[#8c909f]">{group.models.length}</span>
+                      )}
                     </button>
                   );
                 })}
-              </nav>
+              </div>
+            </section>
 
-              <div className="mt-auto" />
-            </aside>
+            <section className="flex min-h-0 flex-1 flex-col pb-24">
+              <div className="mb-7 flex items-center justify-between gap-4">
+                <div>
+                  <h2 className="font-mono text-[12px] font-medium uppercase tracking-[0.18em] text-[#8c909f]">Available Models</h2>
+                  {visibleActiveProviderGroup ? (
+                    <p className="mt-1 text-sm text-[#c2c6d6]/70">{visibleActiveProviderGroup.provider} - {visibleActiveProviderGroup.models.length} visible</p>
+                  ) : null}
+                </div>
+                <div className="hidden gap-2 sm:flex">
+                  <span className="rounded-lg border border-[#424754] bg-[#122131] p-2 text-[#adc6ff]">
+                    <span className="material-symbols-outlined block text-[20px]">grid_view</span>
+                  </span>
+                  <span className="rounded-lg border border-transparent p-2 text-[#8c909f]">
+                    <span className="material-symbols-outlined block text-[20px]">list</span>
+                  </span>
+                </div>
+              </div>
 
-            <main className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
-              <header className="flex flex-col justify-between gap-4 px-4 pb-4 pt-5 sm:px-8 sm:pb-6 sm:pt-10 xl:flex-row xl:items-baseline xl:px-12 xl:pt-12">
-                <div className="flex flex-col gap-4">
-                  <div className="flex flex-col gap-4 xl:flex-row xl:items-center">
-                    <h2 className="font-headline text-xl font-bold tracking-tight text-on-surface sm:text-2xl xl:text-3xl">
-                      {visibleActiveProviderGroup?.provider || selectedProvider || "Select a Provider"}
-                    </h2>
-                    <div className="relative w-full max-w-md xl:ml-6">
-                      <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-lg text-slate-500 transition-colors group-focus-within:text-primary">
-                        search
-                      </span>
-                      <input
-                        type="text"
-                        value={modelSearch}
-                        onChange={(event) => setModelSearch(event.target.value)}
-                        placeholder="Search models..."
-                        className="w-full rounded-full border border-outline-variant/20 bg-[#0a0d1a] py-2 pl-12 pr-6 text-sm placeholder:text-slate-600 focus:border-primary/40 focus:outline-none focus:ring-1 focus:ring-primary/40"
-                      />
-                    </div>
-                  </div>
-                </div>
-                <div />
-              </header>
+              {loadingConfig ? (
+                <div className="rounded-2xl border border-[#334155]/45 bg-[#0f172a]/40 p-8 text-sm text-[#c2c6d6] backdrop-blur-xl">Loading models...</div>
+              ) : visibleActiveProviderGroup ? (
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+                  {visibleActiveProviderGroup.models.map((model) => {
+                    const active = (visibleSelectedModelOption?.id || selectedModel) === model.id;
+                    const minimumCost = getChatModelMinimumCost(model);
+                    const affordable = currentCredits === null || currentCredits >= minimumCost;
+                    const featureLabels = getModelFeatureLabels(model);
+                    return (
+                      <button
+                        key={model.id}
+                        type="button"
+                        disabled={!affordable}
+                        onClick={() => {
+                          if (!affordable) return;
+                          setSelectedProvider(visibleActiveProviderGroup.provider);
+                          setSelectedModel(model.id);
+                        }}
+                        className={`group flex min-h-[136px] flex-col rounded-xl border p-4 text-left backdrop-blur-xl transition-all duration-300 ${
+                          !affordable
+                            ? "cursor-not-allowed border-[#334155]/30 bg-[#0f172a]/25 opacity-55"
+                            : active
+                            ? "border-[#adc6ff]/70 bg-[#adc6ff]/10 shadow-[0_0_20px_rgba(173,198,255,0.14)]"
+                            : "border-[#334155]/45 bg-[#0f172a]/40 hover:border-[#adc6ff] hover:bg-[#1c2b3c]/50 hover:shadow-[0_0_20px_rgba(173,198,255,0.1)]"
+                        }`}
+                      >
+                        <div className="mb-2 flex items-start justify-between gap-3">
+                          <h3 className="font-mono text-[13px] font-medium uppercase tracking-[0.04em] text-[#d4e4fa] transition-colors group-hover:text-[#adc6ff]">{model.displayName}</h3>
+                          {active ? (
+                            <span className="material-symbols-outlined text-[20px] text-[#adc6ff]" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+                          ) : null}
+                        </div>
 
-              <section className="max-w-6xl px-4 pb-24 sm:px-8 sm:pb-28 xl:px-12">
-                <div className="flex flex-col gap-[10px]">
-                  {loadingConfig ? (
-                    <div className="rounded-xl border border-outline-variant/10 bg-surface-container-low p-8 text-sm text-on-surface-variant">
-                      Loading models…
-                    </div>
-                  ) : visibleActiveProviderGroup ? (
-                    visibleActiveProviderGroup.models.map((model) => {
-                      const active = (visibleSelectedModelOption?.id || selectedModel) === model.id;
-                      const minimumCost = getChatModelMinimumCost(model);
-                      const affordable = currentCredits === null || currentCredits >= minimumCost;
-                      return (
-                        <button
-                          key={model.id}
-                          type="button"
-                          disabled={!affordable}
-                          onClick={() => {
-                            if (!affordable) return;
-                            setSelectedProvider(visibleActiveProviderGroup.provider);
-                            setSelectedModel(model.id);
-                          }}
-                          className={`group relative w-full cursor-pointer rounded-md border bg-[#16192a] px-4 py-3.5 text-left transition-colors duration-200 sm:px-5 sm:py-4 ${
-                            !affordable
-                              ? "cursor-not-allowed border-[rgba(255,255,255,0.05)] bg-[#131624] opacity-55"
-                              : active
-                              ? "border-[rgba(255,255,255,0.18)]"
-                              : "border-[rgba(255,255,255,0.08)] hover:border-[rgba(255,255,255,0.12)] hover:bg-[#1a1d27]"
-                          }`}
-                        >
-                          <div className="relative flex items-start justify-between gap-4">
-                            <div className="flex-1">
-                              <div className="mb-1.5 flex items-center gap-2">
-                                <h3 className="text-[15px] font-semibold text-[#f3f5ff]">
-                                  {model.displayName}
-                                </h3>
-                              </div>
-                              <p className="mb-3 hidden max-w-xl text-[13px] font-normal leading-5 text-[#8b8fa8] sm:block">
-                                {model.description || "Usage-based conversational model for plain chat."}
-                              </p>
-                              {!affordable ? (
-                                <p className="mb-3 text-[11px] font-medium text-[#ffb4ab]">
-                                  Need at least {minimumCost.toFixed(2)} credits.
-                                </p>
-                              ) : null}
-                              <div className="hidden flex-wrap gap-2 sm:flex">
-                                <span className="rounded-full border border-[rgba(255,255,255,0.15)] bg-transparent px-3 py-1 text-[10px] font-medium uppercase tracking-[0.05em] text-[#8b8fa8]">
-                                  {model.provider}
-                                </span>
-                                {model.supportsImageInput ? (
-                                  <span className="rounded-full border border-[rgba(255,255,255,0.15)] bg-transparent px-3 py-1 text-[10px] font-medium uppercase tracking-[0.05em] text-[#8b8fa8]">
-                                    Multimodal
-                                  </span>
-                                ) : (
-                                  <span className="rounded-full border border-[rgba(255,255,255,0.15)] bg-transparent px-3 py-1 text-[10px] font-medium uppercase tracking-[0.05em] text-[#8b8fa8]">
-                                    Text
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                            <div className="flex flex-col items-end gap-4">
-                              <span className="hidden rounded-full bg-[#202433] px-2.5 py-1 text-[10px] font-medium text-[#8b8fa8] sm:inline-flex">
-                                Usage-Based
-                              </span>
-                              {active ? (
-                                <div className="flex h-8 w-8 items-center justify-center rounded-md bg-[#eef2ff] text-[#0f1117] sm:h-10 sm:w-10">
-                                  <span className="material-symbols-outlined text-[18px]" style={{ fontVariationSettings: "'FILL' 1" }}>
-                                    check
-                                  </span>
-                                </div>
-                              ) : (
-                                <div className="flex h-8 w-8 items-center justify-center rounded-md border border-[rgba(255,255,255,0.12)] text-[#747b93] sm:h-10 sm:w-10">
-                                  <span className="material-symbols-outlined text-[18px]">check</span>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </button>
-                      );
-                    })
-                  ) : (
-                    <div className="rounded-xl border border-outline-variant/10 bg-surface-container-low p-8 text-sm text-on-surface-variant">
-                      No models available for the current search.
-                    </div>
-                  )}
-                </div>
-              </section>
+                        <p className="mb-3 hidden line-clamp-2 flex-1 text-[13px] leading-5 text-[#c2c6d6]/80 sm:block">{model.description || "Usage-based conversational model for plain chat."}</p>
 
-              <footer className="sticky bottom-0 flex flex-col justify-between gap-4 border-t border-outline-variant/10 bg-slate-950/80 px-4 py-4 backdrop-blur-md sm:px-8 sm:py-6 xl:flex-row xl:items-center xl:px-12">
-                <div className="flex items-center gap-6">
-                  <Link
-                    href="/studio/start"
-                    className="group flex items-center gap-2 opacity-80 transition-all duration-300 hover:opacity-100"
-                  >
-                    <span className="material-symbols-outlined text-sm">arrow_back</span>
-                    <span className="text-xs font-medium text-slate-400 group-hover:text-blue-300">Back to Choice</span>
-                  </Link>
+                        {!affordable ? (
+                          <p className="mb-3 text-[11px] font-medium text-[#ffb4ab]">Need at least {minimumCost.toFixed(2)} credits.</p>
+                        ) : null}
+
+                        <div className="mt-auto flex flex-wrap gap-2">
+                          {featureLabels.map((label) => (
+                            <span key={label} className="rounded-full border border-[#424754]/70 px-3 py-1 text-[10px] font-medium uppercase tracking-[0.08em] text-[#8c909f]">
+                              {label}
+                            </span>
+                          ))}
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
-                <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:gap-6">
-                  <button
-                    type="button"
-                    onClick={() => void handleStartChat()}
-                    disabled={!visibleSelectedModelOption || loadingConfig || loadingReply || insufficientSelectedModelCredits}
-                    className="flex w-full items-center justify-center gap-2 rounded-[5px] bg-gradient-to-br from-[#adc6ff] to-[#4d8eff] px-8 py-3 font-headline text-sm font-bold text-[#002e6a] shadow-[0_0_24px_rgba(77,142,255,0.18)] transition-all duration-300 hover:scale-105 hover:shadow-[0_0_32px_rgba(77,142,255,0.28)] active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
-                  >
-                    <span>{loadingReply ? "Starting…" : insufficientSelectedModelCredits ? `Need ${selectedModelMinimumCost.toFixed(2)} Credits` : "Start Chatting"}</span>
-                    <span className="material-symbols-outlined text-sm">chevron_right</span>
-                  </button>
-                </div>
-              </footer>
-            </main>
+              ) : (
+                <div className="rounded-2xl border border-[#334155]/45 bg-[#0f172a]/40 p-8 text-sm text-[#c2c6d6] backdrop-blur-xl">No models available for the current search.</div>
+              )}
+            </section>
           </div>
+
+          <footer className="sticky bottom-0 z-20 border-t border-[#424754]/35 bg-[#051424]/85 backdrop-blur-md">
+            <div className="flex flex-col justify-between gap-4 px-4 py-4 sm:flex-row sm:items-center sm:px-6 lg:px-8">
+              <Link href="/studio/start" className="flex items-center gap-2 font-mono text-[11px] font-medium uppercase tracking-[0.12em] text-[#c2c6d6] transition-colors hover:text-[#d4e4fa]">
+                <span className="material-symbols-outlined text-[18px]">arrow_back</span>
+                Provider
+              </Link>
+              <button
+                type="button"
+                onClick={() => void handleStartChat()}
+                disabled={!visibleSelectedModelOption || loadingConfig || loadingReply || insufficientSelectedModelCredits}
+                className="group flex w-full items-center justify-center gap-2 rounded-xl bg-[#adc6ff] px-6 py-3 font-mono text-[13px] font-medium uppercase tracking-[0.05em] text-[#002e6a] shadow-[0_0_24px_rgba(173,198,255,0.2)] transition-all hover:scale-[1.02] hover:bg-[#adc6ff]/90 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+              >
+                <span>{loadingReply ? "Starting..." : insufficientSelectedModelCredits ? `Need ${selectedModelMinimumCost.toFixed(2)} Credits` : "Continue"}</span>
+                <span className="material-symbols-outlined text-[18px] transition-transform group-hover:translate-x-1">arrow_forward</span>
+              </button>
+            </div>
+          </footer>
         </div>
       ) : (
         <div className="chat-canvas flex h-full flex-col overflow-hidden">
@@ -1922,9 +1902,13 @@ export default function StudioChatPage() {
                         <span className="material-symbols-outlined text-4xl text-[#adc6ff]/40" style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
                         <div className="chat-empty-icon-glow" />
                       </div>
-                      <h2 className="mt-6 text-xl font-semibold tracking-[-0.01em] text-white/90">What will you create?</h2>
-                      <p className="mt-2.5 max-w-[320px] text-center text-[13px] leading-relaxed text-[#5a6580]">
-                        Ask a question, describe an image, or start a brainstorming session with {lockedModel?.displayName || "your model"}.
+                      <h2 className="mt-6 text-xl font-semibold tracking-[-0.01em] text-white/90">
+                        {lockedModelIsOneShotImage ? "One-shot image generation" : "What will you create?"}
+                      </h2>
+                      <p className="mt-2.5 max-w-[360px] text-center text-[13px] leading-relaxed text-[#5a6580]">
+                        {lockedModelIsOneShotImage
+                          ? `${lockedModel?.displayName || "This model"} generates an image directly from your prompt. It does not use chat memory, so write the full image request in one message.`
+                          : `Ask a question, describe an image, or start a brainstorming session with ${lockedModel?.displayName || "your model"}.`}
                       </p>
                     </div>
                   ) : (

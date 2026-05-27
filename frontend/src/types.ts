@@ -60,6 +60,8 @@ export interface PlainChatModelItem {
   description?: string;
   provider: string;
   supportsImageInput: boolean;
+  inputModalities?: string[];
+  outputModalities?: string[];
   parameterSchema?: Record<string, PlainChatParameterSchemaEntry>;
   pricing?: ModelPricingSummary;
 }

@@ -126,6 +126,8 @@ class PlainChatModelItem(BaseModel):
     description: str = ""
     provider: str
     supports_image_input: bool = Field(default=False, alias="supportsImageInput")
+    input_modalities: List[str] = Field(default_factory=list, alias="inputModalities")
+    output_modalities: List[str] = Field(default_factory=list, alias="outputModalities")
     parameter_schema: Dict[str, Any] = Field(default_factory=dict, alias="parameterSchema")
     pricing: Dict[str, Any] = Field(default_factory=dict)
 
