@@ -1,8 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-
-import AdminSubpage from "../_components/AdminSubpage";
 import { api } from "../../../services/api";
 import type {
     AdminCreditCodeBatchItem,
@@ -18,18 +16,21 @@ export default function AdminCodesPage() {
     const [summaries, setSummaries] = useState<AdminCreditCodeStatusSummaryItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
+    
     const [credits, setCredits] = useState(1);
     const [maxClaims, setMaxClaims] = useState(5);
     const [creating, setCreating] = useState(false);
     const [createdCode, setCreatedCode] = useState("");
     const [createError, setCreateError] = useState("");
     const [copyState, setCopyState] = useState("");
+    
     const [batchTitle, setBatchTitle] = useState("");
     const [batchQuantity, setBatchQuantity] = useState(5);
     const [batchCredits, setBatchCredits] = useState(5);
     const [batchCreating, setBatchCreating] = useState(false);
     const [batchMessage, setBatchMessage] = useState("");
     const [batchError, setBatchError] = useState("");
+    
     const [showAllActiveGiftCodes, setShowAllActiveGiftCodes] = useState(false);
     const [showInactiveGiftCodes, setShowInactiveGiftCodes] = useState(false);
     const [actionMessage, setActionMessage] = useState("");
@@ -44,20 +45,20 @@ export default function AdminCodesPage() {
                 api.getAdminCodes(),
                 api.getAdminCodeBatches(),
             ]);
-                const nextCodes = (codesResponse.codes ?? [])
-                    .filter((item) => !item.batchId)
-                    .sort((left, right) => Number(right.createdAt || 0) - Number(left.createdAt || 0));
-                const nextBatches = (batchResponse.batches ?? [])
-                    .sort((left, right) => Number(right.createdAt || 0) - Number(left.createdAt || 0));
-                setCodes(nextCodes);
-                setBatches(nextBatches);
-                setBatchSummaries(batchResponse.summaries ?? []);
-                setSummaries(codesResponse.summaries ?? []);
-            } catch (err) {
-                setError(err instanceof Error ? err.message : "Unable to load codes.");
-            } finally {
-                setLoading(false);
-            }
+            const nextCodes = (codesResponse.codes ?? [])
+                .filter((item) => !item.batchId)
+                .sort((left, right) => Number(right.createdAt || 0) - Number(left.createdAt || 0));
+            const nextBatches = (batchResponse.batches ?? [])
+                .sort((left, right) => Number(right.createdAt || 0) - Number(left.createdAt || 0));
+            setCodes(nextCodes);
+            setBatches(nextBatches);
+            setBatchSummaries(batchResponse.summaries ?? []);
+            setSummaries(codesResponse.summaries ?? []);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "Unable to load codes.");
+        } finally {
+            setLoading(false);
+        }
     };
 
     useEffect(() => {
@@ -104,12 +105,17 @@ export default function AdminCodesPage() {
     const activeGiftCodes = codes.filter((item) => item.status === "active");
     const inactiveGiftCodes = codes.filter((item) => item.status === "inactive");
     const visibleActiveGiftCodes = showAllActiveGiftCodes ? activeGiftCodes : activeGiftCodes.slice(0, 5);
+    
     const batchStatusSummaries = ["active", "inactive", "claimed"]
         .map((status) => batchSummaries.find((item) => item.status === status))
         .filter((item): item is AdminCreditCodeBatchStatusSummaryItem => Boolean(item));
+        
     const compactSummaries = ["active", "inactive", "expired", "exhausted"]
         .map((status) => summaries.find((item) => item.status === status))
         .filter((item): item is AdminCreditCodeStatusSummaryItem => Boolean(item));
+
+    const getBatchSummary = (status: string) => batchStatusSummaries.find(s => s.status === status) || { codeCount: 0, totalCredits: 0, averageCredits: 0 };
+    const getCodeSummary = (status: string) => compactSummaries.find(s => s.status === status) || { codeCount: 0, totalCredits: 0, averageCredits: 0 };
 
     const handleCreateGiftCode = async () => {
         setCreating(true);
@@ -180,7 +186,8 @@ export default function AdminCodesPage() {
         if (input === null) return null;
         const normalized = input.trim();
         if (!normalized) {
-            throw new Error("Reason is required.");
+            window.alert("Reason is required.");
+            return null;
         }
         return normalized;
     };
@@ -227,275 +234,254 @@ export default function AdminCodesPage() {
         }
     };
 
-    const generatorCardClassName = "group flex h-full flex-col rounded-2xl border border-white/8 bg-[#0f1117] p-6 transition-all duration-200 ease-in-out hover:border-violet-400/30 hover:shadow-[0_0_20px_rgba(120,80,255,0.15)]";
-    const generatorInputClassName = "w-full rounded-xl border border-white/8 bg-[#1a1d2e] px-3 py-2.5 text-sm text-white outline-none transition-all duration-200 ease-in-out placeholder:text-slate-500 focus:border-violet-400/40 focus:ring-2 focus:ring-violet-500/30";
-    const generatorLabelClassName = "mb-2 block text-xs font-medium uppercase tracking-wide text-slate-500";
-    const generatorButtonClassName = "inline-flex items-center justify-center rounded-xl bg-[linear-gradient(135deg,#7c3aed,#3b82f6)] px-4 py-3 text-sm font-semibold text-white transition-all duration-200 ease-in-out hover:-translate-y-[1px] hover:shadow-[0_8px_20px_rgba(124,58,237,0.4)] disabled:cursor-not-allowed disabled:opacity-60";
+    if (loading && codes.length === 0) {
+        return (
+            <main className="flex-1 overflow-y-auto p-6 min-h-[calc(100vh-4rem)] flex items-center justify-center">
+                <div className="auth-loader" />
+            </main>
+        );
+    }
+
+    if (error && codes.length === 0) {
+        return (
+            <main className="flex-1 overflow-y-auto p-6 min-h-[calc(100vh-4rem)] flex items-center justify-center">
+                <p className="text-error">{error}</p>
+            </main>
+        );
+    }
 
     return (
-        <AdminSubpage title="Admin Codes" description="Create, enable, and disable controls can stay here as the codes workflow grows.">
-            <section className="mb-6 grid grid-cols-1 gap-6 md:grid-cols-2 md:items-stretch animate-fade-in-up">
-                <div className={generatorCardClassName}>
-                    <div className="mb-6 flex items-start gap-4">
-                        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,rgba(124,58,237,0.95),rgba(59,130,246,0.95))] shadow-[0_12px_30px_rgba(124,58,237,0.25)]">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white">
-                                <path d="M12 2v20" />
-                                <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7H14a3.5 3.5 0 0 1 0 7H6" />
-                            </svg>
+        <main className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar relative">
+            <div className="max-w-[1440px] mx-auto space-y-8">
+                {/* Header Section */}
+                <section className="flex flex-col gap-2">
+                    <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-primary to-secondary-container flex items-center justify-center">
+                            <span className="material-symbols-outlined text-on-primary text-[28px]" style={{ fontVariationSettings: "'FILL' 1" }}>terminal</span>
                         </div>
                         <div>
-                            <h2 className="text-base font-bold text-white">Gift Code Generator</h2>
-                            <p className="mt-1 text-sm text-slate-400">
-                                Create one redeem code where the first <span className="text-white">{maxClaims}</span> users each receive <span className="text-white">{credits}</span> credit{credits !== 1 ? "s" : ""}.
-                            </p>
+                            <h2 className="font-headline-lg text-headline-lg text-on-surface">Admin Codes</h2>
+                            <p className="font-body-lg text-body-lg text-on-surface-variant">Create, enable, and disable controls as your codes workflow grows.</p>
                         </div>
                     </div>
+                </section>
 
-                    <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-                        <div>
-                            <label className={generatorLabelClassName}>Credits Per User</label>
-                            <input
-                                type="number"
-                                min={1}
-                                max={5}
-                                value={credits}
-                                onChange={(event) => setCredits(Math.min(5, Math.max(1, Number(event.target.value) || 1)))}
-                                className={generatorInputClassName}
-                            />
-                        </div>
-                        <div>
-                            <label className={generatorLabelClassName}>Max Users</label>
-                            <input
-                                type="number"
-                                min={1}
-                                max={20}
-                                value={maxClaims}
-                                onChange={(event) => setMaxClaims(Math.min(20, Math.max(1, Number(event.target.value) || 1)))}
-                                className={generatorInputClassName}
-                            />
-                        </div>
+                {(actionMessage || actionError) && (
+                    <div className={`p-4 rounded-lg border ${actionError ? 'border-amber-500/30 bg-amber-500/10 text-amber-200' : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'}`}>
+                        {actionError || actionMessage}
                     </div>
+                )}
 
-                    <div className="mt-6">
-                        <button
-                            onClick={() => void handleCreateGiftCode()}
+                {/* Generation Section (Top Row) */}
+                <section className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    {/* Gift Code Generator */}
+                    <div className="glass-panel rounded-lg p-6 flex flex-col gap-6">
+                        <div className="flex items-start gap-6">
+                            <div className="w-10 h-10 rounded-lg bg-surface-container-highest flex items-center justify-center text-primary">
+                                <span className="material-symbols-outlined">attach_money</span>
+                            </div>
+                            <div>
+                                <h3 className="font-title-md text-title-md text-on-surface">Gift Code Generator</h3>
+                                <p className="text-body-sm text-on-surface-variant">Create one redeem code where the first {maxClaims} users receive {credits} credit{credits !== 1 ? "s" : ""}.</p>
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-6">
+                            <div className="flex flex-col gap-2">
+                                <label className="font-label-caps text-label-caps text-on-surface-variant">CREDITS PER USER</label>
+                                <input 
+                                    className="bg-surface-container-lowest border border-outline-variant rounded-lg p-6 text-on-surface focus:border-primary focus:ring-0 outline-none transition-all" 
+                                    type="number" 
+                                    min={1} max={5}
+                                    value={credits}
+                                    onChange={(e) => setCredits(Math.min(5, Math.max(1, Number(e.target.value) || 1)))}
+                                />
+                            </div>
+                            <div className="flex flex-col gap-2">
+                                <label className="font-label-caps text-label-caps text-on-surface-variant">MAX USERS</label>
+                                <input 
+                                    className="bg-surface-container-lowest border border-outline-variant rounded-lg p-6 text-on-surface focus:border-primary focus:ring-0 outline-none transition-all" 
+                                    type="number" 
+                                    min={1} max={20}
+                                    value={maxClaims}
+                                    onChange={(e) => setMaxClaims(Math.min(20, Math.max(1, Number(e.target.value) || 1)))}
+                                />
+                            </div>
+                        </div>
+                        <button 
                             disabled={creating}
-                            className={generatorButtonClassName}
+                            onClick={() => void handleCreateGiftCode()}
+                            className="w-fit px-8 py-4 bg-gradient-to-r from-primary-container to-secondary-container text-white font-bold rounded-lg shadow-lg hover:brightness-110 active:scale-95 transition-all disabled:opacity-60"
                         >
-                            <span>{creating ? "Creating..." : "Generate Code"}</span>
+                            {creating ? "Creating..." : "Generate Code"}
                         </button>
-                    </div>
-
-                    <div className="mt-6 flex-1">
-                        {createdCode ? (
-                            <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 p-4">
-                                <p className="mb-1 text-xs font-semibold uppercase tracking-widest text-emerald-300">
-                                    Gift Code Ready
-                                </p>
-                                <div className="flex items-center justify-between gap-3">
-                                    <p className="break-all text-lg font-mono text-emerald-100">{createdCode}</p>
-                                    <button
-                                        type="button"
-                                        onClick={() => void handleCopyCode()}
-                                        className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-white transition-all duration-200 ease-in-out hover:border-violet-300/40 hover:bg-white/10"
-                                        aria-label="Copy generated code"
-                                        title="Copy generated code"
-                                    >
-                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                                        </svg>
-                                    </button>
-                                </div>
-                                {copyState ? (
-                                    <p className={`mt-2 text-xs ${copyState === "Copied" ? "text-emerald-300" : "text-amber-300"}`}>
-                                        {copyState}
-                                    </p>
-                                ) : null}
-                            </div>
-                        ) : (
-                            <div className="rounded-2xl border border-dashed border-white/8 bg-white/[0.02] p-4 text-sm text-slate-500">
-                                Generate a gift code and it will appear here for quick copy.
-                            </div>
-                        )}
-
-                        {createError ? (
-                            <p className="mt-4 text-sm text-amber-300">{createError}</p>
-                        ) : null}
-                    </div>
-                </div>
-
-                <div className={generatorCardClassName}>
-                    <div className="mb-6 flex items-start gap-4">
-                        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,rgba(124,58,237,0.95),rgba(59,130,246,0.95))] shadow-[0_12px_30px_rgba(124,58,237,0.25)]">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white">
-                                <rect x="3" y="4" width="18" height="16" rx="2" />
-                                <path d="M7 8h10" />
-                                <path d="M7 12h10" />
-                                <path d="M7 16h6" />
-                            </svg>
+                        
+                        <div className={`mt-2 rounded-lg p-6 flex items-center justify-between gap-3 ${createdCode ? 'border border-emerald-400/20 bg-emerald-400/10' : 'border-2 border-dashed border-outline-variant justify-center'}`}>
+                            {createdCode ? (
+                                <>
+                                    <p className="break-all text-lg font-mono text-emerald-300 font-bold">{createdCode}</p>
+                                    <div className="flex items-center gap-3">
+                                        {copyState && <span className="text-xs text-emerald-400">{copyState}</span>}
+                                        <button onClick={() => void handleCopyCode()} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-white hover:bg-white/10 transition-all">
+                                            <span className="material-symbols-outlined text-[18px]">content_copy</span>
+                                        </button>
+                                    </div>
+                                </>
+                            ) : (
+                                <p className="text-body-sm text-outline italic">Generate a gift code and it will appear here for quick copy.</p>
+                            )}
                         </div>
-                        <div>
-                            <h2 className="text-base font-bold text-white">One-Time Code Batch</h2>
-                            <p className="mt-1 text-sm text-slate-400">
-                                Generate <span className="text-white">{batchQuantity}</span> single-use codes worth <span className="text-white">{batchCredits}</span> credit{batchCredits !== 1 ? "s" : ""} each. The codes download automatically as a text file, one code per line.
+                        {createError && <p className="text-sm text-amber-300">{createError}</p>}
+                    </div>
+
+                    {/* One-Time Code Batch */}
+                    <div className="glass-panel rounded-lg p-6 flex flex-col gap-6">
+                        <div className="flex items-start gap-6">
+                            <div className="w-10 h-10 rounded-lg bg-surface-container-highest flex items-center justify-center text-tertiary">
+                                <span className="material-symbols-outlined">article</span>
+                            </div>
+                            <div>
+                                <h3 className="font-title-md text-title-md text-on-surface">One-Time Code Batch</h3>
+                                <p className="text-body-sm text-on-surface-variant">Generate multiple single-use codes and download automatically.</p>
+                            </div>
+                        </div>
+                        <div className="flex flex-col gap-2">
+                            <label className="font-label-caps text-label-caps text-on-surface-variant">BATCH TITLE</label>
+                            <input 
+                                className="bg-surface-container-lowest border border-outline-variant rounded-lg p-6 text-on-surface focus:border-tertiary focus:ring-0 outline-none transition-all" 
+                                placeholder="Spring giveaway" 
+                                type="text" 
+                                value={batchTitle}
+                                onChange={(e) => setBatchTitle(e.target.value)}
+                            />
+                        </div>
+                        <div className="grid grid-cols-2 gap-6">
+                            <div className="flex flex-col gap-2">
+                                <label className="font-label-caps text-label-caps text-on-surface-variant">QUANTITY</label>
+                                <input 
+                                    className="bg-surface-container-lowest border border-outline-variant rounded-lg p-6 text-on-surface focus:border-tertiary focus:ring-0 outline-none transition-all" 
+                                    type="number" 
+                                    min={2} max={20}
+                                    value={batchQuantity}
+                                    onChange={(e) => setBatchQuantity(Math.min(20, Math.max(2, Number(e.target.value) || 2)))}
+                                />
+                            </div>
+                            <div className="flex flex-col gap-2">
+                                <label className="font-label-caps text-label-caps text-on-surface-variant">CREDITS PER CODE</label>
+                                <input 
+                                    className="bg-surface-container-lowest border border-outline-variant rounded-lg p-6 text-on-surface focus:border-tertiary focus:ring-0 outline-none transition-all" 
+                                    type="number" 
+                                    min={1} max={20}
+                                    value={batchCredits}
+                                    onChange={(e) => setBatchCredits(Math.min(20, Math.max(1, Number(e.target.value) || 1)))}
+                                />
+                            </div>
+                        </div>
+                        <button 
+                            disabled={batchCreating}
+                            onClick={() => void handleCreateBatchCodes()}
+                            className="w-fit px-8 py-4 bg-gradient-to-r from-tertiary-container to-tertiary text-on-tertiary font-bold rounded-lg shadow-lg hover:brightness-110 active:scale-95 transition-all disabled:opacity-60"
+                        >
+                            {batchCreating ? "Generating..." : "Generate And Download"}
+                        </button>
+                        <div className="bg-surface-container-low/50 rounded-lg p-4 flex items-center justify-between">
+                            <p className="text-[11px] text-on-surface-variant flex items-center gap-2">
+                                <span className="material-symbols-outlined text-[14px]">info</span>
+                                Each generated code is claimable only once and downloads as plain text.
                             </p>
                         </div>
+                        {batchMessage && <p className="text-sm text-emerald-300">{batchMessage}</p>}
+                        {batchError && <p className="text-sm text-amber-300">{batchError}</p>}
                     </div>
+                </section>
 
-                    <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-                        <div className="sm:col-span-2">
-                            <label className={generatorLabelClassName}>Title</label>
-                            <input
-                                type="text"
-                                value={batchTitle}
-                                onChange={(event) => setBatchTitle(event.target.value)}
-                                placeholder="Spring giveaway"
-                                className={generatorInputClassName}
-                            />
-                        </div>
+                {/* Middle Section: One-Time Code Batches */}
+                <section className="glass-panel rounded-lg overflow-hidden">
+                    <div className="p-6 border-b border-outline-variant flex justify-between items-end">
                         <div>
-                            <label className={generatorLabelClassName}>Quantity</label>
-                            <input
-                                type="number"
-                                min={2}
-                                max={20}
-                                value={batchQuantity}
-                                onChange={(event) => setBatchQuantity(Math.min(20, Math.max(2, Number(event.target.value) || 2)))}
-                                className={generatorInputClassName}
-                            />
+                            <h3 className="font-title-md text-title-md text-on-surface">One-Time Code Batches</h3>
+                            <p className="text-body-sm text-on-surface-variant">Grouped bulk exports with claimed totals</p>
                         </div>
-                        <div>
-                            <label className={generatorLabelClassName}>Credits Per Code</label>
-                            <input
-                                type="number"
-                                min={1}
-                                max={20}
-                                value={batchCredits}
-                                onChange={(event) => setBatchCredits(Math.min(20, Math.max(1, Number(event.target.value) || 1)))}
-                                className={generatorInputClassName}
-                            />
-                        </div>
+                        <p className="font-label-caps text-[11px] text-on-surface-variant">{batches.length} batches</p>
                     </div>
-
-                    <div className="mt-6 flex items-center gap-3">
-                        <button
-                            onClick={() => void handleCreateBatchCodes()}
-                            disabled={batchCreating}
-                            className={generatorButtonClassName}
-                        >
-                            <span>{batchCreating ? "Generating..." : "Generate And Download"}</span>
-                        </button>
-                    </div>
-
-                    <div className="mt-6 flex-1">
-                        <div className="rounded-2xl border border-dashed border-white/8 bg-white/[0.02] p-4 text-sm text-slate-500">
-                            Each generated code is claimable only once and the export downloads automatically as plain text.
-                        </div>
-                        {batchMessage ? (
-                            <p className="mt-4 text-sm text-emerald-300">{batchMessage}</p>
-                        ) : null}
-                        {batchError ? (
-                            <p className="mt-4 text-sm text-amber-300">{batchError}</p>
-                        ) : null}
-                    </div>
-                </div>
-            </section>
-
-            <section className="glass-card overflow-hidden animate-fade-in-up">
-                <div className="flex items-center justify-between border-b border-white/8 px-5 py-4">
-                    <div>
-                        <h2 className="text-base font-semibold text-white">One-Time Code Batches</h2>
-                        <p className="text-xs text-slate-500">Grouped bulk exports with claimed totals</p>
-                    </div>
-                    <span className="text-xs text-slate-500">{batches.length} batches</span>
-                </div>
-                {actionMessage ? (
-                    <p className="px-5 pt-4 text-sm text-emerald-300">{actionMessage}</p>
-                ) : null}
-                {actionError ? (
-                    <p className="px-5 pt-4 text-sm text-amber-300">{actionError}</p>
-                ) : null}
-                {loading ? (
-                    <div className="flex items-center justify-center py-20">
-                        <div className="auth-loader" />
-                    </div>
-                ) : error ? (
-                    <div className="admin-empty-state">
-                        <p>{error}</p>
-                    </div>
-                ) : (
-                    <div className="space-y-6 p-5">
-                        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                            {batchStatusSummaries.map((summary) => (
-                                <div key={summary.status} className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
-                                    <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">
-                                        {formatBatchSummaryTitle(summary.status)}
-                                    </p>
-                                    <p className="mt-3 text-2xl font-semibold text-white">{summary.codeCount}</p>
-                                    <p className="mt-1 text-xs text-slate-500">codes</p>
-                                    <div className="mt-4 space-y-2 text-sm text-slate-300">
-                                        <div className="flex items-center justify-between gap-4">
-                                            <span>Total credits</span>
-                                            <span className="text-white">{summary.totalCredits.toFixed(2)}</span>
-                                        </div>
-                                        <div className="flex items-center justify-between gap-4">
-                                            <span>Average credits</span>
-                                            <span className="text-white">{summary.averageCredits.toFixed(2)}</span>
-                                        </div>
-                                    </div>
+                    <div className="p-6 space-y-8">
+                        {/* Summary Metrics */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <div className="bg-surface-container-high rounded-lg p-6 border border-outline-variant">
+                                <p className="font-label-caps text-[10px] text-primary mb-2">ACTIVE</p>
+                                <h4 className="text-[28px] font-bold text-on-surface">{getBatchSummary('active').codeCount} <span className="text-body-sm text-on-surface-variant font-normal">codes</span></h4>
+                                <div className="mt-6 space-y-2 pt-2 border-t border-outline-variant">
+                                    <div className="flex justify-between text-[11px]"><span className="text-on-surface-variant">Total credits</span><span className="">{getBatchSummary('active').totalCredits.toFixed(2)}</span></div>
+                                    <div className="flex justify-between text-[11px]"><span className="text-on-surface-variant">Average credits</span><span className="">{getBatchSummary('active').averageCredits.toFixed(2)}</span></div>
                                 </div>
-                            ))}
+                            </div>
+                            <div className="bg-surface-container-high rounded-lg p-6 border border-outline-variant">
+                                <p className="font-label-caps text-[10px] text-on-surface-variant mb-2">INACTIVE</p>
+                                <h4 className="text-[28px] font-bold text-on-surface">{getBatchSummary('inactive').codeCount} <span className="text-body-sm text-on-surface-variant font-normal">codes</span></h4>
+                                <div className="mt-6 space-y-2 pt-2 border-t border-outline-variant">
+                                    <div className="flex justify-between text-[11px]"><span className="text-on-surface-variant">Total credits</span><span className="">{getBatchSummary('inactive').totalCredits.toFixed(2)}</span></div>
+                                    <div className="flex justify-between text-[11px]"><span className="text-on-surface-variant">Average credits</span><span className="">{getBatchSummary('inactive').averageCredits.toFixed(2)}</span></div>
+                                </div>
+                            </div>
+                            <div className="bg-surface-container-high rounded-lg p-6 border border-outline-variant">
+                                <p className="font-label-caps text-[10px] text-error mb-2">EXHAUSTED</p>
+                                <h4 className="text-[28px] font-bold text-on-surface">{getBatchSummary('claimed').codeCount} <span className="text-body-sm text-on-surface-variant font-normal">codes</span></h4>
+                                <div className="mt-6 space-y-2 pt-2 border-t border-outline-variant">
+                                    <div className="flex justify-between text-[11px]"><span className="text-on-surface-variant">Total credits</span><span className="">{getBatchSummary('claimed').totalCredits.toFixed(2)}</span></div>
+                                    <div className="flex justify-between text-[11px]"><span className="text-on-surface-variant">Average credits</span><span className="">{getBatchSummary('claimed').averageCredits.toFixed(2)}</span></div>
+                                </div>
+                            </div>
                         </div>
 
+                        {/* Table Content */}
                         <div className="overflow-x-auto">
-                            <table className="admin-table">
+                            <table className="w-full text-left">
                                 <thead>
-                                    <tr>
-                                        <th>Title</th>
-                                        <th>Credits</th>
-                                        <th>Claimed</th>
-                                        <th>Status</th>
-                                        <th>Action</th>
+                                    <tr className="font-label-caps text-label-caps text-on-surface-variant">
+                                        <th className="pb-6">TITLE</th>
+                                        <th className="pb-6">CREDITS</th>
+                                        <th className="pb-6">CLAIMED</th>
+                                        <th className="pb-6">STATUS</th>
+                                        <th className="pb-6">ACTION</th>
                                     </tr>
                                 </thead>
-                                <tbody>
-                                    {batches.length === 0 ? (
+                                <tbody className="text-body-sm divide-y divide-outline-variant">
+                                    {batches.length === 0 && (
                                         <tr>
-                                            <td colSpan={5} className="px-5 py-6 text-sm text-slate-400">
-                                                No one-time code batches yet.
-                                            </td>
+                                            <td colSpan={5} className="py-6 text-center text-on-surface-variant">No one-time code batches yet.</td>
                                         </tr>
-                                    ) : batches.map((batch) => (
-                                        <tr key={batch.batchId}>
-                                            <td>
-                                                <div className="admin-user-info">
-                                                    <span className="admin-user-name">{batch.title}</span>
-                                                    <span className="admin-user-uid">{batch.totalCodes} codes</span>
-                                                </div>
+                                    )}
+                                    {batches.map((batch) => (
+                                        <tr key={batch.batchId} className="hover:bg-surface-container-highest/30 transition-colors">
+                                            <td className="py-6 pr-4">
+                                                <p className="font-bold text-on-surface">{batch.title}</p>
+                                                <p className="text-[11px] text-on-surface-variant">{batch.totalCodes} codes</p>
                                             </td>
-                                            <td><span className="admin-credits-badge admin-credits-positive">{batch.credits.toFixed(2)}</span></td>
-                                            <td><span className="text-sm text-slate-300">{batch.claimedCodes} / {batch.totalCodes}</span></td>
-                                            <td><span className="text-sm text-slate-300">{batch.status}</span></td>
-                                            <td>
-                                                {batch.status === "claimed" ? (
-                                                    <span className="text-xs text-slate-500">Claimed out</span>
+                                            <td className="py-6 pr-4">
+                                                <span className="px-6 py-1 rounded-full bg-tertiary/10 text-tertiary border border-tertiary/20">{batch.credits.toFixed(2)}</span>
+                                            </td>
+                                            <td className="py-6 text-on-surface pr-4">{batch.claimedCodes} / {batch.totalCodes}</td>
+                                            <td className="py-6 pr-4">
+                                                {batch.status === "active" ? (
+                                                    <span className="flex items-center gap-2 text-primary">
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-primary glow-primary"></span>
+                                                        active
+                                                    </span>
                                                 ) : (
-                                                    <button
-                                                        type="button"
+                                                    <span className="flex items-center gap-2 text-on-surface-variant">
+                                                        {batch.status}
+                                                    </span>
+                                                )}
+                                            </td>
+                                            <td className="py-6">
+                                                {batch.status === "claimed" ? (
+                                                    <span className="text-[11px] text-on-surface-variant italic">Claimed out</span>
+                                                ) : (
+                                                    <button 
                                                         onClick={() => void handleBatchStatusChange(batch, batch.status === "inactive" ? "enable" : "disable")}
                                                         disabled={actingTarget === batch.batchId}
-                                                        className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition disabled:opacity-50 ${
-                                                            batch.status === "inactive"
-                                                                ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-200 hover:border-emerald-300/50 hover:bg-emerald-400/15"
-                                                                : "border-amber-400/30 bg-amber-400/10 text-amber-200 hover:border-amber-300/50 hover:bg-amber-400/15"
-                                                        }`}
+                                                        className={`px-6 py-1 border rounded-full text-[11px] transition-all disabled:opacity-50 ${batch.status === "inactive" ? 'border-tertiary text-tertiary hover:bg-tertiary/10' : 'border-secondary text-secondary hover:bg-secondary/10'}`}
                                                     >
-                                                        {actingTarget === batch.batchId
-                                                            ? "Saving..."
-                                                            : batch.status === "inactive"
-                                                                ? "Enable"
-                                                                : "Disable"}
+                                                        {actingTarget === batch.batchId ? "Saving..." : batch.status === "inactive" ? "Enable" : "Disable"}
                                                     </button>
                                                 )}
                                             </td>
@@ -505,152 +491,135 @@ export default function AdminCodesPage() {
                             </table>
                         </div>
                     </div>
-                )}
-            </section>
+                </section>
 
-            <section className="glass-card overflow-hidden animate-fade-in-up mt-6">
-                <div className="flex items-center justify-between border-b border-white/8 px-5 py-4">
-                    <div>
-                        <h2 className="text-base font-semibold text-white">Gift Codes</h2>
-                        <p className="text-xs text-slate-500">Active shared codes plus compact status summaries</p>
+                {/* Bottom Section: Gift Codes Management */}
+                <section className="glass-panel rounded-lg overflow-hidden pb-4">
+                    <div className="p-6 border-b border-outline-variant flex justify-between items-end">
+                        <div>
+                            <h3 className="font-title-md text-title-md text-on-surface">Gift Codes</h3>
+                            <p className="text-body-sm text-on-surface-variant">Active shared codes plus compact status summaries</p>
+                        </div>
+                        <p className="font-label-caps text-[11px] text-on-surface-variant">{codes.length} total</p>
                     </div>
-                    <span className="text-xs text-slate-500">{codes.length} total</span>
-                </div>
-                {actionMessage ? (
-                    <p className="px-5 pt-4 text-sm text-emerald-300">{actionMessage}</p>
-                ) : null}
-                {actionError ? (
-                    <p className="px-5 pt-4 text-sm text-amber-300">{actionError}</p>
-                ) : null}
-                {loading ? (
-                    <div className="flex items-center justify-center py-20">
-                        <div className="auth-loader" />
-                    </div>
-                ) : error ? (
-                    <div className="admin-empty-state">
-                        <p>{error}</p>
-                    </div>
-                ) : (
-                    <div className="space-y-6 p-5">
-                        <div className="overflow-hidden rounded-2xl border border-white/8">
-                            <div className="flex items-center justify-between border-b border-white/8 px-4 py-3">
+                    <div className="p-6 space-y-8">
+                        {/* Active Gift Codes Container */}
+                        <div className="bg-surface-container-low border border-outline-variant rounded-lg overflow-hidden">
+                            <div className="p-6 bg-surface-container-high/50 flex justify-between items-center">
                                 <div>
-                                    <h3 className="text-sm font-semibold text-white">Active Gift Codes</h3>
-                                    <p className="text-xs text-slate-500">Currently redeemable shared codes</p>
+                                    <p className="font-title-md text-on-surface text-[16px] font-bold leading-none mb-1">Active Gift Codes</p>
+                                    <p className="text-[11px] text-on-surface-variant">Currently redeemable shared codes</p>
                                 </div>
-                                <div className="flex items-center gap-3">
-                                    <span className="text-xs text-slate-500">{activeGiftCodes.length} codes</span>
-                                    {activeGiftCodes.length > 5 ? (
-                                        <button
-                                            type="button"
-                                            onClick={() => setShowAllActiveGiftCodes((value) => !value)}
-                                            className="rounded-lg border border-emerald-400/30 bg-emerald-400/10 px-3 py-1.5 text-xs font-semibold text-emerald-200 transition hover:border-emerald-300/50 hover:bg-emerald-400/15"
+                                <div className="flex items-center gap-6">
+                                    <span className="text-[11px] text-on-surface-variant">{activeGiftCodes.length} codes</span>
+                                    {activeGiftCodes.length > 5 && (
+                                        <button 
+                                            onClick={() => setShowAllActiveGiftCodes(!showAllActiveGiftCodes)}
+                                            className="px-6 py-1.5 bg-tertiary/10 text-tertiary border border-tertiary/20 rounded-lg text-[11px] font-bold hover:bg-tertiary hover:text-on-tertiary transition-all"
                                         >
                                             {showAllActiveGiftCodes ? "Show less" : `Show all (${activeGiftCodes.length})`}
                                         </button>
-                                    ) : null}
+                                    )}
                                 </div>
                             </div>
-                            <div className="overflow-x-auto">
-                                <table className="admin-table">
-                                    <thead>
-                                            <tr>
-                                                <th>Preview</th>
-                                                <th>Credits</th>
-                                                <th>Claims</th>
-                                                <th>Status</th>
-                                                <th>Action</th>
+                            <div className="p-6">
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left">
+                                        <thead>
+                                            <tr className="font-label-caps text-[10px] text-on-surface-variant tracking-widest border-b border-outline-variant">
+                                                <th className="pb-6">PREVIEW</th>
+                                                <th className="pb-6">CREDITS</th>
+                                                <th className="pb-6">CLAIMS</th>
+                                                <th className="pb-6">STATUS</th>
+                                                <th className="pb-6">ACTION</th>
                                             </tr>
                                         </thead>
-                                        <tbody>
-                                            {activeGiftCodes.length === 0 ? (
-                                                <tr>
-                                                    <td colSpan={5} className="px-5 py-6 text-sm text-slate-400">
-                                                        No active gift codes right now.
+                                        <tbody className="text-body-sm">
+                                            {activeGiftCodes.length === 0 && (
+                                                <tr><td colSpan={5} className="py-4 text-sm text-on-surface-variant">No active gift codes right now.</td></tr>
+                                            )}
+                                            {visibleActiveGiftCodes.map(code => (
+                                                <tr key={code.code} className="border-b border-outline-variant/50 hover:bg-surface-container-highest/20 transition-colors last:border-0">
+                                                    <td className="py-6 pr-4">
+                                                        <p className="font-bold text-on-surface font-code-sm">{code.codePreview}</p>
+                                                        <p className="text-[9px] text-on-surface-variant font-code-sm truncate max-w-[200px]">{code.code}</p>
+                                                    </td>
+                                                    <td className="py-6 pr-4">
+                                                        <span className="px-6 py-1 rounded-lg bg-tertiary/10 text-tertiary text-[11px] font-bold">{code.credits.toFixed(2)}</span>
+                                                    </td>
+                                                    <td className="py-6 text-on-surface pr-4">{code.claimedCount} / {code.maxClaims}</td>
+                                                    <td className="py-6 text-primary pr-4">active</td>
+                                                    <td className="py-6">
+                                                        <button 
+                                                            onClick={() => void handleGiftCodeStatusChange(code, "disable")}
+                                                            disabled={actingTarget === code.code}
+                                                            className="px-6 py-1 border border-secondary text-secondary rounded-lg text-[10px] hover:bg-secondary/10 transition-all disabled:opacity-50"
+                                                        >
+                                                            {actingTarget === code.code ? "Saving..." : "Disable"}
+                                                        </button>
                                                     </td>
                                                 </tr>
-                                            ) : visibleActiveGiftCodes.map((code) => (
-                                            <tr key={code.code}>
-                                                <td>
-                                                    <div className="admin-user-info">
-                                                        <span className="admin-user-name">{code.codePreview}</span>
-                                                        <span className="admin-user-uid">{code.code}</span>
-                                                    </div>
-                                                </td>
-                                                <td><span className="admin-credits-badge admin-credits-positive">{code.credits.toFixed(2)}</span></td>
-                                                <td><span className="text-sm text-slate-300">{code.claimedCount} / {code.maxClaims}</span></td>
-                                                <td><span className="text-sm text-slate-300">{code.status}</span></td>
-                                                <td>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => void handleGiftCodeStatusChange(code, "disable")}
-                                                        disabled={actingTarget === code.code}
-                                                        className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-1.5 text-xs font-semibold text-amber-200 transition hover:border-amber-300/50 hover:bg-amber-400/15 disabled:opacity-50"
-                                                    >
-                                                        {actingTarget === code.code ? "Saving..." : "Disable"}
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                            {!showAllActiveGiftCodes && activeGiftCodes.length > 5 ? (
-                                <div className="border-t border-white/8 px-4 py-3 text-xs text-slate-500">
-                                    Showing 5 of {activeGiftCodes.length} active gift codes.
+                                            ))}
+                                        </tbody>
+                                    </table>
                                 </div>
-                            ) : null}
+                                {!showAllActiveGiftCodes && activeGiftCodes.length > 5 && (
+                                    <div className="mt-6">
+                                        <p className="text-[10px] text-on-surface-variant italic">Showing 5 of {activeGiftCodes.length} active gift codes.</p>
+                                    </div>
+                                )}
+                            </div>
                         </div>
 
-                        <div className="overflow-hidden rounded-2xl border border-white/8">
-                            <div className="flex items-center justify-between border-b border-white/8 px-4 py-3">
+                        {/* Inactive Gift Codes Section */}
+                        <div className="bg-surface-container-low/30 border border-outline-variant/50 rounded-lg p-6">
+                            <div className="flex justify-between items-center mb-6">
                                 <div>
-                                    <h3 className="text-sm font-semibold text-white">Inactive Gift Codes</h3>
-                                    <p className="text-xs text-slate-500">Hidden by default, available for reactivation</p>
+                                    <p className="text-on-surface font-bold text-[16px]">Inactive Gift Codes</p>
+                                    <p className="text-[11px] text-on-surface-variant">Hidden by default, available for reactivation</p>
                                 </div>
-                                <div className="flex items-center gap-3">
-                                    <span className="text-xs text-slate-500">{inactiveGiftCodes.length} codes</span>
-                                    {inactiveGiftCodes.length > 0 ? (
-                                        <button
-                                            type="button"
-                                            onClick={() => setShowInactiveGiftCodes((value) => !value)}
-                                            className="rounded-lg border border-emerald-400/30 bg-emerald-400/10 px-3 py-1.5 text-xs font-semibold text-emerald-200 transition hover:border-emerald-300/50 hover:bg-emerald-400/15"
+                                <div className="flex items-center gap-6">
+                                    <span className="text-[11px] text-on-surface-variant">{inactiveGiftCodes.length} codes</span>
+                                    {inactiveGiftCodes.length > 0 && (
+                                        <button 
+                                            onClick={() => setShowInactiveGiftCodes(!showInactiveGiftCodes)}
+                                            className="px-6 py-1.5 border border-outline text-on-surface-variant rounded-lg text-[11px] hover:bg-surface-container-highest transition-all"
                                         >
                                             {showInactiveGiftCodes ? "Hide" : "Show"}
                                         </button>
-                                    ) : null}
+                                    )}
                                 </div>
                             </div>
-                            {showInactiveGiftCodes && inactiveGiftCodes.length > 0 ? (
-                                <div className="overflow-x-auto">
-                                    <table className="admin-table">
+                            
+                            {showInactiveGiftCodes ? (
+                                <div className="overflow-x-auto mt-4">
+                                    <table className="w-full text-left">
                                         <thead>
-                                            <tr>
-                                                <th>Preview</th>
-                                                <th>Credits</th>
-                                                <th>Claims</th>
-                                                <th>Status</th>
-                                                <th>Action</th>
+                                            <tr className="font-label-caps text-[10px] text-on-surface-variant tracking-widest border-b border-outline-variant/50">
+                                                <th className="pb-6">PREVIEW</th>
+                                                <th className="pb-6">CREDITS</th>
+                                                <th className="pb-6">CLAIMS</th>
+                                                <th className="pb-6">STATUS</th>
+                                                <th className="pb-6">ACTION</th>
                                             </tr>
                                         </thead>
-                                        <tbody>
-                                            {inactiveGiftCodes.map((code) => (
-                                                <tr key={code.code}>
-                                                    <td>
-                                                        <div className="admin-user-info">
-                                                            <span className="admin-user-name">{code.codePreview}</span>
-                                                            <span className="admin-user-uid">{code.code}</span>
-                                                        </div>
+                                        <tbody className="text-body-sm">
+                                            {inactiveGiftCodes.map(code => (
+                                                <tr key={code.code} className="border-b border-outline-variant/50 hover:bg-surface-container-highest/20 transition-colors last:border-0">
+                                                    <td className="py-6 pr-4">
+                                                        <p className="font-bold text-on-surface font-code-sm">{code.codePreview}</p>
+                                                        <p className="text-[9px] text-on-surface-variant font-code-sm truncate max-w-[200px]">{code.code}</p>
                                                     </td>
-                                                    <td><span className="admin-credits-badge admin-credits-positive">{code.credits.toFixed(2)}</span></td>
-                                                    <td><span className="text-sm text-slate-300">{code.claimedCount} / {code.maxClaims}</span></td>
-                                                    <td><span className="text-sm text-slate-300">{code.status}</span></td>
-                                                    <td>
-                                                        <button
-                                                            type="button"
+                                                    <td className="py-6 pr-4">
+                                                        <span className="px-6 py-1 rounded-lg bg-tertiary/10 text-tertiary text-[11px] font-bold">{code.credits.toFixed(2)}</span>
+                                                    </td>
+                                                    <td className="py-6 text-on-surface pr-4">{code.claimedCount} / {code.maxClaims}</td>
+                                                    <td className="py-6 text-on-surface-variant pr-4">inactive</td>
+                                                    <td className="py-6">
+                                                        <button 
                                                             onClick={() => void handleGiftCodeStatusChange(code, "enable")}
                                                             disabled={actingTarget === code.code}
-                                                            className="rounded-lg border border-emerald-400/30 bg-emerald-400/10 px-3 py-1.5 text-xs font-semibold text-emerald-200 transition hover:border-emerald-300/50 hover:bg-emerald-400/15 disabled:opacity-50"
+                                                            className="px-6 py-1 border border-tertiary text-tertiary rounded-lg text-[10px] hover:bg-tertiary/10 transition-all disabled:opacity-50"
                                                         >
                                                             {actingTarget === code.code ? "Saving..." : "Enable"}
                                                         </button>
@@ -661,53 +630,46 @@ export default function AdminCodesPage() {
                                     </table>
                                 </div>
                             ) : (
-                                <div className="px-4 py-4 text-xs text-slate-500">
-                                    {inactiveGiftCodes.length === 0 ? "No inactive gift codes." : "Inactive gift codes are hidden."}
-                                </div>
+                                <p className="text-[12px] text-outline italic">Inactive gift codes are hidden.</p>
                             )}
                         </div>
 
-                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-                            {compactSummaries.map((summary) => (
-                                <div key={summary.status} className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
-                                    <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">
-                                        {formatGiftCodeSummaryTitle(summary.status)}
-                                    </p>
-                                    <p className="mt-3 text-2xl font-semibold text-white">{summary.codeCount}</p>
-                                    <p className="mt-1 text-xs text-slate-500">codes</p>
-                                    <div className="mt-4 space-y-2 text-sm text-slate-300">
-                                        <div className="flex items-center justify-between gap-4">
-                                            <span>Total credits</span>
-                                            <span className="text-white">{summary.totalCredits.toFixed(2)}</span>
-                                        </div>
-                                        <div className="flex items-center justify-between gap-4">
-                                            <span>Average credits</span>
-                                            <span className="text-white">{summary.averageCredits.toFixed(2)}</span>
-                                        </div>
-                                    </div>
+                        {/* Inactive Codes Summary Metrics */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pb-6">
+                            <div className="bg-surface-container-high/40 rounded-lg p-6 border border-outline-variant">
+                                <p className="font-label-caps text-[10px] text-primary mb-2">ACTIVE</p>
+                                <h4 className="text-[28px] font-bold text-on-surface">{getCodeSummary('active').codeCount} <span className="text-body-sm text-on-surface-variant font-normal">codes</span></h4>
+                                <div className="mt-6 space-y-2 pt-2 border-t border-outline-variant/30">
+                                    <div className="flex justify-between text-[11px] font-code-sm"><span className="text-on-surface-variant">Total credits</span><span className="">{getCodeSummary('active').totalCredits.toFixed(2)}</span></div>
+                                    <div className="flex justify-between text-[11px] font-code-sm"><span className="text-on-surface-variant">Average credits</span><span className="">{getCodeSummary('active').averageCredits.toFixed(2)}</span></div>
                                 </div>
-                            ))}
+                            </div>
+                            <div className="bg-surface-container-high/40 rounded-lg p-6 border border-outline-variant">
+                                <p className="font-label-caps text-[10px] text-on-surface-variant mb-2">INACTIVE</p>
+                                <h4 className="text-[28px] font-bold text-on-surface">{getCodeSummary('inactive').codeCount} <span className="text-body-sm text-on-surface-variant font-normal">codes</span></h4>
+                                <div className="mt-6 space-y-2 pt-2 border-t border-outline-variant/30">
+                                    <div className="flex justify-between text-[11px] font-code-sm"><span className="text-on-surface-variant">Total credits</span><span className="">{getCodeSummary('inactive').totalCredits.toFixed(2)}</span></div>
+                                    <div className="flex justify-between text-[11px] font-code-sm"><span className="text-on-surface-variant">Average credits</span><span className="">{getCodeSummary('inactive').averageCredits.toFixed(2)}</span></div>
+                                </div>
+                            </div>
+                            <div className="bg-surface-container-high/40 rounded-lg p-6 border border-outline-variant">
+                                <p className="font-label-caps text-[10px] text-error mb-2">EXHAUSTED</p>
+                                <h4 className="text-[28px] font-bold text-on-surface">{getCodeSummary('exhausted').codeCount} <span className="text-body-sm text-on-surface-variant font-normal">codes</span></h4>
+                                <div className="mt-6 space-y-2 pt-2 border-t border-outline-variant/30">
+                                    <div className="flex justify-between text-[11px] font-code-sm"><span className="text-on-surface-variant">Total credits</span><span className="">{getCodeSummary('exhausted').totalCredits.toFixed(2)}</span></div>
+                                    <div className="flex justify-between text-[11px] font-code-sm"><span className="text-on-surface-variant">Average credits</span><span className="">{getCodeSummary('exhausted').averageCredits.toFixed(2)}</span></div>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                )}
-            </section>
-        </AdminSubpage>
+                </section>
+            </div>
+            
+            {/* Visual Polish: Decorative Elements */}
+            <div className="absolute top-0 right-0 -z-10 w-[600px] h-[600px] bg-primary/5 rounded-full blur-[120px] pointer-events-none"></div>
+            <div className="absolute bottom-0 left-0 -z-10 w-[400px] h-[400px] bg-tertiary/5 rounded-full blur-[100px] pointer-events-none"></div>
+        </main>
     );
-}
-
-function formatGiftCodeSummaryTitle(status: string) {
-    if (status === "active") return "Active";
-    if (status === "inactive") return "Inactive";
-    if (status === "expired") return "Expired";
-    if (status === "exhausted") return "Exhausted";
-    return status;
-}
-
-function formatBatchSummaryTitle(status: string) {
-    if (status === "active") return "Active";
-    if (status === "inactive") return "Inactive";
-    if (status === "claimed") return "Exhausted";
-    return status;
 }
 
 function downloadCodesAsText(title: string, codes: string[]) {

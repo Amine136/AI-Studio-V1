@@ -208,6 +208,20 @@ def deactivate_admin_account(username: str, *, reason: str = "Admin account deac
         return _admin_account_dict(account)
 
 
+def _send_discord_alert(message: str) -> None:
+    webhook_url = getattr(settings, 'discord_webhook_url', None)
+    if not webhook_url:
+        return
+    import threading
+    import httpx
+    def target():
+        try:
+            httpx.post(webhook_url, json={'content': message}, timeout=5.0)
+        except Exception:
+            pass
+    threading.Thread(target=target, daemon=True).start()
+
+
 def authenticate_admin(username: str, password: str, *, ip_address: str) -> tuple[str, dict[str, Any]]:
     normalized_username = normalize_admin_username(username)
     if not normalized_username or not password:
@@ -248,6 +262,9 @@ def authenticate_admin(username: str, password: str, *, ip_address: str) -> tupl
                     "session_id": str(entry.id),
                 },
                 created_at=now,
+            )
+            _send_discord_alert(
+                f":lock: [Vibecraft] Admin login\nAdmin: {account.username}\nIP: {ip_address.strip() or 'unknown'}"
             )
             return token, _admin_session_dict(entry)
 

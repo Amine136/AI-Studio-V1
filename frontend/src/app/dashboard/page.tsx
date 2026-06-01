@@ -535,9 +535,11 @@ export default function DashboardPage() {
                     <h4 className="mb-1 text-lg font-bold text-blue-100">{item.title}</h4>
                     <p className="text-xs leading-relaxed text-[#c2c6d6]">{item.description}</p>
                   </div>
-                  <Link href={item.linkHref || "/studio"} className="flex items-center gap-1 self-start text-xs font-bold text-[#adc6ff] hover:underline">
-                    {item.linkLabel || "Learn more"} <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
-                  </Link>
+                  {(item.linkLabel || item.linkHref) ? (
+                    <Link href={item.linkHref || "/studio"} className="flex items-center gap-1 self-start text-xs font-bold text-[#adc6ff] hover:underline">
+                      {item.linkLabel || "Learn more"} <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
+                    </Link>
+                  ) : null}
                 </div>
               ))}
               <div className="absolute bottom-4 right-6 flex gap-1.5">

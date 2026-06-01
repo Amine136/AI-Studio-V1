@@ -1,14 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-
-import AdminSubpage from "../_components/AdminSubpage";
+import { useRouter } from "next/navigation";
 import { api } from "../../../services/api";
 import type { AdminUserListItem } from "../../../types";
 
 type StatusFilter = "all" | "active" | "suspended";
 
 export default function AdminUsersPage() {
+    const router = useRouter();
     const [users, setUsers] = useState<AdminUserListItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
@@ -17,6 +17,8 @@ export default function AdminUsersPage() {
     const [feedbackByUid, setFeedbackByUid] = useState<Record<string, string>>({});
     const [query, setQuery] = useState("");
     const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 10;
 
     useEffect(() => {
         let cancelled = false;
@@ -25,7 +27,7 @@ export default function AdminUsersPage() {
             setLoading(true);
             setError("");
             try {
-                const response = await api.getAdminUsers({ limit: 100 });
+                const response = await api.getAdminUsers({ limit: 1000 });
                 if (!cancelled) {
                     setUsers(response.users ?? []);
                 }
@@ -48,15 +50,11 @@ export default function AdminUsersPage() {
     }, []);
 
     const loadUsers = async () => {
-        setLoading(true);
-        setError("");
         try {
-            const response = await api.getAdminUsers({ limit: 100 });
+            const response = await api.getAdminUsers({ limit: 1000 });
             setUsers(response.users ?? []);
         } catch (err) {
             setError(err instanceof Error ? err.message : "Unable to load users.");
-        } finally {
-            setLoading(false);
         }
     };
 
@@ -77,6 +75,13 @@ export default function AdminUsersPage() {
             return matchesQuery && matchesFilter;
         });
     }, [query, statusFilter, users]);
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [query, statusFilter]);
+
+    const totalPages = Math.ceil(filteredUsers.length / itemsPerPage) || 1;
+    const currentUsers = filteredUsers.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
     const handleStatusChange = async (user: AdminUserListItem) => {
         const reason = (reasonByUid[user.uid] || "").trim();
@@ -126,8 +131,8 @@ export default function AdminUsersPage() {
             csvValue(user.displayName || "Anonymous"),
             csvValue(user.email || ""),
             csvValue(user.uid),
-            csvValue(user.credits.toFixed(2)),
-            csvValue(user.reservedCredits.toFixed(2)),
+            csvValue(user.credits?.toFixed(2) || "0.00"),
+            csvValue(user.reservedCredits?.toFixed(2) || "0.00"),
             csvValue(user.isSuspended ? "Suspended" : "Active"),
             csvValue(user.suspensionReason || ""),
         ]);
@@ -143,192 +148,268 @@ export default function AdminUsersPage() {
         URL.revokeObjectURL(url);
     };
 
+    const totalCreditsActive = useMemo(() => {
+        return users.reduce((sum, u) => sum + (u.credits || 0), 0);
+    }, [users]);
+
+    const newRegistrationsToday = useMemo(() => {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        return users.filter(u => u.createdAt && new Date(u.createdAt) >= today).length;
+    }, [users]);
+
+    if (loading) {
+        return (
+            <main className="flex-1 overflow-y-auto p-6 min-h-[calc(100vh-4rem)] flex items-center justify-center">
+                <div className="auth-loader" />
+            </main>
+        );
+    }
+
+    if (error) {
+        return (
+            <main className="flex-1 overflow-y-auto p-6 min-h-[calc(100vh-4rem)] flex items-center justify-center">
+                <p className="text-error">{error}</p>
+            </main>
+        );
+    }
+
     return (
-        <AdminSubpage title="Admin Users" description="User search, balance visibility, and suspension controls.">
-            <section className="glass-card overflow-hidden border border-white/[0.06] shadow-[0_8px_32px_rgba(0,0,0,0.4)] animate-fade-in-up">
-                <div className="border-b border-white/8 px-5 py-4">
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                        <div className="flex items-center gap-3">
-                            <div>
-                                <h2 className="text-base font-semibold text-white">All Users</h2>
-                                <p className="text-xs text-slate-500">Current balances and suspension state</p>
+        <main className="flex-1 overflow-y-auto p-6 custom-scrollbar relative">
+            <div className="max-w-[1440px] mx-auto space-y-6">
+                {/* Hero Section */}
+                <div className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-6">
+                    <div>
+                        <div className="flex items-center gap-3 mb-2">
+                            <div className="w-12 h-12 rounded-lg bg-primary-container/20 flex items-center justify-center border border-primary/20">
+                                <span className="material-symbols-outlined text-primary text-3xl">group</span>
                             </div>
-                            <span className="rounded-full border border-violet-400/20 bg-violet-400/10 px-3 py-1 text-xs font-semibold text-violet-200">
-                                {filteredUsers.length} users
-                            </span>
+                            <h2 className="font-headline-lg text-headline-lg text-on-surface">Admin Users</h2>
                         </div>
-                        <button
-                            type="button"
-                            onClick={exportCsv}
-                            className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/[0.02] px-4 py-2 text-sm font-medium text-slate-200 transition-all duration-200 ease-in-out hover:bg-white/[0.06]"
-                        >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                                <path d="M7 10l5 5 5-5" />
-                                <path d="M12 15V3" />
-                            </svg>
-                            Export CSV
-                        </button>
+                        <p className="text-on-surface-variant font-body-lg">User search, balance visibility, and suspension controls.</p>
                     </div>
                 </div>
 
-                <div className="border-b border-white/8 bg-[rgba(255,255,255,0.04)] px-5 py-4">
-                    <div className="flex justify-end">
-                        <div className="flex w-full max-w-[420px] overflow-hidden rounded-xl border border-white/8 bg-[#1a1d2e]">
-                            <div className="relative min-w-0 flex-1">
-                                <input
-                                    type="text"
+                {/* Main Data Table Container */}
+                <div className="glass-panel rounded-lg overflow-hidden shadow-2xl">
+                    {/* Table Controls */}
+                    <div className="px-6 py-6 border-b border-outline-variant flex flex-col sm:flex-row items-center justify-between gap-4">
+                        <div className="flex items-center gap-3">
+                            <h3 className="font-title-md text-title-md text-on-surface">All Users</h3>
+                            <span className="bg-secondary-container/20 text-secondary px-3 py-1 rounded-full font-label-caps text-[10px] border border-secondary/30">
+                                {filteredUsers.length} users
+                            </span>
+                        </div>
+                        <div className="flex items-center gap-4 w-full sm:w-auto">
+                            <div className="flex-1 sm:w-64 relative">
+                                <input 
                                     value={query}
-                                    onChange={(event) => setQuery(event.target.value)}
-                                    placeholder="Search users"
-                                    className="w-full border-0 bg-transparent px-3 py-2.5 text-sm text-white outline-none transition-all duration-200 ease-in-out placeholder:text-slate-500 focus:ring-0"
+                                    onChange={(e) => setQuery(e.target.value)}
+                                    className="w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-4 py-2 text-body-sm focus:ring-2 focus:ring-primary focus:border-primary placeholder:text-on-surface-variant/40 outline-none" 
+                                    placeholder="Search users..." 
+                                    type="text" 
                                 />
                             </div>
-                            <div className="w-px bg-white/8" />
-                            <select
+                            <select 
                                 value={statusFilter}
-                                onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
-                                className="min-w-[132px] border-0 bg-transparent px-3 py-2.5 text-sm text-slate-200 outline-none transition-all duration-200 ease-in-out focus:ring-0"
+                                onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+                                className="bg-surface-container-lowest border border-outline-variant rounded-lg px-4 py-2 text-body-sm focus:ring-2 focus:ring-primary outline-none"
                             >
                                 <option value="all">All users</option>
                                 <option value="active">Active</option>
                                 <option value="suspended">Suspended</option>
                             </select>
+                            <button onClick={exportCsv} className="flex items-center gap-2 bg-primary text-on-primary px-4 py-2 rounded-lg font-label-caps text-label-caps hover:brightness-110 transition-all">
+                                <span className="material-symbols-outlined text-sm">download</span>
+                                Export CSV
+                            </button>
                         </div>
                     </div>
-                </div>
 
-                {loading ? (
-                    <div className="flex items-center justify-center py-20">
-                        <div className="auth-loader" />
-                    </div>
-                ) : error ? (
-                    <div className="admin-empty-state">
-                        <p>{error}</p>
-                    </div>
-                ) : (
+                    {/* Data Table */}
                     <div className="overflow-x-auto">
-                        <table className="admin-table">
-                            <thead className="sticky top-0 z-10">
-                                <tr className="border-b border-[rgba(255,255,255,0.07)] bg-[rgba(255,255,255,0.02)]">
-                                    <th className="font-semibold tracking-[0.08em] text-slate-300">User</th>
-                                    <th className="font-semibold tracking-[0.08em] text-slate-300">Credits</th>
-                                    <th className="font-semibold tracking-[0.08em] text-slate-300">Reserved</th>
-                                    <th className="font-semibold tracking-[0.08em] text-slate-300">Status</th>
-                                    <th className="font-semibold tracking-[0.08em] text-slate-300">Action</th>
+                        <table className="w-full text-left">
+                            <thead>
+                                <tr className="bg-surface-container-highest/30">
+                                    <th className="px-6 py-4 font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider">User</th>
+                                    <th className="px-6 py-4 font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider">Credits</th>
+                                    <th className="px-6 py-4 font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider">Reserved</th>
+                                    <th className="px-6 py-4 font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider text-center">Status</th>
+                                    <th className="px-6 py-4 font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider">Action</th>
                                 </tr>
                             </thead>
-                            <tbody>
-                                {filteredUsers.map((user) => (
-                                    <tr key={user.uid} className="group border-b border-white/6 transition-all duration-150 ease-in-out hover:bg-[rgba(255,255,255,0.025)]">
-                                        <td className="relative py-3 pl-6 before:absolute before:left-0 before:top-0 before:h-full before:w-[2px] before:bg-transparent before:transition-all before:duration-150 group-hover:before:bg-[rgba(124,58,237,0.7)]">
-                                            <div className="admin-user-cell">
-                                                <div
-                                                    className="admin-avatar text-white"
-                                                    style={{ background: avatarGradientForUser(user.uid || user.email || user.displayName || "?") }}
-                                                >
+                            <tbody className="divide-y divide-outline-variant">
+                                {currentUsers.map((user) => (
+                                    <tr key={user.uid} className={`hover:bg-surface-bright transition-colors group ${user.isSuspended ? 'bg-error/5' : ''}`}>
+                                        <td className="px-6 py-4">
+                                            <div className="flex items-center gap-4">
+                                                <div className={`w-10 h-10 rounded-lg flex items-center justify-center font-bold font-title-md border ${user.isSuspended ? 'bg-error/20 text-error border-error/20' : 'bg-primary/20 text-primary border-primary/20'}`}>
                                                     {(user.displayName || user.email || "?").charAt(0).toUpperCase()}
                                                 </div>
-                                                <div className="admin-user-info">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="admin-user-name">{user.displayName || "Anonymous"}</span>
-                                                    </div>
-                                                    <span className="admin-user-uid">{user.email || user.uid}</span>
+                                                <div>
+                                                    <p className={`font-title-md text-body-lg text-on-surface group-hover:${user.isSuspended ? 'text-error' : 'text-primary'} transition-colors`}>{user.displayName || "Anonymous"}</p>
+                                                    <p className="font-body-sm text-on-surface-variant text-xs">{user.email || user.uid}</p>
                                                 </div>
                                             </div>
                                         </td>
-                                        <td className="py-3">
-                                            <CreditTierBadge value={user.credits} />
+                                        <td className="px-6 py-4">
+                                            <CreditTierBadge value={user.credits || 0} />
                                         </td>
-                                        <td className="py-3">
-                                            <span className="text-sm text-slate-300">{user.reservedCredits.toFixed(2)}</span>
+                                        <td className="px-6 py-4 text-on-surface-variant font-code-sm">
+                                            {(user.reservedCredits || 0).toFixed(2)}
                                         </td>
-                                        <td className="py-3">
-                                            <StatusChip user={user} />
-                                        </td>
-                                        <td className="py-3">
-                                            <div className="min-w-[280px]">
-                                                <div className="flex items-center gap-2">
-                                                    <input
-                                                        type="text"
-                                                        value={reasonByUid[user.uid] || ""}
-                                                        onChange={(event) =>
-                                                            setReasonByUid((current) => ({
-                                                                ...current,
-                                                                [user.uid]: event.target.value,
-                                                            }))
-                                                        }
-                                                        placeholder={user.isSuspended ? "Reason to unsuspend" : "Reason to suspend"}
-                                                        className="min-w-0 flex-1 rounded-xl border border-white/8 bg-[#1a1d2e] px-3 py-2 text-sm text-white outline-none transition-all duration-200 ease-in-out placeholder:text-slate-500 focus:border-violet-400/40 focus:ring-2 focus:ring-violet-500/30"
-                                                    />
-                                                    <button
-                                                        onClick={() => void handleStatusChange(user)}
-                                                        disabled={actingUid === user.uid}
-                                                        className={
-                                                            user.isSuspended
-                                                                ? "inline-flex items-center justify-center rounded-xl border border-emerald-400/30 px-3 py-2 text-sm font-semibold text-emerald-300 transition-all duration-200 ease-in-out hover:bg-emerald-400/10"
-                                                                : "inline-flex items-center justify-center rounded-[10px] bg-[linear-gradient(135deg,#dc2626,#b91c1c)] px-3 py-2 text-sm font-semibold text-white transition-all duration-200 ease-in-out hover:-translate-y-[1px] hover:shadow-[0_4px_15px_rgba(220,38,38,0.35)]"
-                                                        }
-                                                    >
-                                                        {actingUid === user.uid ? (
-                                                            "Saving..."
-                                                        ) : user.isSuspended ? (
-                                                            "Unsuspend"
-                                                        ) : (
-                                                            "Suspend"
-                                                        )}
-                                                    </button>
-                                                </div>
-                                                {feedbackByUid[user.uid] ? (
-                                                    <p className={`mt-2 text-xs ${feedbackByUid[user.uid] === "User suspended." || feedbackByUid[user.uid] === "User unsuspended." ? "text-emerald-300" : "text-amber-300"}`}>
-                                                        {feedbackByUid[user.uid]}
-                                                    </p>
-                                                ) : null}
+                                        <td className="px-6 py-4">
+                                            <div className="flex justify-center">
+                                                <StatusChip user={user} />
                                             </div>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <div className="flex items-center gap-3">
+                                                <input 
+                                                    type="text" 
+                                                    value={reasonByUid[user.uid] || ""}
+                                                    onChange={(e) => setReasonByUid(curr => ({ ...curr, [user.uid]: e.target.value }))}
+                                                    className={`bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-1.5 text-xs w-48 focus:ring-1 transition-all placeholder:text-on-surface-variant/30 outline-none ${user.isSuspended ? 'focus:ring-tertiary focus:border-tertiary' : 'focus:ring-error focus:border-error'}`} 
+                                                    placeholder={user.isSuspended ? "Reason to unsuspend" : "Reason to suspend"}
+                                                />
+                                                <button 
+                                                    disabled={actingUid === user.uid}
+                                                    onClick={() => handleStatusChange(user)}
+                                                    className={
+                                                        user.isSuspended 
+                                                        ? "bg-tertiary/20 text-tertiary border border-tertiary px-4 py-1.5 rounded-lg font-label-caps text-label-caps hover:bg-tertiary hover:text-on-tertiary transition-all disabled:opacity-50" 
+                                                        : "bg-error text-on-error px-4 py-1.5 rounded-lg font-label-caps text-label-caps hover:bg-error/80 transition-all disabled:opacity-50"
+                                                    }
+                                                >
+                                                    {actingUid === user.uid ? "Saving..." : user.isSuspended ? "Unsuspend" : "Suspend"}
+                                                </button>
+                                            </div>
+                                            {feedbackByUid[user.uid] && (
+                                                <p className={`mt-1 text-xs ${feedbackByUid[user.uid].includes("unsuspended") ? "text-tertiary" : "text-error"}`}>
+                                                    {feedbackByUid[user.uid]}
+                                                </p>
+                                            )}
                                         </td>
                                     </tr>
                                 ))}
+                                {currentUsers.length === 0 && (
+                                    <tr>
+                                        <td colSpan={5} className="px-6 py-8 text-center text-on-surface-variant text-sm">
+                                            No users found matching your criteria.
+                                        </td>
+                                    </tr>
+                                )}
                             </tbody>
                         </table>
                     </div>
-                )}
-            </section>
-        </AdminSubpage>
+
+                    {/* Pagination */}
+                    {filteredUsers.length > 0 && (
+                        <div className="px-6 py-4 border-t border-outline-variant flex items-center justify-between">
+                            <p className="font-body-sm text-on-surface-variant text-xs">
+                                Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, filteredUsers.length)} of {filteredUsers.length} users
+                            </p>
+                            <div className="flex items-center gap-2">
+                                <button 
+                                    disabled={currentPage === 1}
+                                    onClick={() => setCurrentPage(p => p - 1)}
+                                    className="p-2 rounded-lg border border-outline-variant text-on-surface-variant hover:text-on-surface disabled:opacity-30 transition-all"
+                                >
+                                    <span className="material-symbols-outlined text-sm">chevron_left</span>
+                                </button>
+                                
+                                {Array.from({ length: totalPages }, (_, i) => i + 1)
+                                    .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1)
+                                    .map((p, i, arr) => {
+                                        if (i > 0 && arr[i - 1] !== p - 1) {
+                                            return <span key={`ellipsis-${p}`} className="text-on-surface-variant">...</span>;
+                                        }
+                                        return (
+                                            <button 
+                                                key={p}
+                                                onClick={() => setCurrentPage(p)}
+                                                className={`w-8 h-8 rounded-lg font-label-caps text-xs transition-all ${
+                                                    currentPage === p 
+                                                    ? 'bg-primary text-on-primary' 
+                                                    : 'border border-outline-variant text-on-surface-variant hover:text-on-surface'
+                                                }`}
+                                            >
+                                                {p}
+                                            </button>
+                                        );
+                                    })
+                                }
+
+                                <button 
+                                    disabled={currentPage === totalPages}
+                                    onClick={() => setCurrentPage(p => p + 1)}
+                                    className="p-2 rounded-lg border border-outline-variant text-on-surface-variant hover:text-on-surface disabled:opacity-30 transition-all"
+                                >
+                                    <span className="material-symbols-outlined text-sm">chevron_right</span>
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                {/* System Stats / Bento Style Extra Section */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8 pb-10">
+                    <div className="glass-panel p-6 rounded-lg flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-full bg-tertiary/10 flex items-center justify-center border border-tertiary/20">
+                            <span className="material-symbols-outlined text-tertiary">verified_user</span>
+                        </div>
+                        <div>
+                            <p className="font-label-caps text-[10px] text-on-surface-variant uppercase">New Registrations</p>
+                            <h4 className="font-title-md text-title-md text-on-surface">+{newRegistrationsToday} today</h4>
+                        </div>
+                    </div>
+                    <div className="glass-panel p-6 rounded-lg flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center border border-primary/20">
+                            <span className="material-symbols-outlined text-primary">payments</span>
+                        </div>
+                        <div>
+                            <p className="font-label-caps text-[10px] text-on-surface-variant uppercase">Total Credits Active</p>
+                            <h4 className="font-title-md text-title-md text-on-surface">{totalCreditsActive.toFixed(2)}</h4>
+                        </div>
+                    </div>
+                    <div className="glass-panel p-6 rounded-lg flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-full bg-error/10 flex items-center justify-center border border-error/20">
+                            <span className="material-symbols-outlined text-error">gpp_maybe</span>
+                        </div>
+                        <div>
+                            <p className="font-label-caps text-[10px] text-on-surface-variant uppercase">Critical Warnings</p>
+                            <h4 className="font-title-md text-title-md text-on-surface">0 Pending</h4>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
     );
 }
 
 function CreditTierBadge({ value }: { value: number }) {
     const tier =
         value >= 5
-            ? "bg-emerald-400/12 text-emerald-200 border-emerald-400/25"
+            ? "bg-tertiary/10 text-tertiary border-tertiary/20"
             : value >= 2
-                ? "bg-amber-400/12 text-amber-200 border-amber-400/25"
-                : "bg-red-400/12 text-red-200 border-red-400/25";
+                ? "bg-yellow-500/10 text-yellow-400 border-yellow-500/20"
+                : "bg-surface-variant text-on-surface-variant border-outline-variant";
 
     return (
-        <span className={`inline-flex min-w-[72px] items-center justify-center rounded-full border px-3 py-1 text-sm font-semibold tabular-nums ${tier}`}>
+        <span className={`font-code-sm text-code-sm px-4 py-1.5 rounded-full border ${tier}`}>
             {value.toFixed(2)}
         </span>
     );
 }
 
 function StatusChip({ user }: { user: AdminUserListItem }) {
-    const title = user.suspensionReason
-        ? `${user.suspensionReason}${user.activeSuspensionUntil ? ` Until ${new Date(user.activeSuspensionUntil * 1000).toLocaleString()}` : ""}`
-        : user.isSuspended
-            ? "Suspended"
-            : "Active";
-
     return (
-        <span
-            title={title}
-            className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm font-medium ${
-                user.isSuspended
-                    ? "border-red-400/25 bg-red-400/10 text-red-200"
-                    : "border-emerald-400/25 bg-emerald-400/10 text-emerald-200"
-            }`}
-        >
-            <span className={`h-2 w-2 rounded-full ${user.isSuspended ? "bg-red-300" : "bg-emerald-300"}`} />
+        <span className={`flex items-center gap-1.5 px-3 py-1 rounded-full font-label-caps text-[10px] border w-max mx-auto ${
+            user.isSuspended 
+                ? "bg-error/10 text-error border-error/20" 
+                : "bg-tertiary/10 text-tertiary border-tertiary/20"
+        }`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${user.isSuspended ? "bg-error" : "bg-tertiary animate-pulse"}`}></span> 
             {user.isSuspended ? "Suspended" : "Active"}
         </span>
     );
@@ -336,17 +417,4 @@ function StatusChip({ user }: { user: AdminUserListItem }) {
 
 function csvValue(value: string) {
     return `"${String(value).replace(/"/g, '""')}"`;
-}
-
-function avatarGradientForUser(seed: string) {
-    const gradients = [
-        "linear-gradient(135deg, rgba(124,58,237,0.92), rgba(59,130,246,0.92))",
-        "linear-gradient(160deg, rgba(59,130,246,0.92), rgba(124,58,237,0.92))",
-        "linear-gradient(110deg, rgba(124,58,237,0.92), rgba(14,165,233,0.92))",
-    ];
-    let hash = 0;
-    for (let index = 0; index < seed.length; index += 1) {
-        hash = (hash * 31 + seed.charCodeAt(index)) >>> 0;
-    }
-    return gradients[hash % gradients.length];
 }
