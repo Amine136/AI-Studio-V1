@@ -47,6 +47,7 @@ class Config:
         self.apikeymanager_public_base_url = os.getenv("APIKEYMANAGER_PUBLIC_BASE_URL", "").rstrip("/")
         self.apikeymanager_token = os.getenv("APIKEYMANAGER_TOKEN", "")
         self.apikeymanager_timeout = float(os.getenv("APIKEYMANAGER_TIMEOUT", "120"))
+        self.discord_webhook_url = os.getenv("DISCORD_WEBHOOK_URL", "").strip()
         self.public_backend_base_url = os.getenv("PUBLIC_BACKEND_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
         self.catalog_webhook_secret = os.getenv("CATALOG_WEBHOOK_SECRET", "").strip()
         self.firebase_project_id = os.getenv("FIREBASE_PROJECT_ID", "novanodetn").strip()
