@@ -1,0 +1,121 @@
+@theme inline {
+  --color-surface-container-high: #222a3d;
+  --color-on-tertiary-fixed: #00201c;
+  --color-surface: #0b1326;
+  --color-surface-tint: #c0c1ff;
+  --color-primary-container: #8083ff;
+  --color-primary-fixed-dim: #c0c1ff;
+  --color-surface-container-low: #131b2e;
+  --color-background: #0b1326;
+  --color-inverse-surface: #dae2fd;
+  --color-tertiary-fixed: #62fae3;
+  --color-on-surface-variant: #c7c4d7;
+  --color-secondary-fixed: #e9ddff;
+  --color-surface-dim: #0b1326;
+  --color-surface-bright: #31394d;
+  --color-surface-container: #171f33;
+  --color-on-secondary-container: #c4abff;
+  --color-outline-variant: #464554;
+  --color-on-secondary: #3c0091;
+  --color-error: #ffb4ab;
+  --color-inverse-primary: #494bd6;
+  --color-on-primary-fixed: #07006c;
+  --color-on-secondary-fixed: #23005c;
+  --color-tertiary-container: #008678;
+  --color-on-error: #690005;
+  --color-on-background: #dae2fd;
+  --color-surface-container-highest: #2d3449;
+  --color-on-tertiary-fixed-variant: #005047;
+  --color-outline: #908fa0;
+  --color-primary-fixed: #e1e0ff;
+  --color-tertiary: #3cddc7;
+  --color-primary: #c0c1ff;
+  --color-on-tertiary: #003731;
+  --color-secondary-container: #571bc1;
+  --color-inverse-on-surface: #283044;
+  --color-on-secondary-fixed-variant: #5516be;
+  --color-tertiary-fixed-dim: #3cddc7;
+  --color-on-primary-container: #0d0096;
+  --color-secondary-fixed-dim: #d0bcff;
+  --color-on-tertiary-container: #000705;
+  --color-on-surface: #dae2fd;
+  --color-surface-variant: #2d3449;
+  --color-surface-container-lowest: #060e20;
+  --color-on-primary-fixed-variant: #2f2ebe;
+  --color-error-container: #93000a;
+  --color-on-error-container: #ffdad6;
+  --color-on-primary: #1000a9;
+  --color-secondary: #d0bcff;
+  --radius-DEFAULT: 0.25rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+  --radius-full: 9999px;
+  --spacing-gutter: 24px;
+  --spacing-lg: 32px;
+  --spacing-xs: 8px;
+  --spacing-base: 4px;
+  --spacing-sm: 16px;
+  --spacing-container-max: 1440px;
+  --spacing-xl: 48px;
+  --spacing-md: 24px;
+  --font-headline-lg-mobile: "Hanken Grotesk";
+  --font-display-lg: "Hanken Grotesk";
+  --font-label-caps: "JetBrains Mono";
+  --font-headline-lg: "Hanken Grotesk";
+  --font-body-sm: "Inter";
+  --font-title-md: "Hanken Grotesk";
+  --font-body-lg: "Inter";
+  --font-code-sm: "JetBrains Mono";
+}
+
+.admin-wrapper {
+    background-color: #0b1326;
+    color: #dae2fd;
+    font-family: 'Inter', sans-serif;
+}
+.glass-panel {
+    background: rgba(23, 31, 51, 0.7);
+    backdrop-filter: blur(12px);
+    border: 1px solid #30363d;
+}
+.sidebar-gradient {
+    background: linear-gradient(180deg, #171f33 0%, #0b1326 100%);
+}
+.glow-accent {
+    box-shadow: 0 0 15px rgba(192, 193, 255, 0.15);
+}
+.custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #30363d;
+    border-radius: 10px;
+}
+.nebula-glass {
+    background: rgba(23, 31, 51, 0.7);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(144, 143, 160, 0.15);
+}
+.event-card {
+    border-bottom: 1px solid #30363D;
+}
+.event-card:last-child {
+    border-bottom: none;
+}
+.glow-primary {
+    box-shadow: 0 0 20px rgba(192, 193, 255, 0.15);
+}
+.gradient-button {
+    background: linear-gradient(135deg, #8083ff 0%, #571bc1 100%);
+    transition: all 0.3s ease;
+}
+.gradient-button:hover {
+    box-shadow: 0 0 15px rgba(128, 131, 255, 0.4);
+    opacity: 0.9;
+}
+.news-card:hover {
+    border-color: #c0c1ff;
+}

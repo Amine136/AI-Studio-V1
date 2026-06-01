@@ -1,8 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-
-import AdminSubpage from "../_components/AdminSubpage";
 import { api } from "../../../services/api";
 import type { DashboardNewsItem, DashboardNewsUpsertRequest } from "../../../types";
 
@@ -68,9 +66,14 @@ export default function AdminNewsPage() {
             sortOrder: item.sortOrder,
             isActive: item.isActive,
         });
+        
+        // Scroll to form (for mobile/smaller screens)
+        window.scrollTo({ top: 0, behavior: 'smooth' });
     }, []);
 
-    const handleSave = useCallback(async () => {
+    const handleSave = useCallback(async (e?: React.FormEvent) => {
+        if (e) e.preventDefault();
+        
         setSaving(true);
         setError("");
         try {
@@ -93,6 +96,8 @@ export default function AdminNewsPage() {
     }, [editingNewsId, newsForm, resetForm]);
 
     const handleDelete = useCallback(async (item: DashboardNewsItem) => {
+        if (!window.confirm("Are you sure you want to delete this news item?")) return;
+        
         setSaving(true);
         setError("");
         try {
@@ -108,143 +113,251 @@ export default function AdminNewsPage() {
         }
     }, [editingNewsId, resetForm]);
 
+    if (loading && items.length === 0) {
+        return (
+            <main className="flex-1 overflow-y-auto p-8 h-[calc(100vh-64px)] flex items-center justify-center">
+                <div className="auth-loader" />
+            </main>
+        );
+    }
+
     return (
-        <AdminSubpage title="Dashboard News" description="Manage the rotating dashboard cards now, and leave room here for future news mailing controls.">
-            <section className="glass-card overflow-hidden animate-fade-in-up">
-                <div className="flex items-center justify-between border-b border-white/8 px-5 py-4">
-                    <div>
-                        <h2 className="text-base font-semibold text-white">News Items</h2>
-                        <p className="text-xs text-slate-500">These cards appear in Dashboard → Studio News.</p>
-                    </div>
-                    <span className="text-xs text-slate-500">{items.length} items</span>
+        <main className="flex-1 overflow-y-auto p-8 h-[calc(100vh-64px)] custom-scrollbar relative">
+            <div className="max-w-[1440px] mx-auto grid grid-cols-1 md:grid-cols-12 gap-8 pb-10">
+                
+                {/* Header Section */}
+                <div className="col-span-1 md:col-span-12 mb-4">
+                    <h2 className="text-headline-lg font-headline-lg text-on-background">Dashboard News</h2>
+                    <p className="text-body-lg font-body-lg text-on-surface-variant mt-1">Manage the rotating dashboard cards now, and leave room here for future news mailing controls.</p>
                 </div>
 
-                {loading ? (
-                    <div className="flex items-center justify-center py-20">
-                        <div className="auth-loader" />
+                {/* Left Column: News Items Registry */}
+                <div className="col-span-1 md:col-span-8 space-y-6">
+                    <div className="flex justify-between items-end mb-2">
+                        <h3 className="text-title-md font-title-md text-on-surface">News Items</h3>
+                        <span className="text-label-caps font-label-caps text-on-surface-variant">{items.length} items currently listed</span>
                     </div>
-                ) : (
-                    <div className="grid gap-6 px-5 py-5 xl:grid-cols-[1.15fr_0.85fr]">
-                        <div className="space-y-3">
+
+                    {/* Registry Container */}
+                    <div className="glass-panel rounded-lg p-6">
+                        <div className="space-y-4">
+                            {error && <p className="text-sm text-error mb-4">{error}</p>}
+                            
                             {items.length === 0 ? (
-                                <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-5 text-sm text-slate-400">
-                                    No dashboard news items yet.
-                                </div>
-                            ) : null}
-                            {items.map((item) => (
-                                <div key={item.id} className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
-                                    <div className="flex items-start justify-between gap-4">
-                                        <div className="min-w-0">
-                                            <div className="flex flex-wrap items-center gap-2">
-                                                <span className="rounded-full border border-white/8 bg-white/[0.03] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-200">
+                                <p className="text-body-sm text-on-surface-variant italic">No dashboard news items yet.</p>
+                            ) : (
+                                items.map((item) => (
+                                    <div key={item.id} className="news-card glass-panel rounded-lg p-4 border border-outline-variant/30 transition-all flex flex-col xl:flex-row justify-between items-start gap-4 hover:-translate-y-[2px]">
+                                        <div className="flex-1">
+                                            <div className="flex items-center gap-4 mb-2">
+                                                <span className="px-2 py-0.5 rounded-full bg-surface-container-highest text-[10px] font-label-caps text-on-surface border border-outline uppercase">
                                                     {item.badge || "News"}
                                                 </span>
-                                                <span className="text-[11px] text-slate-500">{formatRelativeTime(item.updatedAt ?? item.createdAt)}</span>
-                                                <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${item.isActive ? "bg-emerald-400/10 text-emerald-300" : "bg-slate-400/10 text-slate-400"}`}>
-                                                    {item.isActive ? "Active" : "Hidden"}
+                                                <span className="text-label-caps font-label-caps text-on-surface-variant opacity-60">
+                                                    {formatRelativeTime(item.updatedAt ?? item.createdAt)}
+                                                </span>
+                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-label-caps ${item.isActive ? "bg-tertiary/10 text-tertiary border border-tertiary/20" : "bg-outline-variant/30 text-on-surface-variant"}`}>
+                                                    {item.isActive ? "ACTIVE" : "HIDDEN"}
                                                 </span>
                                             </div>
-                                            <p className="mt-3 text-sm font-semibold text-white">{item.title}</p>
-                                            <p className="mt-2 text-sm leading-6 text-slate-300">{item.description}</p>
-                                            <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-400">
-                                                <span className="rounded-full border border-white/8 bg-white/[0.03] px-2 py-1">Tone: {item.tone}</span>
-                                                <span className="rounded-full border border-white/8 bg-white/[0.03] px-2 py-1">Order: {item.sortOrder}</span>
-                                                <span className="rounded-full border border-white/8 bg-white/[0.03] px-2 py-1">Link: {item.linkHref}</span>
+                                            <h4 className="text-body-lg font-bold text-primary mb-1">{item.title}</h4>
+                                            <p className="text-body-sm text-on-surface-variant mb-4">{item.description}</p>
+                                            
+                                            <div className="flex flex-wrap gap-2">
+                                                <span className="px-2 py-1 bg-surface-container-low border border-outline-variant rounded text-[11px] font-code-sm text-secondary">
+                                                    Tone: {item.tone}
+                                                </span>
+                                                <span className="px-2 py-1 bg-surface-container-low border border-outline-variant rounded text-[11px] font-code-sm text-on-surface-variant">
+                                                    Order: {item.sortOrder}
+                                                </span>
+                                                <span className="px-2 py-1 bg-surface-container-low border border-outline-variant rounded text-[11px] font-code-sm text-on-surface-variant">
+                                                    Link: {item.linkHref}
+                                                </span>
                                             </div>
                                         </div>
-                                        <div className="flex shrink-0 gap-2">
-                                            <button onClick={() => handleEdit(item)} className="admin-gradient-btn px-3 py-2 text-xs">
+                                        
+                                        <div className="flex xl:flex-col gap-2 shrink-0 w-full xl:w-auto xl:ml-6">
+                                            <button 
+                                                onClick={() => handleEdit(item)}
+                                                disabled={saving}
+                                                className="flex-1 xl:flex-none px-4 py-1.5 bg-secondary-container text-on-secondary-container rounded-lg text-label-caps hover:brightness-110 transition-all disabled:opacity-50"
+                                            >
                                                 Edit
                                             </button>
-                                            <button
+                                            <button 
                                                 onClick={() => void handleDelete(item)}
-                                                className="rounded-xl border border-rose-400/20 bg-rose-400/[0.07] px-3 py-2 text-xs font-semibold text-rose-200 transition hover:bg-rose-400/[0.12]"
                                                 disabled={saving}
+                                                className="flex-1 xl:flex-none px-4 py-1.5 bg-error-container/30 text-error rounded-lg text-label-caps hover:bg-error-container/50 transition-all disabled:opacity-50"
                                             >
                                                 Delete
                                             </button>
                                         </div>
                                     </div>
-                                </div>
-                            ))}
-                        </div>
-
-                        <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-5">
-                            <div className="flex items-center justify-between gap-3">
-                                <div>
-                                    <p className="text-sm font-semibold text-white">{editingNewsId ? "Edit News Item" : "Create News Item"}</p>
-                                    <p className="mt-1 text-xs text-slate-500">Future mailing controls can be added to this page.</p>
-                                </div>
-                                {editingNewsId ? (
-                                    <button onClick={resetForm} className="text-xs font-semibold text-slate-300 hover:text-white">
-                                        Cancel
-                                    </button>
-                                ) : null}
-                            </div>
-
-                            <div className="mt-5 space-y-4">
-                                <label className="block">
-                                    <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Badge</span>
-                                    <select
-                                        value={newsForm.badge}
-                                        onChange={(event) => handleFieldChange("badge", event.target.value as DashboardNewsUpsertRequest["badge"])}
-                                        className="w-full rounded-xl border border-white/10 bg-[#0f1525] px-3 py-2.5 text-sm text-white outline-none transition focus:border-[#adc6ff]/40"
-                                    >
-                                        <option value="AI News">AI News</option>
-                                        <option value="Platform Updates">Platform Updates</option>
-                                        <option value="New Features">New Features</option>
-                                    </select>
-                                </label>
-                                <AdminInput label="Title" value={newsForm.title} onChange={(value) => handleFieldChange("title", value)} placeholder="Quick and Smart workflows are active" />
-                                <AdminTextArea label="Description" value={newsForm.description} onChange={(value) => handleFieldChange("description", value)} placeholder="Short dashboard message..." />
-                                <div className="grid gap-4 sm:grid-cols-2">
-                                    <AdminInput label="Link Label" value={newsForm.linkLabel} onChange={(value) => handleFieldChange("linkLabel", value)} placeholder="Learn more" />
-                                    <AdminInput label="Link Href" value={newsForm.linkHref} onChange={(value) => handleFieldChange("linkHref", value)} placeholder="/studio" />
-                                </div>
-                                <div className="grid gap-4 sm:grid-cols-2">
-                                    <label className="block">
-                                        <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Tone</span>
-                                        <select
-                                            value={newsForm.tone}
-                                            onChange={(event) => handleFieldChange("tone", event.target.value as DashboardNewsUpsertRequest["tone"])}
-                                            className="w-full rounded-xl border border-white/10 bg-[#0f1525] px-3 py-2.5 text-sm text-white outline-none transition focus:border-[#adc6ff]/40"
-                                        >
-                                            <option value="blue">Blue</option>
-                                            <option value="purple">Purple</option>
-                                            <option value="slate">Slate</option>
-                                        </select>
-                                    </label>
-                                    <AdminInput
-                                        label="Sort Order"
-                                        value={String(newsForm.sortOrder)}
-                                        onChange={(value) => handleFieldChange("sortOrder", Number.parseInt(value || "0", 10) || 0)}
-                                        placeholder="0"
-                                        type="number"
-                                    />
-                                </div>
-                                <label className="flex items-center gap-3 rounded-xl border border-white/8 bg-[#0f1525] px-3 py-3 text-sm text-slate-200">
-                                    <input
-                                        type="checkbox"
-                                        checked={newsForm.isActive}
-                                        onChange={(event) => handleFieldChange("isActive", event.target.checked)}
-                                        className="h-4 w-4 rounded border-white/20 bg-transparent"
-                                    />
-                                    Show this item on the dashboard
-                                </label>
-                                {error ? <p className="text-sm text-rose-300">{error}</p> : null}
-                                <button
-                                    onClick={() => void handleSave()}
-                                    disabled={saving || !newsForm.title.trim()}
-                                    className="admin-gradient-btn w-full justify-center py-3 disabled:cursor-not-allowed disabled:opacity-60"
-                                >
-                                    {saving ? "Saving..." : editingNewsId ? "Update News Item" : "Create News Item"}
-                                </button>
-                            </div>
+                                ))
+                            )}
                         </div>
                     </div>
-                )}
-            </section>
-        </AdminSubpage>
+                </div>
+
+                {/* Right Column: Create News Item Form */}
+                <div className="col-span-1 md:col-span-4">
+                    <div className="glass-panel rounded-lg p-6 sticky top-6">
+                        <div className="flex justify-between items-start mb-1">
+                            <h3 className="text-title-md font-title-md text-on-surface">{editingNewsId ? "Edit News Item" : "Create News Item"}</h3>
+                            {editingNewsId && (
+                                <button onClick={resetForm} className="text-[11px] font-label-caps text-on-surface-variant hover:text-white transition-colors">
+                                    CANCEL
+                                </button>
+                            )}
+                        </div>
+                        <p className="text-body-sm text-on-surface-variant mb-6">Future mailing controls can be added to this page.</p>
+                        
+                        <form onSubmit={(e) => void handleSave(e)} className="space-y-4">
+                            <div className="space-y-1">
+                                <label className="text-label-caps font-label-caps text-on-surface-variant">BADGE</label>
+                                <select 
+                                    value={newsForm.badge}
+                                    onChange={(e) => handleFieldChange("badge", e.target.value as any)}
+                                    className="w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-4 py-2 text-body-sm focus:ring-2 focus:ring-primary/50 outline-none appearance-none"
+                                >
+                                    <option value="AI News">AI News</option>
+                                    <option value="Platform Updates">Platform Updates</option>
+                                    <option value="New Features">New Features</option>
+                                    <option value="Maintenance">Maintenance</option>
+                                </select>
+                            </div>
+                            
+                            <div className="space-y-1">
+                                <label className="text-label-caps font-label-caps text-on-surface-variant">TITLE</label>
+                                <input 
+                                    required
+                                    value={newsForm.title}
+                                    onChange={(e) => handleFieldChange("title", e.target.value)}
+                                    className="w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-4 py-2 text-body-sm focus:ring-2 focus:ring-primary/50 outline-none" 
+                                    placeholder="Quick and Smart workflows are active" 
+                                    type="text" 
+                                />
+                            </div>
+                            
+                            <div className="space-y-1">
+                                <label className="text-label-caps font-label-caps text-on-surface-variant">DESCRIPTION</label>
+                                <textarea 
+                                    value={newsForm.description}
+                                    onChange={(e) => handleFieldChange("description", e.target.value)}
+                                    className="w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-4 py-2 text-body-sm focus:ring-2 focus:ring-primary/50 outline-none resize-none" 
+                                    placeholder="Short dashboard message..." 
+                                    rows={3}
+                                ></textarea>
+                            </div>
+                            
+                            <div className="flex items-center justify-between pt-2">
+                                <label className="text-label-caps font-label-caps text-on-surface">ACTION LINK</label>
+                                {(newsForm.linkLabel || newsForm.linkHref) && (
+                                    <button 
+                                        type="button"
+                                        onClick={() => {
+                                            handleFieldChange("linkLabel", "");
+                                            handleFieldChange("linkHref", "");
+                                        }}
+                                        className="text-[11px] font-label-caps text-error hover:text-error/80 transition-colors"
+                                    >
+                                        Remove Link
+                                    </button>
+                                )}
+                            </div>
+                            
+                            {(newsForm.linkLabel || newsForm.linkHref) ? (
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-1">
+                                        <label className="text-label-caps font-label-caps text-on-surface-variant">LINK LABEL</label>
+                                        <input 
+                                            value={newsForm.linkLabel}
+                                            onChange={(e) => handleFieldChange("linkLabel", e.target.value)}
+                                            className="w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-4 py-2 text-body-sm focus:ring-2 focus:ring-primary/50 outline-none" 
+                                            placeholder="Learn more" 
+                                            type="text" 
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-label-caps font-label-caps text-on-surface-variant">LINK HREF</label>
+                                        <input 
+                                            value={newsForm.linkHref}
+                                            onChange={(e) => handleFieldChange("linkHref", e.target.value)}
+                                            className="w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-4 py-2 text-body-sm focus:ring-2 focus:ring-primary/50 outline-none" 
+                                            placeholder="/studio" 
+                                            type="text" 
+                                        />
+                                    </div>
+                                </div>
+                            ) : (
+                                <button 
+                                    type="button"
+                                    onClick={() => {
+                                        handleFieldChange("linkLabel", "Learn more");
+                                        handleFieldChange("linkHref", "/studio");
+                                    }}
+                                    className="w-full py-2.5 border border-dashed border-outline-variant rounded-lg text-[11px] font-label-caps text-on-surface-variant hover:text-primary hover:border-primary/50 hover:bg-primary/5 transition-all"
+                                >
+                                    + Add Link Button
+                                </button>
+                            )}
+                            
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                    <label className="text-label-caps font-label-caps text-on-surface-variant">TONE</label>
+                                    <select 
+                                        value={newsForm.tone}
+                                        onChange={(e) => handleFieldChange("tone", e.target.value as any)}
+                                        className="w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-4 py-2 text-body-sm focus:ring-2 focus:ring-primary/50 outline-none appearance-none"
+                                    >
+                                        <option value="blue">Blue</option>
+                                        <option value="purple">Purple</option>
+                                        <option value="teal">Teal</option>
+                                        <option value="slate">Slate</option>
+                                    </select>
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-label-caps font-label-caps text-on-surface-variant">SORT ORDER</label>
+                                    <input 
+                                        type="number" 
+                                        value={newsForm.sortOrder}
+                                        onChange={(e) => handleFieldChange("sortOrder", Number.parseInt(e.target.value) || 0)}
+                                        className="w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-4 py-2 text-body-sm focus:ring-2 focus:ring-primary/50 outline-none" 
+                                    />
+                                </div>
+                            </div>
+                            
+                            <div className="flex items-center gap-4 pt-2 pb-2">
+                                <input 
+                                    id="dashboard-show" 
+                                    type="checkbox" 
+                                    checked={newsForm.isActive}
+                                    onChange={(e) => handleFieldChange("isActive", e.target.checked)}
+                                    className="w-4 h-4 rounded border-outline-variant bg-surface-container-lowest text-primary focus:ring-primary/50 cursor-pointer" 
+                                />
+                                <label className="text-body-sm text-on-surface select-none cursor-pointer" htmlFor="dashboard-show">
+                                    Show this item on the dashboard
+                                </label>
+                            </div>
+                            
+                            <button 
+                                type="submit"
+                                disabled={saving || !newsForm.title.trim()}
+                                className="w-full py-3 mt-6 rounded-lg text-label-caps font-bold text-white gradient-button transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {saving ? "Saving..." : editingNewsId ? "Update News Item" : "Create News Item"}
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            {/* Floating Atmosphere Elements */}
+            <div className="absolute top-0 left-0 w-full h-full pointer-events-none z-[-1] overflow-hidden">
+                <div className="absolute top-[10%] right-[5%] w-[400px] h-[400px] bg-primary/10 blur-[120px] rounded-full"></div>
+                <div className="absolute bottom-[20%] left-[10%] w-[300px] h-[300px] bg-secondary/10 blur-[100px] rounded-full"></div>
+            </div>
+        </main>
     );
 }
 
@@ -264,56 +377,4 @@ function formatRelativeTime(timestamp?: number | null): string {
     if (months < 12) return `${months}mo ago`;
     const years = Math.floor(days / 365);
     return `${years}y ago`;
-}
-
-function AdminInput({
-    label,
-    value,
-    onChange,
-    placeholder,
-    type = "text",
-}: {
-    label: string;
-    value: string;
-    onChange: (value: string) => void;
-    placeholder?: string;
-    type?: "text" | "number";
-}) {
-    return (
-        <label className="block">
-            <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">{label}</span>
-            <input
-                type={type}
-                value={value}
-                onChange={(event) => onChange(event.target.value)}
-                placeholder={placeholder}
-                className="w-full rounded-xl border border-white/10 bg-[#0f1525] px-3 py-2.5 text-sm text-white outline-none transition focus:border-[#adc6ff]/40"
-            />
-        </label>
-    );
-}
-
-function AdminTextArea({
-    label,
-    value,
-    onChange,
-    placeholder,
-}: {
-    label: string;
-    value: string;
-    onChange: (value: string) => void;
-    placeholder?: string;
-}) {
-    return (
-        <label className="block">
-            <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">{label}</span>
-            <textarea
-                value={value}
-                onChange={(event) => onChange(event.target.value)}
-                placeholder={placeholder}
-                rows={5}
-                className="w-full rounded-xl border border-white/10 bg-[#0f1525] px-3 py-2.5 text-sm text-white outline-none transition focus:border-[#adc6ff]/40"
-            />
-        </label>
-    );
 }

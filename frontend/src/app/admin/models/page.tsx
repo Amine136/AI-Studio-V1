@@ -1,8 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-
-import AdminSubpage from "../_components/AdminSubpage";
 import { api } from "../../../services/api";
 import type { AdminModelVisibilityResponse } from "../../../types";
 
@@ -185,7 +183,10 @@ export default function AdminModelsPage() {
             setData(response);
             setDisabledModelIds(new Set(response.disabledModelIds ?? []));
             setDisabledProviderIds(new Set(response.disabledProviderIds ?? []));
-            setNotice("Model availability updated.");
+            setNotice("Model availability updated successfully.");
+            
+            // clear notice after 3s
+            setTimeout(() => setNotice(""), 3000);
         } catch (saveError) {
             setError(saveError instanceof Error ? saveError.message : "Unable to update model availability.");
         } finally {
@@ -193,130 +194,174 @@ export default function AdminModelsPage() {
         }
     };
 
-    return (
-        <AdminSubpage title="Model Availability" description="Control which catalog providers and models users can choose">
-            <section className="glass-card p-4 sm:p-5 animate-fade-in-up">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                    <div className="grid grid-cols-4 gap-3 text-sm sm:min-w-[460px]">
-                        <div className="rounded-xl border border-white/8 bg-white/[0.03] p-3">
-                            <p className="text-xs uppercase tracking-wide text-slate-500">Total</p>
-                            <p className="mt-1 text-xl font-semibold text-white">{data?.total ?? 0}</p>
-                        </div>
-                        <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/10 p-3">
-                            <p className="text-xs uppercase tracking-wide text-emerald-200/80">Enabled</p>
-                            <p className="mt-1 text-xl font-semibold text-emerald-100">{data?.enabled ?? 0}</p>
-                        </div>
-                        <div className="rounded-xl border border-amber-400/20 bg-amber-400/10 p-3">
-                            <p className="text-xs uppercase tracking-wide text-amber-200/80">Disabled</p>
-                            <p className="mt-1 text-xl font-semibold text-amber-100">{data?.disabled ?? 0}</p>
-                        </div>
-                        <div className="rounded-xl border border-violet-400/20 bg-violet-400/10 p-3">
-                            <p className="text-xs uppercase tracking-wide text-violet-200/80">Providers Off</p>
-                            <p className="mt-1 text-xl font-semibold text-violet-100">{disabledProviderIds.size}</p>
-                        </div>
-                    </div>
+    if (loading && providerGroups.length === 0) {
+        return (
+            <main className="flex-1 overflow-y-auto p-8 h-[calc(100vh-64px)] flex items-center justify-center">
+                <div className="auth-loader" />
+            </main>
+        );
+    }
 
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                        <input
-                            value={query}
-                            onChange={(event) => setQuery(event.target.value)}
-                            placeholder="Search providers or models"
-                            className="min-w-[240px] rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-white outline-none transition focus:border-violet-400/60"
-                        />
-                        <button
-                            onClick={save}
-                            disabled={!dirty || saving || loading}
-                            className="btn-primary px-5 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                            <span>{saving ? "Saving..." : "Save"}</span>
-                        </button>
+    return (
+        <main className="flex-1 overflow-y-auto p-0 h-[calc(100vh-64px)] custom-scrollbar relative flex flex-col">
+            <div className="flex-1 p-6 lg:p-8 max-w-[1440px] mx-auto w-full">
+                {/* Hero Description */}
+                <div className="mb-8">
+                    <h1 className="font-headline-lg text-headline-lg text-on-surface mb-2 font-bold tracking-tight">Model Availability</h1>
+                    <p className="font-body-lg text-body-lg text-on-surface-variant max-w-2xl">
+                        Control which catalog providers and models users can choose. Ensure optimal performance by managing the operational availability of generative assets across your cluster.
+                    </p>
+                </div>
+
+                {error && (
+                    <div className="p-4 rounded-lg border border-error-container/30 bg-error-container/10 text-error mb-8">
+                        {error}
+                    </div>
+                )}
+                {notice && (
+                    <div className="p-4 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-emerald-200 mb-8">
+                        {notice}
+                    </div>
+                )}
+
+                {/* Stats Row */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                    <div className="glass-panel p-4 rounded-lg border-l-4 border-l-outline border border-outline-variant/50">
+                        <span className="font-label-caps text-label-caps text-outline uppercase tracking-widest">Total</span>
+                        <div className="font-headline-lg text-[32px] font-bold text-on-surface mt-2">{data?.total ?? 0}</div>
+                    </div>
+                    <div className="glass-panel p-4 rounded-lg border-l-4 border-l-tertiary bg-tertiary-container/10 border border-outline-variant/50">
+                        <span className="font-label-caps text-label-caps text-tertiary-fixed uppercase tracking-widest">Enabled</span>
+                        <div className="font-headline-lg text-[32px] font-bold mt-2 text-tertiary">{data?.enabled ?? 0}</div>
+                    </div>
+                    <div className="glass-panel p-4 rounded-lg border-l-4 border-l-error bg-error-container/10 border border-outline-variant/50">
+                        <span className="font-label-caps text-label-caps text-error uppercase tracking-widest">Disabled</span>
+                        <div className="font-headline-lg text-[32px] font-bold text-error mt-2">{data?.disabled ?? 0}</div>
+                    </div>
+                    <div className="glass-panel p-4 rounded-lg border-l-4 border-l-secondary-container bg-secondary-container/10 border border-outline-variant/50">
+                        <span className="font-label-caps text-label-caps text-secondary uppercase tracking-widest">Providers Off</span>
+                        <div className="font-headline-lg text-[32px] font-bold text-secondary mt-2">{disabledProviderIds.size}</div>
                     </div>
                 </div>
 
-                {error ? <p className="mt-4 text-sm text-amber-300">{error}</p> : null}
-                {notice ? <p className="mt-4 text-sm text-emerald-300">{notice}</p> : null}
-            </section>
-
-            <section className="mt-6 space-y-5 animate-fade-in-up" style={{ animationDelay: "80ms" }}>
-                {loading ? (
-                    <div className="glass-card flex items-center justify-center py-20">
-                        <div className="auth-loader" />
+                {/* Search & Global Action */}
+                <div className="flex flex-wrap items-center gap-6 mb-8 bg-surface-container-high/40 p-6 rounded-lg border border-outline-variant/50">
+                    <div className="relative flex-1 min-w-[300px]">
+                        <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline text-[20px]">search</span>
+                        <input 
+                            value={query}
+                            onChange={(e) => setQuery(e.target.value)}
+                            className="w-full bg-surface-container-lowest border border-outline-variant rounded-lg pl-12 pr-4 py-3 font-body-lg text-body-sm focus:ring-2 focus:ring-primary/50 focus:border-transparent outline-none transition-all" 
+                            placeholder="Search providers or models" 
+                            type="text" 
+                        />
                     </div>
-                ) : providerGroups.length === 0 ? (
-                    <div className="glass-card p-8 text-center text-sm text-slate-400">No models match this search.</div>
-                ) : (
-                    providerGroups.map((provider) => {
-                        const providerDisabled = disabledProviderIds.has(provider.id);
-                        const expanded = expandedProviders.has(provider.id);
-                        const visibleModels = expanded ? provider.models : provider.models.slice(0, 3);
-                        return (
-                            <div key={provider.id} className="glass-card overflow-hidden">
-                                <div className="flex flex-col gap-3 border-b border-white/8 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-                                    <div className="min-w-0">
-                                        <div className="flex flex-wrap items-center gap-3">
-                                            <h2 className="text-base font-semibold text-white">{provider.displayName}</h2>
-                                            <button
-                                                type="button"
+                </div>
+
+                {/* Provider Groups */}
+                <div className="space-y-8 pb-10">
+                    {providerGroups.length === 0 ? (
+                        <div className="glass-panel p-8 text-center text-sm text-slate-400 rounded-lg italic">No models match this search.</div>
+                    ) : (
+                        providerGroups.map((provider) => {
+                            const providerDisabled = disabledProviderIds.has(provider.id);
+                            const expanded = expandedProviders.has(provider.id);
+                            const visibleModels = expanded ? provider.models : provider.models.slice(0, 3);
+                            
+                            return (
+                                <section key={provider.id} className="glass-panel rounded-2xl overflow-hidden border border-outline-variant/40 hover:border-primary/30 transition-colors group">
+                                    <div className="p-6 bg-surface-container-highest/30 flex flex-col sm:flex-row sm:items-center justify-between border-b border-outline-variant/50 gap-4">
+                                        <div className="flex items-center gap-6">
+                                            <h2 className="font-title-md text-title-md font-bold text-on-surface">{provider.displayName}</h2>
+                                            {providerDisabled ? (
+                                                <span className="bg-error-container/20 text-error px-3 py-1 rounded-full text-[10px] font-bold border border-error/30 uppercase tracking-widest">Provider disabled</span>
+                                            ) : (
+                                                <span className="bg-tertiary-container/20 text-tertiary-fixed px-3 py-1 rounded-full text-[10px] font-bold border border-tertiary/30 uppercase tracking-widest">Provider enabled</span>
+                                            )}
+                                        </div>
+                                        <div className="flex items-center gap-4">
+                                            <span className="font-code-sm text-[12px] text-outline hidden sm:inline-block">{provider.models.length} matching models • {provider.disabled} disabled</span>
+                                            <button 
                                                 onClick={() => toggleProvider(provider.id)}
-                                                className={providerDisabled ? "rounded-full border border-emerald-400/25 bg-emerald-400/10 px-3 py-1 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-400/15" : "rounded-full border border-amber-400/25 bg-amber-400/10 px-3 py-1 text-xs font-semibold text-amber-200 transition hover:bg-amber-400/15"}
+                                                className={`px-4 py-1.5 rounded-lg border transition-colors font-body-sm text-[13px] font-bold ${providerDisabled ? 'border-tertiary/50 text-tertiary hover:bg-tertiary-container/20' : 'border-error/50 text-error hover:bg-error-container/20'}`}
                                             >
                                                 {providerDisabled ? "Enable provider" : "Disable provider"}
                                             </button>
-                                            <span className={providerDisabled ? "rounded-full border border-amber-400/25 bg-amber-400/10 px-2 py-0.5 text-[11px] font-semibold text-amber-200" : "rounded-full border border-emerald-400/25 bg-emerald-400/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-200"}>
-                                                {providerDisabled ? "Provider disabled" : "Provider enabled"}
-                                            </span>
                                         </div>
-                                        <p className="mt-1 text-xs text-slate-500">{provider.models.length} matching models · {provider.disabled} disabled</p>
                                     </div>
-                                </div>
-
-                                <div className="divide-y divide-white/6">
-                                    {visibleModels.map((model) => {
-                                        const modelDisabled = disabledModelIds.has(model.id);
-                                        const disabled = modelDisabled || providerDisabled;
-                                        return (
-                                            <label key={`${provider.id}:${model.id}`} className="flex cursor-pointer items-start gap-4 px-5 py-4 transition hover:bg-white/[0.03]">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={!modelDisabled}
-                                                    disabled={providerDisabled}
-                                                    onChange={() => toggleModel(model.id)}
-                                                    className="mt-1 h-4 w-4 rounded border-white/20 bg-white/10 accent-violet-500 disabled:opacity-40"
-                                                />
-                                                <div className="min-w-0 flex-1">
-                                                    <div className="flex flex-wrap items-center gap-2">
-                                                        <span className="font-medium text-slate-100">{model.displayName || model.id}</span>
-                                                        <span className={disabled ? "rounded-full border border-amber-400/25 bg-amber-400/10 px-2 py-0.5 text-[11px] font-semibold text-amber-200" : "rounded-full border border-emerald-400/25 bg-emerald-400/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-200"}>
-                                                            {providerDisabled ? "Provider disabled" : modelDisabled ? "Disabled" : "Enabled"}
-                                                        </span>
+                                    <div className="divide-y divide-outline-variant/30">
+                                        {visibleModels.map((model) => {
+                                            const modelDisabled = disabledModelIds.has(model.id);
+                                            const disabled = modelDisabled || providerDisabled;
+                                            
+                                            return (
+                                                <div key={model.id} className={`p-6 flex items-start gap-6 transition-colors ${disabled ? 'bg-surface-container-lowest/50 opacity-70' : 'hover:bg-surface-variant/20'}`}>
+                                                    <div className="pt-1">
+                                                        <label className="relative inline-flex items-center cursor-pointer group">
+                                                            <input 
+                                                                type="checkbox" 
+                                                                className="sr-only peer"
+                                                                checked={!modelDisabled}
+                                                                disabled={providerDisabled}
+                                                                onChange={() => toggleModel(model.id)}
+                                                            />
+                                                            <div className="w-11 h-6 bg-surface-variant rounded-full peer peer-focus:ring-2 peer-focus:ring-primary/30 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary opacity-90 peer-disabled:opacity-40"></div>
+                                                        </label>
                                                     </div>
-                                                    <p className="mt-1 break-all text-xs text-slate-500">{model.id}</p>
-                                                    {model.description ? <p className="mt-2 text-sm text-slate-400">{model.description}</p> : null}
-                                                    <p className="mt-2 text-xs text-slate-500">
-                                                        Tasks: {model.tasks.map(normalizeTaskName).join(", ")} · Input: {model.inputModalities.join(", ") || "unknown"} · Output: {model.outputModalities.join(", ") || "unknown"}
-                                                    </p>
+                                                    <div className="flex-1">
+                                                        <div className="flex items-center gap-4 mb-1">
+                                                            <h3 className="font-title-md text-[18px] font-bold text-on-surface">{model.displayName || model.id}</h3>
+                                                            {providerDisabled ? (
+                                                                <span className="bg-error/10 text-error px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border border-error/20">Provider Disabled</span>
+                                                            ) : modelDisabled ? (
+                                                                <span className="bg-error/20 text-error px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider">Disabled</span>
+                                                            ) : (
+                                                                <span className="bg-tertiary/20 text-tertiary px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border border-tertiary/30">Enabled</span>
+                                                            )}
+                                                        </div>
+                                                        <p className="font-code-sm text-[12px] text-outline mb-2">{model.id}</p>
+                                                        {model.description && (
+                                                            <p className="font-body-sm text-[13px] text-on-surface-variant mb-3">{model.description}</p>
+                                                        )}
+                                                        <div className="flex flex-wrap gap-6 mt-2">
+                                                            <span className="font-label-caps text-[10px] text-outline uppercase tracking-widest"><span className="text-primary mr-1 opacity-60">Tasks:</span> {model.tasks.map(normalizeTaskName).join(", ")}</span>
+                                                            <span className="font-label-caps text-[10px] text-outline uppercase tracking-widest"><span className="text-primary mr-1 opacity-60">Input:</span> {model.inputModalities.join(", ") || "unknown"}</span>
+                                                            <span className="font-label-caps text-[10px] text-outline uppercase tracking-widest"><span className="text-primary mr-1 opacity-60">Output:</span> {model.outputModalities.join(", ") || "unknown"}</span>
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                            </label>
-                                        );
-                                    })}
-                                </div>
-
-                                {provider.models.length > 3 ? (
-                                    <div className="border-t border-white/8 px-5 py-3">
-                                        <button
-                                            type="button"
-                                            onClick={() => toggleProviderExpansion(provider.id)}
-                                            className="text-sm font-medium text-violet-200 transition hover:text-white"
-                                        >
-                                            {expanded ? "Show only 3 models" : `Show all ${provider.models.length} models`}
-                                        </button>
+                                            );
+                                        })}
                                     </div>
-                                ) : null}
-                            </div>
-                        );
-                    })
-                )}
-            </section>
-        </AdminSubpage>
+                                    
+                                    {provider.models.length > 3 && (
+                                        <button 
+                                            onClick={() => toggleProviderExpansion(provider.id)}
+                                            className="w-full py-3 text-center font-label-caps text-[11px] font-bold tracking-widest text-primary bg-surface-container-highest/20 hover:bg-surface-container-highest/40 transition-colors border-t border-outline-variant/30 uppercase"
+                                        >
+                                            {expanded ? "Show fewer models" : `Show all ${provider.models.length} models`}
+                                        </button>
+                                    )}
+                                </section>
+                            );
+                        })
+                    )}
+                </div>
+            </div>
+
+            {/* Sticky Save Button */}
+            <div className="sticky bottom-0 left-0 right-0 bg-surface-container/90 backdrop-blur-md border-t border-outline-variant p-6 flex justify-end z-40">
+                <div className="max-w-[1440px] w-full mx-auto flex justify-end items-center gap-4">
+                    {dirty && <span className="text-[13px] text-amber-300 font-bold animate-pulse hidden sm:inline-block">Unsaved changes</span>}
+                    <button 
+                        onClick={save}
+                        disabled={!dirty || saving || loading}
+                        className="bg-primary text-on-primary font-bold px-12 py-3 rounded-lg hover:scale-[1.02] active:scale-95 transition-transform shadow-lg shadow-primary/20 disabled:opacity-50 disabled:scale-100 disabled:shadow-none"
+                    >
+                        {saving ? "Saving..." : "Save Changes"}
+                    </button>
+                </div>
+            </div>
+        </main>
     );
 }
