@@ -29,6 +29,8 @@ MODEL_PARAMETER_OPTION_KEY_MAP = {
     "addWatermark": "addWatermark",
     "enhancePrompt": "enhancePrompt",
     "outputMimeType": "outputMimeType",
+    "styleType": "style_type",
+    "stylePreset": "style_preset",
 }
 
 
@@ -656,6 +658,12 @@ def _normalized_options(
 
     if options.prompt_cache_key is not None:
         payload["promptCacheKey"] = str(options.prompt_cache_key)
+
+    if options.style_type is not None:
+        payload["styleType"] = str(options.style_type)
+
+    if options.style_preset is not None:
+        payload["stylePreset"] = str(options.style_preset)
 
     requested_max_tokens = int(options.max_tokens or settings.plain_chat_default_max_tokens)
     payload["maxTokens"] = min(max(requested_max_tokens, 10), int(settings.plain_chat_max_output_tokens))

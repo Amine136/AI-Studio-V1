@@ -35,6 +35,8 @@ GENERATE_PARAMETER_OPTION_KEY_MAP = {
     "addWatermark": "addWatermark",
     "enhancePrompt": "enhancePrompt",
     "outputMimeType": "outputMimeType",
+    "style_type": "styleType",
+    "style_preset": "stylePreset",
 }
 
 

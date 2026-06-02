@@ -499,11 +499,11 @@ def _build_input_parts(
         image_url = image.get("url")
         if image_url:
             parts.append({"type": "image_url", "url": image_url})
-        elif image.get("mime_type") and image.get("data"):
+        elif image.get("data"):
             parts.append(
                 {
                     "type": "image",
-                    "mimeType": image["mime_type"],
+                    "mimeType": image.get("mime_type") or "image/jpeg",
                     "data": image["data"],
                 }
             )
@@ -556,6 +556,8 @@ def _infer_model_type(provider: Optional[str], output_modalities: list[str]) -> 
         return "imagen"
     if provider == "google-gemini":
         return "gemini-image"
+    if provider == "ideogram":
+        return "ideogram"
     return ""
 
 
