@@ -23,6 +23,7 @@ MODEL_PARAMETER_OPTION_KEY_MAP = {
     "frequencyPenalty": "frequencyPenalty",
     "mediaResolution": "mediaResolution",
     "imageSize": "imageSize",
+    "quality": "quality",
     "sampleImageSize": "sampleImageSize",
     "aspectRatio": "aspectRatio",
     "seed": "seed",
@@ -637,6 +638,9 @@ def _normalized_options(
 
     if options.image_size is not None:
         payload["imageSize"] = str(options.image_size)
+
+    if options.quality is not None:
+        payload["quality"] = str(options.quality)
 
     if options.sample_image_size is not None:
         payload["sampleImageSize"] = str(options.sample_image_size)

@@ -299,6 +299,10 @@ def generate_image_via_proxy(
             "aspectRatio": aspect_ratio,
             "imageSize": "1K",
         }
+    elif provider == "openai":
+        resolved_options = {
+            "responseModalities": ["IMAGE"],
+        }
     if options:
         resolved_options.update(options)
 
@@ -350,6 +354,10 @@ def generate_image_payload_via_proxy(
             "responseModalities": ["IMAGE"],
             "aspectRatio": aspect_ratio,
             "imageSize": "1K",
+        }
+    elif provider == "openai":
+        resolved_options = {
+            "responseModalities": ["IMAGE"],
         }
     if options:
         resolved_options.update(options)

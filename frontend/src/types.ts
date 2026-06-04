@@ -115,6 +115,7 @@ export interface PlainChatOptions {
   candidateCount?: number;
   mediaResolution?: "low" | "medium" | "high" | "ultra_high";
   imageSize?: string;
+  quality?: string;
   sampleImageSize?: string;
   aspectRatio?: string;
   sampleCount?: number;
