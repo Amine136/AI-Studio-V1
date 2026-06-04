@@ -280,6 +280,9 @@ function getExpectedModelCost(
     if (sampleImageVariant !== null) return sampleImageVariant;
     const imageVariant = resolveExpectedVariantPrice(expected.imageSizePrices, values?.imageSize);
     if (imageVariant !== null) return imageVariant;
+    // OpenAI prices the image by quality (low/medium) rather than size.
+    const qualityVariant = resolveExpectedVariantPrice(expected.imageSizePrices, values?.quality);
+    if (qualityVariant !== null) return qualityVariant;
     if (typeof expected.basePrice === "number" && Number.isFinite(expected.basePrice)) {
       return expected.basePrice;
     }

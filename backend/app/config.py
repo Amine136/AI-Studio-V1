@@ -11,6 +11,7 @@ CREATE_FLOW_IMAGE_PARAM_KEYS = {
     "aspectRatio",
     "imageSize",
     "sampleImageSize",
+    "quality",
     "seed",
     "addWatermark",
     "enhancePrompt",

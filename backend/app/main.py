@@ -2432,6 +2432,7 @@ GENERATE_PARAMETER_OPTION_KEY_MAP: Dict[str, str] = {
     "mediaResolution": "mediaResolution",
     "imageSize": "imageSize",
     "sampleImageSize": "sampleImageSize",
+    "quality": "quality",
     "aspectRatio": "aspectRatio",
     "seed": "seed",
     "addWatermark": "addWatermark",
@@ -2618,6 +2619,14 @@ def _expected_model_cost_for_generate(task: str, model_name: str, model_entry: d
         )
         if image_variant is not None:
             return image_variant
+
+        # OpenAI prices the image by quality (low/medium) rather than size.
+        quality_variant = _resolve_expected_variant_price(
+            expected.get("imageSizePrices") if isinstance(expected.get("imageSizePrices"), dict) else None,
+            raw_params.get("quality"),
+        )
+        if quality_variant is not None:
+            return quality_variant
 
         base_price = _parse_billing_float(expected.get("basePrice"))
         if base_price is not None:

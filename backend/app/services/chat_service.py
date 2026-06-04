@@ -23,12 +23,15 @@ MODEL_PARAMETER_OPTION_KEY_MAP = {
     "frequencyPenalty": "frequencyPenalty",
     "mediaResolution": "mediaResolution",
     "imageSize": "imageSize",
+    "quality": "quality",
     "sampleImageSize": "sampleImageSize",
     "aspectRatio": "aspectRatio",
     "seed": "seed",
     "addWatermark": "addWatermark",
     "enhancePrompt": "enhancePrompt",
     "outputMimeType": "outputMimeType",
+    "styleType": "style_type",
+    "stylePreset": "style_preset",
 }
 
 
@@ -636,6 +639,9 @@ def _normalized_options(
     if options.image_size is not None:
         payload["imageSize"] = str(options.image_size)
 
+    if options.quality is not None:
+        payload["quality"] = str(options.quality)
+
     if options.sample_image_size is not None:
         payload["sampleImageSize"] = str(options.sample_image_size)
 
@@ -656,6 +662,12 @@ def _normalized_options(
 
     if options.prompt_cache_key is not None:
         payload["promptCacheKey"] = str(options.prompt_cache_key)
+
+    if options.style_type is not None:
+        payload["styleType"] = str(options.style_type)
+
+    if options.style_preset is not None:
+        payload["stylePreset"] = str(options.style_preset)
 
     requested_max_tokens = int(options.max_tokens or settings.plain_chat_default_max_tokens)
     payload["maxTokens"] = min(max(requested_max_tokens, 10), int(settings.plain_chat_max_output_tokens))

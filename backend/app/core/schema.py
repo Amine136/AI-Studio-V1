@@ -73,6 +73,7 @@ class PlainChatOptions(BaseModel):
     candidate_count: Optional[int] = Field(default=None, alias="candidateCount", ge=1, le=16)
     media_resolution: Optional[Literal["low", "medium", "high", "ultra_high", "LOW", "MEDIUM", "HIGH", "ULTRA_HIGH"]] = Field(default=None, alias="mediaResolution")
     image_size: Optional[str] = Field(default=None, alias="imageSize", max_length=20)
+    quality: Optional[str] = Field(default=None, alias="quality", max_length=20)
     sample_image_size: Optional[str] = Field(default=None, alias="sampleImageSize", max_length=20)
     aspect_ratio: Optional[str] = Field(default=None, alias="aspectRatio", max_length=20)
     seed: Optional[int] = Field(default=None, ge=1, le=2_147_483_647)
@@ -80,6 +81,8 @@ class PlainChatOptions(BaseModel):
     enhance_prompt: Optional[bool] = Field(default=None, alias="enhancePrompt")
     output_mime_type: Optional[str] = Field(default=None, alias="outputMimeType", max_length=120)
     prompt_cache_key: Optional[str] = Field(default=None, alias="promptCacheKey", max_length=255)
+    style_type: Optional[str] = Field(default=None, alias="styleType", max_length=100)
+    style_preset: Optional[str] = Field(default=None, alias="stylePreset", max_length=100)
 
     model_config = {"populate_by_name": True, "extra": "forbid"}
 

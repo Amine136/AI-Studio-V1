@@ -68,6 +68,7 @@ const CHAT_PARAMETER_KEY_MAP = {
   candidateCount: "candidateCount",
   mediaResolution: "mediaResolution",
   imageSize: "imageSize",
+  quality: "quality",
   sampleImageSize: "sampleImageSize",
   aspectRatio: "aspectRatio",
   seed: "seed",
@@ -380,9 +381,17 @@ function getChatParamPricingHint(model: ChatModelOption | null, key: string) {
   if (!expected || typeof expected !== "object") return null;
 
   let priceMap: Record<string, number> | undefined;
-  if (key === "imageSize" && expected.imageSizePrices && typeof expected.imageSizePrices === "object") {
-    priceMap = expected.imageSizePrices;
-  } else if (key === "sampleImageSize" && expected.sampleImageSizePrices && typeof expected.sampleImageSizePrices === "object") {
+  if (expected.imageSizePrices && typeof expected.imageSizePrices === "object" && Object.keys(expected.imageSizePrices).length > 0) {
+    // OpenAI prices by quality (low/medium); Google by size (1K/2K/...). Attach the
+    // hint to whichever control matches the price-map keys.
+    const isQualityKeyed = Object.keys(expected.imageSizePrices).some(
+      (k) => ["low", "medium", "high", "auto"].includes(k.trim().toLowerCase()),
+    );
+    if (key === (isQualityKeyed ? "quality" : "imageSize")) {
+      priceMap = expected.imageSizePrices;
+    }
+  }
+  if (!priceMap && key === "sampleImageSize" && expected.sampleImageSizePrices && typeof expected.sampleImageSizePrices === "object") {
     priceMap = expected.sampleImageSizePrices;
   }
 
