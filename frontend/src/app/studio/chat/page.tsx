@@ -54,6 +54,8 @@ interface ProviderGroup {
 const STORAGE_KEY = "studio-simple-chat-v2";
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 const MAX_INPUT_IMAGES = 4;
+// Grok image-editing models accept at most 3 source images (xAI edit-endpoint limit).
+const MAX_GROK_EDIT_INPUT_IMAGES = 3;
 const MAX_PROXY_IMAGE_DIMENSION = 768;
 const MAX_PROXY_IMAGE_BYTES = 120_000;
 const MAX_CHAT_TEXT_CHARS = 4000;
@@ -69,6 +71,7 @@ const CHAT_PARAMETER_KEY_MAP = {
   candidateCount: "candidateCount",
   mediaResolution: "mediaResolution",
   imageSize: "imageSize",
+  resolution: "resolution",
   quality: "quality",
   sampleImageSize: "sampleImageSize",
   aspectRatio: "aspectRatio",
@@ -371,6 +374,13 @@ function isOneShotImageModel(model: ChatModelOption | null): boolean {
   if (!model) return false;
   const outputModalities = model.outputModalities.map((value) => value.toUpperCase());
   return outputModalities.includes("IMAGE") && !outputModalities.includes("TEXT");
+}
+
+function maxInputImagesForModel(model: ChatModelOption | null): number {
+  if (model && model.id.toLowerCase().startsWith("grok") && model.supportsImageInput) {
+    return MAX_GROK_EDIT_INPUT_IMAGES;
+  }
+  return MAX_INPUT_IMAGES;
 }
 
 function getModelFeatureLabels(model: ChatModelOption): string[] {
@@ -1099,6 +1109,7 @@ export default function StudioChatPage() {
   );
 
   const lockedModelIsOneShotImage = isOneShotImageModel(lockedModel);
+  const maxInputImages = maxInputImagesForModel(lockedModel);
 
   const insufficientSelectedModelCredits = currentCredits !== null && currentCredits < selectedModelMinimumCost;
   const insufficientLockedModelMinimumCredits = currentCredits !== null && currentCredits < lockedModelMinimumCost;
@@ -1125,6 +1136,15 @@ export default function StudioChatPage() {
       return next;
     });
   }, [lockedModel, lockedModelParameters]);
+
+  // Trim attachments when switching to a model that accepts fewer images (e.g. Grok editing → 3).
+  useEffect(() => {
+    if (inputImagesRef.current.length > maxInputImages) {
+      inputImagesRef.current.slice(maxInputImages).forEach((image) => URL.revokeObjectURL(image.previewUrl));
+      setInputImages((current) => current.slice(0, maxInputImages));
+      setError(`This model accepts at most ${maxInputImages} images.`);
+    }
+  }, [maxInputImages]);
 
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -1161,15 +1181,15 @@ export default function StudioChatPage() {
   async function uploadInputImageFiles(selectedFiles: File[]) {
     if (selectedFiles.length === 0) return;
 
-    const slotsAvailable = MAX_INPUT_IMAGES - inputImagesRef.current.length;
+    const slotsAvailable = maxInputImages - inputImagesRef.current.length;
     if (slotsAvailable <= 0) {
-      setError(`Attach at most ${MAX_INPUT_IMAGES} images per message.`);
+      setError(`Attach at most ${maxInputImages} images per message.`);
       return;
     }
 
     const filesToUpload = selectedFiles.slice(0, slotsAvailable);
     if (selectedFiles.length > slotsAvailable) {
-      setError(`Only ${MAX_INPUT_IMAGES} images can be attached.`);
+      setError(`Only ${maxInputImages} images can be attached.`);
     }
 
     try {
@@ -1194,7 +1214,7 @@ export default function StudioChatPage() {
         originalSize: originalFile.size,
         uploading: true,
       }));
-      setInputImages((current) => [...current, ...pendingImages].slice(0, MAX_INPUT_IMAGES));
+      setInputImages((current) => [...current, ...pendingImages].slice(0, maxInputImages));
 
       const nextImages: UploadedImageState[] = [];
       for (const originalFile of filesToUpload) {
@@ -2071,7 +2091,7 @@ export default function StudioChatPage() {
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-[13px] font-medium text-white/80">
-                          {inputImages.length} / {MAX_INPUT_IMAGES} images attached
+                          {inputImages.length} / {maxInputImages} images attached
                         </div>
                       </div>
                       <button

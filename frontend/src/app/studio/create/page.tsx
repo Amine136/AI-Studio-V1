@@ -55,6 +55,12 @@ type OutputParameterValues = Record<OutputType, ParameterState>;
 
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 const MAX_INPUT_IMAGES = 4;
+// Editing models (e.g. Grok Imagine "*-editing") accept at most 3 source images.
+const MAX_EDITING_INPUT_IMAGES = 3;
+const isEditingModelId = (modelId: string | undefined | null): boolean =>
+  !!modelId && modelId.trim().toLowerCase().endsWith("-editing");
+const maxInputImagesFor = (modelId: string | undefined | null): number =>
+  isEditingModelId(modelId) ? MAX_EDITING_INPUT_IMAGES : MAX_INPUT_IMAGES;
 const MAX_PROXY_IMAGE_DIMENSION = 768;
 const MAX_PROXY_IMAGE_BYTES = 120_000;
 
@@ -610,6 +616,22 @@ export default function Home() {
     inputImagesRef.current = inputImages;
   }, [inputImages]);
 
+  // Keep the upload handler (which closes over an empty dep array) aware of the
+  // current image model, and trim attachments when switching to an editing model
+  // that allows fewer images than are already attached.
+  const selectedImageModelRef = useRef<string>("");
+  useEffect(() => {
+    selectedImageModelRef.current = selectedImageModel;
+    const cap = maxInputImagesFor(selectedImageModel);
+    setInputImages((prev) => {
+      if (prev.length <= cap) return prev;
+      const removed = prev.slice(cap);
+      removed.forEach((image) => URL.revokeObjectURL(image.previewUrl));
+      showToast(`This editing model accepts at most ${cap} images.`);
+      return prev.slice(0, cap);
+    });
+  }, [selectedImageModel, showToast]);
+
   useEffect(() => {
     return () => {
       inputImagesRef.current.forEach((image) => URL.revokeObjectURL(image.previewUrl));
@@ -938,15 +960,16 @@ export default function Home() {
   const uploadInputImageFiles = useCallback(async (selectedFiles: File[]) => {
     if (selectedFiles.length === 0) return;
 
-    const slotsAvailable = MAX_INPUT_IMAGES - inputImagesRef.current.length;
+    const maxImages = maxInputImagesFor(selectedImageModelRef.current);
+    const slotsAvailable = maxImages - inputImagesRef.current.length;
     if (slotsAvailable <= 0) {
-      showToast(`Attach at most ${MAX_INPUT_IMAGES} images.`);
+      showToast(`Attach at most ${maxImages} images.`);
       return;
     }
 
     const filesToUpload = selectedFiles.slice(0, slotsAvailable);
     if (selectedFiles.length > slotsAvailable) {
-      showToast(`Only ${MAX_INPUT_IMAGES} images can be attached.`);
+      showToast(`Only ${maxImages} images can be attached.`);
     }
 
     try {
@@ -967,7 +990,7 @@ export default function Home() {
         originalSize: originalFile.size,
         uploading: true,
       }));
-      setInputImages((prev) => [...prev, ...pendingImages].slice(0, MAX_INPUT_IMAGES));
+      setInputImages((prev) => [...prev, ...pendingImages].slice(0, maxImages));
 
       const nextImages: UploadedImageState[] = [];
       for (const originalFile of filesToUpload) {
@@ -1825,7 +1848,7 @@ export default function Home() {
                           ))}
                         </div>
                         <p className="mt-1.5 max-w-full truncate text-[10px] font-medium text-white">
-                          {inputImages.length} / {MAX_INPUT_IMAGES} images attached
+                          {inputImages.length} / {maxInputImagesFor(selectedImageModel)} images attached
                         </p>
                         <div className="mt-2 flex gap-2">
                           <button
