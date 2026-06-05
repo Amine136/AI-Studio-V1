@@ -11,6 +11,8 @@ from app.services.model_visibility import is_model_enabled
 from app.services.user_files import load_private_user_file, private_file_id_from_url, private_file_url_prefix
 
 MAX_CHAT_INPUT_IMAGES = 4
+# Grok's image edit endpoint accepts at most 3 source images.
+MAX_GROK_EDIT_INPUT_IMAGES = 3
 
 SAFE_GENERATED_FILENAME = re.compile(r"^[0-9a-f-]{36}\.(png|jpg|webp)$")
 MODEL_PARAMETER_OPTION_KEY_MAP = {
@@ -23,6 +25,7 @@ MODEL_PARAMETER_OPTION_KEY_MAP = {
     "frequencyPenalty": "frequencyPenalty",
     "mediaResolution": "mediaResolution",
     "imageSize": "imageSize",
+    "resolution": "resolution",
     "quality": "quality",
     "sampleImageSize": "sampleImageSize",
     "aspectRatio": "aspectRatio",
@@ -266,11 +269,15 @@ def send_plain_chat(payload: PlainChatRequest, *, user_uid: str) -> dict[str, An
             model_entry=model_entry,
             messages=one_shot_payload.messages,
         )
+        # Image-editing models (e.g. Grok Imagine *-editing) need the uploaded image(s)
+        # forwarded; the one-shot prompt is text-only otherwise.
+        input_images = _extract_input_images(one_shot_payload.messages, user_uid=user_uid)
         image_result = generate_image_payload_via_proxy(
             provider,
             model_id,
             preview_plain_chat_prompt(one_shot_payload),
             owner_uid=user_uid,
+            input_images=input_images or None,
             options=request_options,
         )
         assistant_parts: list[dict[str, Any]] = []
@@ -370,6 +377,24 @@ def _request_part(part: ChatMessagePart, *, user_uid: str) -> dict[str, Any]:
     return {"type": "image_url", "url": image_url}
 
 
+def _extract_input_images(messages: list[ChatMessage], *, user_uid: str) -> list[dict[str, str]]:
+    """Collect uploaded image parts (one-shot image editing) in the shape
+    apikeymanager_client._build_input_parts expects: {url} or {data, mime_type}."""
+    images: list[dict[str, str]] = []
+    for message in messages:
+        if message.role != "user":
+            continue
+        for part in message.parts:
+            if part.type != "image_url":
+                continue
+            resolved = _request_part(part, user_uid=user_uid)
+            if resolved.get("type") == "image" and resolved.get("data"):
+                images.append({"data": resolved["data"], "mime_type": resolved.get("mimeType") or "image/jpeg"})
+            elif resolved.get("type") == "image_url" and resolved.get("url"):
+                images.append({"url": resolved["url"]})
+    return images
+
+
 def _validate_plain_chat_request(payload: PlainChatRequest, model_entry: dict[str, Any]) -> None:
     if not payload.messages:
         raise ValueError("CHAT_MESSAGES_REQUIRED")
@@ -377,11 +402,13 @@ def _validate_plain_chat_request(payload: PlainChatRequest, model_entry: dict[st
         raise ValueError("CHAT_LAST_MESSAGE_MUST_BE_USER")
 
     supports_image_input = _supports_image_input(model_entry)
+    max_input_images = _max_input_images_for_model(model_entry)
 
     for message in payload.messages:
         _validate_message_parts(
             message.parts,
             supports_image_input=supports_image_input,
+            max_input_images=max_input_images,
             max_text_chars_per_part=_max_text_chars_for_role(message.role),
             max_message_chars=_max_message_chars_for_role(message.role),
         )
@@ -410,6 +437,7 @@ def _validate_message_parts(
     parts: list[ChatMessagePart],
     *,
     supports_image_input: bool,
+    max_input_images: int = MAX_CHAT_INPUT_IMAGES,
     max_text_chars_per_part: int | None = None,
     max_message_chars: int | None = None,
 ) -> None:
@@ -438,7 +466,7 @@ def _validate_message_parts(
         if not supports_image_input:
             raise ValueError("CHAT_MODEL_DOES_NOT_SUPPORT_IMAGE_INPUT")
         image_count += 1
-        if image_count > MAX_CHAT_INPUT_IMAGES:
+        if image_count > max_input_images:
             raise ValueError("CHAT_TOO_MANY_IMAGES")
         _validate_uploaded_image_url(image_url)
         total_chars += len(image_url)
@@ -496,6 +524,14 @@ def _load_private_uploaded_image_data(file_id: str, *, user_uid: str) -> tuple[s
 def _supports_image_input(model_entry: dict[str, Any]) -> bool:
     input_modalities = set(model_entry.get("input_modalities") or [])
     return "IMAGE" in input_modalities or model_entry.get("type") == "gemini-image"
+
+
+def _max_input_images_for_model(model_entry: dict[str, Any]) -> int:
+    """Grok image-editing models cap at 3 source images; others use the chat default."""
+    model_id = str(model_entry.get("model_id") or "").strip().lower()
+    if model_id.startswith("grok") and _supports_image_input(model_entry):
+        return MAX_GROK_EDIT_INPUT_IMAGES
+    return MAX_CHAT_INPUT_IMAGES
 
 
 def _is_image_only_output_model(model_entry: dict[str, Any]) -> bool:
@@ -662,6 +698,9 @@ def _normalized_options(
 
     if options.image_size is not None:
         payload["imageSize"] = str(options.image_size)
+
+    if options.resolution is not None:
+        payload["resolution"] = str(options.resolution)
 
     if options.quality is not None:
         payload["quality"] = str(options.quality)

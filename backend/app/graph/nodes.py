@@ -29,6 +29,7 @@ GENERATE_PARAMETER_OPTION_KEY_MAP = {
     "frequencyPenalty": "frequencyPenalty",
     "mediaResolution": "mediaResolution",
     "imageSize": "imageSize",
+    "resolution": "resolution",
     "quality": "quality",
     "sampleImageSize": "sampleImageSize",
     "aspectRatio": "aspectRatio",

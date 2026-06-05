@@ -104,6 +104,10 @@ from app.services.user_files import (
 )
 
 MAX_INPUT_IMAGES = 4
+# Editing models (e.g. Grok Imagine "*-editing") accept fewer source images than the
+# global ceiling — Grok's edit endpoint takes at most 3.
+MAX_EDITING_INPUT_IMAGES = 3
+EDITING_MODEL_SUFFIX = "-editing"
 
 SYSTEM_AUDIT_EMAIL = "system@vibecraft.local"
 IMAGES_DIR = GENERATED_IMAGES_DIR
@@ -2326,6 +2330,11 @@ def _collect_catalog_cost_warnings(model_catalog: dict[str, Any]) -> list[dict[s
     return warnings
 
 
+def _is_editing_model(model_id: str | None) -> bool:
+    """Grok exposes image editing as a separate model id with an "-editing" suffix."""
+    return bool(model_id) and str(model_id).strip().lower().endswith(EDITING_MODEL_SUFFIX)
+
+
 def _validate_generate_request(payload: GenerateRequest) -> None:
     requested = payload.requested_outputs or []
     if not requested:
@@ -2341,6 +2350,14 @@ def _validate_generate_request(payload: GenerateRequest) -> None:
     has_input_images = len(input_images) > 0
     wants_caption = "caption" in requested
     wants_image = "image" in requested
+
+    # Editing models accept at most MAX_EDITING_INPUT_IMAGES source images.
+    if wants_image and has_input_images and _is_editing_model(_resolve_model_choice("image", prefs)):
+        if len(input_images) > MAX_EDITING_INPUT_IMAGES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"This editing model accepts at most {MAX_EDITING_INPUT_IMAGES} input images.",
+            )
 
     _validate_selected_model_exists("caption", prefs, wants_caption)
     _validate_selected_model_exists("image", prefs, wants_image)

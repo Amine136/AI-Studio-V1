@@ -303,6 +303,13 @@ def generate_image_via_proxy(
         resolved_options = {
             "responseModalities": ["IMAGE"],
         }
+    elif provider == "grok":
+        # Grok Imagine: image output. aspectRatio + resolution are merged in below
+        # from the per-model parameters (the AKM adapter routes "*-editing" models to
+        # the edit endpoint and strips the suffix).
+        resolved_options = {
+            "responseModalities": ["IMAGE"],
+        }
     if options:
         resolved_options.update(options)
 
@@ -356,6 +363,13 @@ def generate_image_payload_via_proxy(
             "imageSize": "1K",
         }
     elif provider == "openai":
+        resolved_options = {
+            "responseModalities": ["IMAGE"],
+        }
+    elif provider == "grok":
+        # Grok Imagine: image output. aspectRatio + resolution are merged in below
+        # from the per-model parameters (the AKM adapter routes "*-editing" models to
+        # the edit endpoint and strips the suffix).
         resolved_options = {
             "responseModalities": ["IMAGE"],
         }
