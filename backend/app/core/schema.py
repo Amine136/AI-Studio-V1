@@ -83,6 +83,9 @@ class PlainChatOptions(BaseModel):
     prompt_cache_key: Optional[str] = Field(default=None, alias="promptCacheKey", max_length=255)
     style_type: Optional[str] = Field(default=None, alias="styleType", max_length=100)
     style_preset: Optional[str] = Field(default=None, alias="stylePreset", max_length=100)
+    strength: Optional[float] = Field(default=None, ge=0, le=1)
+    colors: Optional[list[str]] = Field(default=None, max_length=10)
+    background_color: Optional[str] = Field(default=None, alias="backgroundColor", max_length=20)
 
     model_config = {"populate_by_name": True, "extra": "forbid"}
 

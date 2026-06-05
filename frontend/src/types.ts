@@ -124,6 +124,11 @@ export interface PlainChatOptions {
   enhancePrompt?: boolean;
   outputMimeType?: string;
   promptCacheKey?: string;
+  styleType?: string;
+  stylePreset?: string;
+  strength?: number;
+  colors?: string[];
+  backgroundColor?: string;
 }
 
 export interface PlainChatConversationMessageCreateRequest {
@@ -309,7 +314,7 @@ export interface GenerateRequest {
   input_images?: InputImagePayload[] | null;
   user_preferences?: Record<string, string>; // e.g. { "image_model": "dalle-3" }
   user_corrections?: Record<string, any>;    // e.g. { "lighting": "Natural" }
-  model_parameters?: Record<string, Record<string, string | number | boolean>>;
+  model_parameters?: Record<string, Record<string, string | number | boolean | string[]>>;
   status?: GenerationStatus;
 }
 

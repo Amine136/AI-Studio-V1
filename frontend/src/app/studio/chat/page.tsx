@@ -6,6 +6,7 @@ import { Fragment, useEffect, useMemo, useRef, useState, type ChangeEvent, type 
 import { useAuth } from "../../../context/AuthContext";
 import InteractiveAuthenticatedImage from "../../../components/InteractiveAuthenticatedImage";
 import { isRenderableImageUrl } from "../../../components/AuthenticatedImage";
+import { ColorPickerPopover } from "../../../components/ColorPickerPopover";
 import { api } from "../../../services/api";
 import { addHistoryEntry } from "../../../lib/history";
 import type { BillingBreakdown, BillingUsage, ModelPricingSummary, PlainChatModelItem, PlainChatParameterSchemaEntry, PlainChatPart, PlainChatTurnMeta, UploadedImageResult } from "../../../types";
@@ -75,10 +76,21 @@ const CHAT_PARAMETER_KEY_MAP = {
   addWatermark: "addWatermark",
   enhancePrompt: "enhancePrompt",
   outputMimeType: "outputMimeType",
+  styleType: "styleType",
+  stylePreset: "stylePreset",
+  strength: "strength",
+  colors: "colors",
+  backgroundColor: "backgroundColor",
 } as const;
 
-type ParameterValue = string | number | boolean;
+type ParameterValue = string | number | boolean | string[];
 type ParameterState = Record<string, ParameterValue>;
+
+// "#rrggbb" hex string used by the native color picker.
+const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
+function normalizeHex(value: unknown): string {
+  return typeof value === "string" && HEX_COLOR_RE.test(value) ? value : "";
+}
 
 function normalizeConversationTitle(value?: string | null): string {
   const normalized = (value || "").trim();
@@ -554,11 +566,20 @@ function isParameterValueCompatible(entry: PlainChatParameterSchemaEntry, value:
     return value >= min && value <= max;
   }
 
+  if (entry.type === "color") {
+    return typeof value === "string";
+  }
+
+  if (entry.type === "colorList") {
+    return Array.isArray(value);
+  }
+
   return false;
 }
 
 function isRenderableParameterEntry(entry: PlainChatParameterSchemaEntry) {
-  return entry.type === "enum" || entry.type === "boolean" || entry.type === "float" || entry.type === "integer";
+  return entry.type === "enum" || entry.type === "boolean" || entry.type === "float" || entry.type === "integer"
+    || entry.type === "color" || entry.type === "colorList";
 }
 
 function getVisibleChatParameters(schema: Record<string, PlainChatParameterSchemaEntry>) {
@@ -584,11 +605,16 @@ function createParameterState(schema: Record<string, PlainChatParameterSchemaEnt
   }, {});
 }
 
-function buildChatOptionsFromParameters(values: ParameterState): Record<string, number | string | boolean> {
-  const options: Record<string, number | string | boolean> = {};
+function buildChatOptionsFromParameters(values: ParameterState): Record<string, number | string | boolean | string[]> {
+  const options: Record<string, number | string | boolean | string[]> = {};
 
   for (const [schemaKey, optionKey] of Object.entries(CHAT_PARAMETER_KEY_MAP)) {
     const value = values[schemaKey];
+    if (Array.isArray(value)) {
+      const colors = value.filter((entry) => HEX_COLOR_RE.test(entry));
+      if (colors.length > 0) options[optionKey] = colors;
+      continue;
+    }
     if (typeof value === "boolean") {
       options[optionKey] = value;
       continue;
@@ -1634,6 +1660,60 @@ export default function StudioChatPage() {
             <span>{min}</span>
             <span>{max}</span>
           </div>
+        </div>
+      );
+    }
+
+    if (entry.type === "color") {
+      const hex = normalizeHex(value);
+      return (
+        <div className="flex items-center gap-2">
+          <ColorPickerPopover
+            value={hex}
+            onChange={(next) => setParameterValues((current) => ({ ...current, [key]: next }))}
+            onClear={() => setParameterValues((current) => ({ ...current, [key]: "" }))}
+          />
+          <span className="font-mono text-[12px] text-[#8c909f]">{hex || "None"}</span>
+        </div>
+      );
+    }
+
+    if (entry.type === "colorList") {
+      const list: string[] = Array.isArray(value) ? (value as string[]) : [];
+      const maxItems = typeof entry.maxItems === "number" ? entry.maxItems : 5;
+      return (
+        <div className="flex flex-wrap items-center gap-2">
+          {list.map((color, index) => (
+            <div key={`${key}-${index}`} className="flex items-center gap-1 rounded-md border border-white/10 bg-[#101728] px-1.5 py-1">
+              <ColorPickerPopover
+                value={normalizeHex(color)}
+                onChange={(next) =>
+                  setParameterValues((current) => {
+                    const arr = [...list];
+                    arr[index] = next;
+                    return { ...current, [key]: arr };
+                  })
+                }
+              />
+              <button
+                type="button"
+                aria-label="Remove color"
+                onClick={() => setParameterValues((current) => ({ ...current, [key]: list.filter((_, i) => i !== index) }))}
+                className="px-1 text-sm font-bold text-[#8c909f] hover:text-red-300"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+          {list.length < maxItems ? (
+            <button
+              type="button"
+              onClick={() => setParameterValues((current) => ({ ...current, [key]: [...list, "#10b981"] }))}
+              className="rounded-md border border-dashed border-white/20 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-[#8c909f] hover:border-white/40 hover:text-[#dce1fb]"
+            >
+              + Add color
+            </button>
+          ) : null}
         </div>
       );
     }

@@ -32,7 +32,31 @@ MODEL_PARAMETER_OPTION_KEY_MAP = {
     "outputMimeType": "outputMimeType",
     "styleType": "style_type",
     "stylePreset": "style_preset",
+    "strength": "strength",
+    "colors": "colors",
+    "backgroundColor": "backgroundColor",
 }
+
+
+def _hex_to_rgb(value: Any) -> list[int] | None:
+    """Accept a #rrggbb / #rgb string (or an [r,g,b] list) and return [r, g, b]."""
+    if isinstance(value, (list, tuple)) and len(value) == 3:
+        try:
+            rgb = [int(channel) for channel in value]
+        except (TypeError, ValueError):
+            return None
+        return rgb if all(0 <= channel <= 255 for channel in rgb) else None
+    if not isinstance(value, str):
+        return None
+    text = value.strip().lstrip("#")
+    if len(text) == 3:
+        text = "".join(char * 2 for char in text)
+    if len(text) != 6:
+        return None
+    try:
+        return [int(text[i:i + 2], 16) for i in (0, 2, 4)]
+    except ValueError:
+        return None
 
 
 def _normalize_modalities(value: Any) -> list[str]:
@@ -668,6 +692,19 @@ def _normalized_options(
 
     if options.style_preset is not None:
         payload["stylePreset"] = str(options.style_preset)
+
+    if options.strength is not None:
+        payload["strength"] = float(options.strength)
+
+    if options.colors:
+        rgbs = [rgb for rgb in (_hex_to_rgb(color) for color in options.colors) if rgb is not None]
+        if rgbs:
+            payload["colors"] = rgbs
+
+    if options.background_color is not None:
+        background_rgb = _hex_to_rgb(options.background_color)
+        if background_rgb is not None:
+            payload["backgroundColor"] = background_rgb
 
     requested_max_tokens = int(options.max_tokens or settings.plain_chat_default_max_tokens)
     payload["maxTokens"] = min(max(requested_max_tokens, 10), int(settings.plain_chat_max_output_tokens))
