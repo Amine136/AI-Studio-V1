@@ -48,6 +48,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         { name: "Codes", icon: "terminal", path: "/admin/codes" },
         { name: "News", icon: "newspaper", path: "/admin/news" },
         { name: "Models", icon: "view_in_ar", path: "/admin/models" },
+        { name: "Finance", icon: "account_balance", path: "/admin/finance" },
         { name: "Logs", icon: "database", path: "/admin/logs" },
         { name: "Warnings", icon: "warning", path: "/admin/warnings" },
     ];

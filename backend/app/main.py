@@ -2637,6 +2637,14 @@ def _expected_model_cost_for_generate(task: str, model_name: str, model_entry: d
         if image_variant is not None:
             return image_variant
 
+        # Grok prices the image by resolution (1k/2k).
+        resolution_variant = _resolve_expected_variant_price(
+            expected.get("imageSizePrices") if isinstance(expected.get("imageSizePrices"), dict) else None,
+            raw_params.get("resolution"),
+        )
+        if resolution_variant is not None:
+            return resolution_variant
+
         # OpenAI prices the image by quality (low/medium) rather than size.
         quality_variant = _resolve_expected_variant_price(
             expected.get("imageSizePrices") if isinstance(expected.get("imageSizePrices"), dict) else None,

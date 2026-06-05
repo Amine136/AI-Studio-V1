@@ -58,6 +58,7 @@ export default function GalleryPage() {
   const [historyLoading, setHistoryLoading] = useState(true);
   const [filter, setFilter] = useState<GalleryFilter>("all_images");
   const [selectedEntry, setSelectedEntry] = useState<HistoryEntry | null>(null);
+  const [showFullPrompt, setShowFullPrompt] = useState(false);
   const [showFullCaption, setShowFullCaption] = useState(false);
   const [showAllMobileEntries, setShowAllMobileEntries] = useState(false);
   const [config, setConfig] = useState<SystemConfig | null>(null);
@@ -134,9 +135,12 @@ export default function GalleryPage() {
   const captionCount = history.filter((entry) => hasCaption(entry.caption)).length;
   const selectedCaptionWords = splitCaptionWords(selectedEntry?.caption);
   const hasLongSelectedCaption = selectedCaptionWords.length > 30;
+  const selectedPromptWords = splitCaptionWords(selectedEntry?.prompt);
+  const hasLongSelectedPrompt = selectedPromptWords.length > 30;
 
   useEffect(() => {
     setShowFullCaption(false);
+    setShowFullPrompt(false);
   }, [selectedEntry?.id]);
 
   useEffect(() => {
@@ -226,11 +230,11 @@ export default function GalleryPage() {
             <button
               type="button"
               onClick={() => setSelectedEntry(featuredEntry)}
-              className="grid w-full gap-0 overflow-hidden rounded-md border border-white/8 bg-[#151b2d] text-left transition-transform hover:-translate-y-1 lg:grid-cols-[1.1fr_0.9fr]"
+              className="grid w-full gap-0 overflow-hidden rounded-md border border-white/8 bg-[#151b2d] text-left transition-transform hover:-translate-y-1 lg:grid-cols-[1.1fr_0.9fr] lg:max-h-[72vh]"
             >
-              <div className="relative flex min-h-[240px] max-h-[72vh] items-center justify-center overflow-hidden bg-[#070d1f] sm:min-h-[320px]">
+              <div className="relative flex min-h-[240px] max-h-[72vh] items-center justify-center overflow-hidden bg-[#070d1f] sm:min-h-[320px] lg:h-[72vh]">
                 {isRenderableImageUrl(featuredEntry.imageUrl) ? (
-                  <AuthenticatedImage src={featuredEntry.imageUrl || ""} alt={featuredEntry.prompt} className="max-h-[72vh] w-full object-contain transition-transform duration-700 hover:scale-105" />
+                  <AuthenticatedImage src={featuredEntry.imageUrl || ""} alt={featuredEntry.prompt} className="h-full w-full object-contain transition-transform duration-700 hover:scale-105" />
                 ) : (
                   <div className="flex h-full min-h-[320px] items-center justify-center text-white/20">
                     <span className="material-symbols-outlined text-[88px]">description</span>
@@ -241,7 +245,7 @@ export default function GalleryPage() {
                 </div>
               </div>
 
-              <div className="flex flex-col justify-between p-5 sm:p-8">
+              <div className="flex flex-col justify-between p-5 sm:p-8 overflow-y-auto">
                 <div>
                   <div className="flex flex-wrap gap-2">
                     <span className="rounded-sm bg-[#2e3447] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-[#b9c8de]">
@@ -323,17 +327,17 @@ export default function GalleryPage() {
             className="my-3 w-full max-w-4xl overflow-hidden rounded-md border border-white/10 bg-[#151b2d] shadow-[0_40px_120px_rgba(0,0,0,0.55)] sm:my-0"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="grid lg:grid-cols-[1.05fr_0.95fr]">
-                <div className="flex min-h-[220px] max-h-[42vh] items-center justify-center overflow-hidden bg-[#070d1f] sm:min-h-[320px] sm:max-h-[56vh] lg:max-h-[80vh]">
+            <div className="grid lg:grid-cols-[1.05fr_0.95fr] lg:max-h-[85vh]">
+                <div className="flex min-h-[220px] max-h-[42vh] items-center justify-center overflow-hidden bg-[#070d1f] sm:min-h-[320px] sm:max-h-[56vh] lg:max-h-[85vh] lg:h-[85vh]">
                   {isRenderableImageUrl(selectedEntry.imageUrl) ? (
-                  <AuthenticatedImage src={selectedEntry.imageUrl || ""} alt={selectedEntry.prompt} className="max-h-[42vh] w-full object-contain sm:max-h-[56vh] lg:max-h-[80vh]" />
+                  <AuthenticatedImage src={selectedEntry.imageUrl || ""} alt={selectedEntry.prompt} className="h-full w-full object-contain" />
                 ) : (
                   <div className="flex min-h-[320px] items-center justify-center text-white/20">
                     <span className="material-symbols-outlined text-[96px]">description</span>
                   </div>
                 )}
               </div>
-              <div className="p-5 sm:p-8">
+              <div className="p-5 sm:p-8 overflow-y-auto">
                 <div className="flex flex-wrap gap-2">
                   <span className="rounded-sm bg-[#2e3447] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-[#b9c8de]">
                     {resolveModelName(selectedEntry.model)}
@@ -345,7 +349,22 @@ export default function GalleryPage() {
 
                 <div className="mt-6">
                   <div className="text-xs font-bold uppercase tracking-[0.22em] text-[#8c909f]">Prompt</div>
-                  <p className="mt-3 text-sm leading-6 text-[#dce1fb] sm:text-base sm:leading-8">{selectedEntry.prompt}</p>
+                  <div className={`mt-3 rounded-sm bg-[#070d1f]/45 px-3 py-2 ${showFullPrompt ? "max-h-44 overflow-y-auto" : ""}`}>
+                    <p className="whitespace-pre-wrap text-sm leading-7 text-[#dce1fb]">
+                      {showFullPrompt || !hasLongSelectedPrompt
+                        ? selectedEntry.prompt
+                        : getCaptionPreview(selectedEntry.prompt)}
+                    </p>
+                  </div>
+                  {hasLongSelectedPrompt ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowFullPrompt((current) => !current)}
+                      className="mt-3 text-sm font-medium text-[#adc6ff] transition hover:text-[#dce1fb]"
+                    >
+                      {showFullPrompt ? "Read less" : "Read more"}
+                    </button>
+                  ) : null}
                 </div>
 
                 {hasCaption(selectedEntry.caption) ? (

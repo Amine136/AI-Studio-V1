@@ -144,6 +144,14 @@ def expected_required_credits_for_plain_chat(model_name: str, options: PlainChat
     if image_variant is not None:
         return image_variant
 
+    # Grok prices the image by resolution (1k/2k).
+    resolution_variant = _resolve_expected_variant_price(
+        expected.get("imageSizePrices") if isinstance(expected.get("imageSizePrices"), dict) else None,
+        effective_options.get("resolution"),
+    )
+    if resolution_variant is not None:
+        return resolution_variant
+
     base_price = _parse_billing_float(expected.get("basePrice"))
     if base_price is not None:
         return round(base_price, 4)

@@ -73,6 +73,9 @@ function buildTextModels(
       const textBilling = billing.text;
       if (!textBilling || typeof textBilling !== "object") continue;
 
+      const outputModalities = new Set(entry.output_modalities || []);
+      if (outputModalities.has("IMAGE")) continue;
+
       const chatInfo = chatDisplayNames.get(modelId.toLowerCase());
       const displayName = entry.display_name || chatInfo?.displayName || modelId;
       const key = displayName.toLowerCase();
@@ -267,108 +270,104 @@ export default function PricingPage() {
         <div className="space-y-16">
           
           {/* ── Text Models ── */}
-          <section className="animate-fade-in-up" style={{ animationDelay: "150ms" }}>
-            <div className="mb-6 flex items-center gap-3 pl-2 sm:mb-8">
-              <span className="material-symbols-outlined text-3xl text-[#3b82f6]" style={{ fontVariationSettings: "'FILL' 1" }}>
-                description
-              </span>
-              <h2 className="font-headline text-2xl font-semibold tracking-tight sm:text-3xl">Text Models</h2>
-              <span className="ml-4 text-[10px] uppercase tracking-[0.22em] text-[#3b82f6]/70 border border-[#3b82f6]/20 bg-[#3b82f6]/10 px-2 py-1 rounded-md hidden sm:inline-block">Per 1M Tokens</span>
-            </div>
-
-            {pricingLoading ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <CardSkeleton />
-                <CardSkeleton />
-                <CardSkeleton />
+          {(pricingLoading || filteredTextModels.length > 0) && (
+            <section className="animate-fade-in-up" style={{ animationDelay: "150ms" }}>
+              <div className="mb-6 flex items-center gap-3 pl-2 sm:mb-8">
+                <span className="material-symbols-outlined text-3xl text-[#3b82f6]" style={{ fontVariationSettings: "'FILL' 1" }}>
+                  description
+                </span>
+                <h2 className="font-headline text-2xl font-semibold tracking-tight sm:text-3xl">Text Output Only</h2>
+                <span className="ml-4 text-[10px] uppercase tracking-[0.22em] text-[#3b82f6]/70 border border-[#3b82f6]/20 bg-[#3b82f6]/10 px-2 py-1 rounded-md hidden sm:inline-block">Per 1M Tokens</span>
               </div>
-            ) : filteredTextModels.length ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filteredTextModels.map((model) => (
-                  <div key={model.id} className="relative group rounded-2xl border border-white/[0.06] bg-white/[0.01] backdrop-blur-sm p-6 transition-all duration-300 hover:border-white/[0.15] hover:bg-white/[0.03] hover:shadow-[0_8px_30px_rgb(0,0,0,0.12)]">
-                    <div className="absolute inset-0 bg-gradient-to-br from-[#3b82f6]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-2xl pointer-events-none" />
-                    
-                    <div className="relative z-10 flex flex-col h-full">
-                      <div className="flex justify-between items-start mb-6">
-                        <h3 className="font-headline text-lg font-semibold text-[#f1f5f9] leading-snug pr-2">{model.name}</h3>
-                        <span className="shrink-0 text-[11px] px-2.5 py-1 rounded-md bg-white/[0.05] text-[#94a3b8] font-medium border border-white/[0.05]">
-                          {model.provider}
-                        </span>
-                      </div>
+
+              {pricingLoading ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  <CardSkeleton />
+                  <CardSkeleton />
+                  <CardSkeleton />
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {filteredTextModels.map((model) => (
+                    <div key={model.id} className="relative group rounded-2xl border border-white/[0.06] bg-white/[0.01] backdrop-blur-sm p-6 transition-all duration-300 hover:border-white/[0.15] hover:bg-white/[0.03] hover:shadow-[0_8px_30px_rgb(0,0,0,0.12)]">
+                      <div className="absolute inset-0 bg-gradient-to-br from-[#3b82f6]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-2xl pointer-events-none" />
                       
-                      <div className="mt-2 space-y-3">
-                        <div className="flex justify-between items-center text-sm border-b border-white/[0.04] pb-3">
-                          <span className="text-[#64748b]">Input <span className="text-[10px] uppercase ml-1 opacity-70">/ 1M</span></span>
-                          <span className="text-[#f8fafc] font-medium">{formatPrice(model.inputTokenPrice)}</span>
+                      <div className="relative z-10 flex flex-col h-full">
+                        <div className="flex justify-between items-start mb-6">
+                          <h3 className="font-headline text-lg font-semibold text-[#f1f5f9] leading-snug pr-2">{model.name}</h3>
+                          <span className="shrink-0 text-[11px] px-2.5 py-1 rounded-md bg-white/[0.05] text-[#94a3b8] font-medium border border-white/[0.05]">
+                            {model.provider}
+                          </span>
                         </div>
-                        <div className="flex justify-between items-center text-sm border-b border-white/[0.04] pb-3">
-                          <span className="text-[#64748b]">Output <span className="text-[10px] uppercase ml-1 opacity-70">/ 1M</span></span>
-                          <span className="text-[#f8fafc] font-medium">{formatPrice(model.outputTokenPrice)}</span>
-                        </div>
-                        <div className="flex justify-between items-center text-sm pt-1">
-                          <span className="text-[#64748b]">Cached Input</span>
-                          <span className="text-[#94a3b8] font-medium">{model.cachedInputTokenPrice ? formatPrice(model.cachedInputTokenPrice) : "—"}</span>
+                        
+                        <div className="mt-2 space-y-3">
+                          <div className="flex justify-between items-center text-sm border-b border-white/[0.04] pb-3">
+                            <span className="text-[#64748b]">Input <span className="text-[10px] uppercase ml-1 opacity-70">/ 1M</span></span>
+                            <span className="text-[#f8fafc] font-medium">{formatPrice(model.inputTokenPrice)}</span>
+                          </div>
+                          <div className="flex justify-between items-center text-sm border-b border-white/[0.04] pb-3">
+                            <span className="text-[#64748b]">Output <span className="text-[10px] uppercase ml-1 opacity-70">/ 1M</span></span>
+                            <span className="text-[#f8fafc] font-medium">{formatPrice(model.outputTokenPrice)}</span>
+                          </div>
+                          <div className="flex justify-between items-center text-sm pt-1">
+                            <span className="text-[#64748b]">Cached Input</span>
+                            <span className="text-[#94a3b8] font-medium">{model.cachedInputTokenPrice ? formatPrice(model.cachedInputTokenPrice) : "—"}</span>
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="rounded-2xl border border-white/[0.06] bg-white/[0.01] px-8 py-16 text-center text-sm text-[#64748b]">
-                No text models available for this provider.
-              </div>
-            )}
-          </section>
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
 
           {/* ── Image Models ── */}
-          <section className="animate-fade-in-up" style={{ animationDelay: "200ms" }}>
-            <div className="mb-6 flex items-center gap-3 pl-2 sm:mb-8">
-              <span className="material-symbols-outlined text-3xl text-[#8b5cf6]" style={{ fontVariationSettings: "'FILL' 1" }}>
-                image
-              </span>
-              <h2 className="font-headline text-2xl font-semibold tracking-tight sm:text-3xl">Image Models</h2>
-              <span className="ml-4 text-[10px] uppercase tracking-[0.22em] text-[#8b5cf6]/70 border border-[#8b5cf6]/20 bg-[#8b5cf6]/10 px-2 py-1 rounded-md hidden sm:inline-block">Per Image</span>
-            </div>
-
-            {pricingLoading ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <CardSkeleton />
-                <CardSkeleton />
-                <CardSkeleton />
+          {(pricingLoading || filteredImageModels.length > 0) && (
+            <section className="animate-fade-in-up" style={{ animationDelay: "200ms" }}>
+              <div className="mb-6 flex items-center gap-3 pl-2 sm:mb-8">
+                <span className="material-symbols-outlined text-3xl text-[#8b5cf6]" style={{ fontVariationSettings: "'FILL' 1" }}>
+                  image
+                </span>
+                <h2 className="font-headline text-2xl font-semibold tracking-tight sm:text-3xl">Image Models</h2>
+                <span className="ml-4 text-[10px] uppercase tracking-[0.22em] text-[#8b5cf6]/70 border border-[#8b5cf6]/20 bg-[#8b5cf6]/10 px-2 py-1 rounded-md hidden sm:inline-block">Per Image</span>
               </div>
-            ) : filteredImageModels.length ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filteredImageModels.map((model) => (
-                  <div key={model.id} className="relative group rounded-2xl border border-white/[0.06] bg-white/[0.01] backdrop-blur-sm p-6 transition-all duration-300 hover:border-white/[0.15] hover:bg-white/[0.03] hover:shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex flex-col">
-                    <div className="absolute inset-0 bg-gradient-to-br from-[#8b5cf6]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-2xl pointer-events-none" />
-                    
-                    <div className="relative z-10 flex flex-col h-full">
-                      <div className="flex justify-between items-start mb-6">
-                        <h3 className="font-headline text-lg font-semibold text-[#f1f5f9] leading-snug pr-2">{model.name}</h3>
-                        <span className="shrink-0 text-[11px] px-2.5 py-1 rounded-md bg-white/[0.05] text-[#94a3b8] font-medium border border-white/[0.05]">
-                          {model.provider}
-                        </span>
-                      </div>
+
+              {pricingLoading ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  <CardSkeleton />
+                  <CardSkeleton />
+                  <CardSkeleton />
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {filteredImageModels.map((model) => (
+                    <div key={model.id} className="relative group rounded-2xl border border-white/[0.06] bg-white/[0.01] backdrop-blur-sm p-6 transition-all duration-300 hover:border-white/[0.15] hover:bg-white/[0.03] hover:shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex flex-col">
+                      <div className="absolute inset-0 bg-gradient-to-br from-[#8b5cf6]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-2xl pointer-events-none" />
                       
-                      <div className="mt-2 space-y-3">
-                        {Object.entries(model.sizePrices).map(([size, price], idx) => (
-                          <div key={size} className={`flex justify-between items-center text-sm ${idx < Object.keys(model.sizePrices).length - 1 ? 'border-b border-white/[0.04] pb-3' : 'pt-1'}`}>
-                            <span className="text-[#64748b] truncate pr-4">{size}</span>
-                            <span className="text-[#f8fafc] font-medium shrink-0">{formatPrice(price)}</span>
-                          </div>
-                        ))}
+                      <div className="relative z-10 flex flex-col h-full">
+                        <div className="flex justify-between items-start mb-6">
+                          <h3 className="font-headline text-lg font-semibold text-[#f1f5f9] leading-snug pr-2">{model.name}</h3>
+                          <span className="shrink-0 text-[11px] px-2.5 py-1 rounded-md bg-white/[0.05] text-[#94a3b8] font-medium border border-white/[0.05]">
+                            {model.provider}
+                          </span>
+                        </div>
+                        
+                        <div className="mt-2 space-y-3">
+                          {Object.entries(model.sizePrices).map(([size, price], idx) => (
+                            <div key={size} className={`flex justify-between items-center text-sm ${idx < Object.keys(model.sizePrices).length - 1 ? 'border-b border-white/[0.04] pb-3' : 'pt-1'}`}>
+                              <span className="text-[#64748b] truncate pr-4">{size}</span>
+                              <span className="text-[#f8fafc] font-medium shrink-0">{formatPrice(price)}</span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="rounded-2xl border border-white/[0.06] bg-white/[0.01] px-8 py-16 text-center text-sm text-[#64748b]">
-                No image models available for this provider.
-              </div>
-            )}
-          </section>
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
 
           {/* Info Footer */}
           <section className="animate-fade-in-up mx-auto max-w-4xl pt-8" style={{ animationDelay: "250ms" }}>

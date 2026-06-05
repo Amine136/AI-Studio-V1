@@ -10,6 +10,7 @@ load_dotenv()
 CREATE_FLOW_IMAGE_PARAM_KEYS = {
     "aspectRatio",
     "imageSize",
+    "resolution",
     "sampleImageSize",
     "quality",
     "seed",
