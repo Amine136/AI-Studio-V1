@@ -14,6 +14,7 @@ import ResultCard from "../../../components/ResultCard";
 import LoadingSpinner from "../../../components/LoadingSpinner";
 import CreditsDisplay from "../../../components/CreditsDisplay";
 import InteractiveAuthenticatedImage from "../../../components/InteractiveAuthenticatedImage";
+import { ColorPickerPopover } from "../../../components/ColorPickerPopover";
 import type { CreditsDisplayHandle } from "../../../components/CreditsDisplay";
 import { addHistoryEntry } from "../../../lib/history";
 
@@ -42,8 +43,14 @@ interface SuspensionState {
   endsAtLabel: string | null;
 }
 
-type ParameterValue = string | number | boolean;
+type ParameterValue = string | number | boolean | string[];
 type ParameterState = Record<string, ParameterValue>;
+
+// "#rrggbb" hex string used by the native color picker.
+const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
+function normalizeHex(value: unknown): string {
+  return typeof value === "string" && HEX_COLOR_RE.test(value) ? value : "";
+}
 type OutputParameterValues = Record<OutputType, ParameterState>;
 
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
@@ -125,11 +132,20 @@ function isParameterValueCompatible(entry: PlainChatParameterSchemaEntry, value:
     return value >= min && value <= max;
   }
 
+  if (entry.type === "color") {
+    return typeof value === "string";
+  }
+
+  if (entry.type === "colorList") {
+    return Array.isArray(value);
+  }
+
   return false;
 }
 
 function isRenderableParameterEntry(entry: PlainChatParameterSchemaEntry) {
-  return entry.type === "enum" || entry.type === "boolean" || entry.type === "float" || entry.type === "integer";
+  return entry.type === "enum" || entry.type === "boolean" || entry.type === "float" || entry.type === "integer"
+    || entry.type === "color" || entry.type === "colorList";
 }
 
 function getVisibleModelParameters(schema?: Record<string, PlainChatParameterSchemaEntry>) {
@@ -1432,6 +1448,68 @@ export default function Home() {
                       </div>
                     );
                   })}
+                </div>
+              </div>
+            );
+          }
+
+          if (entry.type === "color") {
+            const hex = normalizeHex(currentValue);
+            return (
+              <div key={`${outputType}-${key}`} className="space-y-2">
+                <label className="text-[9px] font-bold uppercase tracking-wider text-slate-500">
+                  {formatParameterLabel(key)}
+                </label>
+                <div className="flex items-center gap-2">
+                  <ColorPickerPopover
+                    value={hex}
+                    onChange={(next) => handleModelParameterChange(outputType, key, next)}
+                    onClear={() => handleModelParameterChange(outputType, key, "")}
+                  />
+                  <span className="text-[11px] font-mono text-slate-400">{hex || "None"}</span>
+                </div>
+              </div>
+            );
+          }
+
+          if (entry.type === "colorList") {
+            const list: string[] = Array.isArray(currentValue) ? (currentValue as string[]) : [];
+            const maxItems = typeof entry.maxItems === "number" ? entry.maxItems : 5;
+            return (
+              <div key={`${outputType}-${key}`} className="space-y-2">
+                <label className="text-[9px] font-bold uppercase tracking-wider text-slate-500">
+                  {formatParameterLabel(key)}
+                </label>
+                <div className="flex flex-wrap items-center gap-2">
+                  {list.map((color, index) => (
+                    <div key={`${outputType}-${key}-${index}`} className="flex items-center gap-1 rounded-lg border border-outline-variant/10 bg-surface-container-lowest px-1.5 py-1">
+                      <ColorPickerPopover
+                        value={normalizeHex(color)}
+                        onChange={(next) => {
+                          const arr = [...list];
+                          arr[index] = next;
+                          handleModelParameterChange(outputType, key, arr);
+                        }}
+                      />
+                      <button
+                        type="button"
+                        aria-label="Remove color"
+                        onClick={() => handleModelParameterChange(outputType, key, list.filter((_, i) => i !== index))}
+                        className="px-1 text-sm font-bold text-slate-500 hover:text-red-300"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                  {list.length < maxItems ? (
+                    <button
+                      type="button"
+                      onClick={() => handleModelParameterChange(outputType, key, [...list, "#10b981"])}
+                      className="rounded-lg border border-dashed border-outline-variant/20 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 hover:border-outline-variant/40 hover:text-slate-200"
+                    >
+                      + Add color
+                    </button>
+                  ) : null}
                 </div>
               </div>
             );

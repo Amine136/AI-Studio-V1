@@ -10,6 +10,7 @@ function inferExtensionFromType(mimeType?: string | null): string {
   if (mimeType === "image/jpeg") return "jpg";
   if (mimeType === "image/webp") return "webp";
   if (mimeType === "image/png") return "png";
+  if (mimeType === "image/svg+xml") return "svg";
   return "png";
 }
 

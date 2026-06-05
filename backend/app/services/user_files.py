@@ -27,7 +27,7 @@ APIKEYMANAGER_GENERATED_IMAGE_DIRS = (
 GENERATED_IMAGES_DIR.mkdir(exist_ok=True)
 UPLOADED_IMAGES_DIR.mkdir(exist_ok=True)
 
-SAFE_GENERATED_FILENAME = re.compile(r"^[a-f0-9\-]{36}\.(jpg|png|webp)$")
+SAFE_GENERATED_FILENAME = re.compile(r"^[a-f0-9\-]{36}\.(jpg|png|webp|svg)$")
 SAFE_UPLOADED_FILENAME = re.compile(r"^[a-f0-9]{32}\.(jpg|png|webp)$")
 SAFE_FILE_ID = re.compile(r"^[0-9a-f\-]{36}$")
 
@@ -223,6 +223,14 @@ def _filepath_for_record(kind: str, storage_path: str) -> Path:
     raise HTTPException(status_code=404, detail="File not found")
 
 
+def _looks_like_svg(image_bytes: bytes) -> bool:
+    # SVG is text (Recraft's vector models return it). Inspect a small prefix for an
+    # <svg> root, optionally preceded by a UTF-8 BOM, whitespace, or an XML prolog.
+    head = image_bytes[:512].lstrip(b"\xef\xbb\xbf").lstrip()
+    lowered = head.lower()
+    return lowered.startswith(b"<svg") or (lowered.startswith(b"<?xml") and b"<svg" in lowered)
+
+
 def _detect_image_extension_and_mime(image_bytes: bytes) -> tuple[str, str]:
     if image_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
         return "png", "image/png"
@@ -230,4 +238,6 @@ def _detect_image_extension_and_mime(image_bytes: bytes) -> tuple[str, str]:
         return "jpg", "image/jpeg"
     if image_bytes.startswith(b"RIFF") and image_bytes[8:12] == b"WEBP":
         return "webp", "image/webp"
+    if _looks_like_svg(image_bytes):
+        return "svg", "image/svg+xml"
     return "png", "image/png"

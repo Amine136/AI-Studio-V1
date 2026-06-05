@@ -36,9 +36,33 @@ GENERATE_PARAMETER_OPTION_KEY_MAP = {
     "addWatermark": "addWatermark",
     "enhancePrompt": "enhancePrompt",
     "outputMimeType": "outputMimeType",
-    "style_type": "styleType",
-    "style_preset": "stylePreset",
+    "styleType": "styleType",
+    "stylePreset": "stylePreset",
+    "strength": "strength",
+    "colors": "colors",
+    "backgroundColor": "backgroundColor",
 }
+
+
+def _hex_to_rgb(value: Any) -> list[int] | None:
+    """Accept a #rrggbb / #rgb string (or an [r,g,b] list) and return [r, g, b]."""
+    if isinstance(value, (list, tuple)) and len(value) == 3:
+        try:
+            rgb = [int(channel) for channel in value]
+        except (TypeError, ValueError):
+            return None
+        return rgb if all(0 <= channel <= 255 for channel in rgb) else None
+    if not isinstance(value, str):
+        return None
+    text = value.strip().lstrip("#")
+    if len(text) == 3:
+        text = "".join(char * 2 for char in text)
+    if len(text) != 6:
+        return None
+    try:
+        return [int(text[i:i + 2], 16) for i in (0, 2, 4)]
+    except ValueError:
+        return None
 
 
 def _build_caption_fallback_image_input(image_url: str, owner_uid: str) -> Dict[str, str]:
@@ -634,7 +658,7 @@ def _normalize_generation_model_parameters(
 
         if option_key == "maxTokens":
             normalized_options[option_key] = int(raw_value)
-        elif option_key in {"temperature", "topP", "presencePenalty", "frequencyPenalty"}:
+        elif option_key in {"temperature", "topP", "presencePenalty", "frequencyPenalty", "strength"}:
             normalized_options[option_key] = float(raw_value)
         elif option_key in {"thinkingBudget", "seed"}:
             normalized_options[option_key] = int(raw_value)
@@ -644,6 +668,15 @@ def _normalize_generation_model_parameters(
             normalized_options[option_key] = str(raw_value).strip().upper()
         elif option_key == "mediaResolution":
             normalized_options[option_key] = str(raw_value).strip().lower()
+        elif option_key == "backgroundColor":
+            rgb = _hex_to_rgb(raw_value)
+            if rgb is not None:
+                normalized_options[option_key] = rgb
+        elif option_key == "colors":
+            if isinstance(raw_value, (list, tuple)):
+                rgbs = [rgb for rgb in (_hex_to_rgb(item) for item in raw_value) if rgb is not None]
+                if rgbs:
+                    normalized_options[option_key] = rgbs
         else:
             normalized_options[option_key] = str(raw_value).strip()
 
