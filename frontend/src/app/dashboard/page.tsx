@@ -279,18 +279,34 @@ export default function DashboardPage() {
     .filter((model) => model.id !== featuredModel?.id)
     .sort((a, b) => a.name.localeCompare(b.name))
     .slice(0, 2);
-  const systemCards = [
-    {
-      title: imageModels[0] ? formatProviderName(imageModels[0].provider) : "Retro-Future Challenge",
-      subtitle: imageModels[0] ? "Provider • Active" : "Community • Ends in 2d",
-      icon: "image",
-    },
-    {
-      title: textModels[0] ? formatProviderName(textModels[0].provider) : "Color Theory Mastery",
-      subtitle: textModels[0] ? "Provider • Active" : "Tutorial • New",
-      icon: "notes",
-    },
-  ];
+  const normalizeProvider = (name: string) => {
+    const lower = name.toLowerCase();
+    if (lower.includes("google") || lower.includes("gemini")) return "Google Gemini";
+    if (lower.includes("openai") || lower.includes("gpt")) return "OpenAI";
+    if (lower.includes("anthropic") || lower.includes("claude")) return "Anthropic";
+    if (lower.includes("mistral")) return "Mistral";
+    if (lower.includes("groq")) return "Groq";
+    return formatProviderName(name);
+  };
+
+  const activeProviders = Array.from(new Set([...imageModels, ...textModels].map((m) => normalizeProvider(m.provider))));
+
+  const getProviderIcon = (providerName: string) => {
+    const lower = providerName.toLowerCase();
+    if (lower.includes("google") || lower.includes("gemini")) return "temp_preferences_custom";
+    if (lower.includes("openai") || lower.includes("gpt")) return "memory";
+    if (lower.includes("anthropic") || lower.includes("claude")) return "psychiatry";
+    if (lower.includes("mistral")) return "air";
+    if (lower.includes("groq")) return "bolt";
+    return "api";
+  };
+
+  const systemCards = activeProviders.map((ap) => ({
+    title: ap,
+    subtitle: "Provider • Active",
+    icon: getProviderIcon(ap),
+    isActive: true,
+  }));
 
   if (authLoading || !user) {
     return (
@@ -572,15 +588,15 @@ export default function DashboardPage() {
 
               <div className="space-y-4">
                 {systemCards.map((item) => (
-                  <div key={item.title} className="group flex cursor-pointer gap-4">
+                  <div key={item.title} className={`group flex cursor-pointer gap-4 ${item.isActive ? "opacity-100" : "opacity-60 grayscale hover:grayscale-0"}`}>
                     <div className="h-16 w-16 shrink-0 overflow-hidden rounded-lg border border-white/10 bg-[#151b2d] grayscale transition-all group-hover:grayscale-0">
-                      <div className="flex h-full w-full items-center justify-center text-[#adc6ff]">
+                      <div className={`flex h-full w-full items-center justify-center ${item.isActive ? "text-[#adc6ff]" : "text-slate-500"}`}>
                         <span className="material-symbols-outlined">{item.icon}</span>
                       </div>
                     </div>
                     <div>
                       <h5 className="text-sm font-bold text-blue-100 transition-colors group-hover:text-[#adc6ff]">{item.title}</h5>
-                      <p className="mt-1 text-[10px] font-bold uppercase text-slate-500">{item.subtitle}</p>
+                      <p className={`mt-1 text-[10px] font-bold uppercase ${item.isActive ? "text-emerald-400" : "text-red-400"}`}>{item.subtitle}</p>
                     </div>
                   </div>
                 ))}
