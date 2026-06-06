@@ -57,3 +57,7 @@ yarn-error.log*
 .env.*.local
 *.pem
 backend/.secrets/
+
+# Secret backups and per-environment runtime state — never track
+backend/.env.bak-token-*
+backend/app/data/model_visibility.json
