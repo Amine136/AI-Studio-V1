@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../services/api";
-import type { CreditActivityEntry } from "../../types";
+import type { CreditActivityEntry, CreditBreakdown } from "../../types";
 
 
 interface SuspensionState {
@@ -105,6 +105,19 @@ const faqItems = [
   },
 ];
 
+function formatExpiresIn(expiresAt: number): string {
+  const seconds = Math.max(0, Math.floor(expiresAt - Date.now() / 1000));
+  if (seconds <= 0) return "expiring now";
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const parts: string[] = [];
+  if (days) parts.push(`${days}d`);
+  if (hours) parts.push(`${hours}h`);
+  if (!days && !hours && minutes) parts.push(`${minutes}m`);
+  return `expires in ${parts.join(" ") || "under 1m"}`;
+}
+
 export default function CreditsPage() {
   const router = useRouter();
   const { user, loading } = useAuth();
@@ -112,6 +125,8 @@ export default function CreditsPage() {
   const [history, setHistory] = useState<CreditActivityEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [credits, setCredits] = useState<number | null>(null);
+  const [breakdown, setBreakdown] = useState<CreditBreakdown | null>(null);
+  const [showBalanceDetails, setShowBalanceDetails] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
 
   const [codeInput, setCodeInput] = useState("");
@@ -132,9 +147,13 @@ export default function CreditsPage() {
   const fetchBalance = useCallback(async () => {
     if (!user) return;
     try {
-      const profile = await api.getProfile();
+      const [profile, nextBreakdown] = await Promise.all([
+        api.getProfile(),
+        api.getCreditBreakdown().catch(() => null),
+      ]);
       const nextCredits = profile.credits ?? 0;
       setCredits(nextCredits);
+      setBreakdown(nextBreakdown);
       setProfileError(null);
     } catch (error) {
       const message =
@@ -325,6 +344,43 @@ export default function CreditsPage() {
             <div className="mt-2 text-3xl font-bold tracking-tight text-white sm:text-4xl">
               {credits === null ? "..." : `${credits.toFixed(2)} Cr`}
             </div>
+            {breakdown && breakdown.gifts.length > 0 && (
+              <div className="mt-3">
+                <button
+                  type="button"
+                  onClick={() => setShowBalanceDetails((v) => !v)}
+                  className="flex items-center gap-1 text-xs font-medium text-[#adc6ff] hover:text-white transition-colors"
+                >
+                  <span className="material-symbols-outlined text-[16px]">
+                    {showBalanceDetails ? "expand_less" : "expand_more"}
+                  </span>
+                  {showBalanceDetails ? "Hide details" : "View details"}
+                </button>
+                {showBalanceDetails && (
+                  <div className="mt-2 space-y-1.5 rounded-lg border border-white/10 bg-black/20 p-3 text-sm">
+                    <div className="flex items-center justify-between text-[#c2c6d6]">
+                      <span>Your credits</span>
+                      <span className="font-semibold text-white">{breakdown.own.toFixed(2)} Cr</span>
+                    </div>
+                    {breakdown.gifts.map((gift, index) => (
+                      <div key={index} className="flex items-center justify-between">
+                        <span className="flex items-center gap-1.5 text-[#ffd6a5]">
+                          <span className="material-symbols-outlined text-[15px]">redeem</span>
+                          Gift · {formatExpiresIn(gift.expiresAt)}
+                        </span>
+                        <span className="font-semibold text-white">{gift.credits.toFixed(2)} Cr</span>
+                      </div>
+                    ))}
+                    {breakdown.reserved > 0 && (
+                      <div className="flex items-center justify-between border-t border-white/10 pt-1.5 text-[#8c909f]">
+                        <span>Reserved (in progress)</span>
+                        <span>{breakdown.reserved.toFixed(2)} Cr</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
             <div className="mt-4 h-1 w-full overflow-hidden rounded-full bg-[#2e3447]">
               <div className="h-full bg-[#adc6ff]" style={{ width: progressWidth }} />
             </div>

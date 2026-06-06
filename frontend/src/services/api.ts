@@ -25,6 +25,7 @@ import {
   SystemConfig,
   CurrentUserProfile,
   CreditActivityListResponse,
+  CreditBreakdown,
   CreditLedgerListResponse,
   UserNotificationPreferencesUpdateRequest,
   UserProfileUpdateRequest,
@@ -276,6 +277,11 @@ export const api = {
     }
   },
 
+  getCreditBreakdown: async (): Promise<CreditBreakdown> => {
+    const res = await client.get('/credits/breakdown');
+    return res.data;
+  },
+
   addHistoryEntry: async (payload: {
     imageUrl?: string;
     caption?: string;
@@ -410,14 +416,14 @@ export const api = {
     await client.delete(`/admin/dashboard-news/${itemId}`);
   },
 
-  createAdminCode: async (credits: number, maxClaims: number) => {
-    const res = await client.post('/admin/codes', { credits, maxClaims });
+  createAdminCode: async (credits: number, maxClaims: number, validityDays = 0, validityHours = 0) => {
+    const res = await client.post('/admin/codes', { credits, maxClaims, validityDays, validityHours });
     return res.data;
   },
 
-  createAdminCodeBatch: async (quantity: number, credits: number, title: string) => {
+  createAdminCodeBatch: async (quantity: number, credits: number, title: string, validityDays = 0, validityHours = 0) => {
     try {
-      const res = await client.post('/admin/codes/batch', { quantity, credits, title });
+      const res = await client.post('/admin/codes/batch', { quantity, credits, title, validityDays, validityHours });
       return res.data;
     } catch (error) {
       const detail = extractErrorMessage(error);
