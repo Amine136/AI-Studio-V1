@@ -59,6 +59,7 @@ def is_email_deactivated(email: str) -> dict[str, Any] | None:
 
 
 def get_user(uid: str) -> dict[str, Any]:
+    now = int(time.time())
     with session_scope() as session:
         repo = SecurityRepository(session)
         user = repo.get_user(uid)
@@ -73,7 +74,83 @@ def get_user(uid: str) -> dict[str, Any]:
                 "profileChangesRemaining": PROFILE_CHANGE_LIMIT_PER_MONTH,
                 "profileChangesResetAt": None,
             }
+        # Read-only fast path: only take a row lock + write a sweep when there is
+        # actually something due to expire. Keeps this hot GET lock/write-free
+        # in the common case (and un-spammable as a side-effecting endpoint).
+        if repo.has_due_expiry(uid, now):
+            user = repo.get_user_for_update(uid)
+            _sweep_user_lots(repo, user, now)
+            session.flush()
         return _user_dict_from_model(user)
+
+
+def get_credit_breakdown(uid: str) -> dict[str, Any]:
+    """Per-lot view of a user's spendable balance for the credits page: total
+    available, own (non-expiring) credits, and each gift lot with its expiry.
+    Sweeps expired lots first so the numbers match the displayed balance."""
+    now = int(time.time())
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        user = repo.get_user(uid)
+        if user is None:
+            return {"available": 0.0, "own": 0.0, "reserved": 0.0, "gifts": []}
+        # Read-only unless something is actually due to expire (see get_user).
+        if repo.has_due_expiry(uid, now):
+            user = repo.get_user_for_update(uid)
+            _sweep_user_lots(repo, user, now)
+            session.flush()
+
+        own_minor = 0
+        gifts: list[dict[str, Any]] = []
+        for lot in repo.list_spendable_lots(uid):
+            if lot.expires_at is None:
+                own_minor += int(lot.remaining_minor)
+            else:
+                gifts.append(
+                    {
+                        "credits": _minor_to_credits(int(lot.remaining_minor)),
+                        "expiresAt": int(lot.expires_at),
+                        "source": lot.source,
+                    }
+                )
+        gifts.sort(key=lambda g: g["expiresAt"])
+        return {
+            "available": _minor_to_credits(int(user.credits_minor)),
+            "own": _minor_to_credits(own_minor),
+            "reserved": _minor_to_credits(int(user.reserved_credits_minor)),
+            "gifts": gifts,
+        }
+
+
+def sweep_user_expired_credits(uid: str) -> int:
+    """Expire any past-due gift lots for a single user. Returns minor expired."""
+    now = int(time.time())
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        user = repo.get_user_for_update(uid)
+        if user is None:
+            return 0
+        expired = _sweep_user_lots(repo, user, now)
+        session.flush()
+        return expired
+
+
+def sweep_all_expired_credits(limit: int = 1000) -> dict[str, int]:
+    """Expire past-due gift lots across all users (nightly hygiene / reporting).
+    Each user is swept in its own transaction to keep locks short."""
+    now = int(time.time())
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        uids = list(repo.list_uids_with_expired_lots(now, limit=limit))
+
+    total_expired = 0
+    users_affected = 0
+    for uid in uids:
+        expired = sweep_user_expired_credits(uid)
+        if expired > 0:
+            users_affected += 1
+            total_expired += expired
+    return {"scanned": len(uids), "users": users_affected, "expired_minor": total_expired}
 
 
 def get_profile_change_status(uid: str) -> dict[str, Any]:
@@ -509,12 +586,23 @@ def adjust_credits(
         if user is None:
             user = repo.ensure_user(uid, "", "")
             session.flush()
+        _sweep_user_lots(repo, user, now)
 
-        next_minor = user.credits_minor + delta_minor
-        if not allow_negative and next_minor < 0:
-            raise ValueError("INSUFFICIENT_CREDITS")
+        # Positive adjustments create a non-expiring lot (admin grants / top-ups).
+        # Negative adjustments (incl. plain-chat charges) consume gift-first.
+        # `allow_negative` can no longer drive the balance below zero (lots can't
+        # be negative); it instead floors the charge at the available balance.
+        if delta_minor > 0:
+            _credit_lot(repo, user, delta_minor, now, source="admin_grant", expires_at=None)
+            applied_delta_minor = delta_minor
+        elif delta_minor < 0:
+            debited, _funding = _debit_across_lots(
+                repo, user, -delta_minor, now, floor_at_zero=allow_negative
+            )
+            applied_delta_minor = -debited
+        else:
+            applied_delta_minor = 0
 
-        user.credits_minor = next_minor
         user.updated_at = now
         user.last_seen_at = now
 
@@ -529,7 +617,7 @@ def adjust_credits(
 
         repo.add_ledger_entry(
             uid=uid,
-            delta_minor=delta_minor,
+            delta_minor=applied_delta_minor,
             reason=reason,
             actor_uid=actor_uid,
             metadata_json=ledger_metadata,
@@ -539,12 +627,26 @@ def adjust_credits(
         return _user_dict_from_model(user)
 
 
-def create_credit_code(credits: float, max_claims: int, created_by: str) -> dict[str, Any]:
+def _normalize_validity_seconds(validity_seconds: int | None) -> int | None:
+    """Coerce an admin-supplied validity window to a positive int or None."""
+    if validity_seconds is None:
+        return None
+    value = int(validity_seconds)
+    return value if value > 0 else None
+
+
+def create_credit_code(
+    credits: float,
+    max_claims: int,
+    created_by: str,
+    validity_seconds: int | None = None,
+) -> dict[str, Any]:
     credits_minor = _credits_to_minor(credits)
     if credits_minor <= 0:
         raise ValueError("Credits must be positive")
     if max_claims <= 0:
         raise ValueError("Max claims must be positive")
+    validity = _normalize_validity_seconds(validity_seconds)
 
     raw_code = _generate_code()
     code_hash = hash_credit_code(raw_code)
@@ -552,7 +654,10 @@ def create_credit_code(credits: float, max_claims: int, created_by: str) -> dict
 
     with session_scope() as session:
         repo = SecurityRepository(session)
-        code = repo.create_credit_code(code_hash, code_preview, credits_minor, max_claims, created_by)
+        code = repo.create_credit_code(
+            code_hash, code_preview, credits_minor, max_claims, created_by,
+            validity_seconds=validity,
+        )
         return {
             "code": raw_code,
             "codePreview": code.code_preview,
@@ -561,6 +666,7 @@ def create_credit_code(credits: float, max_claims: int, created_by: str) -> dict
             "claimedCount": code.claimed_count,
             "createdAt": code.created_at,
             "createdBy": code.created_by,
+            "validitySeconds": code.validity_seconds,
         }
 
 
@@ -568,7 +674,13 @@ def create_credit_code_batch(quantity: int, credits: float, created_by: str) -> 
     return create_credit_code_batch_with_title(quantity, credits, created_by, "")
 
 
-def create_credit_code_batch_with_title(quantity: int, credits: float, created_by: str, title: str) -> list[dict[str, Any]]:
+def create_credit_code_batch_with_title(
+    quantity: int,
+    credits: float,
+    created_by: str,
+    title: str,
+    validity_seconds: int | None = None,
+) -> list[dict[str, Any]]:
     bounded_quantity = int(quantity)
     credits_minor = _credits_to_minor(credits)
     normalized_title = title.strip()
@@ -576,6 +688,7 @@ def create_credit_code_batch_with_title(quantity: int, credits: float, created_b
         raise ValueError("Quantity must be positive")
     if credits_minor <= 0:
         raise ValueError("Credits must be positive")
+    validity = _normalize_validity_seconds(validity_seconds)
     batch_id = str(uuid.uuid4()) if normalized_title else None
 
     with session_scope() as session:
@@ -593,6 +706,7 @@ def create_credit_code_batch_with_title(quantity: int, credits: float, created_b
                 created_by,
                 batch_id=batch_id,
                 batch_title=normalized_title or None,
+                validity_seconds=validity,
             )
             created_codes.append(
                 {
@@ -605,6 +719,7 @@ def create_credit_code_batch_with_title(quantity: int, credits: float, created_b
                     "createdBy": code.created_by,
                     "batchId": code.batch_id,
                     "batchTitle": code.batch_title,
+                    "validitySeconds": code.validity_seconds,
                 }
             )
         return created_codes
@@ -906,9 +1021,27 @@ def redeem_credit_code(code: str, uid: str) -> dict[str, Any]:
         user = repo.get_user_for_update(uid)
         if user is None:
             user = repo.ensure_user(uid, "", "")
+        _sweep_user_lots(repo, user, now)
+
+        # Validity window for the redeemed credits. The code's own
+        # validity_seconds wins; otherwise fall back to the (optional) global
+        # default. NULL/0 => the gift credits never expire.
+        validity_seconds = credit_code.validity_seconds
+        if validity_seconds is None:
+            default_validity = int(getattr(settings, "default_gift_validity_seconds", 0) or 0)
+            validity_seconds = default_validity if default_validity > 0 else None
+        gift_expires_at = (now + int(validity_seconds)) if validity_seconds else None
 
         credit_code.claimed_count += 1
-        user.credits_minor += credit_code.credits_minor
+        lot = _credit_lot(
+            repo,
+            user,
+            credit_code.credits_minor,
+            now,
+            source="gift",
+            expires_at=gift_expires_at,
+            code_hash=code_hash,
+        )
         user.updated_at = now
         user.last_seen_at = now
 
@@ -919,7 +1052,12 @@ def redeem_credit_code(code: str, uid: str) -> dict[str, Any]:
             reason="credit_code_redeem",
             actor_uid=uid,
             metadata_json=_with_activity_metadata(
-                {"code_preview": credit_code.code_preview},
+                {
+                    "code_preview": credit_code.code_preview,
+                    "lot_id": lot.id,
+                    "expires_at": gift_expires_at,
+                    "validity_seconds": validity_seconds,
+                },
                 activity_id=f"credit_code_redeem:{code_hash}:{uid}",
                 activity_type="credit_code_redeem",
                 activity_label="Credit Redeem",
@@ -933,11 +1071,19 @@ def redeem_credit_code(code: str, uid: str) -> dict[str, Any]:
         session.flush()
 
         credits = _minor_to_credits(credit_code.credits_minor)
+        message = f"+{credits:g} credit{'s' if credits != 1 else ''} added to your account!"
+        if validity_seconds:
+            message += (
+                f" These gift credits are valid for {_format_duration(int(validity_seconds))}"
+                " — use them before they expire."
+            )
         return {
             "success": True,
-            "message": f"+{credits:g} credit{'s' if credits != 1 else ''} added to your account!",
+            "message": message,
             "credits": credits,
             "balance": _minor_to_credits(user.credits_minor),
+            "expiresAt": gift_expires_at,
+            "validitySeconds": validity_seconds,
         }
 
 
@@ -1257,6 +1403,7 @@ def create_analyze_session_with_charge(uid: str, prompt: str, analysis_fee: floa
         if user is None:
             user = repo.ensure_user(uid, "", "")
             session.flush()
+        _sweep_user_lots(repo, user, now)
         _enforce_pending_analyze_session_limit(repo, uid, now=now)
         _enforce_usage_cap(repo, user, projected_charge_minor=analysis_fee_minor, now=now)
 
@@ -1268,7 +1415,9 @@ def create_analyze_session_with_charge(uid: str, prompt: str, analysis_fee: floa
         analyze_session = repo.create_analyze_session(uid, analysis_fee_minor, prompt)
 
         if analysis_fee_minor > 0:
-            user.credits_minor -= analysis_fee_minor
+            # Charge gift-first; remember which lots funded it so an abandonment
+            # refund returns the fee to those exact lots (preserving their expiry).
+            _debited, funding = _debit_across_lots(repo, user, analysis_fee_minor, now, floor_at_zero=False)
             user.updated_at = now
             user.last_seen_at = now
             repo.add_ledger_entry(
@@ -1278,7 +1427,7 @@ def create_analyze_session_with_charge(uid: str, prompt: str, analysis_fee: floa
                 actor_uid=uid,
                 metadata_json=_analyze_activity_metadata(
                     analyze_session.id,
-                    {"analysis_fee": _minor_to_credits(analysis_fee_minor)},
+                    {"analysis_fee": _minor_to_credits(analysis_fee_minor), "lot_funding": funding},
                 ),
                 analyze_session_id=analyze_session.id,
                 created_at=now,
@@ -1365,16 +1514,28 @@ def refund_analyze_session(session_id: str, uid: str) -> dict[str, Any]:
 
         analyze_session.status = "failed"
         analyze_session.resolved_at = now
-        
-        user.credits_minor += analyze_session.fee_minor
+
+        # Return the fee to the lots that funded the original charge (preserving
+        # their expiry); any lot whose window has since closed expires instead.
+        charge_entry = repo.get_ledger_entry_by_analyze_session(session_id, "smart_analysis_charge")
+        funding = list((charge_entry.metadata_json or {}).get("lot_funding") or []) if charge_entry else []
+        if funding:
+            returned_minor, expired_minor = _return_funding_to_lots(repo, user, funding, now)
+        elif int(analyze_session.fee_minor) > 0:
+            # Legacy charge predating lot tracking -> return as a non-expiring lot.
+            _credit_lot(repo, user, int(analyze_session.fee_minor), now, source="refund", expires_at=None)
+            returned_minor, expired_minor = int(analyze_session.fee_minor), 0
+        else:
+            returned_minor, expired_minor = 0, 0
+
         user.updated_at = now
-        
+
         repo.add_ledger_entry(
             uid=uid,
-            delta_minor=analyze_session.fee_minor,
+            delta_minor=returned_minor,
             reason="analyze_abandon_refund",
             actor_uid=uid,
-            metadata_json=_analyze_activity_metadata(session_id),
+            metadata_json=_analyze_activity_metadata(session_id, {"expired_minor": expired_minor}),
             analyze_session_id=session_id,
             created_at=now,
         )
@@ -1485,12 +1646,317 @@ def _minor_to_credits(value: int) -> float:
     return round(int(value) / CREDIT_SCALE, 2)
 
 
+def _format_duration(seconds: int) -> str:
+    """Human-friendly duration, e.g. '2 days 12 hours', '7 days', '3 hours'."""
+    seconds = max(0, int(seconds))
+    days = seconds // 86400
+    hours = (seconds % 86400) // 3600
+    minutes = (seconds % 3600) // 60
+    parts: list[str] = []
+    if days:
+        parts.append(f"{days} day{'s' if days != 1 else ''}")
+    if hours:
+        parts.append(f"{hours} hour{'s' if hours != 1 else ''}")
+    if not parts and minutes:
+        parts.append(f"{minutes} minute{'s' if minutes != 1 else ''}")
+    return " ".join(parts) or "0 minutes"
+
+
 def _credits_to_chat_cost_micro(value: float) -> int:
     return int(round(float(value) * CHAT_COST_SCALE))
 
 
 def _chat_cost_micro_to_minor(value: int) -> int:
     return int(round((int(value) / CHAT_COST_SCALE) * CREDIT_SCALE))
+
+
+# --------------------------------------------------------------------------- #
+# Credit-lot accounting (expiry-aware balances)
+#
+# Every credit a user holds lives in a `credit_lots` row with an optional
+# `expires_at`. `users.credits_minor` / `reserved_credits_minor` are caches equal
+# to SUM(remaining_minor) / SUM(reserved_minor) over a user's lots. All spending
+# drains lots gift-first / soonest-expiry first; gift credits that go unused by
+# their deadline are expired with a `gift_credit_expired` ledger entry.
+# --------------------------------------------------------------------------- #
+def _gift_expired_metadata(lot: Any, amount_minor: int) -> dict[str, Any]:
+    return _with_activity_metadata(
+        {
+            "lot_id": lot.id,
+            "code_hash": lot.code_hash,
+            "source": lot.source,
+            "expired_minor": amount_minor,
+            "expired_credits": _minor_to_credits(amount_minor),
+        },
+        activity_id=f"gift_credit_expired:{lot.id}",
+        activity_type="gift_credit_expired",
+        activity_label="Gift Credits Expired",
+    )
+
+
+def _sweep_user_lots(repo: SecurityRepository, user: Any, now: int) -> int:
+    """Expire the spendable remainder of any past-expiry lot for ``user`` (which
+    must already be locked FOR UPDATE). Idempotent — zeroes ``remaining_minor`` —
+    and never touches the reserved portion of a lot (that resolves when its job
+    settles). Returns the total minor expired."""
+    expired_total = 0
+    for lot in repo.list_expired_lots_for_update(user.uid, now):
+        amount = int(lot.remaining_minor)
+        if amount <= 0:
+            continue
+        lot.remaining_minor = 0
+        lot.expired_at = now
+        user.credits_minor -= amount
+        expired_total += amount
+        repo.add_ledger_entry(
+            uid=user.uid,
+            delta_minor=-amount,
+            reason="gift_credit_expired",
+            actor_uid=None,
+            metadata_json=_gift_expired_metadata(lot, amount),
+            code_hash=lot.code_hash,
+            created_at=now,
+        )
+    if expired_total > 0:
+        user.updated_at = now
+        user.last_seen_at = now
+    return expired_total
+
+
+def _credit_lot(
+    repo: SecurityRepository,
+    user: Any,
+    amount_minor: int,
+    now: int,
+    *,
+    source: str,
+    expires_at: int | None,
+    code_hash: str | None = None,
+) -> Any:
+    """Add ``amount_minor`` to ``user`` as a new lot and bump the cached balance."""
+    lot = repo.create_credit_lot(
+        uid=user.uid,
+        source=source,
+        amount_minor=amount_minor,
+        granted_at=now,
+        expires_at=expires_at,
+        code_hash=code_hash,
+    )
+    user.credits_minor += amount_minor
+    return lot
+
+
+def _reserve_across_lots(
+    repo: SecurityRepository,
+    user: Any,
+    amount_minor: int,
+    now: int,
+    *,
+    ref_type: str,
+    ref_id: str,
+) -> int:
+    """Reserve ``amount_minor`` across the user's lots gift-first / soonest-expiry
+    first, skipping any gift lot that would expire within the safety window (so a
+    long-running job can't be caught mid-flight by expiry). Records a per-lot
+    allocation for each lot touched. Raises ``ValueError('INSUFFICIENT_CREDITS')``
+    — rolling back the transaction — if eligible credits can't cover the amount.
+    Caller is responsible for sweeping expired lots first."""
+    if amount_minor <= 0:
+        return 0
+    safety = int(getattr(settings, "gift_reserve_safety_window_seconds", 300))
+    remaining_to_reserve = amount_minor
+    plan: list[tuple[Any, int]] = []
+    for lot in repo.list_spendable_lots_for_update(user.uid):
+        if remaining_to_reserve <= 0:
+            break
+        if lot.expires_at is not None and int(lot.expires_at) <= now + safety:
+            continue
+        take = min(int(lot.remaining_minor), remaining_to_reserve)
+        if take <= 0:
+            continue
+        plan.append((lot, take))
+        remaining_to_reserve -= take
+    if remaining_to_reserve > 0:
+        raise ValueError("INSUFFICIENT_CREDITS")
+    for lot, take in plan:
+        lot.remaining_minor -= take
+        lot.reserved_minor += take
+        repo.create_lot_allocation(
+            lot_id=lot.id,
+            ref_type=ref_type,
+            ref_id=ref_id,
+            reserved_minor=take,
+            created_at=now,
+        )
+    user.credits_minor -= amount_minor
+    user.reserved_credits_minor += amount_minor
+    return amount_minor
+
+
+def _debit_across_lots(
+    repo: SecurityRepository,
+    user: Any,
+    amount_minor: int,
+    now: int,
+    *,
+    floor_at_zero: bool = False,
+) -> tuple[int, list[dict[str, Any]]]:
+    """Immediately consume ``amount_minor`` from lots gift-first / soonest-expiry
+    first. Unlike reserving, this does NOT skip soon-to-expire gifts — an immediate
+    consume carries no in-flight risk, so spending the most-perishable credits is
+    correct. Returns ``(debited_minor, funding)`` where ``funding`` is
+    ``[{"lot_id", "minor"}]`` so the charge can later be refunded to the same lots.
+    If funds are short: ``floor_at_zero`` charges only what's available, otherwise
+    raises ``ValueError('INSUFFICIENT_CREDITS')``."""
+    if amount_minor <= 0:
+        return 0, []
+    remaining_to_debit = amount_minor
+    funding: list[dict[str, Any]] = []
+    for lot in repo.list_spendable_lots_for_update(user.uid):
+        if remaining_to_debit <= 0:
+            break
+        take = min(int(lot.remaining_minor), remaining_to_debit)
+        if take <= 0:
+            continue
+        lot.remaining_minor -= take
+        funding.append({"lot_id": lot.id, "minor": take})
+        remaining_to_debit -= take
+    if remaining_to_debit > 0 and not floor_at_zero:
+        raise ValueError("INSUFFICIENT_CREDITS")
+    debited = amount_minor - remaining_to_debit
+    user.credits_minor -= debited
+    return debited, funding
+
+
+def _return_funding_to_lots(
+    repo: SecurityRepository,
+    user: Any,
+    funding: list[dict[str, Any]] | None,
+    now: int,
+) -> tuple[int, int]:
+    """Return previously-debited credits to their originating lots. If a lot has
+    since expired, that portion is expired immediately rather than refunded.
+    Returns ``(returned_minor, expired_minor)``."""
+    returned = 0
+    expired = 0
+    for item in funding or []:
+        minor = int(item.get("minor") or 0)
+        if minor <= 0:
+            continue
+        lot = repo.get_lot_for_update(str(item.get("lot_id")))
+        if lot is None:
+            # Lot vanished (e.g. user deletion cascade); nothing to return to.
+            continue
+        if lot.expires_at is not None and int(lot.expires_at) <= now:
+            lot.expired_at = now
+            expired += minor
+            repo.add_ledger_entry(
+                uid=user.uid,
+                delta_minor=0,
+                reason="gift_credit_expired",
+                actor_uid=None,
+                metadata_json=_gift_expired_metadata(lot, minor),
+                code_hash=lot.code_hash,
+                created_at=now,
+            )
+            continue
+        lot.remaining_minor += minor
+        user.credits_minor += minor
+        returned += minor
+    return returned, expired
+
+
+def _settle_generation_allocations(
+    repo: SecurityRepository,
+    user: Any,
+    job: Any,
+    actual_minor: int,
+    now: int,
+) -> dict[str, int]:
+    """Settle a generation job's per-lot reservations.
+
+    Consumes ``actual_minor`` from the reservations soonest-expiry first (so the
+    most-perishable credits are the ones actually spent), returns the unused
+    remainder to the originating lots (or expires it if a lot's window has closed),
+    and charges any overage beyond the reservation gift-first, floored at zero.
+    Returns ``{consumed, refunded, expired, overage, total_reserved}`` in minor."""
+    allocations = repo.list_allocations_for_update("generation", job.id)
+    lots_by_id: dict[str, Any] = {}
+    for alloc in allocations:
+        lot = repo.get_lot_for_update(alloc.lot_id)
+        if lot is not None:
+            lots_by_id[alloc.lot_id] = lot
+
+    def _alloc_key(alloc: Any) -> tuple[int, int, int, str]:
+        lot = lots_by_id.get(alloc.lot_id)
+        exp = int(lot.expires_at) if (lot is not None and lot.expires_at is not None) else None
+        return (
+            0 if exp is not None else 1,
+            exp if exp is not None else 0,
+            int(lot.granted_at) if lot is not None else 0,
+            alloc.id,
+        )
+
+    ordered = sorted(allocations, key=_alloc_key)
+    total_reserved = sum(int(a.reserved_minor) for a in allocations)
+    remaining_to_consume = min(max(int(actual_minor), 0), total_reserved)
+
+    consumed = 0
+    refunded = 0
+    expired = 0
+    for alloc in ordered:
+        lot = lots_by_id.get(alloc.lot_id)
+        held = int(alloc.reserved_minor)
+        if held <= 0:
+            continue
+        take = min(held, remaining_to_consume)
+        if take > 0:
+            if lot is not None:
+                lot.reserved_minor -= take
+            user.reserved_credits_minor -= take
+            consumed += take
+            remaining_to_consume -= take
+        leftover = held - take
+        if leftover > 0:
+            if lot is not None:
+                lot.reserved_minor -= leftover
+            user.reserved_credits_minor -= leftover
+            if lot is not None and lot.expires_at is not None and int(lot.expires_at) <= now:
+                lot.expired_at = now
+                expired += leftover
+                repo.add_ledger_entry(
+                    uid=user.uid,
+                    delta_minor=0,
+                    reason="gift_credit_expired",
+                    actor_uid=None,
+                    metadata_json=_gift_expired_metadata(lot, leftover),
+                    code_hash=lot.code_hash,
+                    created_at=now,
+                )
+            elif lot is not None:
+                lot.remaining_minor += leftover
+                user.credits_minor += leftover
+                refunded += leftover
+            else:
+                user.credits_minor += leftover
+                refunded += leftover
+        alloc.reserved_minor = 0
+
+    repo.delete_lot_allocations("generation", job.id)
+
+    overage = 0
+    if int(actual_minor) > total_reserved:
+        overage, _funding = _debit_across_lots(
+            repo, user, int(actual_minor) - total_reserved, now, floor_at_zero=True
+        )
+
+    return {
+        "consumed": consumed,
+        "refunded": refunded,
+        "expired": expired,
+        "overage": overage,
+        "total_reserved": total_reserved,
+    }
 
 
 def _with_activity_metadata(
@@ -1675,6 +2141,7 @@ def _credit_code_dict_from_model(code: Any) -> dict[str, Any]:
         "batchTitle": code.batch_title,
         "isActive": bool(code.is_active),
         "expiresAt": code.expires_at,
+        "validitySeconds": getattr(code, "validity_seconds", None),
         "status": status,
     }
 
@@ -1976,6 +2443,7 @@ def reserve_generation_credits(
         user = repo.get_user_for_update(uid)
         if user is None:
             user = repo.ensure_user(uid, "", "")
+        _sweep_user_lots(repo, user, now)
 
         if reserved_minor < 0:
             raise ValueError("Estimated cost must be non-negative")
@@ -1992,8 +2460,10 @@ def reserve_generation_credits(
             status="processing",
         )
 
-        user.credits_minor -= reserved_minor
-        user.reserved_credits_minor += reserved_minor
+        # Reserve gift-first / soonest-expiry first, skipping gifts that would
+        # expire mid-generation. Raises INSUFFICIENT_CREDITS (rolling back this
+        # transaction, incl. the job row above) if eligible credits fall short.
+        _reserve_across_lots(repo, user, reserved_minor, now, ref_type="generation", ref_id=job.id)
         user.updated_at = now
         user.last_seen_at = now
 
@@ -2045,11 +2515,13 @@ def capture_generation_credits(job_id: str, actual_cost: float) -> dict[str, Any
         if user.reserved_credits_minor < job.reserved_minor:
             raise ValueError("RESERVED_BALANCE_MISMATCH")
 
-        user.reserved_credits_minor -= job.reserved_minor
-        
-        refund_minor = job.reserved_minor - actual_minor
+        # Settle the per-lot reservations: consume `actual_minor` soonest-expiry
+        # first, return the unused remainder to its originating lots (expiring any
+        # whose window closed), and charge any overage gift-first, floored at zero.
+        settlement = _settle_generation_allocations(repo, user, job, actual_minor, now)
+        refund_minor = settlement["refunded"]
+        overage_minor = settlement["overage"]
         if refund_minor > 0:
-            user.credits_minor += refund_minor
             repo.add_ledger_entry(
                 uid=user.uid,
                 delta_minor=refund_minor,
@@ -2063,9 +2535,7 @@ def capture_generation_credits(job_id: str, actual_cost: float) -> dict[str, Any
                 ),
                 created_at=now,
             )
-        elif refund_minor < 0:
-            overage_minor = -refund_minor
-            user.credits_minor -= overage_minor
+        if overage_minor > 0:
             repo.add_ledger_entry(
                 uid=user.uid,
                 delta_minor=-overage_minor,
@@ -2117,7 +2587,7 @@ def capture_generation_credits(job_id: str, actual_cost: float) -> dict[str, Any
             job,
             status="completed",
             captured_minor=actual_minor,
-            refunded_minor=max(0, refund_minor),
+            refunded_minor=refund_minor,
             completed_at=now,
         )
         session.flush()
@@ -2139,7 +2609,7 @@ def release_generation_credits(job_id: str, failure_reason: str | None = None, c
         if user is None:
             raise ValueError("USER_NOT_FOUND")
 
-        if job.status in {"failed", "cancelled"} and job.refunded_minor == job.reserved_minor:
+        if job.status in {"failed", "cancelled"}:
             return {
                 "job": _generation_job_dict_from_model(job),
                 "balance": _user_dict_from_model(user),
@@ -2149,14 +2619,16 @@ def release_generation_credits(job_id: str, failure_reason: str | None = None, c
         if user.reserved_credits_minor < job.reserved_minor:
             raise ValueError("RESERVED_BALANCE_MISMATCH")
 
-        user.reserved_credits_minor -= job.reserved_minor
-        user.credits_minor += job.reserved_minor
+        # Nothing consumed (actual = 0): the full reservation returns to its
+        # originating lots, preserving each lot's expiry.
+        settlement = _settle_generation_allocations(repo, user, job, 0, now)
+        released_minor = settlement["refunded"]
         user.updated_at = now
         user.last_seen_at = now
 
         repo.add_ledger_entry(
             uid=user.uid,
-            delta_minor=job.reserved_minor,
+            delta_minor=released_minor,
             reason="generation_release",
             actor_uid=user.uid,
             metadata_json=_generation_activity_metadata(
@@ -2165,7 +2637,8 @@ def release_generation_credits(job_id: str, failure_reason: str | None = None, c
                 dict(job.request_payload_json or {}),
                 {
                     "failure_reason": failure_reason,
-                    "released_minor": job.reserved_minor,
+                    "released_minor": released_minor,
+                    "expired_minor": settlement["expired"],
                 },
             ),
             created_at=now,
@@ -2177,7 +2650,7 @@ def release_generation_credits(job_id: str, failure_reason: str | None = None, c
             target_type="user",
             target_id=user.uid,
             reason=(
-                f"Generation delivery failed and {_minor_to_credits(job.reserved_minor):.2f} credits were refunded."
+                f"Generation delivery failed and {_minor_to_credits(released_minor):.2f} credits were refunded."
             ),
             metadata_json={
                 "uid": user.uid,
@@ -2185,7 +2658,7 @@ def release_generation_credits(job_id: str, failure_reason: str | None = None, c
                 "mode": (job.request_payload_json or {}).get("mode"),
                 "requested_outputs": list(job.requested_outputs_json or []),
                 "failure_reason": failure_reason,
-                "refunded_credits": _minor_to_credits(job.reserved_minor),
+                "refunded_credits": _minor_to_credits(released_minor),
                 "job_status": "cancelled" if cancelled else "failed",
             },
             created_at=now,
@@ -2193,7 +2666,7 @@ def release_generation_credits(job_id: str, failure_reason: str | None = None, c
         repo.update_generation_job(
             job,
             status="cancelled" if cancelled else "failed",
-            refunded_minor=job.reserved_minor,
+            refunded_minor=released_minor,
             failure_reason=failure_reason,
             completed_at=now,
         )

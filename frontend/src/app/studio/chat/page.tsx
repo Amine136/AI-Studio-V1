@@ -477,6 +477,12 @@ function getChatModelExpectedCost(model: ChatModelOption | null, values: Paramet
     return imageVariant;
   }
 
+  // Grok prices the image by resolution (1k/2k).
+  const resolutionVariant = resolveExpectedVariantPrice(expected.imageSizePrices, values.resolution);
+  if (resolutionVariant !== null) {
+    return resolutionVariant;
+  }
+
   if (typeof expected.basePrice === "number" && Number.isFinite(expected.basePrice)) {
     return expected.basePrice;
   }

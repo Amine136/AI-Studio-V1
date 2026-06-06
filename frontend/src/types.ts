@@ -446,7 +446,21 @@ export interface AdminCreditCodeItem {
   batchTitle?: string | null;
   isActive: boolean;
   expiresAt?: number | null;
+  validitySeconds?: number | null;
   status: string;
+}
+
+export interface CreditGiftLot {
+  credits: number;
+  expiresAt: number;
+  source: string;
+}
+
+export interface CreditBreakdown {
+  available: number;
+  own: number;
+  reserved: number;
+  gifts: CreditGiftLot[];
 }
 
 export interface AdminCreditCodeStatusSummaryItem {

@@ -302,6 +302,9 @@ function getExpectedModelCost(
     if (sampleImageVariant !== null) return sampleImageVariant;
     const imageVariant = resolveExpectedVariantPrice(expected.imageSizePrices, values?.imageSize);
     if (imageVariant !== null) return imageVariant;
+    // Grok prices the image by resolution (1k/2k).
+    const resolutionVariant = resolveExpectedVariantPrice(expected.imageSizePrices, values?.resolution);
+    if (resolutionVariant !== null) return resolutionVariant;
     // OpenAI prices the image by quality (low/medium) rather than size.
     const qualityVariant = resolveExpectedVariantPrice(expected.imageSizePrices, values?.quality);
     if (qualityVariant !== null) return qualityVariant;
@@ -794,10 +797,19 @@ export default function Home() {
     || "Random"
   );
 
+  const HIDDEN_MODELS = [
+    "Recraft V4.1 vector",
+    "Recraft V3 Vector",
+    "Ideogram 3.0 Transparent Background",
+    "Grok Imagine Image Quality Editing",
+    "Grok Imagine Image Editing"
+  ];
+
   const filteredCaptionModels = useMemo(() => {
     const entries = modelCatalog.caption || {};
     return Object.entries(entries)
       .filter(([, model]) => {
+        if (model.display_name && HIDDEN_MODELS.includes(model.display_name)) return false;
         const wantsImageOutput = selectedOutputs.includes("image");
         if (hasInputImages && wantsImageOutput) {
           return isGeminiImageModel(model);
@@ -814,6 +826,7 @@ export default function Home() {
     const entries = modelCatalog.image || {};
     return Object.entries(entries)
       .filter(([, model]) => {
+        if (model.display_name && HIDDEN_MODELS.includes(model.display_name)) return false;
         if (!selectedOutputs.includes("image")) {
           return false;
         }
@@ -1342,7 +1355,7 @@ export default function Home() {
     values: ParameterState,
   ) => {
     if (currentCredits === null) return true;
-    if (outputType !== "image" || (key !== "imageSize" && key !== "sampleImageSize")) {
+    if (outputType !== "image" || (key !== "imageSize" && key !== "sampleImageSize" && key !== "resolution")) {
       return true;
     }
 

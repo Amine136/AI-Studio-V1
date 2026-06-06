@@ -10,6 +10,7 @@ load_dotenv()
 CREATE_FLOW_IMAGE_PARAM_KEYS = {
     "aspectRatio",
     "imageSize",
+    "resolution",
     "sampleImageSize",
     "quality",
     "seed",
@@ -51,6 +52,10 @@ class Config:
         self.discord_webhook_url = os.getenv("DISCORD_WEBHOOK_URL", "").strip()
         self.public_backend_base_url = os.getenv("PUBLIC_BACKEND_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
         self.catalog_webhook_secret = os.getenv("CATALOG_WEBHOOK_SECRET", "").strip()
+        # Dedicated secret for the internal gift-credit expiry sweep endpoint.
+        # Falls back to the catalog webhook secret if unset (back-compat), but a
+        # separate value is recommended to isolate blast radius.
+        self.internal_sweep_secret = os.getenv("INTERNAL_SWEEP_SECRET", "").strip()
         self.firebase_project_id = os.getenv("FIREBASE_PROJECT_ID", "novanodetn").strip()
         self.firestore_project_id = os.getenv("FIRESTORE_PROJECT_ID", self.firebase_project_id).strip()
         self.firestore_database = os.getenv("FIRESTORE_DATABASE", "(default)").strip()
@@ -127,6 +132,15 @@ class Config:
         self.redeem_consecutive_admin_threshold = int(os.getenv("REDEEM_CONSECUTIVE_ADMIN_THRESHOLD", "20"))
         self.redeem_consecutive_window_seconds = int(os.getenv("REDEEM_CONSECUTIVE_WINDOW_SECONDS", str(24 * 60 * 60)))
         self.redeem_temp_suspension_seconds = int(os.getenv("REDEEM_TEMP_SUSPENSION_SECONDS", str(60 * 60)))
+
+        # Gift-credit expiry. A reservation will not draw from a gift lot that
+        # would expire within this safety window (so a long-running generation
+        # can't be caught mid-flight by expiry). Should be >= the maximum
+        # generation lifetime (gunicorn --timeout 300).
+        self.gift_reserve_safety_window_seconds = int(os.getenv("GIFT_RESERVE_SAFETY_WINDOW_SECONDS", "300"))
+        # Default validity (seconds) applied to redeemed gift credits when a code
+        # does not specify its own. 0 = redeemed credits never expire by default.
+        self.default_gift_validity_seconds = int(os.getenv("DEFAULT_GIFT_VALIDITY_SECONDS", "0"))
 
         # System model settings used for the intent-analysis step.
         self.system_llm_provider = os.getenv("SYSTEM_LLM_PROVIDER", "google-gemini")

@@ -10,7 +10,7 @@ from sqlalchemy import case, delete, func, select
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from app.db.models import AdminAccount, AdminAuditLog, AdminSession, AnalyzeSession, ChatConversation, ChatMessage, CreditCode, CreditCodeClaim, CreditLedgerEntry, DashboardNewsItem, DeactivatedEmail, GenerationJob, HistoryEntry, RateLimitBucket, User, UserFile
+from app.db.models import AdminAccount, AdminAuditLog, AdminSession, AnalyzeSession, ChatConversation, ChatMessage, CreditCode, CreditCodeClaim, CreditLedgerEntry, CreditLot, CreditLotAllocation, DashboardNewsItem, DeactivatedEmail, GenerationJob, HistoryEntry, RateLimitBucket, User, UserFile
 
 USERNAME_ALLOWED_RE = re.compile(r"[^a-z0-9._-]+")
 
@@ -389,7 +389,16 @@ class SecurityRepository:
             ).scalars()
         )
 
-    def create_credit_code(self, code_hash: str, code_preview: str, credits_minor: int, max_claims: int, created_by: str | None) -> CreditCode:
+    def create_credit_code(
+        self,
+        code_hash: str,
+        code_preview: str,
+        credits_minor: int,
+        max_claims: int,
+        created_by: str | None,
+        *,
+        validity_seconds: int | None = None,
+    ) -> CreditCode:
         code = CreditCode(
             code_hash=code_hash,
             code_preview=code_preview,
@@ -401,6 +410,7 @@ class SecurityRepository:
             batch_id=None,
             batch_title=None,
             is_active=True,
+            validity_seconds=validity_seconds,
         )
         self.session.add(code)
         self.session.flush()
@@ -416,6 +426,7 @@ class SecurityRepository:
         *,
         batch_id: str | None,
         batch_title: str | None,
+        validity_seconds: int | None = None,
     ) -> CreditCode:
         code = CreditCode(
             code_hash=code_hash,
@@ -428,6 +439,7 @@ class SecurityRepository:
             batch_id=batch_id,
             batch_title=batch_title,
             is_active=True,
+            validity_seconds=validity_seconds,
         )
         self.session.add(code)
         self.session.flush()
@@ -513,6 +525,160 @@ class SecurityRepository:
         self.session.flush()
         return claim
 
+    # ------------------------------------------------------------------ #
+    # Credit lots (expiry-aware balance parcels)
+    # ------------------------------------------------------------------ #
+    @staticmethod
+    def _lot_spend_order():
+        # Gift/expiring lots first (soonest expiry first), then non-expiring
+        # lots; deterministic tie-break keeps splits reproducible.
+        return (
+            case((CreditLot.expires_at.is_(None), 1), else_=0),
+            CreditLot.expires_at.asc(),
+            CreditLot.granted_at.asc(),
+            CreditLot.id.asc(),
+        )
+
+    def create_credit_lot(
+        self,
+        *,
+        uid: str,
+        source: str,
+        amount_minor: int,
+        granted_at: int,
+        expires_at: int | None,
+        code_hash: str | None = None,
+        reserved_minor: int = 0,
+    ) -> CreditLot:
+        now = int(time.time())
+        lot = CreditLot(
+            id=str(uuid.uuid4()),
+            uid=uid,
+            source=source,
+            original_minor=amount_minor + reserved_minor,
+            remaining_minor=amount_minor,
+            reserved_minor=reserved_minor,
+            granted_at=granted_at,
+            expires_at=expires_at,
+            expired_at=None,
+            code_hash=code_hash,
+            created_at=now,
+        )
+        self.session.add(lot)
+        self.session.flush()
+        return lot
+
+    def list_spendable_lots(self, uid: str) -> list[CreditLot]:
+        return list(
+            self.session.execute(
+                select(CreditLot)
+                .where(CreditLot.uid == uid, CreditLot.remaining_minor > 0)
+                .order_by(*self._lot_spend_order())
+            ).scalars()
+        )
+
+    def list_spendable_lots_for_update(self, uid: str) -> list[CreditLot]:
+        return list(
+            self.session.execute(
+                select(CreditLot)
+                .where(CreditLot.uid == uid, CreditLot.remaining_minor > 0)
+                .order_by(*self._lot_spend_order())
+                .with_for_update()
+            ).scalars()
+        )
+
+    def has_due_expiry(self, uid: str, now: int) -> bool:
+        """Cheap, read-only, index-backed check: does this user have any expired
+        lot that still holds spendable credits? Lets read paths avoid taking a
+        FOR UPDATE lock / writing on every call when there is nothing to expire."""
+        return self.session.execute(
+            select(CreditLot.id)
+            .where(
+                CreditLot.uid == uid,
+                CreditLot.expires_at.is_not(None),
+                CreditLot.expires_at <= now,
+                CreditLot.remaining_minor > 0,
+            )
+            .limit(1)
+        ).first() is not None
+
+    def list_expired_lots_for_update(self, uid: str, now: int) -> list[CreditLot]:
+        return list(
+            self.session.execute(
+                select(CreditLot)
+                .where(
+                    CreditLot.uid == uid,
+                    CreditLot.expires_at.is_not(None),
+                    CreditLot.expires_at <= now,
+                    CreditLot.remaining_minor > 0,
+                )
+                .order_by(CreditLot.expires_at.asc(), CreditLot.id.asc())
+                .with_for_update()
+            ).scalars()
+        )
+
+    def get_lot_for_update(self, lot_id: str) -> CreditLot | None:
+        return self.session.execute(
+            select(CreditLot).where(CreditLot.id == lot_id).with_for_update()
+        ).scalar_one_or_none()
+
+    def list_uids_with_expired_lots(self, now: int, *, limit: int = 1000) -> list[str]:
+        return list(
+            self.session.execute(
+                select(CreditLot.uid)
+                .where(
+                    CreditLot.expires_at.is_not(None),
+                    CreditLot.expires_at <= now,
+                    CreditLot.remaining_minor > 0,
+                )
+                .group_by(CreditLot.uid)
+                .limit(limit)
+            ).scalars()
+        )
+
+    def create_lot_allocation(
+        self,
+        *,
+        lot_id: str,
+        ref_type: str,
+        ref_id: str,
+        reserved_minor: int,
+        created_at: int,
+    ) -> CreditLotAllocation:
+        allocation = CreditLotAllocation(
+            id=str(uuid.uuid4()),
+            lot_id=lot_id,
+            ref_type=ref_type,
+            ref_id=ref_id,
+            reserved_minor=reserved_minor,
+            created_at=created_at,
+        )
+        self.session.add(allocation)
+        self.session.flush()
+        return allocation
+
+    def list_allocations_for_update(self, ref_type: str, ref_id: str) -> list[CreditLotAllocation]:
+        return list(
+            self.session.execute(
+                select(CreditLotAllocation)
+                .where(
+                    CreditLotAllocation.ref_type == ref_type,
+                    CreditLotAllocation.ref_id == ref_id,
+                )
+                .with_for_update()
+            ).scalars()
+        )
+
+    def delete_lot_allocations(self, ref_type: str, ref_id: str) -> int:
+        result = self.session.execute(
+            delete(CreditLotAllocation).where(
+                CreditLotAllocation.ref_type == ref_type,
+                CreditLotAllocation.ref_id == ref_id,
+            )
+        )
+        self.session.flush()
+        return int(result.rowcount or 0)
+
     def add_ledger_entry(
         self,
         uid: str,
@@ -550,6 +716,17 @@ class SecurityRepository:
                 .limit(bounded_limit)
             ).scalars()
         )
+
+    def get_ledger_entry_by_analyze_session(self, session_id: str, reason: str) -> CreditLedgerEntry | None:
+        return self.session.execute(
+            select(CreditLedgerEntry)
+            .where(
+                CreditLedgerEntry.analyze_session_id == session_id,
+                CreditLedgerEntry.reason == reason,
+            )
+            .order_by(CreditLedgerEntry.created_at.asc(), CreditLedgerEntry.id.asc())
+            .limit(1)
+        ).scalar_one_or_none()
 
     def sum_user_usage_minor(self, uid: str, *, since_ts: int, reasons: list[str]) -> int:
         if not reasons:

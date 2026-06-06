@@ -146,6 +146,10 @@ class CreditCode(Base):
     batch_title: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     expires_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    # Validity window (in seconds) granted to the *redeemed credits*, starting at
+    # redemption time. NULL/0 = redeemed credits never expire. This is distinct
+    # from `expires_at`, which is the deadline to redeem the code itself.
+    validity_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     created_by_user: Mapped[User | None] = relationship(
         back_populates="created_codes",
@@ -177,6 +181,81 @@ class CreditCodeClaim(Base):
     __table_args__ = (
         Index("ux_credit_code_claims_code_hash_uid", "code_hash", "uid", unique=True),
         Index("ix_credit_code_claims_uid_claimed_at", "uid", "claimed_at"),
+    )
+
+
+class CreditLot(Base):
+    """A discrete parcel of credits with an optional expiry.
+
+    Credits enter the user's balance as lots. Gift lots carry an `expires_at`
+    derived from the code's `validity_seconds`; legacy/admin/purchase credits use
+    `expires_at = NULL` (never expire). `User.credits_minor` / `reserved_credits_minor`
+    are caches equal to SUM(remaining_minor) / SUM(reserved_minor) across a user's lots.
+
+    Bookkeeping per lot:  original_minor = remaining_minor + reserved_minor + consumed.
+    `remaining_minor` is spendable now; `reserved_minor` is held by in-flight jobs;
+    consumed is implicit (permanently spent). Expiry zeroes `remaining_minor` only.
+    """
+
+    __tablename__ = "credit_lots"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    uid: Mapped[str] = mapped_column(ForeignKey("users.uid", ondelete="CASCADE"), nullable=False)
+    source: Mapped[str] = mapped_column(String(32), nullable=False)
+    original_minor: Mapped[int] = mapped_column(Integer, nullable=False)
+    remaining_minor: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    reserved_minor: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    granted_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    expires_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    expired_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    code_hash: Mapped[str | None] = mapped_column(
+        ForeignKey("credit_codes.code_hash", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+    __table_args__ = (
+        CheckConstraint("original_minor >= 0", name="ck_credit_lots_original_nonnegative"),
+        CheckConstraint("remaining_minor >= 0", name="ck_credit_lots_remaining_nonnegative"),
+        CheckConstraint("reserved_minor >= 0", name="ck_credit_lots_reserved_nonnegative"),
+        CheckConstraint(
+            "source IN ('gift', 'legacy', 'admin_grant', 'purchase', 'refund')",
+            name="ck_credit_lots_source_valid",
+        ),
+        Index("ix_credit_lots_uid_expires_at", "uid", "expires_at"),
+        Index("ix_credit_lots_uid_source", "uid", "source"),
+        # Drives the lazy + nightly expiry sweep: find lots due to expire that
+        # still hold spendable credits.
+        Index("ix_credit_lots_expires_remaining", "expires_at", "remaining_minor"),
+    )
+
+
+class CreditLotAllocation(Base):
+    """Per-lot record of credits reserved by an in-flight job.
+
+    A single reservation can span several lots (gift-first, soonest-expiry first),
+    so we remember exactly which lots funded it. On capture/release we settle each
+    allocation back against its originating lot, preserving that lot's expiry.
+    `reserved_minor` is the amount this allocation still holds (decreases as the
+    job captures or releases).
+    """
+
+    __tablename__ = "credit_lot_allocations"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    lot_id: Mapped[str] = mapped_column(ForeignKey("credit_lots.id", ondelete="CASCADE"), nullable=False)
+    ref_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    ref_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    reserved_minor: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+    __table_args__ = (
+        CheckConstraint("reserved_minor >= 0", name="ck_credit_lot_allocations_reserved_nonnegative"),
+        CheckConstraint(
+            "ref_type IN ('generation', 'analyze')",
+            name="ck_credit_lot_allocations_ref_type_valid",
+        ),
+        Index("ix_credit_lot_allocations_ref", "ref_type", "ref_id"),
+        Index("ix_credit_lot_allocations_lot_id", "lot_id"),
     )
 
 

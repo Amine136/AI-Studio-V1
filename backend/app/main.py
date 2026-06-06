@@ -60,6 +60,7 @@ from app.services.security_backend import (
     get_chat_conversation,
     get_chat_messages,
     get_history,
+    get_credit_breakdown,
     get_profile_change_status,
     get_user,
     hash_credit_code,
@@ -81,6 +82,7 @@ from app.services.security_backend import (
     redeem_credit_code,
     release_generation_credits,
     reserve_generation_credits,
+    sweep_all_expired_credits,
     suspend_user,
     unsuspend_user,
     update_dashboard_news_item,
@@ -1070,6 +1072,26 @@ def catalog_updated_webhook(
     }
 
 
+@app.post(
+    "/internal/expire-credits",
+    tags=["Configuration"],
+    summary="Expire Gift Credits Sweep",
+    description="Internal endpoint (cron/systemd timer) that expires past-due gift credit lots across all users.",
+)
+@limiter.limit("6/minute")
+def expire_credits_sweep(request: Request, x_internal_secret: str | None = Header(default=None)):
+    del request
+    # Prefer the dedicated sweep secret; fall back to the catalog webhook secret
+    # for back-compat when a dedicated one has not been provisioned.
+    expected_secret = settings.internal_sweep_secret or settings.catalog_webhook_secret
+    if not expected_secret:
+        raise HTTPException(status_code=503, detail="Internal secret is not configured")
+    if not x_internal_secret or not secrets.compare_digest(x_internal_secret, expected_secret):
+        raise HTTPException(status_code=403, detail="Invalid internal secret")
+    result = sweep_all_expired_credits()
+    return {"status": "ok", **result}
+
+
 @app.get("/admin/model-visibility", tags=["Configuration"], summary="Get Model Visibility For Admin")
 @limiter.limit("20/minute")
 def admin_get_model_visibility(request: Request, _admin: Dict[str, Any] = Depends(verify_admin_session)):
@@ -1289,6 +1311,13 @@ def redeem_user_credit_code(request: Request, payload: Dict[str, Any], user: Dic
     return redeem_credit_code(code, user["uid"])
 
 
+@app.get("/credits/breakdown", tags=["Configuration"], summary="Credit Balance Breakdown")
+@limiter.limit("30/minute")
+def credit_balance_breakdown(request: Request, user: Dict[str, Any] = Depends(verify_firebase_user)):
+    del request
+    return get_credit_breakdown(user["uid"])
+
+
 @app.post("/analyze-sessions/{session_id}/complete", tags=["Configuration"], summary="Complete Analyze Session")
 def complete_pending_analyze_session(session_id: str, user: Dict[str, Any] = Depends(verify_firebase_user)):
     try:
@@ -1441,14 +1470,31 @@ def admin_list_code_batches(request: Request, _admin: Dict[str, Any] = Depends(v
     return {"batches": batches, "total": len(batches), "summaries": summaries}
 
 
+def _parse_validity_seconds(payload: Dict[str, Any]) -> int | None:
+    """Parse an optional gift-credit validity window from an admin payload.
+
+    Accepts days + hours (e.g. ``{"validityDays": 2, "validityHours": 12}``) or an
+    explicit ``validitySeconds``. Returns a positive number of seconds, or None
+    meaning the redeemed credits never expire.
+    """
+    if payload.get("validitySeconds") is not None:
+        seconds = int(payload.get("validitySeconds") or 0)
+    else:
+        days = int(payload.get("validityDays") or 0)
+        hours = int(payload.get("validityHours") or 0)
+        seconds = days * 86400 + hours * 3600
+    return seconds if seconds > 0 else None
+
+
 @app.post("/admin/codes", tags=["Configuration"], summary="Create Credit Code For Admin")
 @limiter.limit("10/minute")
 def admin_create_code(request: Request, payload: Dict[str, Any], admin: Dict[str, Any] = Depends(verify_admin_session), _csrf: None = Depends(verify_admin_csrf)):
     del request
     credits = float(payload.get("credits", 0))
     max_claims = int(payload.get("maxClaims", 0))
+    validity_seconds = _parse_validity_seconds(payload)
     try:
-        code = create_credit_code(credits, max_claims, admin["uid"])
+        code = create_credit_code(credits, max_claims, admin["uid"], validity_seconds=validity_seconds)
         add_admin_audit_log(
             admin_uid=admin["uid"],
             admin_email=admin["email"],
@@ -1460,6 +1506,7 @@ def admin_create_code(request: Request, payload: Dict[str, Any], admin: Dict[str
                 "code_preview": code.get("codePreview"),
                 "credits": code.get("credits"),
                 "max_claims": code.get("maxClaims"),
+                "validity_seconds": validity_seconds,
             },
         )
     except ValueError as exc:
@@ -1474,8 +1521,9 @@ def admin_create_code_batch(request: Request, payload: Dict[str, Any], admin: Di
     quantity = int(payload.get("quantity", 0))
     credits = float(payload.get("credits", 0))
     title = str(payload.get("title", "")).strip()
+    validity_seconds = _parse_validity_seconds(payload)
     try:
-        codes = create_credit_code_batch_with_title(quantity, credits, admin["uid"], title)
+        codes = create_credit_code_batch_with_title(quantity, credits, admin["uid"], title, validity_seconds)
         first_code = codes[0] if codes else {}
         add_admin_audit_log(
             admin_uid=admin["uid"],
@@ -1490,6 +1538,7 @@ def admin_create_code_batch(request: Request, payload: Dict[str, Any], admin: Di
                 "quantity": len(codes),
                 "credits": credits,
                 "sample_preview": first_code.get("codePreview"),
+                "validity_seconds": validity_seconds,
             },
         )
     except ValueError as exc:
@@ -2636,6 +2685,14 @@ def _expected_model_cost_for_generate(task: str, model_name: str, model_entry: d
         )
         if image_variant is not None:
             return image_variant
+
+        # Grok prices the image by resolution (1k/2k).
+        resolution_variant = _resolve_expected_variant_price(
+            expected.get("imageSizePrices") if isinstance(expected.get("imageSizePrices"), dict) else None,
+            raw_params.get("resolution"),
+        )
+        if resolution_variant is not None:
+            return resolution_variant
 
         # OpenAI prices the image by quality (low/medium) rather than size.
         quality_variant = _resolve_expected_variant_price(

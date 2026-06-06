@@ -19,6 +19,8 @@ export default function AdminCodesPage() {
     
     const [credits, setCredits] = useState(1);
     const [maxClaims, setMaxClaims] = useState(5);
+    const [validityDays, setValidityDays] = useState(0);
+    const [validityHours, setValidityHours] = useState(0);
     const [creating, setCreating] = useState(false);
     const [createdCode, setCreatedCode] = useState("");
     const [createError, setCreateError] = useState("");
@@ -27,6 +29,8 @@ export default function AdminCodesPage() {
     const [batchTitle, setBatchTitle] = useState("");
     const [batchQuantity, setBatchQuantity] = useState(5);
     const [batchCredits, setBatchCredits] = useState(5);
+    const [batchValidityDays, setBatchValidityDays] = useState(0);
+    const [batchValidityHours, setBatchValidityHours] = useState(0);
     const [batchCreating, setBatchCreating] = useState(false);
     const [batchMessage, setBatchMessage] = useState("");
     const [batchError, setBatchError] = useState("");
@@ -125,7 +129,9 @@ export default function AdminCodesPage() {
         try {
             const boundedCredits = Math.min(5, Math.max(1, credits));
             const boundedClaims = Math.min(20, Math.max(1, maxClaims));
-            const created = await api.createAdminCode(boundedCredits, boundedClaims);
+            const boundedDays = Math.max(0, Math.floor(validityDays) || 0);
+            const boundedHours = Math.min(23, Math.max(0, Math.floor(validityHours) || 0));
+            const created = await api.createAdminCode(boundedCredits, boundedClaims, boundedDays, boundedHours);
             setCreatedCode(created.code || "");
             setCopyState("");
             await loadCodes();
@@ -161,7 +167,9 @@ export default function AdminCodesPage() {
         try {
             const boundedQuantity = Math.min(20, Math.max(2, batchQuantity));
             const boundedCredits = Math.min(20, Math.max(1, batchCredits));
-            const response = await api.createAdminCodeBatch(boundedQuantity, boundedCredits, normalizedTitle);
+            const boundedDays = Math.max(0, Math.floor(batchValidityDays) || 0);
+            const boundedHours = Math.min(23, Math.max(0, Math.floor(batchValidityHours) || 0));
+            const response = await api.createAdminCodeBatch(boundedQuantity, boundedCredits, normalizedTitle, boundedDays, boundedHours);
             const generatedCodes = Array.isArray(response?.codes) ? response.codes : [];
             if (generatedCodes.length === 0) {
                 throw new Error("No codes were generated.");
@@ -307,7 +315,34 @@ export default function AdminCodesPage() {
                                 />
                             </div>
                         </div>
-                        <button 
+                        <div className="grid grid-cols-2 gap-6">
+                            <div className="flex flex-col gap-2">
+                                <label className="font-label-caps text-label-caps text-on-surface-variant">VALID FOR (DAYS)</label>
+                                <input
+                                    className="bg-surface-container-lowest border border-outline-variant rounded-lg p-6 text-on-surface focus:border-primary focus:ring-0 outline-none transition-all"
+                                    type="number"
+                                    min={0}
+                                    value={validityDays}
+                                    onChange={(e) => setValidityDays(Math.max(0, Math.floor(Number(e.target.value) || 0)))}
+                                />
+                            </div>
+                            <div className="flex flex-col gap-2">
+                                <label className="font-label-caps text-label-caps text-on-surface-variant">+ HOURS</label>
+                                <input
+                                    className="bg-surface-container-lowest border border-outline-variant rounded-lg p-6 text-on-surface focus:border-primary focus:ring-0 outline-none transition-all"
+                                    type="number"
+                                    min={0} max={23}
+                                    value={validityHours}
+                                    onChange={(e) => setValidityHours(Math.min(23, Math.max(0, Math.floor(Number(e.target.value) || 0))))}
+                                />
+                            </div>
+                        </div>
+                        <p className="text-[11px] text-on-surface-variant -mt-2">
+                            {validityDays === 0 && validityHours === 0
+                                ? "Redeemed credits never expire. Set days/hours to make unused gift credits expire after redemption."
+                                : `Unused gift credits expire ${validityDays > 0 ? `${validityDays}d ` : ""}${validityHours > 0 ? `${validityHours}h ` : ""}after each user redeems.`}
+                        </p>
+                        <button
                             disabled={creating}
                             onClick={() => void handleCreateGiftCode()}
                             className="w-fit px-8 py-4 bg-gradient-to-r from-primary-container to-secondary-container text-white font-bold rounded-lg shadow-lg hover:brightness-110 active:scale-95 transition-all disabled:opacity-60"
@@ -376,7 +411,29 @@ export default function AdminCodesPage() {
                                 />
                             </div>
                         </div>
-                        <button 
+                        <div className="grid grid-cols-2 gap-6">
+                            <div className="flex flex-col gap-2">
+                                <label className="font-label-caps text-label-caps text-on-surface-variant">VALID FOR (DAYS)</label>
+                                <input
+                                    className="bg-surface-container-lowest border border-outline-variant rounded-lg p-6 text-on-surface focus:border-tertiary focus:ring-0 outline-none transition-all"
+                                    type="number"
+                                    min={0}
+                                    value={batchValidityDays}
+                                    onChange={(e) => setBatchValidityDays(Math.max(0, Math.floor(Number(e.target.value) || 0)))}
+                                />
+                            </div>
+                            <div className="flex flex-col gap-2">
+                                <label className="font-label-caps text-label-caps text-on-surface-variant">+ HOURS</label>
+                                <input
+                                    className="bg-surface-container-lowest border border-outline-variant rounded-lg p-6 text-on-surface focus:border-tertiary focus:ring-0 outline-none transition-all"
+                                    type="number"
+                                    min={0} max={23}
+                                    value={batchValidityHours}
+                                    onChange={(e) => setBatchValidityHours(Math.min(23, Math.max(0, Math.floor(Number(e.target.value) || 0))))}
+                                />
+                            </div>
+                        </div>
+                        <button
                             disabled={batchCreating}
                             onClick={() => void handleCreateBatchCodes()}
                             className="w-fit px-8 py-4 bg-gradient-to-r from-tertiary-container to-tertiary text-on-tertiary font-bold rounded-lg shadow-lg hover:brightness-110 active:scale-95 transition-all disabled:opacity-60"
