@@ -755,6 +755,7 @@ export default function StudioChatPage() {
   const [parameterValues, setParameterValues] = useState<ParameterState>({});
   const [providerSearch, setProviderSearch] = useState("");
   const [modelSearch, setModelSearch] = useState("");
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const loadingReplyRef = useRef(false);
   const messageCountRef = useRef(0);
   const suppressEmptyConversationLoadRef = useRef(false);
@@ -1819,19 +1820,27 @@ export default function StudioChatPage() {
                   ) : null}
                 </div>
                 <div className="hidden gap-2 sm:flex">
-                  <span className="rounded-lg border border-[#424754] bg-[#122131] p-2 text-[#adc6ff]">
+                  <button
+                    type="button"
+                    onClick={() => setViewMode("grid")}
+                    className={`rounded-lg border p-2 transition-all ${viewMode === "grid" ? "border-[#424754] bg-[#122131] text-[#adc6ff]" : "border-transparent text-[#8c909f] hover:text-[#c2c6d6]"}`}
+                  >
                     <span className="material-symbols-outlined block text-[20px]">grid_view</span>
-                  </span>
-                  <span className="rounded-lg border border-transparent p-2 text-[#8c909f]">
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode("list")}
+                    className={`rounded-lg border p-2 transition-all ${viewMode === "list" ? "border-[#424754] bg-[#122131] text-[#adc6ff]" : "border-transparent text-[#8c909f] hover:text-[#c2c6d6]"}`}
+                  >
                     <span className="material-symbols-outlined block text-[20px]">list</span>
-                  </span>
+                  </button>
                 </div>
               </div>
 
               {loadingConfig ? (
                 <div className="rounded-2xl border border-[#334155]/45 bg-[#0f172a]/40 p-8 text-sm text-[#c2c6d6] backdrop-blur-xl">Loading models...</div>
               ) : visibleActiveProviderGroup ? (
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+                <div className={`grid gap-4 ${viewMode === "grid" ? "grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4" : "grid-cols-1"}`}>
                   {visibleActiveProviderGroup.models.map((model) => {
                     const active = (visibleSelectedModelOption?.id || selectedModel) === model.id;
                     const minimumCost = getChatModelMinimumCost(model);
