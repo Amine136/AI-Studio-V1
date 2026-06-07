@@ -149,6 +149,7 @@ export default function CreditsPage() {
   const [displayCredits, setDisplayCredits] = useState<number | null>(null);
   const creditsRef = useRef<number | null>(null);
   const [redeemedTier, setRedeemedTier] = useState<number | null>(null);
+  const [autoRedeemProcessed, setAutoRedeemProcessed] = useState(false);
 
   // Number Roll Animation
   useEffect(() => {
@@ -272,8 +273,9 @@ export default function CreditsPage() {
     [redeemCooldownStorageKey],
   );
 
-  const handleRedeem = useCallback(async () => {
-    if (!user || !codeInput.trim()) return;
+  const handleRedeem = useCallback(async (overrideCode?: string | React.MouseEvent | React.KeyboardEvent) => {
+    const codeToUse = typeof overrideCode === "string" ? overrideCode : codeInput;
+    if (!user || !codeToUse.trim()) return;
     if (redeemBlockedUntil && redeemBlockedUntil > Date.now()) {
       setCodeMessage({
         text: "This account reached 5 failed credit code attempts in 5 minutes. Please wait about 5 minutes before trying again and review the usage policy.",
@@ -286,7 +288,7 @@ export default function CreditsPage() {
     setRedeeming(true);
     setCodeMessage(null);
     try {
-      const result = await api.redeemCode(codeInput);
+      const result = await api.redeemCode(codeToUse);
       setCodeMessage({
         text: result.message,
         success: result.success,
@@ -357,6 +359,22 @@ export default function CreditsPage() {
       setRedeeming(false);
     }
   }, [activateRedeemCooldown, codeInput, fetchBalance, redeemBlockedUntil, redeemCooldownStorageKey, user]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !user || autoRedeemProcessed) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const codeFromUrl = params.get("code")?.trim().toUpperCase();
+
+    if (codeFromUrl && codeFromUrl.startsWith("VC-")) {
+      setCodeInput(codeFromUrl);
+      setAutoRedeemProcessed(true);
+      window.history.replaceState({}, document.title, window.location.pathname);
+      void handleRedeem(codeFromUrl);
+    } else {
+      setAutoRedeemProcessed(true);
+    }
+  }, [user, autoRedeemProcessed, handleRedeem]);
 
   const usageEvents = useMemo(() => mapActivityToUsageEvents(history), [history]);
   const visibleUsageEvents = useMemo(
