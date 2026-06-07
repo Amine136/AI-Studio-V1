@@ -158,7 +158,7 @@ export default function AuthPage() {
           <p className="font-label text-[10px] uppercase tracking-[0.4em] text-[#adc6ff]/60">AI Studio</p>
         </header>
 
-        <div className="rounded-xl border border-[#adc6ff]/15 bg-[rgba(25,31,49,0.6)] p-10 text-center backdrop-blur-[24px]">
+        <div className="rounded-xl border border-[#adc6ff]/15 bg-[rgba(25,31,49,0.6)] px-5 py-8 sm:p-10 text-center backdrop-blur-[24px]">
           <div className="mb-8 flex justify-center">
             <div className="rounded-full border border-[#adc6ff]/15 bg-[#2e3447]/40 p-4">
               <span className="material-symbols-outlined text-3xl text-[#adc6ff]">fingerprint</span>
@@ -189,35 +189,35 @@ export default function AuthPage() {
           ) : null}
 
           {isInAppBrowser ? (
-            <div className="mb-6 w-full rounded-xl border border-white/5 bg-[rgba(16,21,36,0.5)] p-6 text-left shadow-lg">
-              <div className="flex items-start gap-4">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-amber-500/40 bg-amber-500/10 shadow-[0_0_15px_rgba(245,158,11,0.1)]">
-                  <span className="material-symbols-outlined text-[24px] text-amber-400">warning</span>
+            <div className="mb-6 w-full rounded-xl border border-white/5 bg-[rgba(16,21,36,0.5)] p-4 sm:p-6 text-left shadow-lg">
+              <div className="flex items-start gap-3 sm:gap-4">
+                <div className="flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-lg border border-amber-500/40 bg-amber-500/10 shadow-[0_0_15px_rgba(245,158,11,0.1)]">
+                  <span className="material-symbols-outlined text-[20px] sm:text-[24px] text-amber-400">warning</span>
                 </div>
-                <div className="flex flex-col pt-0.5">
-                  <h3 className="mb-1.5 font-headline text-[12px] font-bold tracking-[0.15em] text-amber-400 uppercase">
+                <div className="flex flex-col pt-0 sm:pt-0.5">
+                  <h3 className="mb-1 sm:mb-1.5 font-headline text-[11px] sm:text-[12px] font-bold tracking-[0.1em] sm:tracking-[0.15em] text-amber-400 uppercase whitespace-nowrap">
                     Action Required
                   </h3>
-                  <p className="text-[13.5px] leading-relaxed text-[#c2c6d6]">
+                  <p className="text-[12px] sm:text-[13.5px] leading-relaxed text-[#c2c6d6]">
                     For security reasons, Google Sign-In does not work inside social media browsers.
                   </p>
                 </div>
               </div>
               
-              <div className="mt-5 flex flex-col gap-3.5 pl-[4rem]">
-                <div className="flex items-start gap-3">
-                  <span className="mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border border-amber-500/30 bg-amber-500/10 text-[10px] font-bold text-amber-400">
+              <div className="mt-4 sm:mt-5 flex flex-col gap-3 sm:gap-3.5 pl-[3.25rem] sm:pl-[4rem]">
+                <div className="flex items-start gap-2 sm:gap-3">
+                  <span className="mt-0.5 flex h-[16px] w-[16px] sm:h-[18px] sm:w-[18px] shrink-0 items-center justify-center rounded-full border border-amber-500/30 bg-amber-500/10 text-[9px] sm:text-[10px] font-bold text-amber-400">
                     1
                   </span>
-                  <p className="text-[13.5px] text-[#c2c6d6]">
-                    Tap the <span className="mx-1 inline-block rounded-md bg-[#252b3d] px-1.5 py-0.5 font-mono text-[10px] font-bold tracking-widest text-white">•••</span> icon in your browser header.
+                  <p className="text-[12px] sm:text-[13.5px] text-[#c2c6d6]">
+                    Tap the <span className="mx-0.5 sm:mx-1 inline-block rounded-md bg-[#252b3d] px-1.5 py-0.5 font-mono text-[9px] sm:text-[10px] font-bold tracking-widest text-white">•••</span> icon in your browser header.
                   </p>
                 </div>
-                <div className="flex items-start gap-3">
-                  <span className="mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border border-amber-500/30 bg-amber-500/10 text-[10px] font-bold text-amber-400">
+                <div className="flex items-start gap-2 sm:gap-3">
+                  <span className="mt-0.5 flex h-[16px] w-[16px] sm:h-[18px] sm:w-[18px] shrink-0 items-center justify-center rounded-full border border-amber-500/30 bg-amber-500/10 text-[9px] sm:text-[10px] font-bold text-amber-400">
                     2
                   </span>
-                  <p className="text-[13.5px] text-[#c2c6d6]">
+                  <p className="text-[12px] sm:text-[13.5px] text-[#c2c6d6]">
                     Select <span className="font-semibold text-[#81a1ff]">"Open in browser"</span> to continue securely.
                   </p>
                 </div>
