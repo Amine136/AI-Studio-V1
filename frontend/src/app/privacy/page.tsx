@@ -55,7 +55,7 @@ const sections = [
     summary: "What users may ask us to do with their data.",
     items: [
       "You may request account closure, deletion review, or correction of obvious account information errors through the current Vibecraft support channel.",
-      "You may also delete your own stored plain chat conversations directly from the product interface when that control is available.",
+      "You may also delete your own stored playground conversations directly from the product interface when that control is available.",
       "Some records may be retained when reasonably required for billing integrity, fraud prevention, abuse investigations, legal obligations, or security review.",
       "Deletion requests may not remove data already processed by third-party providers under their own service operations and retention controls.",
     ],

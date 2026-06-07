@@ -53,7 +53,7 @@ function buildTextModels(
 ): TextModelRow[] {
   const seen = new Map<string, TextModelRow>();
 
-  // Build a lookup of plain chat models for display name / provider enrichment
+  // Build a lookup of playground models for display name / provider enrichment
   const chatDisplayNames = new Map<string, { displayName: string; provider: string }>();
   for (const model of plainChatModels) {
     chatDisplayNames.set(model.id.toLowerCase(), {

@@ -409,7 +409,7 @@ function getChatParamPricingHint(model: ChatModelOption | null, key: string) {
     const isQualityKeyed = Object.keys(expected.imageSizePrices).some(
       (k) => ["low", "medium", "high", "auto"].includes(k.trim().toLowerCase()),
     );
-    if (key === (isQualityKeyed ? "quality" : "imageSize")) {
+    if (key === "resolution" || key === (isQualityKeyed ? "quality" : "imageSize")) {
       priceMap = expected.imageSizePrices;
     }
   }
@@ -1397,11 +1397,11 @@ export default function StudioChatPage() {
               await addHistoryEntry(user.uid, {
                 imageUrl: part.url,
                 caption: undefined,
-                prompt: userMessage.content || "Plain Chat Generation",
+                prompt: userMessage.content || "Playground Generation",
                 model: `chat:${response.meta?.model || response.conversation?.model || lockedModelId || selectedModel || "Unknown"}`,
               });
             } catch (e) {
-              console.error("Failed to save plain chat image to history:", e);
+              console.error("Failed to save playground image to history:", e);
             }
           }
         }
@@ -1762,7 +1762,7 @@ export default function StudioChatPage() {
           <div className="relative z-10 flex flex-1 flex-col px-4 py-5 sm:px-6 sm:py-7 lg:px-8">
             <section className="mb-10">
               <div className="mb-6 flex flex-col gap-2">
-                <p className="font-mono text-[11px] font-medium uppercase tracking-[0.18em] text-[#8c909f]">Plain Chat</p>
+                <p className="font-mono text-[11px] font-medium uppercase tracking-[0.18em] text-[#8c909f]">Playground</p>
                 <h1 className="font-headline text-3xl font-bold tracking-tight text-[#d4e4fa] sm:text-4xl">Engineered AI</h1>
               </div>
 
@@ -1871,7 +1871,7 @@ export default function StudioChatPage() {
                           ) : null}
                         </div>
 
-                        <p className="mb-3 hidden line-clamp-2 flex-1 text-[13px] leading-5 text-[#c2c6d6]/80 sm:block">{model.description || "Usage-based conversational model for plain chat."}</p>
+                        <p className="mb-3 hidden line-clamp-2 flex-1 text-[13px] leading-5 text-[#c2c6d6]/80 sm:block">{model.description || "Usage-based conversational model for playground."}</p>
 
                         {!affordable ? (
                           <p className="mb-3 text-[11px] font-medium text-[#ffb4ab]">Need at least {minimumCost.toFixed(2)} credits.</p>
