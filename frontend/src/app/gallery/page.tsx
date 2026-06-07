@@ -48,7 +48,7 @@ function formatTime(value: Date) {
 const filterTabs: { id: GalleryFilter; label: string }[] = [
   { id: "all_images", label: "All Images" },
   { id: "smart", label: "Smart Generation" },
-  { id: "chat", label: "Plain Chat" },
+  { id: "chat", label: "Playground" },
 ];
 
 export default function GalleryPage() {
@@ -106,7 +106,7 @@ export default function GalleryPage() {
     if (!rawModel) return "Unknown model";
     const modelId = rawModel.replace(/^chat:/, "");
     
-    // Check plain chat models first
+    // Check playground models first
     const chatModel = plainChatModels.find(m => m.id === modelId);
     if (chatModel?.displayName) return chatModel.displayName;
 

@@ -4,6 +4,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback, type ChangeEvent, type ClipboardEvent } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { motion, AnimatePresence } from "framer-motion";
 import { api } from "../../../services/api";
 import { GenerateRequest, GenerationMeta, UISchemaItem, OutputType, ModelCatalogEntry, PlainChatParameterSchemaEntry, SystemConfig } from "../../../types";
 import { useAuth } from "../../../context/AuthContext";
@@ -54,7 +55,7 @@ function normalizeHex(value: unknown): string {
 type OutputParameterValues = Record<OutputType, ParameterState>;
 
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
-const MAX_INPUT_IMAGES = 4;
+const MAX_INPUT_IMAGES = 3;
 // Editing models (e.g. Grok Imagine "*-editing") accept at most 3 source images.
 const MAX_EDITING_INPUT_IMAGES = 3;
 const isEditingModelId = (modelId: string | undefined | null): boolean =>
@@ -767,10 +768,8 @@ export default function Home() {
       mime_type: image.mimeType,
       url: image.url!,
     }));
-  const usesSharedNanoBanana = Boolean(hasInputImages && selectedOutputs.includes("caption") && selectedOutputs.includes("image"));
-  const primaryEngineLabel = usesSharedNanoBanana && selectedImageModelEntry
-    ? selectedImageModelEntry.display_name || selectedImageModel
-    : (selectedImageModelEntry?.display_name || selectedCaptionModelEntry?.display_name || selectedImageModel || selectedCaptionModel || "Smart Pipeline");
+  const usesSharedNanoBanana = false;
+  const primaryEngineLabel = "Custom Workflow";
   const aspectRatioValue = String(
     modelParameterValues.image.aspectRatio
     || imageSettings.aspectRatio
@@ -810,33 +809,23 @@ export default function Home() {
     return Object.entries(entries)
       .filter(([, model]) => {
         if (model.display_name && HIDDEN_MODELS.includes(model.display_name)) return false;
-        const wantsImageOutput = selectedOutputs.includes("image");
-        if (hasInputImages && wantsImageOutput) {
-          return isGeminiImageModel(model);
-        }
-        if (wantsImageOutput) {
-          return isGeminiTextModel(model);
-        }
-        return isGeminiTextOnlyModel(model);
+        const outputModalities = new Set(model.output_modalities || []);
+        return outputModalities.has("TEXT") && !outputModalities.has("IMAGE");
       })
       .map(([id]) => id);
-  }, [hasInputImages, modelCatalog, selectedOutputs]);
+  }, [modelCatalog]);
 
   const filteredImageModels = useMemo(() => {
     const entries = modelCatalog.image || {};
     return Object.entries(entries)
       .filter(([, model]) => {
         if (model.display_name && HIDDEN_MODELS.includes(model.display_name)) return false;
-        if (!selectedOutputs.includes("image")) {
-          return false;
-        }
-        if (hasInputImages) {
-          return isGeminiImageModel(model);
-        }
-        return isImageCapableModel(model);
+        if (!selectedOutputs.includes("image")) return false;
+        const outputModalities = new Set(model.output_modalities || []);
+        return outputModalities.has("IMAGE");
       })
       .map(([id]) => id);
-  }, [hasInputImages, modelCatalog, selectedOutputs]);
+  }, [modelCatalog, selectedOutputs]);
 
   const sharedMultimodalModels = usesSharedNanoBanana
     ? filteredImageModels.filter((modelId) => filteredCaptionModels.includes(modelId))
@@ -1690,8 +1679,16 @@ export default function Home() {
           </div>
         )}
 
+        <AnimatePresence mode="wait">
         {step === "INPUT" && (
-          <>
+          <motion.div
+            key="INPUT"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20, transition: { duration: 0.2 } }}
+            transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+            className="mx-auto flex w-full max-w-5xl flex-col flex-grow"
+          >
             <div className="mb-4 lg:hidden">
               <div className="flex items-center justify-between">
                 <p className="font-headline text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Step 1 of 3</p>
@@ -1922,19 +1919,14 @@ export default function Home() {
 
             <footer className="mt-6 flex flex-col items-stretch gap-4 border-t border-white/5 pt-4 sm:mt-8 sm:flex-row sm:items-center sm:justify-between 2xl:mx-auto 2xl:w-full 2xl:max-w-[1240px]">
               <div className="flex items-center gap-3">
-                <div className="flex -space-x-2">
-                  {[
-                    user.photoURL || "/landing/hero-main.png",
-                    "/landing/hero-secondary.jpg",
-                  ].map((src, index) => (
-                    <div key={index} className="h-7 w-7 overflow-hidden rounded-full border-2 border-[#0c1324]">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={src} alt={`Creative ${index + 1}`} className="h-full w-full object-cover" />
-                    </div>
-                  ))}
-                  <div className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-[#0c1324] bg-[#2e3447] text-[8px] font-bold text-white">
-                    +12k
-                  </div>
+                <div className="flex -space-x-2 shrink-0">
+                  <img className="inline-block h-8 w-8 rounded-full ring-2 ring-[#0c1324]" src="https://i.pravatar.cc/100?img=33" alt="" />
+                  <img className="inline-block h-8 w-8 rounded-full ring-2 ring-[#0c1324]" src="https://i.pravatar.cc/100?img=47" alt="" />
+                  <img className="inline-block h-8 w-8 rounded-full ring-2 ring-[#0c1324]" src="https://i.pravatar.cc/100?img=12" alt="" />
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-[11px] text-[#8c909f] leading-snug">Only <strong className="text-white">70 creators</strong> have unlocked this so far.</span>
+                  <span className="text-[11px] text-[#8c909f] leading-snug"><strong className="text-slate-300">Be the 71st creator</strong> to master this workflow.</span>
                 </div>
               </div>
               <button
@@ -1954,14 +1946,21 @@ export default function Home() {
                 {!loading && <span className="material-symbols-outlined text-lg transition-transform group-hover:translate-x-1">arrow_forward</span>}
               </button>
             </footer>
-          </>
+          </motion.div>
         )}
 
         <div className={`mx-auto w-full ${step === "REVIEW" ? "max-w-[1320px]" : step === "RESULT" ? "max-w-[1320px]" : "max-w-[1180px]"}`}>
 
           {/* ─── STEP 2: REVIEW ─── */}
           {step === "REVIEW" && (
-            <div className="animate-fade-in-up pb-24 sm:pb-36">
+            <motion.div
+              key="REVIEW"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20, transition: { duration: 0.2 } }}
+              transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+              className="pb-24 sm:pb-36"
+            >
               <div className="mb-5 sm:hidden">
                 <p className="font-headline text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Step 2 of 3</p>
                 <div className="mt-2 flex items-center justify-between">
@@ -2257,12 +2256,19 @@ export default function Home() {
                   </div>
                 </div>
               </footer>
-            </div>
+            </motion.div>
           )}
 
           {/* ─── STEP 3: RESULT ─── */}
           {step === "RESULT" && (
-            <div className="animate-scale-in space-y-10 pb-20">
+            <motion.div
+              key="RESULT"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20, transition: { duration: 0.2 } }}
+              transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+              className="space-y-10 pb-20"
+            >
               <div className="mb-5 sm:hidden">
                 <p className="font-headline text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Step 3 of 3</p>
                 <div className="mt-2 flex items-center justify-between">
@@ -2420,9 +2426,10 @@ export default function Home() {
 
                 </div>
               </div>
-            </div>
+            </motion.div>
           )}
         </div>
+        </AnimatePresence>
       </div>
 
       {/* Toast notifications */}
@@ -2454,18 +2461,17 @@ export default function Home() {
                   </button>
                 </div>
 
-                <div className="mt-8 space-y-8 overflow-y-auto pr-1">
+                <div className="mt-8 space-y-8 overflow-y-auto pr-2 pb-6">
                   <section>
-                    <label className="mb-3 block text-[13px] font-medium text-[#c2c6d6]">Model Selector</label>
-                    <div className="grid gap-4 md:grid-cols-2">
+                    <div className={`grid gap-5 ${usesSharedNanoBanana || selectedOutputs.length === 1 ? "grid-cols-1" : "md:grid-cols-2"}`}>
                       {usesSharedNanoBanana ? (
-                        <div className="rounded-xl bg-[#070d1f] p-3 md:col-span-2">
-                          <div className="mb-3 flex items-center justify-between text-[11px] text-[#c2c6d6]">
-                            <span>Multimodal models</span>
-                            <span>{sharedMultimodalModels.length} available</span>
+                        <div className="flex flex-col rounded-2xl border border-white/10 bg-white/[0.02] p-4 shadow-sm backdrop-blur-md">
+                          <div className="mb-4 flex items-center justify-between border-b border-white/10 pb-3 text-xs text-[#c2c6d6]">
+                            <span className="font-semibold text-white">Multimodal Pipeline</span>
+                            <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-[10px] font-bold text-white/80">{sharedMultimodalModels.length} available</span>
                           </div>
-                          <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
-                      {sharedMultimodalModels.map((modelId) => {
+                          <div className="flex max-h-[300px] flex-col gap-2 overflow-y-auto pr-1">
+                            {sharedMultimodalModels.map((modelId) => {
                               const model = modelCatalog.image?.[modelId] || modelCatalog.caption?.[modelId];
                               const active = draftImageModel === modelId && draftCaptionModel === modelId;
                               return (
@@ -2477,127 +2483,153 @@ export default function Home() {
                                     setDraftCaptionModel(modelId);
                                   }}
                                   disabled={loading}
-                                  className={`flex w-full items-center justify-between gap-3 rounded-xl px-4 py-3 text-left text-[13px] font-medium transition-all ${
+                                  className={`group flex w-full items-center justify-between gap-3 rounded-xl px-4 py-3.5 text-left text-sm font-medium transition-all ${
                                     active
-                                      ? "border border-[#4d8eff66] bg-[#4d8eff1a] font-semibold text-[#adc6ff] shadow-[0_0_0_1px_rgba(77,142,255,0.4),0_0_15px_rgba(77,142,255,0.2)]"
-                                      : "border border-white/5 bg-[#151b2d] text-[#c2c6d6] hover:border-[#4d8eff40] hover:text-white"
+                                      ? "border border-[#4d8eff] bg-[rgba(77,142,255,0.08)] text-white shadow-[0_0_20px_rgba(77,142,255,0.15)]"
+                                      : "border border-white/5 bg-white/5 text-slate-300 hover:border-white/20 hover:bg-white/10 hover:text-white"
                                   }`}
                                 >
-                                  <div className="min-w-0">
+                                  <div className="flex min-w-0 items-center gap-3">
+                                    <div className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border transition-colors ${active ? "border-[#4d8eff] bg-[#4d8eff]" : "border-slate-500 bg-transparent group-hover:border-slate-400"}`}>
+                                      {active && <div className="h-1.5 w-1.5 rounded-full bg-[#0c1324]" />}
+                                    </div>
                                     <div className="truncate">{model?.display_name || modelId}</div>
                                   </div>
                                 </button>
                               );
                             })}
+                            {sharedMultimodalModels.length === 0 && (
+                              <div className="flex h-20 items-center justify-center rounded-xl border border-dashed border-white/10">
+                                <p className="text-sm text-[#8c909f]">No multimodal models available.</p>
+                              </div>
+                            )}
                           </div>
-                          {sharedMultimodalModels.length === 0 && (
-                            <p className="text-sm text-[#8c909f]">No multimodal models available.</p>
-                          )}
                         </div>
                       ) : (
                         <>
-                      {selectedOutputs.includes("caption") && (
-                        <div className="rounded-xl bg-[#070d1f] p-3">
-                          <div className="mb-3 flex items-center justify-between text-[11px] text-[#c2c6d6]">
-                            <span>Text models</span>
-                            <span>{filteredCaptionModels.length} available</span>
-                          </div>
-                          <div className="max-h-48 space-y-2 overflow-y-auto pr-1">
-                            {filteredCaptionModels.map((modelId) => {
-                              const model = modelCatalog.caption?.[modelId];
-                              const active = draftCaptionModel === modelId;
-                              return (
-                                <button
-                                  key={modelId}
-                                  type="button"
-                                  onClick={() => setDraftCaptionModel(modelId)}
-                                  disabled={loading}
-                                  className={`flex w-full items-center justify-between gap-3 rounded-xl px-4 py-3 text-left text-[13px] font-medium transition-all ${
-                                    active
-                                      ? "border border-[#4d8eff66] bg-[#4d8eff1a] font-semibold text-[#adc6ff] shadow-[0_0_0_1px_rgba(77,142,255,0.4),0_0_15px_rgba(77,142,255,0.2)]"
-                                      : "border border-white/5 bg-[#151b2d] text-[#c2c6d6] hover:border-[#4d8eff40] hover:text-white"
-                                  }`}
-                                >
-                                  <div className="min-w-0">
-                                    <div className="truncate">{model?.display_name || modelId}</div>
+                          {selectedOutputs.includes("caption") && (
+                            <div className="flex flex-col rounded-2xl border border-white/10 bg-white/[0.02] p-4 shadow-sm backdrop-blur-md">
+                              <div className="mb-4 flex items-center justify-between border-b border-white/10 pb-3 text-xs text-[#c2c6d6]">
+                                <span className="font-semibold text-white">Text Engine</span>
+                                <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-[10px] font-bold text-white/80">{filteredCaptionModels.length} available</span>
+                              </div>
+                              <div className="flex max-h-[300px] flex-col gap-2 overflow-y-auto pr-1">
+                                {filteredCaptionModels.map((modelId) => {
+                                  const model = modelCatalog.caption?.[modelId];
+                                  const active = draftCaptionModel === modelId;
+                                  return (
+                                    <button
+                                      key={modelId}
+                                      type="button"
+                                      onClick={() => setDraftCaptionModel(modelId)}
+                                      disabled={loading}
+                                      className={`group flex w-full items-center justify-between gap-3 rounded-xl px-4 py-3.5 text-left text-sm font-medium transition-all ${
+                                        active
+                                          ? "border border-[#4d8eff] bg-[rgba(77,142,255,0.08)] text-white shadow-[0_0_20px_rgba(77,142,255,0.15)]"
+                                          : "border border-white/5 bg-white/5 text-slate-300 hover:border-white/20 hover:bg-white/10 hover:text-white"
+                                      }`}
+                                    >
+                                      <div className="flex min-w-0 items-center gap-3">
+                                        <div className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border transition-colors ${active ? "border-[#4d8eff] bg-[#4d8eff]" : "border-slate-500 bg-transparent group-hover:border-slate-400"}`}>
+                                          {active && <div className="h-1.5 w-1.5 rounded-full bg-[#0c1324]" />}
+                                        </div>
+                                        <div className="truncate">{model?.display_name || modelId}</div>
+                                      </div>
+                                    </button>
+                                  );
+                                })}
+                                {filteredCaptionModels.length === 0 && (
+                                  <div className="flex h-20 items-center justify-center rounded-xl border border-dashed border-white/10">
+                                    <p className="text-sm text-[#8c909f]">No text models available.</p>
                                   </div>
-                                </button>
-                              );
-                            })}
-                          </div>
-                          {filteredCaptionModels.length === 0 && (
-                            <p className="text-sm text-[#8c909f]">No text models available.</p>
+                                )}
+                              </div>
+                            </div>
                           )}
-                        </div>
-                      )}
-                      {selectedOutputs.includes("image") && (
-                        <div className="rounded-xl bg-[#070d1f] p-3">
-                          <div className="mb-3 flex items-center justify-between text-[11px] text-[#c2c6d6]">
-                            <span>Image models</span>
-                            <span>{filteredImageModels.length} available</span>
-                          </div>
-                          <div className="max-h-48 space-y-2 overflow-y-auto pr-1">
-                            {filteredImageModels.map((modelId) => {
-                              const model = modelCatalog.image?.[modelId];
-                              const active = draftImageModel === modelId;
-                              return (
-                                <button
-                                  key={modelId}
-                                  type="button"
-                                  onClick={() => setDraftImageModel(modelId)}
-                                  disabled={loading}
-                                  className={`flex w-full items-center justify-between gap-3 rounded-xl px-4 py-3 text-left text-[13px] font-medium transition-all ${
-                                    active
-                                      ? "border border-[#4d8eff66] bg-[#4d8eff1a] font-semibold text-[#adc6ff] shadow-[0_0_0_1px_rgba(77,142,255,0.4),0_0_15px_rgba(77,142,255,0.2)]"
-                                      : "border border-white/5 bg-[#151b2d] text-[#c2c6d6] hover:border-[#4d8eff40] hover:text-white"
-                                  }`}
-                                >
-                                  <div className="min-w-0">
-                                    <div className="truncate">{model?.display_name || modelId}</div>
+                          {selectedOutputs.includes("image") && (
+                            <div className="flex flex-col rounded-2xl border border-white/10 bg-white/[0.02] p-4 shadow-sm backdrop-blur-md">
+                              <div className="mb-4 flex items-center justify-between border-b border-white/10 pb-3 text-xs text-[#c2c6d6]">
+                                <span className="font-semibold text-white">Image Engine</span>
+                                <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-[10px] font-bold text-white/80">{filteredImageModels.length} available</span>
+                              </div>
+                              <div className="flex max-h-[300px] flex-col gap-2 overflow-y-auto pr-1">
+                                {filteredImageModels.map((modelId) => {
+                                  const model = modelCatalog.image?.[modelId];
+                                  const active = draftImageModel === modelId;
+                                  return (
+                                    <button
+                                      key={modelId}
+                                      type="button"
+                                      onClick={() => setDraftImageModel(modelId)}
+                                      disabled={loading}
+                                      className={`group flex w-full items-center justify-between gap-3 rounded-xl px-4 py-3.5 text-left text-sm font-medium transition-all ${
+                                        active
+                                          ? "border border-[#4d8eff] bg-[rgba(77,142,255,0.08)] text-white shadow-[0_0_20px_rgba(77,142,255,0.15)]"
+                                          : "border border-white/5 bg-white/5 text-slate-300 hover:border-white/20 hover:bg-white/10 hover:text-white"
+                                      }`}
+                                    >
+                                      <div className="flex min-w-0 items-center gap-3">
+                                        <div className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border transition-colors ${active ? "border-[#4d8eff] bg-[#4d8eff]" : "border-slate-500 bg-transparent group-hover:border-slate-400"}`}>
+                                          {active && <div className="h-1.5 w-1.5 rounded-full bg-[#0c1324]" />}
+                                        </div>
+                                        <div className="truncate">{model?.display_name || modelId}</div>
+                                      </div>
+                                    </button>
+                                  );
+                                })}
+                                {filteredImageModels.length === 0 && (
+                                  <div className="flex h-20 items-center justify-center rounded-xl border border-dashed border-white/10">
+                                    <p className="text-sm text-[#8c909f]">No image models available.</p>
                                   </div>
-                                </button>
-                              );
-                            })}
-                          </div>
-                          {filteredImageModels.length === 0 && (
-                            <p className="text-sm text-[#8c909f]">No image models available.</p>
+                                )}
+                              </div>
+                            </div>
                           )}
-                        </div>
-                      )}
                         </>
                       )}
                     </div>
                   </section>
 
-                  <section className="space-y-3">
-                    <label className="block text-[13px] font-medium text-[#c2c6d6]">Minimum Required Credits</label>
-                    <div className="rounded-lg bg-[rgba(7,13,31,0.4)] p-4">
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between gap-3 text-[13px]">
-                          <span className="text-[#c2c6d6]">Text minimum</span>
-                          <span className="font-medium text-white">{draftCaptionMinimumCost.toFixed(2)} credits</span>
+                  <section className="space-y-4 pt-2">
+                    <label className="block text-xs font-bold uppercase tracking-[0.15em] text-[#adc6ff]">Estimated Cost</label>
+                    <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md">
+                      <div className="space-y-4 p-5">
+                        <div className="flex items-center justify-between gap-3 text-sm">
+                          <span className="flex items-center gap-2 text-slate-400">
+                            <span className="material-symbols-outlined text-base">notes</span>
+                            Text generation
+                          </span>
+                          <span className="font-medium text-white">{draftCaptionMinimumCost.toFixed(2)} cr</span>
                         </div>
-                        <div className="h-px bg-white/10" />
-                        <div className="flex items-center justify-between gap-3 text-[13px]">
-                          <span className="text-[#c2c6d6]">Image minimum</span>
-                          <span className="font-medium text-white">{draftImageMinimumCost.toFixed(2)} credits</span>
+                        <div className="flex items-center justify-between gap-3 text-sm">
+                          <span className="flex items-center gap-2 text-slate-400">
+                            <span className="material-symbols-outlined text-base">image</span>
+                            Image generation
+                          </span>
+                          <span className="font-medium text-white">{draftImageMinimumCost.toFixed(2)} cr</span>
                         </div>
-                        <div className="h-px bg-white/10" />
-                        <div className="flex items-center justify-between gap-3 text-[13px]">
-                          <span className="text-[#c2c6d6]">Smart analysis</span>
-                          <span className="font-medium text-white">{smartAnalysisFee.toFixed(2)} credits</span>
+                        <div className="flex items-center justify-between gap-3 text-sm">
+                          <span className="flex items-center gap-2 text-slate-400">
+                            <span className="material-symbols-outlined text-base">auto_awesome</span>
+                            Smart analysis
+                          </span>
+                          <span className="font-medium text-white">{smartAnalysisFee.toFixed(2)} cr</span>
                         </div>
-                        <div className="h-px bg-white/10" />
-                        <div className="flex items-center justify-between gap-3 text-[13px]">
-                          <span className="font-semibold text-[#c2c6d6]">Minimum total</span>
-                          <span className="font-semibold text-white">{draftMinimumRequiredCredits.toFixed(2)} credits</span>
+                      </div>
+                      <div className="border-t border-white/10 bg-white/5 p-4 sm:px-5">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="font-headline font-bold text-white">Minimum required</span>
+                          <span className="font-headline text-lg font-bold text-[#adc6ff]">{draftMinimumRequiredCredits.toFixed(2)} credits</span>
                         </div>
                       </div>
                     </div>
                     {insufficientDraftSmartCredits && (
-                      <p className="text-sm leading-6 text-[#ffb4ab]">
-                        You need at least {draftMinimumRequiredCredits.toFixed(2)} credits to start Smart mode.
-                      </p>
+                      <div className="mt-4 flex items-start gap-3 rounded-xl border border-red-500/20 bg-red-500/10 p-4">
+                        <span className="material-symbols-outlined text-red-400">error</span>
+                        <p className="text-sm leading-6 text-red-200">
+                          You need at least <span className="font-bold text-white">{draftMinimumRequiredCredits.toFixed(2)} credits</span> to start the Smart workflow. Please add credits to continue.
+                        </p>
+                      </div>
                     )}
                   </section>
                 </div>

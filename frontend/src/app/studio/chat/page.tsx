@@ -409,7 +409,7 @@ function getChatParamPricingHint(model: ChatModelOption | null, key: string) {
     const isQualityKeyed = Object.keys(expected.imageSizePrices).some(
       (k) => ["low", "medium", "high", "auto"].includes(k.trim().toLowerCase()),
     );
-    if (key === (isQualityKeyed ? "quality" : "imageSize")) {
+    if (key === "resolution" || key === (isQualityKeyed ? "quality" : "imageSize")) {
       priceMap = expected.imageSizePrices;
     }
   }
@@ -755,6 +755,7 @@ export default function StudioChatPage() {
   const [parameterValues, setParameterValues] = useState<ParameterState>({});
   const [providerSearch, setProviderSearch] = useState("");
   const [modelSearch, setModelSearch] = useState("");
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const loadingReplyRef = useRef(false);
   const messageCountRef = useRef(0);
   const suppressEmptyConversationLoadRef = useRef(false);
@@ -1396,11 +1397,11 @@ export default function StudioChatPage() {
               await addHistoryEntry(user.uid, {
                 imageUrl: part.url,
                 caption: undefined,
-                prompt: userMessage.content || "Plain Chat Generation",
+                prompt: userMessage.content || "Playground Generation",
                 model: `chat:${response.meta?.model || response.conversation?.model || lockedModelId || selectedModel || "Unknown"}`,
               });
             } catch (e) {
-              console.error("Failed to save plain chat image to history:", e);
+              console.error("Failed to save playground image to history:", e);
             }
           }
         }
@@ -1761,7 +1762,7 @@ export default function StudioChatPage() {
           <div className="relative z-10 flex flex-1 flex-col px-4 py-5 sm:px-6 sm:py-7 lg:px-8">
             <section className="mb-10">
               <div className="mb-6 flex flex-col gap-2">
-                <p className="font-mono text-[11px] font-medium uppercase tracking-[0.18em] text-[#8c909f]">Plain Chat</p>
+                <p className="font-mono text-[11px] font-medium uppercase tracking-[0.18em] text-[#8c909f]">Playground</p>
                 <h1 className="font-headline text-3xl font-bold tracking-tight text-[#d4e4fa] sm:text-4xl">Engineered AI</h1>
               </div>
 
@@ -1819,19 +1820,27 @@ export default function StudioChatPage() {
                   ) : null}
                 </div>
                 <div className="hidden gap-2 sm:flex">
-                  <span className="rounded-lg border border-[#424754] bg-[#122131] p-2 text-[#adc6ff]">
+                  <button
+                    type="button"
+                    onClick={() => setViewMode("grid")}
+                    className={`rounded-lg border p-2 transition-all ${viewMode === "grid" ? "border-[#424754] bg-[#122131] text-[#adc6ff]" : "border-transparent text-[#8c909f] hover:text-[#c2c6d6]"}`}
+                  >
                     <span className="material-symbols-outlined block text-[20px]">grid_view</span>
-                  </span>
-                  <span className="rounded-lg border border-transparent p-2 text-[#8c909f]">
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode("list")}
+                    className={`rounded-lg border p-2 transition-all ${viewMode === "list" ? "border-[#424754] bg-[#122131] text-[#adc6ff]" : "border-transparent text-[#8c909f] hover:text-[#c2c6d6]"}`}
+                  >
                     <span className="material-symbols-outlined block text-[20px]">list</span>
-                  </span>
+                  </button>
                 </div>
               </div>
 
               {loadingConfig ? (
                 <div className="rounded-2xl border border-[#334155]/45 bg-[#0f172a]/40 p-8 text-sm text-[#c2c6d6] backdrop-blur-xl">Loading models...</div>
               ) : visibleActiveProviderGroup ? (
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+                <div className={`grid gap-4 ${viewMode === "grid" ? "grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4" : "grid-cols-1"}`}>
                   {visibleActiveProviderGroup.models.map((model) => {
                     const active = (visibleSelectedModelOption?.id || selectedModel) === model.id;
                     const minimumCost = getChatModelMinimumCost(model);
@@ -1862,7 +1871,7 @@ export default function StudioChatPage() {
                           ) : null}
                         </div>
 
-                        <p className="mb-3 hidden line-clamp-2 flex-1 text-[13px] leading-5 text-[#c2c6d6]/80 sm:block">{model.description || "Usage-based conversational model for plain chat."}</p>
+                        <p className="mb-3 hidden line-clamp-2 flex-1 text-[13px] leading-5 text-[#c2c6d6]/80 sm:block">{model.description || "Usage-based conversational model for playground."}</p>
 
                         {!affordable ? (
                           <p className="mb-3 text-[11px] font-medium text-[#ffb4ab]">Need at least {minimumCost.toFixed(2)} credits.</p>

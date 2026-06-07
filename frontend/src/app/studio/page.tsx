@@ -171,7 +171,7 @@ export default function StudioHomePage() {
             <div className="flex items-center justify-between gap-3 border-b border-white/8 px-5 py-4 sm:px-6 sm:py-5">
               <div>
                 <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#adc6ff]">Recent Usage</div>
-                <h2 className="mt-2 font-headline text-xl font-bold text-white sm:text-2xl">Plain Chat History</h2>
+                <h2 className="mt-2 font-headline text-xl font-bold text-white sm:text-2xl">Playground History</h2>
               </div>
               <Link href="/studio/chat" className="text-sm font-semibold text-[#adc6ff] transition-colors hover:text-white">
                 Open chat
@@ -315,9 +315,9 @@ export default function StudioHomePage() {
               ) : null}
 
               {loading ? (
-                <div className="px-5 py-8 text-sm text-[#8c909f] sm:px-6 sm:py-10">Loading plain chat history…</div>
+                <div className="px-5 py-8 text-sm text-[#8c909f] sm:px-6 sm:py-10">Loading playground history…</div>
               ) : recentConversations.length === 0 ? (
-                <div className="px-5 py-8 text-sm text-[#8c909f] sm:px-6 sm:py-10">No recent plain chat conversations yet.</div>
+                <div className="px-5 py-8 text-sm text-[#8c909f] sm:px-6 sm:py-10">No recent playground conversations yet.</div>
               ) : null}
             </div>
           </div>

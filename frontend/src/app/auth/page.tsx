@@ -42,6 +42,16 @@ export default function AuthPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [validatingSession, setValidatingSession] = useState(false);
+  const [isInAppBrowser, setIsInAppBrowser] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const ua = navigator.userAgent || navigator.vendor || (window as any).opera || "";
+      if (/FBAN|FBAV|Instagram|Threads/i.test(ua)) {
+        setIsInAppBrowser(true);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
@@ -148,7 +158,7 @@ export default function AuthPage() {
           <p className="font-label text-[10px] uppercase tracking-[0.4em] text-[#adc6ff]/60">AI Studio</p>
         </header>
 
-        <div className="rounded-xl border border-[#adc6ff]/15 bg-[rgba(25,31,49,0.6)] p-10 text-center backdrop-blur-[24px]">
+        <div className="rounded-xl border border-[#adc6ff]/15 bg-[rgba(25,31,49,0.6)] px-5 py-8 sm:p-10 text-center backdrop-blur-[24px]">
           <div className="mb-8 flex justify-center">
             <div className="rounded-full border border-[#adc6ff]/15 bg-[#2e3447]/40 p-4">
               <span className="material-symbols-outlined text-3xl text-[#adc6ff]">fingerprint</span>
@@ -178,24 +188,61 @@ export default function AuthPage() {
             </div>
           ) : null}
 
-          <button
-            type="button"
-            onClick={handleGoogleSignIn}
-            disabled={loading}
-            className="font-headline group relative flex w-full items-center justify-center gap-4 rounded-md bg-gradient-to-br from-[#adc6ff] to-[#4d8eff] px-6 py-4 font-bold text-[#002e6a] transition-all duration-300 hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70"
-          >
-            {loading ? (
-              <span className="auth-spinner" aria-hidden="true" />
-            ) : (
-              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
-                <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
-              </svg>
-            )}
-            <span className="tracking-wide">{loading ? "Signing in…" : "Sign in with Google"}</span>
-          </button>
+          {isInAppBrowser ? (
+            <div className="mb-6 w-full rounded-xl border border-white/5 bg-[rgba(16,21,36,0.5)] p-4 sm:p-6 text-left shadow-lg">
+              <div className="flex items-start gap-3 sm:gap-4">
+                <div className="flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-lg border border-amber-500/40 bg-amber-500/10 shadow-[0_0_15px_rgba(245,158,11,0.1)]">
+                  <span className="material-symbols-outlined text-[20px] sm:text-[24px] text-amber-400">warning</span>
+                </div>
+                <div className="flex flex-col pt-0 sm:pt-0.5">
+                  <h3 className="mb-1 sm:mb-1.5 font-headline text-[11px] sm:text-[12px] font-bold tracking-[0.1em] sm:tracking-[0.15em] text-amber-400 uppercase whitespace-nowrap">
+                    Action Required
+                  </h3>
+                  <p className="text-[12px] sm:text-[13.5px] leading-relaxed text-[#c2c6d6]">
+                    For security reasons, Google Sign-In does not work inside social media browsers.
+                  </p>
+                </div>
+              </div>
+              
+              <div className="mt-4 sm:mt-5 flex flex-col gap-3 sm:gap-3.5 pl-[3.25rem] sm:pl-[4rem]">
+                <div className="flex items-start gap-2 sm:gap-3">
+                  <span className="mt-0.5 flex h-[16px] w-[16px] sm:h-[18px] sm:w-[18px] shrink-0 items-center justify-center rounded-full border border-amber-500/30 bg-amber-500/10 text-[9px] sm:text-[10px] font-bold text-amber-400">
+                    1
+                  </span>
+                  <p className="text-[12px] sm:text-[13.5px] text-[#c2c6d6]">
+                    Tap the <span className="mx-0.5 sm:mx-1 inline-block rounded-md bg-[#252b3d] px-1.5 py-0.5 font-mono text-[9px] sm:text-[10px] font-bold tracking-widest text-white">•••</span> icon in your browser header.
+                  </p>
+                </div>
+                <div className="flex items-start gap-2 sm:gap-3">
+                  <span className="mt-0.5 flex h-[16px] w-[16px] sm:h-[18px] sm:w-[18px] shrink-0 items-center justify-center rounded-full border border-amber-500/30 bg-amber-500/10 text-[9px] sm:text-[10px] font-bold text-amber-400">
+                    2
+                  </span>
+                  <p className="text-[12px] sm:text-[13.5px] text-[#c2c6d6]">
+                    Select <span className="font-semibold text-[#81a1ff]">"Open in browser"</span> to continue securely.
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={handleGoogleSignIn}
+              disabled={loading}
+              className="font-headline group relative flex w-full items-center justify-center gap-4 rounded-md bg-gradient-to-br from-[#adc6ff] to-[#4d8eff] px-6 py-4 font-bold text-[#002e6a] transition-all duration-300 hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              {loading ? (
+                <span className="auth-spinner" aria-hidden="true" />
+              ) : (
+                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                  <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                  <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+                  <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+                </svg>
+              )}
+              <span className="tracking-wide">{loading ? "Signing in…" : "Sign in with Google"}</span>
+            </button>
+          )}
 
           <div className="mt-8 flex items-center justify-center gap-2 opacity-40">
             <span className="material-symbols-outlined text-xs">verified_user</span>

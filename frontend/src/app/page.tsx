@@ -182,7 +182,7 @@ export default function LandingPage() {
                 <span className="material-symbols-outlined mb-3 text-3xl text-[#adc6ff] sm:mb-4 sm:text-4xl">auto_awesome</span>
                 <h3 className="font-headline text-2xl font-bold sm:text-3xl">Chat with models</h3>
                 <p className="mt-3 max-w-md text-sm leading-relaxed text-[#c2c6d6] sm:text-base">
-                  Work directly with text, image, and multimodal models in plain chat. Send prompts, upload images, and iterate inside one conversation.
+                  Work directly with text, image, and multimodal models in playground. Send prompts, upload images, and iterate inside one conversation.
                 </p>
               </div>
             </motion.div>
@@ -314,7 +314,7 @@ export default function LandingPage() {
           <div className="mb-10 flex flex-col gap-4 sm:mb-20 sm:gap-6 md:flex-row md:items-end md:justify-between">
             <div>
               <h2 className="font-headline text-3xl font-bold tracking-tight sm:text-4xl">Model Showcase</h2>
-              <p className="mt-4 text-[#c2c6d6]">Models available across plain chat and Smart Creation workflows.</p>
+              <p className="mt-4 text-[#c2c6d6]">Models available across playground and Smart Creation workflows.</p>
             </div>
             <Link href={primaryHref} className="flex items-center gap-2 font-semibold text-[#adc6ff] transition-all hover:gap-4">
               View Live Studio
