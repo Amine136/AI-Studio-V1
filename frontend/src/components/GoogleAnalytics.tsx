@@ -4,7 +4,7 @@ import Script from "next/script";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect } from "react";
 
-const GA_MEASUREMENT_ID = "G-9DFZC010R8";
+const GA_MEASUREMENT_ID = "G-B2NVP25P7C";
 
 declare global {
   interface Window {
