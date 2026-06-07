@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../services/api";
+import confetti from "canvas-confetti";
 import type { CreditActivityEntry, CreditBreakdown } from "../../types";
 
 
@@ -21,6 +22,7 @@ type UsageEvent = {
   status: string;
   amount: string;
   positive: boolean;
+  rawCredits: number;
 };
 
 
@@ -80,8 +82,16 @@ function mapActivityToUsageEvents(entries: CreditActivityEntry[]): UsageEvent[] 
       status: g.status || "COMPLETED",
       amount: `${amountStr} Cr`,
       positive: g.deltaMinor >= 0,
+      rawCredits: credits,
     };
   });
+}
+
+function getAmountBadgeClass(positive: boolean, rawCredits: number) {
+  if (!positive) return "text-[#c2c6d6]";
+  if (rawCredits >= 60) return "inline-flex items-center justify-center rounded-md border border-[#ffd700]/30 bg-[#ffd700]/10 px-2.5 py-1 text-[13px] font-bold text-[#ffd700] shadow-[0_0_10px_rgba(255,215,0,0.15)]";
+  if (rawCredits >= 30) return "inline-flex items-center justify-center rounded-md border border-[#adc6ff]/40 bg-[#adc6ff]/15 px-2.5 py-1 text-[13px] font-bold text-[#adc6ff] shadow-[0_0_8px_rgba(173,198,255,0.15)]";
+  return "inline-flex items-center justify-center rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[13px] font-bold text-emerald-300";
 }
 
 
@@ -135,6 +145,43 @@ export default function CreditsPage() {
   const [redeemBlockedUntil, setRedeemBlockedUntil] = useState<number | null>(null);
   const [suspension, setSuspension] = useState<SuspensionState | null>(null);
   const [showAllTransactions, setShowAllTransactions] = useState(false);
+
+  const [displayCredits, setDisplayCredits] = useState<number | null>(null);
+  const creditsRef = useRef<number | null>(null);
+  const [redeemedTier, setRedeemedTier] = useState<number | null>(null);
+
+  // Number Roll Animation
+  useEffect(() => {
+    if (credits === null) return;
+    if (displayCredits === null || creditsRef.current === null) {
+      setDisplayCredits(credits);
+      creditsRef.current = credits;
+      return;
+    }
+    if (creditsRef.current === credits) return;
+
+    const startValue = displayCredits;
+    const endValue = credits;
+    const duration = 1500;
+    const startTime = performance.now();
+
+    const animate = (currentTime: number) => {
+      const elapsed = currentTime - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const easeProgress = 1 - Math.pow(1 - progress, 4); // easeOutQuart
+      
+      setDisplayCredits(startValue + (endValue - startValue) * easeProgress);
+
+      if (progress < 1) {
+        requestAnimationFrame(animate);
+      } else {
+        setDisplayCredits(endValue);
+      }
+    };
+    
+    requestAnimationFrame(animate);
+    creditsRef.current = credits;
+  }, [credits, displayCredits]);
 
   const redeemCooldownStorageKey = user ? `vibecraft:redeemCooldownUntil:${user.uid}` : null;
 
@@ -258,6 +305,36 @@ export default function CreditsPage() {
       }
 
       if (result.success) {
+        const oldCredits = credits || 0;
+        
+        // Fetch fresh profile explicitly to calculate the exact diff immediately
+        const freshProfile = await api.getProfile().catch(() => null);
+        let tier = 10;
+        
+        if (freshProfile && freshProfile.credits !== undefined) {
+          const added = freshProfile.credits - oldCredits;
+          if (added >= 60) tier = 70;
+          else if (added >= 30) tier = 35;
+          else tier = 10;
+        }
+
+        setRedeemedTier(tier);
+
+        // Fire animations
+        if (tier === 70) {
+          const duration = 3000;
+          const animationEnd = Date.now() + duration;
+          const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 100 };
+          const interval: any = setInterval(function() {
+            const timeLeft = animationEnd - Date.now();
+            if (timeLeft <= 0) return clearInterval(interval);
+            const particleCount = 50 * (timeLeft / duration);
+            confetti(Object.assign({}, defaults, { particleCount, origin: { x: Math.random(), y: Math.random() - 0.2 }, colors: ['#ffd700', '#ffb142', '#ffffff'] }));
+          }, 250);
+        } else if (tier === 35) {
+          confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 }, colors: ['#adc6ff', '#4d8eff', '#ffffff'], zIndex: 100 });
+        }
+
         setCodeInput("");
         setRedeemBlockedUntil(null);
         if (redeemCooldownStorageKey && typeof window !== "undefined") {
@@ -341,8 +418,8 @@ export default function CreditsPage() {
 
           <div className="rounded-xl border border-white/10 bg-[rgba(25,31,49,0.7)] p-4 backdrop-blur-xl sm:min-w-[260px] sm:p-6">
             <span className="text-xs font-semibold uppercase tracking-[0.28em] text-[#adc6ff]">Available Balance</span>
-            <div className="mt-2 text-3xl font-bold tracking-tight text-white sm:text-4xl">
-              {credits === null ? "..." : `${credits.toFixed(2)} Cr`}
+            <div className={`mt-2 text-3xl font-bold tracking-tight text-white sm:text-4xl transition-transform duration-300 ${codeMessage?.success ? "scale-105 drop-shadow-[0_0_15px_rgba(173,198,255,0.4)]" : ""}`}>
+              {displayCredits === null ? "..." : `${displayCredits.toFixed(2)} Cr`}
             </div>
             {breakdown && breakdown.gifts.length > 0 && (
               <div className="mt-3">
@@ -426,15 +503,32 @@ export default function CreditsPage() {
 
           {codeMessage && (
             <div
-              className={`mt-5 rounded-md border px-4 py-3 text-sm ${
+              className={`mt-5 rounded-md border px-5 py-4 text-sm transition-all duration-500 ${
                 codeMessage.success
-                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
+                  ? redeemedTier === 70
+                    ? "border-[#ffd700]/50 bg-[#ffd700]/10 text-[#ffd700] shadow-[0_0_30px_rgba(255,215,0,0.15)]"
+                    : redeemedTier === 35
+                    ? "border-[#adc6ff]/50 bg-[#adc6ff]/10 text-[#adc6ff] shadow-[0_0_20px_rgba(77,142,255,0.15)]"
+                    : "border-emerald-500/30 bg-emerald-500/10 text-emerald-200 shadow-[0_0_15px_rgba(16,185,129,0.1)]"
                   : "border-[#93000a]/30 bg-[#93000a]/10 text-[#ffdad6]"
               }`}
             >
-              <p>{codeMessage.text}</p>
+              <div className="flex items-center gap-2">
+                <p className="flex-1 font-medium">{codeMessage.text}</p>
+                {codeMessage.success && redeemedTier === 35 && <span className="material-symbols-outlined text-[#adc6ff] animate-pulse">star</span>}
+                {codeMessage.success && redeemedTier === 70 && <span className="material-symbols-outlined text-[#ffd700] animate-pulse">diamond</span>}
+              </div>
+              
+              {codeMessage.success && (
+                <div className="mt-4">
+                  <Link href="/studio/start" className="inline-block rounded-md bg-white/10 px-5 py-2 text-xs font-bold uppercase tracking-wider text-white hover:bg-white/20 transition-all hover:scale-105 active:scale-95">
+                    Go to Studio
+                  </Link>
+                </div>
+              )}
+
               {codeMessage.showPolicyLink ? (
-                <Link href="/policy" className="mt-2 inline-flex text-xs font-semibold uppercase tracking-[0.22em] text-[#adc6ff] hover:underline">
+                <Link href="/policy" className="mt-3 inline-flex text-xs font-semibold uppercase tracking-[0.22em] text-[#adc6ff] hover:underline">
                   View usage policy
                 </Link>
               ) : null}
@@ -473,7 +567,11 @@ export default function CreditsPage() {
                       <td className="px-6 py-5">
                         <p className="font-medium text-white">{event.activity}</p>
                       </td>
-                      <td className={`px-6 py-5 text-right ${event.positive ? "text-[#adc6ff]" : "text-[#c2c6d6]"}`}>{event.amount}</td>
+                      <td className="px-6 py-5 text-right">
+                        <span className={getAmountBadgeClass(event.positive, event.rawCredits)}>
+                          {event.amount}
+                        </span>
+                      </td>
                     </tr>
                   ))
                 ) : (
@@ -497,7 +595,11 @@ export default function CreditsPage() {
                       <p className="font-medium text-white">{event.activity}</p>
                       <p className="mt-1 text-xs text-[#c2c6d6]">{event.date}</p>
                     </div>
-                    <span className={`text-sm font-semibold ${event.positive ? "text-[#adc6ff]" : "text-[#c2c6d6]"}`}>{event.amount}</span>
+                    <div className="shrink-0">
+                      <span className={getAmountBadgeClass(event.positive, event.rawCredits)}>
+                        {event.amount}
+                      </span>
+                    </div>
                   </div>
                 </div>
               ))

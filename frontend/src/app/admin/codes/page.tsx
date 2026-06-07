@@ -9,6 +9,14 @@ import type {
     AdminCreditCodeStatusSummaryItem,
 } from "../../../types";
 
+const BATCH_CREDIT_TIERS = [
+    { label: "Starter", credits: 10 },
+    { label: "Creator⭐", credits: 35 },
+    { label: "Pro", credits: 70 },
+] as const;
+
+const BATCH_CREDIT_VALUES: number[] = BATCH_CREDIT_TIERS.map((tier) => tier.credits);
+
 export default function AdminCodesPage() {
     const [codes, setCodes] = useState<AdminCreditCodeItem[]>([]);
     const [batches, setBatches] = useState<AdminCreditCodeBatchItem[]>([]);
@@ -28,7 +36,7 @@ export default function AdminCodesPage() {
     
     const [batchTitle, setBatchTitle] = useState("");
     const [batchQuantity, setBatchQuantity] = useState(5);
-    const [batchCredits, setBatchCredits] = useState(5);
+    const [batchCredits, setBatchCredits] = useState<number>(BATCH_CREDIT_TIERS[0].credits);
     const [batchValidityDays, setBatchValidityDays] = useState(0);
     const [batchValidityHours, setBatchValidityHours] = useState(0);
     const [batchCreating, setBatchCreating] = useState(false);
@@ -166,7 +174,7 @@ export default function AdminCodesPage() {
         setBatchMessage("");
         try {
             const boundedQuantity = Math.min(20, Math.max(2, batchQuantity));
-            const boundedCredits = Math.min(20, Math.max(1, batchCredits));
+            const boundedCredits = BATCH_CREDIT_VALUES.includes(batchCredits) ? batchCredits : BATCH_CREDIT_TIERS[0].credits;
             const boundedDays = Math.max(0, Math.floor(batchValidityDays) || 0);
             const boundedHours = Math.min(23, Math.max(0, Math.floor(batchValidityHours) || 0));
             const response = await api.createAdminCodeBatch(boundedQuantity, boundedCredits, normalizedTitle, boundedDays, boundedHours);
@@ -402,13 +410,17 @@ export default function AdminCodesPage() {
                             </div>
                             <div className="flex flex-col gap-2">
                                 <label className="font-label-caps text-label-caps text-on-surface-variant">CREDITS PER CODE</label>
-                                <input 
-                                    className="bg-surface-container-lowest border border-outline-variant rounded-lg p-6 text-on-surface focus:border-tertiary focus:ring-0 outline-none transition-all" 
-                                    type="number" 
-                                    min={1} max={20}
+                                <select
+                                    className="bg-surface-container-lowest border border-outline-variant rounded-lg p-6 text-on-surface focus:border-tertiary focus:ring-0 outline-none transition-all"
                                     value={batchCredits}
-                                    onChange={(e) => setBatchCredits(Math.min(20, Math.max(1, Number(e.target.value) || 1)))}
-                                />
+                                    onChange={(e) => setBatchCredits(Number(e.target.value))}
+                                >
+                                    {BATCH_CREDIT_TIERS.map((tier) => (
+                                        <option key={tier.label} value={tier.credits}>
+                                            {tier.label}: {tier.credits}Cr
+                                        </option>
+                                    ))}
+                                </select>
                             </div>
                         </div>
                         <div className="grid grid-cols-2 gap-6">
