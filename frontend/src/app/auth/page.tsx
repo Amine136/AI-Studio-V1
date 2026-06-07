@@ -189,17 +189,39 @@ export default function AuthPage() {
           ) : null}
 
           {isInAppBrowser ? (
-            <div className="mb-6 rounded-md border border-amber-500/30 bg-amber-500/10 p-5 text-sm text-amber-200">
-              <div className="mb-3 flex items-center justify-center gap-2">
-                <span className="material-symbols-outlined text-amber-400 text-xl">warning</span>
-                <span className="font-bold tracking-wider uppercase text-amber-400 text-xs">Action Required</span>
+            <div className="mb-6 w-full rounded-xl border border-white/5 bg-[rgba(16,21,36,0.5)] p-6 text-left shadow-lg">
+              <div className="flex items-start gap-4">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-amber-500/40 bg-amber-500/10 shadow-[0_0_15px_rgba(245,158,11,0.1)]">
+                  <span className="material-symbols-outlined text-[24px] text-amber-400">warning</span>
+                </div>
+                <div className="flex flex-col pt-0.5">
+                  <h3 className="mb-1.5 font-headline text-[12px] font-bold tracking-[0.15em] text-amber-400 uppercase">
+                    Action Required
+                  </h3>
+                  <p className="text-[13.5px] leading-relaxed text-[#c2c6d6]">
+                    For security reasons, Google Sign-In does not work inside social media browsers.
+                  </p>
+                </div>
               </div>
-              <p className="leading-relaxed">
-                For security reasons, Google Sign-In does not work inside social media browsers.
-              </p>
-              <p className="mt-3 font-medium text-[#dce1fb]">
-                Please tap the <span className="mx-1 inline-block rounded bg-white/20 px-1.5 py-0.5 font-mono text-[10px] tracking-widest text-white">•••</span> icon (usually in the top right or bottom) and select <strong className="text-[#adc6ff]">"Open in browser"</strong> to sign in.
-              </p>
+              
+              <div className="mt-5 flex flex-col gap-3.5 pl-[4rem]">
+                <div className="flex items-start gap-3">
+                  <span className="mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border border-amber-500/30 bg-amber-500/10 text-[10px] font-bold text-amber-400">
+                    1
+                  </span>
+                  <p className="text-[13.5px] text-[#c2c6d6]">
+                    Tap the <span className="mx-1 inline-block rounded-md bg-[#252b3d] px-1.5 py-0.5 font-mono text-[10px] font-bold tracking-widest text-white">•••</span> icon in your browser header.
+                  </p>
+                </div>
+                <div className="flex items-start gap-3">
+                  <span className="mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border border-amber-500/30 bg-amber-500/10 text-[10px] font-bold text-amber-400">
+                    2
+                  </span>
+                  <p className="text-[13.5px] text-[#c2c6d6]">
+                    Select <span className="font-semibold text-[#81a1ff]">"Open in browser"</span> to continue securely.
+                  </p>
+                </div>
+              </div>
             </div>
           ) : (
             <button
