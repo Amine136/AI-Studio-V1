@@ -148,23 +148,65 @@ export default function CreditsPage() {
 
   const [displayCredits, setDisplayCredits] = useState<number | null>(null);
   const creditsRef = useRef<number | null>(null);
+  const previousBalanceRef = useRef<number | null>(null);
   const [redeemedTier, setRedeemedTier] = useState<number | null>(null);
   const [autoRedeemProcessed, setAutoRedeemProcessed] = useState(false);
 
-  // Number Roll Animation
+  const [isAnimatingSpotlight, setIsAnimatingSpotlight] = useState(false);
+  const [showReplayButton, setShowReplayButton] = useState(false);
+  const [replayTrigger, setReplayTrigger] = useState(0);
+
+  const fireConfetti = useCallback((tier: number) => {
+    if (tier === 70) {
+      const duration = 3000;
+      const animationEnd = Date.now() + duration;
+      const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 100 };
+      const interval: any = setInterval(function() {
+        const timeLeft = animationEnd - Date.now();
+        if (timeLeft <= 0) return clearInterval(interval);
+        const particleCount = 50 * (timeLeft / duration);
+        confetti(Object.assign({}, defaults, { particleCount, origin: { x: Math.random(), y: Math.random() - 0.2 }, colors: ['#ffd700', '#ffb142', '#ffffff'] }));
+      }, 250);
+    } else if (tier === 35) {
+      confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 }, colors: ['#adc6ff', '#4d8eff', '#ffffff'], zIndex: 100 });
+    }
+  }, []);
+
+  const handleReplay = useCallback(() => {
+    if (redeemedTier) fireConfetti(redeemedTier);
+    setReplayTrigger((prev) => prev + 1);
+  }, [fireConfetti, redeemedTier]);
+
+  useEffect(() => {
+    if (!showReplayButton) return;
+    const timeout = setTimeout(() => {
+      setShowReplayButton(false);
+    }, 2 * 60 * 1000);
+    return () => clearTimeout(timeout);
+  }, [showReplayButton]);
+
+  // Number Roll Animation & Spotlight
   useEffect(() => {
     if (credits === null) return;
-    if (displayCredits === null || creditsRef.current === null) {
+    if (creditsRef.current === null) {
       setDisplayCredits(credits);
       creditsRef.current = credits;
       return;
     }
-    if (creditsRef.current === credits) return;
+    
+    const isReplay = replayTrigger > 0;
+    if (creditsRef.current === credits && !isReplay) return;
 
-    const startValue = displayCredits;
+    const startValue = isReplay && previousBalanceRef.current !== null 
+       ? previousBalanceRef.current 
+       : (creditsRef.current || 0);
     const endValue = credits;
+    
     const duration = 1500;
     const startTime = performance.now();
+    
+    const isRedemption = endValue > startValue;
+    if (isRedemption) setIsAnimatingSpotlight(true);
 
     const animate = (currentTime: number) => {
       const elapsed = currentTime - startTime;
@@ -177,12 +219,13 @@ export default function CreditsPage() {
         requestAnimationFrame(animate);
       } else {
         setDisplayCredits(endValue);
+        if (isRedemption) setIsAnimatingSpotlight(false);
       }
     };
     
     requestAnimationFrame(animate);
     creditsRef.current = credits;
-  }, [credits, displayCredits]);
+  }, [credits, replayTrigger]);
 
   const redeemCooldownStorageKey = user ? `vibecraft:redeemCooldownUntil:${user.uid}` : null;
 
@@ -308,6 +351,7 @@ export default function CreditsPage() {
 
       if (result.success) {
         const oldCredits = credits || 0;
+        previousBalanceRef.current = oldCredits;
         
         // Fetch fresh profile explicitly to calculate the exact diff immediately
         const freshProfile = await api.getProfile().catch(() => null);
@@ -321,21 +365,8 @@ export default function CreditsPage() {
         }
 
         setRedeemedTier(tier);
-
-        // Fire animations
-        if (tier === 70) {
-          const duration = 3000;
-          const animationEnd = Date.now() + duration;
-          const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 100 };
-          const interval: any = setInterval(function() {
-            const timeLeft = animationEnd - Date.now();
-            if (timeLeft <= 0) return clearInterval(interval);
-            const particleCount = 50 * (timeLeft / duration);
-            confetti(Object.assign({}, defaults, { particleCount, origin: { x: Math.random(), y: Math.random() - 0.2 }, colors: ['#ffd700', '#ffb142', '#ffffff'] }));
-          }, 250);
-        } else if (tier === 35) {
-          confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 }, colors: ['#adc6ff', '#4d8eff', '#ffffff'], zIndex: 100 });
-        }
+        setShowReplayButton(true);
+        fireConfetti(tier);
 
         setCodeInput("");
         setRedeemBlockedUntil(null);
@@ -426,19 +457,31 @@ export default function CreditsPage() {
     );
   }
 
-  return (
-    <main className="mx-auto max-w-[1440px] px-4 py-8 sm:px-8 sm:py-12">
-      <section className="mb-10 sm:mb-16">
-        <div className="flex flex-col justify-between gap-8 md:flex-row md:items-end">
-          <div className="max-w-2xl">
-            <h1 className="font-headline text-4xl font-bold tracking-tighter text-blue-50 sm:text-5xl md:text-7xl">Fuel Your Vision</h1>
-          </div>
+  const getSpotlightClasses = () => {
+    if (!isAnimatingSpotlight) return "border-white/10 bg-[rgba(25,31,49,0.7)]";
+    if (redeemedTier === 70) return "relative z-50 scale-110 border-[#ffd700]/60 bg-[#1a170d] shadow-[0_0_60px_rgba(255,215,0,0.3)]";
+    if (redeemedTier === 35) return "relative z-50 scale-110 border-[#adc6ff]/60 bg-[#151b2d] shadow-[0_0_60px_rgba(173,198,255,0.3)]";
+    return "relative z-50 scale-110 border-emerald-500/60 bg-[#0f1f18] shadow-[0_0_60px_rgba(16,185,129,0.3)]";
+  };
 
-          <div className="rounded-xl border border-white/10 bg-[rgba(25,31,49,0.7)] p-4 backdrop-blur-xl sm:min-w-[260px] sm:p-6">
-            <span className="text-xs font-semibold uppercase tracking-[0.28em] text-[#adc6ff]">Available Balance</span>
-            <div className={`mt-2 text-3xl font-bold tracking-tight text-white sm:text-4xl transition-transform duration-300 ${codeMessage?.success ? "scale-105 drop-shadow-[0_0_15px_rgba(173,198,255,0.4)]" : ""}`}>
-              {displayCredits === null ? "..." : `${displayCredits.toFixed(2)} Cr`}
+  return (
+    <>
+      {/* Spotlight Overlay */}
+      <div 
+        className={`fixed inset-0 z-40 bg-black/85 transition-opacity duration-700 pointer-events-none ${isAnimatingSpotlight ? "opacity-100" : "opacity-0"}`} 
+      />
+      <main className="mx-auto max-w-[1440px] px-4 py-8 sm:px-8 sm:py-12">
+        <section className="mb-10 sm:mb-16">
+          <div className="flex flex-col justify-between gap-8 md:flex-row md:items-end">
+            <div className="max-w-2xl">
+              <h1 className="font-headline text-4xl font-bold tracking-tighter text-blue-50 sm:text-5xl md:text-7xl">Fuel Your Vision</h1>
             </div>
+
+            <div className={`rounded-xl border p-4 backdrop-blur-xl sm:min-w-[260px] sm:p-6 transition-all duration-700 ${getSpotlightClasses()}`}>
+              <span className="text-xs font-semibold uppercase tracking-[0.28em] text-[#adc6ff]">Available Balance</span>
+              <div className={`mt-2 text-3xl font-bold tracking-tight text-white sm:text-4xl transition-transform duration-300 ${codeMessage?.success || isAnimatingSpotlight ? "scale-105 drop-shadow-[0_0_15px_rgba(173,198,255,0.4)]" : ""}`}>
+                {displayCredits === null ? "..." : `${displayCredits.toFixed(2)} Cr`}
+              </div>
             {breakdown && breakdown.gifts.length > 0 && (
               <div className="mt-3">
                 <button
@@ -538,10 +581,20 @@ export default function CreditsPage() {
               </div>
               
               {codeMessage.success && (
-                <div className="mt-4">
-                  <Link href="/studio/start" className="inline-block rounded-md bg-white/10 px-5 py-2 text-xs font-bold uppercase tracking-wider text-white hover:bg-white/20 transition-all hover:scale-105 active:scale-95">
+                <div className="mt-4 flex flex-wrap items-center gap-3">
+                  <Link href="/studio/start" className="inline-block rounded-md bg-[linear-gradient(90deg,#adc6ff,#4d8eff)] px-5 py-2 text-xs font-bold uppercase tracking-wider text-[#002e6a] hover:scale-105 active:scale-95 transition-all shadow-lg shadow-[#adc6ff]/20">
                     Go to Studio
                   </Link>
+                  {showReplayButton && (
+                    <button
+                      type="button"
+                      onClick={handleReplay}
+                      className="inline-flex items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-4 py-2 text-xs font-bold uppercase tracking-wider text-white hover:bg-white/20 transition-all active:scale-95 animate-in fade-in zoom-in duration-500"
+                    >
+                      <span className="material-symbols-outlined text-[16px]">replay</span>
+                      Replay
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -653,5 +706,6 @@ export default function CreditsPage() {
         </div>
       </section>
     </main>
+    </>
   );
 }
