@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, Suspense } from "react";
 import "./globals.css";
 import { AuthProvider } from "../context/AuthContext";
 import { applyAccentColorToDocument, readAccentColorFromCookie } from "../lib/accentColor";
+import MetaPixel from "../components/MetaPixel";
 
 const LOGO_VERSION = "20260506-1210";
 const MATERIAL_SYMBOLS_STYLESHEET =
@@ -59,6 +60,9 @@ export default function RootLayout({
         />
       </head>
       <body className="antialiased">
+        <Suspense fallback={null}>
+          <MetaPixel />
+        </Suspense>
         <AuthProvider>
           {children}
         </AuthProvider>
