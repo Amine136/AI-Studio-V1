@@ -45,13 +45,28 @@ jobs:
         script: |
           cd ${{ steps.vars.outputs.path }}
           
+          # Record the previous state
+          PREVIOUS_COMMIT=$(git rev-parse HEAD)
+          echo "Previous commit was: $PREVIOUS_COMMIT"
+          
           # Pull the latest code
           git pull origin ${{ github.ref_name }}
           
           # Deploy Frontend
           cd frontend
           npm install
-          npm run build
+          
+          echo "Starting production build..."
+          if ! npm run build; then
+            echo "❌ BUILD FAILED! The live site has not been restarted."
+            echo "Rolling back source code to $PREVIOUS_COMMIT..."
+            cd ..
+            git reset --hard $PREVIOUS_COMMIT
+            echo "Rollback complete. Please fix the errors on GitHub."
+            exit 1
+          fi
+          
+          echo "✅ Build successful! Restarting server..."
           pm2 restart ai-studio-frontend
           
           # Deploy Backend
