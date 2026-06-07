@@ -5,6 +5,7 @@ import "./globals.css";
 import { AuthProvider } from "../context/AuthContext";
 import { applyAccentColorToDocument, readAccentColorFromCookie } from "../lib/accentColor";
 import MetaPixel from "../components/MetaPixel";
+import GoogleAnalytics from "../components/GoogleAnalytics";
 
 const LOGO_VERSION = "20260506-1210";
 const MATERIAL_SYMBOLS_STYLESHEET =
@@ -62,6 +63,7 @@ export default function RootLayout({
       <body className="antialiased">
         <Suspense fallback={null}>
           <MetaPixel />
+          <GoogleAnalytics />
         </Suspense>
         <AuthProvider>
           {children}
