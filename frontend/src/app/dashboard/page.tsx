@@ -134,7 +134,7 @@ function formatRelativeTime(timestamp?: number | null) {
 // user can edit or clear before pressing send. (See the deep-link bootstrap in
 // src/app/studio/chat/page.tsx.)
 function buildPlaygroundHref(modelId: string, prompt?: string) {
-  const params = new URLSearchParams({ model: modelId });
+  const params = new URLSearchParams({ model: modelId, new: "1" });
   if (prompt) params.set("prompt", prompt);
   return `/studio/chat?${params.toString()}`;
 }

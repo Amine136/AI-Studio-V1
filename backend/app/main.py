@@ -5,6 +5,7 @@ import json
 import base64
 import time
 import struct
+import threading
 import uuid
 from pathlib import Path
 from typing import Any, Dict
@@ -92,6 +93,8 @@ from app.services.security_backend import (
 from app.services.user_files import (
     APIKEYMANAGER_GENERATED_IMAGE_DIRS,
     GENERATED_IMAGES_DIR,
+    GENERATED_IMAGE_SAFE_HEADERS,
+    generated_image_media_type,
     SAFE_FILE_ID,
     SAFE_GENERATED_FILENAME,
     UPLOADED_IMAGES_DIR,
@@ -408,6 +411,13 @@ def _record_usage_limit_audit_event(*, uid: str, ip: str, mode: str, phase: str,
 # Rate Limiter (keyed by authenticated user when possible, else client IP)
 limiter = Limiter(key_func=rate_limit_key)
 
+# Bounded-concurrency admission control for /generate (Finding #10).
+# Caps in-flight generations PER WORKER so slow provider calls cannot exhaust
+# the shared anyio threadpool and starve other sync endpoints. Per-worker, so
+# the effective global cap is GENERATION_MAX_CONCURRENCY x gunicorn workers.
+GENERATION_MAX_CONCURRENCY = max(1, int(os.getenv("GENERATION_MAX_CONCURRENCY", "12")))
+_GENERATION_GATE = threading.BoundedSemaphore(GENERATION_MAX_CONCURRENCY)
+
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 MAX_UPLOAD_PIXELS = 16_000_000
 MAX_UPLOAD_DIMENSION = 8192
@@ -474,10 +484,9 @@ allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
-    allow_origin_regex=r"https://.*\.ngrok-free\.app",
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-API-Key", "X-CSRF-Token", "ngrok-skip-browser-warning"],
+    allow_headers=["Authorization", "Content-Type", "X-API-Key", "X-CSRF-Token"],
 )
 
 
@@ -582,7 +591,11 @@ def get_image(filename: str):
     if not filepath.exists():
         raise HTTPException(status_code=404, detail="Image not found")
     
-    return FileResponse(filepath)
+    return FileResponse(
+        filepath,
+        media_type=generated_image_media_type(filename),
+        headers=GENERATED_IMAGE_SAFE_HEADERS,
+    )
 
 
 @app.get(
@@ -602,6 +615,7 @@ def get_private_user_file(
         headers={
             "Cache-Control": "private, max-age=3600",
             "Vary": "Authorization",
+            **GENERATED_IMAGE_SAFE_HEADERS,
         },
     )
 
@@ -1860,6 +1874,12 @@ def generate_content(request: Request, payload: GenerateRequest, user: Dict[str,
     """
     charged_cost = 0.0
     generation_job_id: str | None = None
+    if not _GENERATION_GATE.acquire(blocking=False):
+        raise HTTPException(
+            status_code=503,
+            detail="The generation service is busy right now. Please retry in a few seconds.",
+            headers={"Retry-After": "5"},
+        )
     try:
         catalog_store.get_catalog()
         _validate_generate_request(payload)
@@ -2172,6 +2192,8 @@ def generate_content(request: Request, payload: GenerateRequest, user: Dict[str,
     except Exception as e:
         print(f"Server Error: {str(e)}")
         raise HTTPException(status_code=500, detail="An internal error occurred. Please try again later.")
+    finally:
+        _GENERATION_GATE.release()
 
 
 def _resolve_generation_status(payload: GenerateRequest) -> str:
