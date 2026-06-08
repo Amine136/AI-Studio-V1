@@ -584,6 +584,8 @@ export default function SettingsPage() {
           </div>
         </div>
       ) : null}
+
+      <p className="pb-8 text-center text-xs text-[#7a8197]">Vibecraft v1.1.5</p>
     </div>
   );
 }
