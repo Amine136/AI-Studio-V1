@@ -14,36 +14,19 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Set deployment variables
-      id: vars
-      run: |
-        if [ "${{ github.ref }}" == "refs/heads/main" ]; then
-          echo "host=${{ secrets.PROD_VPS_IP }}" >> $GITHUB_OUTPUT
-          echo "key<<EOF" >> $GITHUB_OUTPUT
-          echo "${{ secrets.PROD_SSH_KEY }}" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-          echo "port=22" >> $GITHUB_OUTPUT
-          echo "user=ouni" >> $GITHUB_OUTPUT
-          echo "path=/home/ouni/vibecraft" >> $GITHUB_OUTPUT
-        elif [ "${{ github.ref }}" == "refs/heads/staging" ]; then
-          echo "host=${{ secrets.STAGING_VPS_IP }}" >> $GITHUB_OUTPUT
-          echo "key<<EOF" >> $GITHUB_OUTPUT
-          echo "${{ secrets.STAGING_SSH_KEY }}" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-          echo "port=22" >> $GITHUB_OUTPUT
-          echo "user=ouni" >> $GITHUB_OUTPUT
-          echo "path=/home/ouni/AI-Studio-V1-staging" >> $GITHUB_OUTPUT
-        fi
-
     - name: Deploy to Server via SSH
       uses: appleboy/ssh-action@v1.0.3
       with:
-        host: ${{ steps.vars.outputs.host }}
-        username: ${{ steps.vars.outputs.user }}
-        key: ${{ steps.vars.outputs.key }}
-        port: ${{ steps.vars.outputs.port }}
+        host: ${{ github.ref == 'refs/heads/main' && secrets.PROD_VPS_IP || secrets.STAGING_VPS_IP }}
+        username: ouni
+        key: ${{ github.ref == 'refs/heads/main' && secrets.PROD_SSH_KEY || secrets.STAGING_SSH_KEY }}
+        port: 22
         script: |
-          cd ${{ steps.vars.outputs.path }}
+          if [ "${{ github.ref }}" == "refs/heads/main" ]; then
+            cd /home/ouni/vibecraft
+          else
+            cd /home/ouni/AI-Studio-V1-staging
+          fi
           
           # Record the previous state
           PREVIOUS_COMMIT=$(git rev-parse HEAD)
