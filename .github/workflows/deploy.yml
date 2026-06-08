@@ -14,44 +14,52 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Deploy to Server via SSH
+    - name: Deploy to Production
+      if: github.ref == 'refs/heads/main'
       uses: appleboy/ssh-action@v1.0.3
       with:
-        host: ${{ github.ref == 'refs/heads/main' && secrets.PROD_VPS_IP || secrets.STAGING_VPS_IP }}
+        host: ${{ secrets.PROD_VPS_IP }}
         username: ouni
-        key: ${{ github.ref == 'refs/heads/main' && secrets.PROD_SSH_KEY || secrets.STAGING_SSH_KEY }}
+        key: ${{ secrets.PROD_SSH_KEY }}
         port: 22
         script: |
-          if [ "${{ github.ref }}" == "refs/heads/main" ]; then
-            cd /home/ouni/vibecraft
-          else
-            cd /home/ouni/AI-Studio-V1-staging
-          fi
-          
-          # Record the previous state
+          cd /home/ouni/vibecraft
           PREVIOUS_COMMIT=$(git rev-parse HEAD)
           echo "Previous commit was: $PREVIOUS_COMMIT"
-          
-          # Pull the latest code
-          git pull origin ${{ github.ref_name }}
-          
-          # Deploy Frontend
+          git pull origin main
           cd frontend
           npm install
-          
-          echo "Starting production build..."
           if ! npm run build; then
-            echo "❌ BUILD FAILED! The live site has not been restarted."
-            echo "Rolling back source code to $PREVIOUS_COMMIT..."
+            echo "❌ BUILD FAILED! Rolling back..."
             cd ..
             git reset --hard $PREVIOUS_COMMIT
-            echo "Rollback complete. Please fix the errors on GitHub."
             exit 1
           fi
-          
-          echo "✅ Build successful! Restarting server..."
-          pm2 restart ai-studio-frontend
-          
-          # Deploy Backend
+          pm2 restart vibecraft-frontend || pm2 start npm --name "vibecraft-frontend" -- run start
           cd ../backend
-          pm2 restart ai-studio-backend
+          pm2 restart vibecraft-backend || true
+
+    - name: Deploy to Staging
+      if: github.ref == 'refs/heads/staging'
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.STAGING_VPS_IP }}
+        username: ouni
+        key: ${{ secrets.STAGING_SSH_KEY }}
+        port: 22
+        script: |
+          cd /home/ouni/AI-Studio-V1-staging
+          PREVIOUS_COMMIT=$(git rev-parse HEAD)
+          echo "Previous commit was: $PREVIOUS_COMMIT"
+          git pull origin staging
+          cd frontend
+          npm install
+          if ! npm run build; then
+            echo "❌ BUILD FAILED! Rolling back..."
+            cd ..
+            git reset --hard $PREVIOUS_COMMIT
+            exit 1
+          fi
+          pm2 restart ai-studio-frontend || pm2 start npm --name "ai-studio-frontend" -- run start
+          cd ../backend
+          pm2 restart ai-studio-backend || true
