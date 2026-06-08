@@ -33,6 +33,53 @@ SAFE_FILE_ID = re.compile(r"^[0-9a-f\-]{36}$")
 
 PRIVATE_FILE_KINDS = {"uploaded_input", "generated_output"}
 
+GENERATED_IMAGE_MIME_BY_EXT = {
+    "jpg": "image/jpeg",
+    "png": "image/png",
+    "webp": "image/webp",
+    "svg": "image/svg+xml",
+}
+
+# Served on every generated-image response. `sandbox` makes the browser treat the
+# file as an opaque origin with scripting disabled, so even a malicious SVG (which
+# can carry <script>/onload=) cannot execute JS on our origin. nosniff stops a
+# raster file being re-interpreted as an executable type. This protects already-
+# stored files too, regardless of how they were created.
+GENERATED_IMAGE_SAFE_HEADERS = {
+    "Content-Security-Policy": "sandbox",
+    "X-Content-Type-Options": "nosniff",
+}
+
+_SVG_SCRIPT_RE = re.compile(rb'<script\b[^>]*>.*?</script\s*>', re.IGNORECASE | re.DOTALL)
+_SVG_SCRIPT_SELFCLOSE_RE = re.compile(rb'<script\b[^>]*/\s*>', re.IGNORECASE)
+_SVG_FOREIGNOBJECT_RE = re.compile(rb'<foreignObject\b[^>]*>.*?</foreignObject\s*>', re.IGNORECASE | re.DOTALL)
+_SVG_EVENT_ATTR_RE = re.compile(rb'''\s+on[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)''', re.IGNORECASE)
+_SVG_JS_URI_RE = re.compile(rb'javascript:', re.IGNORECASE)
+
+
+def generated_image_media_type(filename: str) -> str:
+    '''Map a validated generated-image filename to an explicit, safe content type.'''
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    return GENERATED_IMAGE_MIME_BY_EXT.get(ext, "application/octet-stream")
+
+
+def sanitize_svg_bytes(image_bytes: bytes) -> bytes:
+    '''Defense-in-depth: strip active content from SVG before storing.
+
+    The serve-time `sandbox` CSP is the hard guarantee; this conservatively removes
+    the unambiguously dangerous constructs (scripts, foreignObject, on* handlers,
+    javascript: URIs) without reflowing legitimate static vector art. Fails open:
+    on any error the original bytes are kept (still safe at serve time).'''
+    try:
+        cleaned = _SVG_SCRIPT_RE.sub(b"", image_bytes)
+        cleaned = _SVG_SCRIPT_SELFCLOSE_RE.sub(b"", cleaned)
+        cleaned = _SVG_FOREIGNOBJECT_RE.sub(b"", cleaned)
+        cleaned = _SVG_EVENT_ATTR_RE.sub(b"", cleaned)
+        cleaned = _SVG_JS_URI_RE.sub(b"invalid:", cleaned)
+        return cleaned
+    except Exception:
+        return image_bytes
+
 
 def private_file_url_prefix() -> str:
     return f"{settings.public_backend_base_url}/api/files/"
@@ -54,6 +101,8 @@ def generated_image_url_prefixes() -> list[str]:
 
 def save_generated_output_for_owner(owner_uid: str, image_bytes: bytes) -> str:
     extension, mime_type = _detect_image_extension_and_mime(image_bytes)
+    if extension == "svg":
+        image_bytes = sanitize_svg_bytes(image_bytes)
     filename = f"{uuid.uuid4()}.{extension}"
     save_path = GENERATED_IMAGES_DIR / filename
     save_path.write_bytes(image_bytes)

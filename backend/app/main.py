@@ -92,6 +92,8 @@ from app.services.security_backend import (
 from app.services.user_files import (
     APIKEYMANAGER_GENERATED_IMAGE_DIRS,
     GENERATED_IMAGES_DIR,
+    GENERATED_IMAGE_SAFE_HEADERS,
+    generated_image_media_type,
     SAFE_FILE_ID,
     SAFE_GENERATED_FILENAME,
     UPLOADED_IMAGES_DIR,
@@ -582,7 +584,11 @@ def get_image(filename: str):
     if not filepath.exists():
         raise HTTPException(status_code=404, detail="Image not found")
     
-    return FileResponse(filepath)
+    return FileResponse(
+        filepath,
+        media_type=generated_image_media_type(filename),
+        headers=GENERATED_IMAGE_SAFE_HEADERS,
+    )
 
 
 @app.get(
@@ -602,6 +608,7 @@ def get_private_user_file(
         headers={
             "Cache-Control": "private, max-age=3600",
             "Vary": "Authorization",
+            **GENERATED_IMAGE_SAFE_HEADERS,
         },
     )
 
