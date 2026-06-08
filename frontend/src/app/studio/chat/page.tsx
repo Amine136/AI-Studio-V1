@@ -763,10 +763,13 @@ export default function StudioChatPage() {
   const deletedConversationIdRef = useRef("");
   const failedConversationLoadRef = useRef("");
   const inputImagesRef = useRef<UploadedImageState[]>([]);
+  const deepLinkAppliedRef = useRef(false);
 
   const searchParams = useSearchParams();
   const forceNewSession = searchParams?.get("new") === "1";
   const requestedConversationId = searchParams?.get("conversation");
+  const requestedModelParam = searchParams?.get("model") || "";
+  const requestedPromptParam = searchParams?.get("prompt") || "";
   const requestedConversationIsActive =
     Boolean(requestedConversationId) && requestedConversationId !== deletedConversationIdRef.current;
   const isBootstrappingRequestedConversation = requestedConversationIsActive && requestedConversationId !== conversationId;
@@ -979,6 +982,54 @@ export default function StudioChatPage() {
       cancelled = true;
     };
   }, [authLoading, user]);
+
+  // Deep-link bootstrap: open the Playground straight into a specific model with
+  // an optional pre-filled prompt (e.g. dashboard quick-start cards link here as
+  // /studio/chat?model=<id>&prompt=<text>). Runs once after models load.
+  useEffect(() => {
+    if (deepLinkAppliedRef.current) return;
+    if (!requestedModelParam) return;
+    if (providerGroups.length === 0) return;
+
+    deepLinkAppliedRef.current = true;
+
+    let match: { provider: string; modelId: string } | null = null;
+    for (const group of providerGroups) {
+      const found = group.models.find((model) => model.id === requestedModelParam);
+      if (found) {
+        match = { provider: group.provider, modelId: found.id };
+        break;
+      }
+    }
+
+    // Strip the deep-link params so a refresh / back nav doesn't re-trigger it.
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("model");
+      url.searchParams.delete("prompt");
+      window.history.replaceState({}, "", url.toString());
+    }
+
+    if (!match) return; // Requested model not available — leave the default picker.
+
+    hasBootstrappedChatRef.current = true;
+    setSelectedProvider(match.provider);
+    setSelectedModel(match.modelId);
+    setLockedModelId(match.modelId);
+    setConversationId("");
+    setConversationTitle(DEFAULT_CONVERSATION_TITLE);
+    setConversationTitleDraft(DEFAULT_CONVERSATION_TITLE);
+    setEditingConversationTitle(false);
+    setMessages([]);
+    setConversationPromptTokens(0);
+    setConversationCompletionTokens(0);
+    setConversationCostTotal(0);
+    setLastUsage(null);
+    setLastBillingMeta(null);
+    setError(null);
+    setPhase("chat");
+    if (requestedPromptParam) setInput(requestedPromptParam);
+  }, [providerGroups, requestedModelParam, requestedPromptParam]);
 
   useEffect(() => {
     let cancelled = false;

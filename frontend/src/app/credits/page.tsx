@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../services/api";
 import confetti from "canvas-confetti";
+import BuyCodesButton from "../../components/BuyCodesButton";
 import type { CreditActivityEntry, CreditBreakdown } from "../../types";
 
 
@@ -561,6 +562,11 @@ export default function CreditsPage() {
             </button>
           </div>
           <p className="mt-4 text-[10px] uppercase tracking-[0.28em] text-[#c2c6d6]/60">Codes are sensitive. Single use only.</p>
+
+          <div className="mt-6 flex flex-col items-start gap-3 border-t border-white/10 pt-5 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-[#c2c6d6]">Don&apos;t have a code yet?</p>
+            <BuyCodesButton className="inline-flex items-center gap-2 whitespace-nowrap rounded-md border border-[#adc6ff]/40 bg-[#adc6ff]/10 px-6 py-2.5 text-sm font-bold text-[#adc6ff] transition-all hover:scale-105 hover:bg-[#adc6ff]/20 active:scale-95" />
+          </div>
 
           {codeMessage && (
             <div

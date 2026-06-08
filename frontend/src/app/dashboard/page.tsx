@@ -8,7 +8,7 @@ import AuthenticatedImage from "../../components/AuthenticatedImage";
 import { getHistory, type HistoryEntry } from "../../lib/history";
 import { getProfile } from "../../lib/credits";
 import { api } from "../../services/api";
-import type { DashboardNewsItem, ModelCatalogEntry, OutputType, SystemConfig } from "../../types";
+import type { DashboardNewsItem, PlainChatModelItem } from "../../types";
 
 interface SuspensionState {
   reason: string;
@@ -16,21 +16,20 @@ interface SuspensionState {
   endsAtLabel: string | null;
 }
 
-type DashboardModelCard = {
-  id: string;
-  name: string;
-  provider: string;
+
+type PlaygroundQuickStart = {
   modelId: string;
-  description: string;
-  type: string;
-  inputModalities: string[];
-  outputModalities: string[];
+  tagline: string;
+  prompt: string;
+  icon: string;
+  accent: string; // hex used for the icon tile + glow
+  badge?: string; // optional category chip; also gives the card a tinted background
 };
 
-type DashboardTemplate = {
-  title: string;
-  description: string;
-  href: string;
+type ResolvedQuickStart = PlaygroundQuickStart & {
+  name: string;
+  provider: string;
+  outputModalities: string[];
 };
 
 function formatSuspensionEndsAt(value: string): string | null {
@@ -55,18 +54,6 @@ function parseSuspensionStateFromProfile(profile: any): SuspensionState | null {
   };
 }
 
-function flattenModelCatalog(models: Record<string, ModelCatalogEntry> | undefined): DashboardModelCard[] {
-  return Object.entries(models || {}).map(([id, item]) => ({
-    id,
-    name: item.display_name || id,
-    provider: item.provider || "unknown",
-    modelId: item.model_id || id,
-    description: item.description || "No description available in the current catalog cache.",
-    type: item.type || "standard",
-    inputModalities: item.input_modalities || [],
-    outputModalities: item.output_modalities || [],
-  }));
-}
 
 function formatProviderName(value: string) {
   return value
@@ -143,40 +130,84 @@ function formatRelativeTime(timestamp?: number | null) {
   return `${years}y ago`;
 }
 
-function buildTemplateHref(outputs: OutputType[], idea: string) {
-  const params = new URLSearchParams({
-    idea,
-    outputs: outputs.join(","),
-  });
-  return `/studio/create?${params.toString()}`;
+// Opens the Playground straight into a model, with an optional seeded prompt the
+// user can edit or clear before pressing send. (See the deep-link bootstrap in
+// src/app/studio/chat/page.tsx.)
+function buildPlaygroundHref(modelId: string, prompt?: string) {
+  const params = new URLSearchParams({ model: modelId });
+  if (prompt) params.set("prompt", prompt);
+  return `/studio/chat?${params.toString()}`;
 }
 
-const dashboardTemplates: DashboardTemplate[] = [
+// Curated quick-start models. Each opens the Playground with the model selected
+// and a starter prompt prefilled. modelId must match a catalog model slug; cards
+// whose model is not currently available are skipped automatically.
+const playgroundQuickStarts: PlaygroundQuickStart[] = [
   {
-    title: "Viral Script",
-    description: "Hook a trend fast with a punchy social concept built for comments, saves, and reposts.",
-    href: buildTemplateHref(
-      ["caption"],
-      "Write a short, high-engagement social script with a bold hook, a fast payoff, and a CTA people want to comment on.",
-    ),
+    modelId: "gemini-3.1-flash-image-preview",
+    tagline: "Google's fast image model — great for quick, photoreal concepts and edits.",
+    prompt:
+      "A photorealistic product hero shot of a matte-black wireless headphone set on a wet stone surface, soft studio rim light, shallow depth of field, cinematic reflections, 4k detail.",
+    icon: "auto_awesome",
+    accent: "#adc6ff",
   },
   {
-    title: "Product Art",
-    description: "Seed a premium product-shot direction with polished lighting, tactile detail, and campaign-ready framing.",
-    href: buildTemplateHref(
-      ["image"],
-      "Create a premium product-shot concept with luxury lighting, refined materials, crisp reflections, and a clean editorial backdrop.",
-    ),
+    modelId: "grok-imagine-image-quality",
+    tagline: "Grok's high-quality renderer for bold, stylized, high-impact visuals.",
+    prompt:
+      "A dramatic cinematic poster of a lone astronaut standing on a neon-lit alien dune at dusk, volumetric light, vivid magenta and teal palette, ultra-detailed, film grain.",
+    icon: "diamond",
+    accent: "#d0bcff",
   },
   {
-    title: "Blog Outline",
-    description: "Start article planning with a structured concept that turns one idea into a clear publishable outline.",
-    href: buildTemplateHref(
-      ["caption"],
-      "Build a structured blog outline with a sharp working title, key sections, talking points, and practical takeaways for readers.",
-    ),
+    modelId: "recraftv4_1_vector",
+    tagline: "Recraft's vector engine — clean, scalable SVG output made for designers.",
+    prompt:
+      "A minimal flat vector logo of a fox head built from simple geometric shapes, bold two-color palette, crisp clean lines, scalable SVG icon style on a plain background.",
+    icon: "polyline",
+    accent: "#f0a868",
+    badge: "SVG · For designers",
   },
 ];
+
+// Curated "Recommended" picks for the dashboard (premium / flagship tiers).
+// Resolved against the live catalog; if any are missing we top up with the best
+// available image models so we always show two.
+const recommendedModelIds = ["gemini-3-pro-image-preview", "gpt-image-2"];
+
+function normalizeProvider(name: string) {
+  const lower = name.toLowerCase();
+  if (lower.includes("google") || lower.includes("gemini")) return "Google Gemini";
+  if (lower.includes("openai") || lower.includes("gpt")) return "OpenAI";
+  if (lower.includes("anthropic") || lower.includes("claude")) return "Anthropic";
+  if (lower.includes("ideogram")) return "Ideogram";
+  if (lower.includes("recraft")) return "Recraft";
+  if (lower.includes("grok") || lower.includes("xai")) return "Grok";
+  if (lower.includes("mistral")) return "Mistral";
+  if (lower.includes("groq")) return "Groq";
+  return formatProviderName(name);
+}
+
+function getProviderIcon(providerName: string) {
+  const lower = providerName.toLowerCase();
+  if (lower.includes("google") || lower.includes("gemini")) return "auto_awesome";
+  if (lower.includes("openai") || lower.includes("gpt")) return "memory";
+  if (lower.includes("anthropic") || lower.includes("claude")) return "psychiatry";
+  if (lower.includes("ideogram")) return "draw";
+  if (lower.includes("recraft")) return "brush";
+  if (lower.includes("grok") || lower.includes("xai")) return "diamond";
+  if (lower.includes("mistral")) return "air";
+  if (lower.includes("groq")) return "bolt";
+  return "api";
+}
+
+function modelOutputBadges(outputModalities: string[]): string[] {
+  const out = outputModalities.map((v) => v.toUpperCase());
+  const badges: string[] = [];
+  if (out.includes("IMAGE")) badges.push("Image");
+  if (out.includes("TEXT")) badges.push("Text");
+  return badges;
+}
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -184,12 +215,12 @@ export default function DashboardPage() {
 
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
-  const [config, setConfig] = useState<SystemConfig | null>(null);
   const [currentCredits, setCurrentCredits] = useState<number | null>(null);
   const [suspension, setSuspension] = useState<SuspensionState | null>(null);
   const [newsItems, setNewsItems] = useState<DashboardNewsItem[]>(defaultNewsItems);
-  const [activeTemplateIndex, setActiveTemplateIndex] = useState(0);
+  const [playgroundModels, setPlaygroundModels] = useState<PlainChatModelItem[]>([]);
   const [activeNewsIndex, setActiveNewsIndex] = useState(0);
+  const [activeQuickStartIndex, setActiveQuickStartIndex] = useState(0);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -208,9 +239,13 @@ export default function DashboardPage() {
     }
   }, [user]);
 
-  const fetchConfig = useCallback(async () => {
-    const nextConfig = await api.getConfig();
-    setConfig(nextConfig);
+  const fetchPlaygroundModels = useCallback(async () => {
+    try {
+      const response = await api.getPlainChatModels();
+      setPlaygroundModels(Array.isArray(response.models) ? response.models : []);
+    } catch {
+      setPlaygroundModels([]);
+    }
   }, []);
 
   const fetchDashboardNews = useCallback(async () => {
@@ -240,18 +275,10 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!user) return;
     void fetchHistoryData();
-    void fetchConfig();
     void fetchProfile();
     void fetchDashboardNews();
-  }, [fetchConfig, fetchDashboardNews, fetchHistoryData, fetchProfile, user]);
-
-  useEffect(() => {
-    const intervalId = window.setInterval(() => {
-      setActiveTemplateIndex((current) => (current + 1) % dashboardTemplates.length);
-    }, 6000);
-
-    return () => window.clearInterval(intervalId);
-  }, []);
+    void fetchPlaygroundModels();
+  }, [fetchDashboardNews, fetchHistoryData, fetchPlaygroundModels, fetchProfile, user]);
 
   useEffect(() => {
     if (newsItems.length <= 1) {
@@ -266,47 +293,76 @@ export default function DashboardPage() {
     return () => window.clearInterval(intervalId);
   }, [newsItems]);
 
-  const imageModels = useMemo(() => flattenModelCatalog(config?.model_catalog?.image), [config]);
-  const textModels = useMemo(() => flattenModelCatalog(config?.model_catalog?.caption), [config]);
   const latestItems = history.slice(0, 4);
-  const featuredModel =
-    imageModels.find((model) => model.id === "gemini-3-pro-image-preview" || /nano banana pro/i.test(model.name)) ||
-    imageModels.find((model) => /gemini/i.test(model.name) || /gemini/i.test(model.modelId)) ||
-    imageModels[0] ||
-    textModels[0] ||
-    null;
-  const secondaryModels = [...imageModels, ...textModels]
-    .filter((model) => model.id !== featuredModel?.id)
-    .sort((a, b) => a.name.localeCompare(b.name))
-    .slice(0, 2);
-  const normalizeProvider = (name: string) => {
-    const lower = name.toLowerCase();
-    if (lower.includes("google") || lower.includes("gemini")) return "Google Gemini";
-    if (lower.includes("openai") || lower.includes("gpt")) return "OpenAI";
-    if (lower.includes("anthropic") || lower.includes("claude")) return "Anthropic";
-    if (lower.includes("mistral")) return "Mistral";
-    if (lower.includes("groq")) return "Groq";
-    return formatProviderName(name);
-  };
 
-  const activeProviders = Array.from(new Set([...imageModels, ...textModels].map((m) => normalizeProvider(m.provider))));
+  const playgroundModelMap = useMemo(() => {
+    const map = new Map<string, PlainChatModelItem>();
+    for (const model of playgroundModels) map.set(model.id, model);
+    return map;
+  }, [playgroundModels]);
 
-  const getProviderIcon = (providerName: string) => {
-    const lower = providerName.toLowerCase();
-    if (lower.includes("google") || lower.includes("gemini")) return "temp_preferences_custom";
-    if (lower.includes("openai") || lower.includes("gpt")) return "memory";
-    if (lower.includes("anthropic") || lower.includes("claude")) return "psychiatry";
-    if (lower.includes("mistral")) return "air";
-    if (lower.includes("groq")) return "bolt";
-    return "api";
-  };
+  // Resolve the curated quick-start cards against the live catalog; drop any
+  // whose model is not currently available so we never deep-link to a dead model.
+  const resolvedQuickStarts = useMemo<ResolvedQuickStart[]>(
+    () =>
+      playgroundQuickStarts
+        .map((quickStart) => {
+          const model = playgroundModelMap.get(quickStart.modelId);
+          if (!model) return null;
+          return {
+            ...quickStart,
+            name: model.displayName || quickStart.modelId,
+            provider: normalizeProvider(model.provider || ""),
+            outputModalities: model.outputModalities || [],
+          };
+        })
+        .filter((entry): entry is ResolvedQuickStart => entry !== null),
+    [playgroundModelMap],
+  );
 
-  const systemCards = activeProviders.map((ap) => ({
-    title: ap,
-    subtitle: "Provider • Active",
-    icon: getProviderIcon(ap),
-    isActive: true,
-  }));
+  // Rotate the quick-start spotlight every 5 seconds.
+  useEffect(() => {
+    if (resolvedQuickStarts.length <= 1) {
+      setActiveQuickStartIndex(0);
+      return;
+    }
+    const intervalId = window.setInterval(() => {
+      setActiveQuickStartIndex((current) => (current + 1) % resolvedQuickStarts.length);
+    }, 5000);
+    return () => window.clearInterval(intervalId);
+  }, [resolvedQuickStarts.length]);
+
+  // Two recommended models: the curated picks, topped up with the best available
+  // image models if any pick is missing.
+  const recommendedModels = useMemo(() => {
+    const isImage = (model: PlainChatModelItem) =>
+      (model.outputModalities || []).map((value) => value.toUpperCase()).includes("IMAGE");
+    const picks: PlainChatModelItem[] = [];
+    for (const id of recommendedModelIds) {
+      const model = playgroundModelMap.get(id);
+      if (model) picks.push(model);
+    }
+    if (picks.length < 2) {
+      for (const model of playgroundModels) {
+        if (picks.length >= 2) break;
+        if (!isImage(model) || picks.some((pick) => pick.id === model.id)) continue;
+        picks.push(model);
+      }
+    }
+    return picks.slice(0, 2);
+  }, [playgroundModelMap, playgroundModels]);
+
+  // Provider status cards with live model counts.
+  const providerSummaries = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const model of playgroundModels) {
+      const label = normalizeProvider(model.provider || "");
+      counts.set(label, (counts.get(label) || 0) + 1);
+    }
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([title, count]) => ({ title, count, icon: getProviderIcon(title) }));
+  }, [playgroundModels]);
 
   if (authLoading || !user) {
     return (
@@ -342,76 +398,119 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-8 sm:space-y-12">
-      <section className="relative">
-        <div className="space-y-2">
-          <h2 className="font-headline text-2xl font-bold tracking-tighter text-blue-100 sm:text-4xl">
-            Welcome, {user.displayName?.split(" ")[0] || user.email?.split("@")[0] || "Creator"}
-          </h2>
-          <p className="text-sm text-[#c2c6d6] sm:text-lg">Your studio is ready for new dimensions.</p>
-        </div>
-
-        <div className="mt-6 grid grid-cols-12 gap-4 sm:mt-8 sm:gap-6">
-          <div className="relative col-span-12 min-h-[220px] overflow-hidden rounded-xl border border-white/5 bg-[#151b2d] p-5 sm:min-h-[240px] sm:p-8 xl:col-span-8">
-            <div className="absolute right-0 top-0 -mr-32 -mt-32 h-64 w-64 rounded-full bg-[#adc6ff]/10 blur-[80px]" />
-            <div className="relative z-10 h-full min-h-[180px] sm:min-h-[176px]">
-              {dashboardTemplates.map((template, index) => {
-                const isActive = index === activeTemplateIndex;
-                return (
-                  <div
-                    key={template.title}
-                    aria-hidden={!isActive}
-                    className={`absolute inset-0 flex h-full flex-col justify-between transition-all duration-700 ${
-                      isActive ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-2 opacity-0"
-                    }`}
-                  >
-                    <div>
-                      <span className="mb-3 block text-xs font-bold uppercase tracking-widest text-[#adc6ff] sm:mb-4 sm:text-sm">
-                        Quick Start Templates
-                      </span>
-                      <h3 className="mb-2 font-headline text-2xl font-bold text-blue-100 sm:mb-3 sm:text-3xl">{template.title}</h3>
-                      <p className="max-w-xl text-sm leading-6 text-[#c2c6d6] sm:text-base sm:leading-7">{template.description}</p>
-                    </div>
-
-                    <div className="flex items-end justify-between gap-3">
-                      <div className="flex gap-2">
-                        {dashboardTemplates.map((item, dotIndex) => (
-                          <span
-                            key={item.title}
-                            className={`h-2 w-2 rounded-full transition-colors ${
-                              dotIndex === activeTemplateIndex ? "bg-[#adc6ff]" : "bg-white/15"
-                            }`}
-                          />
-                        ))}
-                      </div>
-                      <Link
-                        href={template.href}
-                        className="rounded-md border border-[#adc6ff]/30 bg-[#adc6ff] px-4 py-2.5 text-sm font-bold text-[#032a61] transition-colors hover:bg-[#c1d5ff] sm:px-6 sm:py-3"
-                      >
-                        Use Template
-                      </Link>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+      <section className="relative space-y-6">
+        {/* Welcome + credits */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-2">
+            <h2 className="font-headline text-2xl font-bold tracking-tighter text-blue-100 sm:text-4xl">
+              Welcome, {user.displayName?.split(" ")[0] || user.email?.split("@")[0] || "Creator"}
+            </h2>
           </div>
 
-          <div className="col-span-12 flex items-center justify-between gap-4 rounded-xl border border-[#adc6ff]/10 bg-[#2e3447] p-5 text-left sm:flex-col sm:justify-center sm:space-y-4 sm:p-8 sm:text-center xl:col-span-4">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#571bc1]/30 sm:h-16 sm:w-16">
-              <span className="material-symbols-outlined text-3xl text-[#d0bcff]" style={{ fontVariationSettings: "'FILL' 1" }}>
-                bolt
-              </span>
-            </div>
-            <div>
-              <span className="font-headline text-2xl font-bold text-blue-100 sm:text-4xl">
-                {currentCredits === null ? "..." : currentCredits.toFixed(2)}
-              </span>
-              <p className="mt-1 text-sm font-medium text-[#c2c6d6]">Available Credits</p>
-            </div>
-            <Link href="/credits" className="shrink-0 rounded-md border border-white/5 bg-[#23293c] px-4 py-2 text-xs font-bold uppercase tracking-widest transition-all hover:border-[#adc6ff]/40 sm:w-full">
-              Top Up Balance
+          <div className="flex shrink-0 items-center gap-3 rounded-xl border border-[#adc6ff]/10 bg-[#151b2d] px-4 py-3">
+            <span className="material-symbols-outlined text-xl text-[#d0bcff]" style={{ fontVariationSettings: "'FILL' 1" }}>
+              bolt
+            </span>
+            <span className="font-headline text-xl font-bold text-blue-100">
+              {currentCredits === null ? "..." : `${currentCredits.toFixed(2)} Cr`}
+            </span>
+            <Link
+              href="/credits"
+              className="shrink-0 rounded-md border border-white/5 bg-[#23293c] px-3 py-1.5 text-[11px] font-bold uppercase tracking-widest transition-all hover:border-[#adc6ff]/40"
+            >
+              Top Up
             </Link>
           </div>
+        </div>
+
+        {/* Quick Start · Playground */}
+        <div>
+
+          {resolvedQuickStarts.length === 0 ? (
+            <div className="h-[220px] animate-pulse rounded-2xl border border-white/5 bg-[#151b2d]" />
+          ) : (
+            (() => {
+              const quickStart = resolvedQuickStarts[activeQuickStartIndex % resolvedQuickStarts.length];
+              return (
+                <>
+                  <div
+                    key={quickStart.modelId}
+                    className="group relative overflow-hidden rounded-2xl border p-5 duration-500 animate-in fade-in sm:p-7"
+                    style={
+                      quickStart.badge
+                        ? { borderColor: `${quickStart.accent}55`, background: `linear-gradient(135deg, ${quickStart.accent}1f, #151b2d 55%)` }
+                        : { borderColor: "rgba(255,255,255,0.05)", backgroundColor: "#151b2d" }
+                    }
+                  >
+                    <div
+                      className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full opacity-25 blur-[90px]"
+                      style={{ backgroundColor: quickStart.accent }}
+                    />
+                    <div className="relative z-10 flex flex-col gap-6 md:flex-row md:items-center">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3">
+                          <div
+                            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl"
+                            style={{ backgroundColor: `${quickStart.accent}26`, color: quickStart.accent }}
+                          >
+                            <span className="material-symbols-outlined text-2xl" style={{ fontVariationSettings: "'FILL' 1" }}>
+                              {quickStart.icon}
+                            </span>
+                          </div>
+                          <div className="min-w-0">
+                            <h4 className="truncate font-headline text-lg font-bold text-blue-100 sm:text-xl">{quickStart.name}</h4>
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-[#8c909f]">{quickStart.provider}</span>
+                          </div>
+                          {quickStart.badge && (
+                            <span
+                              className="ml-auto shrink-0 rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider"
+                              style={{ backgroundColor: `${quickStart.accent}26`, color: quickStart.accent }}
+                            >
+                              {quickStart.badge}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="mt-4 rounded-lg border border-white/5 bg-[#070d1f] p-3">
+                          <span className="text-[10px] font-bold uppercase tracking-widest text-[#6b7a8f]">Starter prompt</span>
+                          <p className="mt-1 text-xs leading-5 text-[#aeb6c8] line-clamp-2 md:line-clamp-none">{quickStart.prompt}</p>
+                        </div>
+                      </div>
+
+                      <div className="md:w-60 md:shrink-0">
+                        <Link
+                          href={buildPlaygroundHref(quickStart.modelId, quickStart.prompt)}
+                          className="flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-bold text-[#03203f] transition-transform hover:scale-[1.02] active:scale-95"
+                          style={{ background: `linear-gradient(135deg, ${quickStart.accent}, #4d8eff)` }}
+                        >
+                          <span className="material-symbols-outlined text-[18px]">bolt</span>
+                          Start in Playground
+                        </Link>
+                      </div>
+                    </div>
+                  </div>
+
+                  {resolvedQuickStarts.length > 1 && (
+                    <div className="mt-4 flex justify-center gap-2">
+                      {resolvedQuickStarts.map((entry, index) => (
+                        <button
+                          key={entry.modelId}
+                          type="button"
+                          onClick={() => setActiveQuickStartIndex(index)}
+                          aria-label={`Show ${entry.name}`}
+                          className={`h-2 rounded-full transition-all ${
+                            index === activeQuickStartIndex % resolvedQuickStarts.length
+                              ? "w-6 bg-[#adc6ff]"
+                              : "w-2 bg-white/15 hover:bg-white/30"
+                          }`}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </>
+              );
+            })()
+          )}
         </div>
       </section>
 
@@ -462,70 +561,135 @@ export default function DashboardPage() {
       </section>
 
       <div className="grid grid-cols-12 gap-8 sm:gap-10">
-        <section className="col-span-12 space-y-6 xl:col-span-8">
-          <div className="flex flex-wrap items-center gap-3">
-            <h3 className="font-headline text-xl font-bold tracking-tight sm:text-2xl">Available Models</h3>
-            <span className="rounded bg-[#adc6ff]/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-[#adc6ff]">
-              New Arrivals
-            </span>
+        <section className="col-span-12 space-y-8 xl:col-span-8">
+          {/* Recommended models */}
+          <div className="space-y-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <h3 className="font-headline text-xl font-bold tracking-tight sm:text-2xl">Recommended</h3>
+                <span className="rounded bg-[#adc6ff]/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-[#adc6ff]">
+                  Top picks
+                </span>
+              </div>
+              <Link href="/studio/chat" className="flex items-center gap-1 text-sm font-medium text-[#adc6ff] hover:underline">
+                Open Playground <span className="material-symbols-outlined text-sm">arrow_forward</span>
+              </Link>
+            </div>
+
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+              {recommendedModels.length === 0
+                ? Array.from({ length: 2 }).map((_, index) => (
+                    <div key={index} className="h-[240px] animate-pulse rounded-2xl border border-white/5 bg-[#151b2d]" />
+                  ))
+                : recommendedModels.map((model) => {
+                    const provider = normalizeProvider(model.provider || "");
+                    const badges = modelOutputBadges(model.outputModalities || []);
+                    return (
+                      <Link
+                        key={model.id}
+                        href={buildPlaygroundHref(model.id)}
+                        className="group relative flex flex-col overflow-hidden rounded-2xl border border-[#adc6ff]/15 bg-[#151b2d] p-6 transition-all hover:border-[#adc6ff]/40 hover:bg-[#191f31]"
+                      >
+                        <div className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-[#4d8eff]/10 blur-[80px] transition-opacity duration-500 group-hover:opacity-70" />
+                        <div className="relative z-10 flex flex-1 flex-col">
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#4d8eff]/15 text-[#adc6ff]">
+                              <span className="material-symbols-outlined text-2xl" style={{ fontVariationSettings: "'FILL' 1" }}>
+                                {getProviderIcon(provider)}
+                              </span>
+                            </div>
+                            <div className="min-w-0">
+                              <h4 className="truncate font-headline text-lg font-bold text-blue-100 transition-colors group-hover:text-[#adc6ff]">
+                                {model.displayName || model.id}
+                              </h4>
+                              <span className="text-[10px] font-bold uppercase tracking-widest text-[#8c909f]">{provider}</span>
+                            </div>
+                          </div>
+
+                          <p className="mt-4 flex-1 text-sm leading-6 text-[#c2c6d6] line-clamp-2">
+                            {model.description || "Available in the Playground."}
+                          </p>
+
+                          {(badges.length > 0 || model.supportsImageInput) && (
+                            <div className="mt-4 flex flex-wrap gap-1.5">
+                              {badges.map((badge) => (
+                                <span
+                                  key={badge}
+                                  className="rounded border border-white/5 bg-white/[0.03] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#aeb6c8]"
+                                >
+                                  {badge}
+                                </span>
+                              ))}
+                              {model.supportsImageInput && (
+                                <span className="rounded border border-white/5 bg-white/[0.03] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#aeb6c8]">
+                                  Image input
+                                </span>
+                              )}
+                            </div>
+                          )}
+
+                          <span className="mt-5 inline-flex items-center gap-1.5 text-sm font-bold text-[#adc6ff]">
+                            Open in Playground
+                            <span className="material-symbols-outlined text-[16px] transition-transform group-hover:translate-x-1">
+                              arrow_forward
+                            </span>
+                          </span>
+                        </div>
+                      </Link>
+                    );
+                  })}
+            </div>
           </div>
 
-          {featuredModel ? (
-            <div className="overflow-hidden rounded-xl border border-[#adc6ff]/20 bg-[#151b2d]">
-              <div className="space-y-5 p-5 sm:space-y-6 sm:p-8">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className="flex h-14 w-14 items-center justify-center rounded-lg bg-[#4d8eff]/20">
-                      <span className="material-symbols-outlined text-3xl text-[#adc6ff]" style={{ fontVariationSettings: "'FILL' 1" }}>
-                        temp_preferences_custom
-                      </span>
-                    </div>
-                    <div>
-                      <h4 className="font-headline text-lg font-bold text-blue-100 sm:text-xl">{featuredModel.name}</h4>
-                      <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
-                        <span className="flex items-center gap-1 text-[10px] font-bold uppercase text-[#c2c6d6]">
-                          <span className="h-1 w-1 rounded-full bg-[#adc6ff]" />
-                          {formatProviderName(featuredModel.provider)}
-                        </span>
-                        <span className="flex items-center gap-1 text-[10px] font-bold uppercase text-[#c2c6d6]">
-                          <span className="h-1 w-1 rounded-full bg-[#adc6ff]" />
-                          {featuredModel.modelId}
+          {/* Providers */}
+          <div className="space-y-5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <h3 className="font-headline text-xl font-bold tracking-tight sm:text-2xl">Providers</h3>
+                {playgroundModels.length > 0 && (
+                  <span className="rounded bg-[#adc6ff]/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-[#adc6ff]">
+                    {playgroundModels.length} models
+                  </span>
+                )}
+              </div>
+              {providerSummaries.length > 0 && (
+                <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-emerald-400">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                  All active
+                </span>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {providerSummaries.length === 0
+                ? Array.from({ length: 6 }).map((_, index) => (
+                    <div key={index} className="h-[92px] animate-pulse rounded-xl border border-white/5 bg-[#151b2d]" />
+                  ))
+                : providerSummaries.map((provider) => (
+                    <div
+                      key={provider.title}
+                      className="flex flex-col gap-2 rounded-xl border border-white/5 bg-[#070d1f] p-4"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#4d8eff]/10 text-[#adc6ff]">
+                          <span className="material-symbols-outlined text-[18px]" style={{ fontVariationSettings: "'FILL' 1" }}>
+                            {provider.icon}
+                          </span>
+                        </div>
+                        <span className="flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[8px] font-bold uppercase tracking-wider text-emerald-400">
+                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                          Active
                         </span>
                       </div>
+                      <div className="min-w-0">
+                        <h5 className="truncate text-sm font-bold text-blue-100">{provider.title}</h5>
+                        <p className="text-[10px] font-medium text-[#8c909f]">
+                          {provider.count} model{provider.count === 1 ? "" : "s"}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                </div>
-
-                <p className="max-w-2xl leading-relaxed text-[#dce1fb]">{featuredModel.description}</p>
-
-                <Link href="/studio/start" className="block w-full rounded-xl bg-[linear-gradient(135deg,#adc6ff_0%,#4d8eff_100%)] py-3 text-center font-bold text-[#002e6a] transition-opacity hover:opacity-90">
-                  Launch {featuredModel.name} Studio
-                </Link>
-              </div>
+                  ))}
             </div>
-          ) : null}
-
-          <div className="space-y-4">
-            {secondaryModels.map((model, index) => (
-              <Link
-                key={model.id}
-                href="/studio"
-                className="group flex items-center justify-between gap-3 rounded-xl border border-white/5 bg-[#070d1f] p-4 transition-colors hover:bg-[#151b2d] sm:p-5"
-              >
-                <div className="flex items-center gap-4">
-                  <div className={`flex h-10 w-10 items-center justify-center rounded ${index === 0 ? "bg-[#571bc1]/20 text-[#d0bcff]" : "bg-[#8392a6]/20 text-[#b9c8de]"}`}>
-                    <span className="material-symbols-outlined">{index === 0 ? "brush" : "high_quality"}</span>
-                  </div>
-                  <div className="min-w-0">
-                    <h5 className="font-bold text-blue-100">{model.name}</h5>
-                    <p className="line-clamp-2 text-xs text-[#c2c6d6]">{model.description}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-6">
-                  <span className="material-symbols-outlined text-slate-600 transition-colors group-hover:text-[#adc6ff]">arrow_forward_ios</span>
-                </div>
-              </Link>
-            ))}
           </div>
         </section>
 
@@ -569,38 +733,25 @@ export default function DashboardPage() {
             </div>
           </section>
 
-          <section className="space-y-6">
+          <section className="space-y-4">
             <h3 className="font-headline text-xl font-bold tracking-tight sm:text-2xl">System Updates</h3>
-            <div className="space-y-6">
-              <div className="relative overflow-hidden rounded-xl border border-white/5 bg-[#191f31] p-6">
-                <div className="absolute right-0 top-0 p-2">
-                  <span className="flex h-2 w-2">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#adc6ff] opacity-75" />
-                    <span className="relative inline-flex h-2 w-2 rounded-full bg-[#adc6ff]" />
-                  </span>
-                </div>
-                <span className="text-[10px] font-bold uppercase tracking-widest text-[#adc6ff]">Maintenance</span>
-                <h4 className="mt-3 font-bold text-blue-100">V4 Engine Migration</h4>
-                <p className="mt-2 text-xs leading-relaxed text-[#c2c6d6]">
-                  We&apos;re upgrading our underlying inference engine. Expect 2x faster generations and cleaner model routing after the rollout.
-                </p>
+            <div className="relative overflow-hidden rounded-xl border border-emerald-500/15 bg-[#191f31] p-6">
+              <div className="absolute right-0 top-0 p-3">
+                <span className="flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
+                </span>
               </div>
-
-              <div className="space-y-4">
-                {systemCards.map((item) => (
-                  <div key={item.title} className={`group flex cursor-pointer gap-4 ${item.isActive ? "opacity-100" : "opacity-60 grayscale hover:grayscale-0"}`}>
-                    <div className="h-16 w-16 shrink-0 overflow-hidden rounded-lg border border-white/10 bg-[#151b2d] grayscale transition-all group-hover:grayscale-0">
-                      <div className={`flex h-full w-full items-center justify-center ${item.isActive ? "text-[#adc6ff]" : "text-slate-500"}`}>
-                        <span className="material-symbols-outlined">{item.icon}</span>
-                      </div>
-                    </div>
-                    <div>
-                      <h5 className="text-sm font-bold text-blue-100 transition-colors group-hover:text-[#adc6ff]">{item.title}</h5>
-                      <p className={`mt-1 text-[10px] font-bold uppercase ${item.isActive ? "text-emerald-400" : "text-red-400"}`}>{item.subtitle}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-400">Status</span>
+              <h4 className="mt-3 flex items-center gap-2 font-bold text-blue-100">
+                <span className="material-symbols-outlined text-[20px] text-emerald-400" style={{ fontVariationSettings: "'FILL' 1" }}>
+                  check_circle
+                </span>
+                All systems operational
+              </h4>
+              <p className="mt-2 text-xs leading-relaxed text-[#c2c6d6]">
+                All providers are online and available. No incidents reported.
+              </p>
             </div>
           </section>
         </aside>

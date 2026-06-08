@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../services/api";
 import type { ModelCatalogEntry, PlainChatModelItem, SystemConfig } from "../../types";
+import BuyCodesButton from "../../components/BuyCodesButton";
 
 /* ── Types ── */
 
@@ -246,6 +247,9 @@ export default function PricingPage() {
           <p className="text-[#94a3b8] text-sm sm:text-lg sm:leading-relaxed">
             Transparent, usage-based pricing. Pay only for the tokens you compute and the images you generate.
           </p>
+          <div className="mt-8 flex justify-center">
+            <BuyCodesButton className="inline-flex items-center gap-2 rounded-full bg-[#3b82f6] px-7 py-3 text-sm font-semibold text-white shadow-[0_0_30px_rgba(59,130,246,0.4)] transition-all duration-300 hover:scale-105 hover:shadow-[0_0_40px_rgba(59,130,246,0.6)] active:scale-95" />
+          </div>
         </header>
 
         {/* Filters */}
