@@ -22,13 +22,15 @@ jobs:
     - name: Deploy to Production
       if: github.ref == 'refs/heads/main'
       env:
-        SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
+        SSH_KEY_B64: ${{ secrets.PROD_SSH_KEY }}
         HOST: ${{ secrets.PROD_VPS_IP }}
       run: |
-        if [ -z "$SSH_KEY" ]; then echo "❌ FATAL: PROD_SSH_KEY is empty. Did you add it to GitHub Secrets?"; exit 1; fi
-        if [ -z "$HOST" ]; then echo "❌ FATAL: PROD_VPS_IP is empty. Did you add it to GitHub Secrets?"; exit 1; fi
-        echo "$SSH_KEY" > ~/.ssh/id_rsa
+        if [ -z "$SSH_KEY_B64" ]; then echo "::error::PROD_SSH_KEY is empty. Add the base64 of the key to GitHub Secrets."; exit 1; fi
+        if [ -z "$HOST" ]; then echo "::error::PROD_VPS_IP is empty."; exit 1; fi
+        echo "$SSH_KEY_B64" | base64 -d > ~/.ssh/id_rsa
         chmod 600 ~/.ssh/id_rsa
+        # Fail fast with a clear message if the secret was stored wrong:
+        ssh-keygen -y -f ~/.ssh/id_rsa > /dev/null || { echo "::error::Decoded key is not a valid private key. Re-create PROD_SSH_KEY as: base64 -w0 ~/.ssh/google_compute_engine"; exit 1; }
         echo "Connecting to Production Server ($HOST)..."
         ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -o PubkeyAcceptedKeyTypes=+ssh-rsa ouni@$HOST << 'REMOTE'
           set -e
@@ -52,13 +54,14 @@ jobs:
     - name: Deploy to Staging
       if: github.ref == 'refs/heads/staging'
       env:
-        SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+        SSH_KEY_B64: ${{ secrets.STAGING_SSH_KEY }}
         HOST: ${{ secrets.STAGING_VPS_IP }}
       run: |
-        if [ -z "$SSH_KEY" ]; then echo "❌ FATAL: STAGING_SSH_KEY is empty. Did you add it to GitHub Secrets?"; exit 1; fi
-        if [ -z "$HOST" ]; then echo "❌ FATAL: STAGING_VPS_IP is empty. Did you add it to GitHub Secrets?"; exit 1; fi
-        echo "$SSH_KEY" > ~/.ssh/id_rsa
+        if [ -z "$SSH_KEY_B64" ]; then echo "::error::STAGING_SSH_KEY is empty. Add the base64 of the key to GitHub Secrets."; exit 1; fi
+        if [ -z "$HOST" ]; then echo "::error::STAGING_VPS_IP is empty."; exit 1; fi
+        echo "$SSH_KEY_B64" | base64 -d > ~/.ssh/id_rsa
         chmod 600 ~/.ssh/id_rsa
+        ssh-keygen -y -f ~/.ssh/id_rsa > /dev/null || { echo "::error::Decoded key is not a valid private key. Re-create STAGING_SSH_KEY as: base64 -w0 ~/.ssh/staging_vps_key"; exit 1; }
         echo "Connecting to Staging Server ($HOST)..."
         ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -o PubkeyAcceptedKeyTypes=+ssh-rsa ouni@$HOST << 'REMOTE'
           set -e
