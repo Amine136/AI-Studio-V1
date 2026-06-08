@@ -25,9 +25,12 @@ jobs:
         SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
         HOST: ${{ secrets.PROD_VPS_IP }}
       run: |
+        if [ -z "$SSH_KEY" ]; then echo "❌ FATAL: PROD_SSH_KEY is empty. Did you add it to GitHub Secrets?"; exit 1; fi
+        if [ -z "$HOST" ]; then echo "❌ FATAL: PROD_VPS_IP is empty. Did you add it to GitHub Secrets?"; exit 1; fi
         echo "$SSH_KEY" > ~/.ssh/id_rsa
         chmod 600 ~/.ssh/id_rsa
-        ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ouni@$HOST << 'REMOTE'
+        echo "Connecting to Production Server ($HOST)..."
+        ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -o PubkeyAcceptedKeyTypes=+ssh-rsa ouni@$HOST << 'REMOTE'
           set -e
           cd /home/ouni/vibecraft
           PREVIOUS_COMMIT=$(git rev-parse HEAD)
@@ -52,9 +55,12 @@ jobs:
         SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
         HOST: ${{ secrets.STAGING_VPS_IP }}
       run: |
+        if [ -z "$SSH_KEY" ]; then echo "❌ FATAL: STAGING_SSH_KEY is empty. Did you add it to GitHub Secrets?"; exit 1; fi
+        if [ -z "$HOST" ]; then echo "❌ FATAL: STAGING_VPS_IP is empty. Did you add it to GitHub Secrets?"; exit 1; fi
         echo "$SSH_KEY" > ~/.ssh/id_rsa
         chmod 600 ~/.ssh/id_rsa
-        ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ouni@$HOST << 'REMOTE'
+        echo "Connecting to Staging Server ($HOST)..."
+        ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no -o PubkeyAcceptedKeyTypes=+ssh-rsa ouni@$HOST << 'REMOTE'
           set -e
           cd /home/ouni/AI-Studio-V1-staging
           PREVIOUS_COMMIT=$(git rev-parse HEAD)
