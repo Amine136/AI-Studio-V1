@@ -14,15 +14,21 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
+    - name: Setup SSH
+      run: |
+        mkdir -p ~/.ssh
+        chmod 700 ~/.ssh
+
     - name: Deploy to Production
       if: github.ref == 'refs/heads/main'
-      uses: appleboy/ssh-action@v1.0.3
-      with:
-        host: ${{ secrets.PROD_VPS_IP }}
-        username: ouni
-        key: ${{ secrets.PROD_SSH_KEY }}
-        port: 22
-        script: |
+      env:
+        SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
+        HOST: ${{ secrets.PROD_VPS_IP }}
+      run: |
+        echo "$SSH_KEY" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+        ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ouni@$HOST << 'REMOTE'
+          set -e
           cd /home/ouni/vibecraft
           PREVIOUS_COMMIT=$(git rev-parse HEAD)
           echo "Previous commit was: $PREVIOUS_COMMIT"
@@ -38,16 +44,18 @@ jobs:
           pm2 restart vibecraft-frontend || pm2 start npm --name "vibecraft-frontend" -- run start
           cd ../backend
           pm2 restart vibecraft-backend || true
+        REMOTE
 
     - name: Deploy to Staging
       if: github.ref == 'refs/heads/staging'
-      uses: appleboy/ssh-action@v1.0.3
-      with:
-        host: ${{ secrets.STAGING_VPS_IP }}
-        username: ouni
-        key: ${{ secrets.STAGING_SSH_KEY }}
-        port: 22
-        script: |
+      env:
+        SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+        HOST: ${{ secrets.STAGING_VPS_IP }}
+      run: |
+        echo "$SSH_KEY" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+        ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ouni@$HOST << 'REMOTE'
+          set -e
           cd /home/ouni/AI-Studio-V1-staging
           PREVIOUS_COMMIT=$(git rev-parse HEAD)
           echo "Previous commit was: $PREVIOUS_COMMIT"
@@ -63,3 +71,4 @@ jobs:
           pm2 restart ai-studio-frontend || pm2 start npm --name "ai-studio-frontend" -- run start
           cd ../backend
           pm2 restart ai-studio-backend || true
+        REMOTE
