@@ -1,42 +1,52 @@
-# 🚀 NovaNode AI Studio
+# 🚀 Vibecraft
 
-A premium, AI-powered creative studio for generating high-engagement social media content. **NovaNode AI Studio** uses advanced LLMs and image generation models to transform simple ideas into polished assets with a professional workflow.
-*
+A premium, AI-powered creative studio for generating high-engagement social media content and stunning imagery. **Vibecraft** uses advanced LLMs and image generation models to transform simple ideas into polished assets with a professional workflow.
 
 ## ✨ Key Features
 
-- **3-Step Intelligent Workflow**: 
+- **Intelligent Workflow**: 
   1. **Analyze**: AI extracts intent, platform, and artistic settings from your idea.
   2. **Review**: Fine-tune obligatory settings and explore hidden AI suggestions.
   3. **Generate**: Production-ready captions and images delivered in seconds.
-- **Premium UI/UX**: Modern dark-themed design with Glassmorphism, smooth micro-animations, and a responsive layout.
-- **Hidden Params System**: Backend-only AI summarization and language detection for higher-quality generation prompts.
-- **Multi-Model Support**: Easily switch between Google Gemini, OpenAI, and OpenRouter providers.
-- **Privacy First**: Raw user ideas are summarized and optimized locally on the backend before being sent to generation APIs.
+- **Premium UI/UX**: Modern dark-themed design with Glassmorphism, smooth micro-animations, HSL-tailored colors, and a highly responsive layout.
+- **Credit & Authentication System**: Google OAuth integration via Firebase, with secure credit packages and Meta Pixel/Google Analytics 4 tracking.
+- **Multi-Model Support**: Easily switch between Google Gemini, OpenAI, Anthropic, Mistral, and Groq providers via the robust Admin Panel.
+- **Automated CI/CD**: Full GitHub Actions pipeline for zero-downtime deployments to both Staging and Production VPS environments.
 
 ## 🛠️ Tech Stack
 
 - **Frontend**: Next.js 16, React 19, Tailwind CSS 4, Axios.
 - **Backend**: FastAPI, LangGraph for orchestration, Pydantic for schema enforcement.
-- **AI Providers**: Google (Gemini), OpenAI (DALL-E), OpenRouter.
+- **Database / Auth**: PostgreSQL (Local VPS), Firebase Authentication.
+- **Deployment**: Google Compute Engine, PM2, GitHub Actions.
 
-## 🚀 Getting Started
+## 🚀 Environment Architecture
+
+Vibecraft operates on a strict staging-first validation flow.
+
+- **Staging Environment**: `testvibecraft.ouni.space`
+- **Production Environment**: `vibecraft.ouni.space`
+- **Admin Panel**: `adminvibecraft.ouni.space`
+
+The **ApiKeyManager** service runs independently, syncing catalog availability across staging and production via secure webhooks.
+
+## 💻 Getting Started
 
 ### Prerequisites
 - Python 3.10+
 - Node.js 20+
-- API Keys for Google/OpenAI/OpenRouter
+- Environment variables configured (Postgres, Firebase, API Keys)
 
 ### Backend Setup
 1. Navigate to `backend/`.
-2. Create a `.env` file with your API keys.
+2. Create a `.env` file with your credentials.
 3. Install dependencies: `pip install -r requirements.txt`.
-4. Run the server: `python main.py` (Default: `http://127.0.0.1:8000`).
+4. Run the server: `python main.py`
 
 ### Frontend Setup
 1. Navigate to `frontend/`.
 2. Install dependencies: `npm install`.
-3. Run the development server: `npm run dev` (Default: `http://127.0.0.1:3000`).
+3. Run the development server: `npm run dev`
 
 ## 📁 Repository Structure
 
@@ -51,13 +61,8 @@ A premium, AI-powered creative studio for generating high-engagement social medi
 │   ├── src/
 │   │   ├── app/            # App router, layout and styles
 │   │   ├── components/     # Reusable UI components
-│   │   └── services/       # API client
+│   │   └── lib/            # Utilities and external link handling
 ```
 
-## 📚 Policy Docs
-
-- [Platform Policy](docs/platform-policy.md)
-- [MVP Rules](docs/mvp-rules.md)
-
 ## 📜 License
-© 2026 NovaNode. All rights reserved.
+© 2026 Vibecraft. All rights reserved.
