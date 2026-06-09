@@ -9,6 +9,7 @@ import { isRenderableImageUrl } from "../../../components/AuthenticatedImage";
 import { ColorPickerPopover } from "../../../components/ColorPickerPopover";
 import { api } from "../../../services/api";
 import { addHistoryEntry } from "../../../lib/history";
+import { getUploadConstraints, maxInputImagesForModelId, preferredOutputType, providerLabelForModelId, readImageDimensions, type UploadImageConstraints } from "../../../lib/imageInputConstraints";
 import type { BillingBreakdown, BillingUsage, ModelPricingSummary, PlainChatModelItem, PlainChatParameterSchemaEntry, PlainChatPart, PlainChatTurnMeta, UploadedImageResult } from "../../../types";
 
 type ChatRole = "user" | "assistant";
@@ -53,9 +54,8 @@ interface ProviderGroup {
 
 const STORAGE_KEY = "studio-simple-chat-v2";
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
-const MAX_INPUT_IMAGES = 4;
-// Grok image-editing models accept at most 3 source images (xAI edit-endpoint limit).
-const MAX_GROK_EDIT_INPUT_IMAGES = 3;
+// Per-model image limits (count / min dimension / formats) live in
+// lib/imageInputConstraints.ts, mirroring the AKM gateway guardrail.
 const MAX_PROXY_IMAGE_DIMENSION = 768;
 const MAX_PROXY_IMAGE_BYTES = 120_000;
 const MAX_CHAT_TEXT_CHARS = 4000;
@@ -377,10 +377,7 @@ function isOneShotImageModel(model: ChatModelOption | null): boolean {
 }
 
 function maxInputImagesForModel(model: ChatModelOption | null): number {
-  if (model && model.id.toLowerCase().startsWith("grok") && model.supportsImageInput) {
-    return MAX_GROK_EDIT_INPUT_IMAGES;
-  }
-  return MAX_INPUT_IMAGES;
+  return maxInputImagesForModelId(model?.id);
 }
 
 function getModelFeatureLabels(model: ChatModelOption): string[] {
@@ -685,11 +682,18 @@ function canvasToBlob(canvas: HTMLCanvasElement, mimeType: string, quality?: num
   });
 }
 
-async function normalizeUploadImage(file: File): Promise<File> {
+async function normalizeUploadImage(file: File, constraints: UploadImageConstraints): Promise<File> {
   const objectUrl = URL.createObjectURL(file);
   try {
     const image = await loadImageFromUrl(objectUrl);
-    const scale = Math.min(1, MAX_PROXY_IMAGE_DIMENSION / Math.max(image.width, image.height));
+    const longest = Math.max(image.width, image.height);
+    const shortest = Math.min(image.width, image.height);
+    // Downscale to keep payloads small, but never shrink the shortest side below
+    // the provider's minimum (originals already under it are rejected upstream).
+    let scale = Math.min(1, MAX_PROXY_IMAGE_DIMENSION / longest);
+    if (shortest * scale < constraints.minDim) {
+      scale = constraints.minDim / shortest;
+    }
     const width = Math.max(1, Math.round(image.width * scale));
     const height = Math.max(1, Math.round(image.height * scale));
 
@@ -701,10 +705,11 @@ async function normalizeUploadImage(file: File): Promise<File> {
     if (!context) return file;
     context.drawImage(image, 0, 0, width, height);
 
-    const shouldReencode = scale < 1 || file.size > MAX_PROXY_IMAGE_BYTES || file.type === "image/png";
+    // Re-encode into a format the provider accepts (e.g. PNG/WebP -> JPEG for Recraft).
+    const outputType = preferredOutputType(file.type, constraints.formats);
+    const shouldReencode = scale !== 1 || file.size > MAX_PROXY_IMAGE_BYTES || file.type !== outputType;
     if (!shouldReencode) return file;
 
-    const outputType = file.type === "image/png" ? "image/webp" : file.type;
     let quality = outputType === "image/webp" ? 0.86 : 0.82;
     let blob = await canvasToBlob(canvas, outputType, quality);
 
@@ -713,9 +718,10 @@ async function normalizeUploadImage(file: File): Promise<File> {
       blob = await canvasToBlob(canvas, outputType, quality);
     }
 
-    if (blob.size >= file.size && file.size <= MAX_PROXY_IMAGE_BYTES) return file;
+    if (blob.size >= file.size && file.size <= MAX_PROXY_IMAGE_BYTES && file.type === outputType) return file;
 
-    const nextName = file.name.replace(/\.(png|jpg|jpeg|webp)$/i, outputType === "image/webp" ? ".webp" : "$&");
+    const extension = outputType === "image/webp" ? ".webp" : ".jpg";
+    const nextName = file.name.replace(/\.(png|jpg|jpeg|webp)$/i, extension);
     return new File([blob], nextName, { type: outputType });
   } finally {
     URL.revokeObjectURL(objectUrl);
@@ -1255,12 +1261,18 @@ export default function StudioChatPage() {
       if (selectedFiles.length <= slotsAvailable) {
         setError(null);
       }
+      const constraints = getUploadConstraints(lockedModel?.id);
+      const providerLabel = providerLabelForModelId(lockedModel?.id);
       for (const originalFile of filesToUpload) {
         if (!["image/png", "image/jpeg", "image/webp"].includes(originalFile.type)) {
           throw new Error("Only PNG, JPEG, and WEBP images are supported.");
         }
         if (originalFile.size > MAX_UPLOAD_BYTES) {
           throw new Error("Each image must be 10 MB or smaller.");
+        }
+        const { width, height } = await readImageDimensions(originalFile);
+        if (Math.min(width, height) < constraints.minDim) {
+          throw new Error(`${providerLabel} needs images at least ${constraints.minDim}px on the shortest side — "${originalFile.name}" is ${width}×${height}px.`);
         }
       }
       const pendingImages: UploadedImageState[] = filesToUpload.map((originalFile) => ({
@@ -1276,7 +1288,7 @@ export default function StudioChatPage() {
 
       const nextImages: UploadedImageState[] = [];
       for (const originalFile of filesToUpload) {
-        const file = await normalizeUploadImage(originalFile);
+        const file = await normalizeUploadImage(originalFile, constraints);
         const uploaded: UploadedImageResult = await api.uploadInputImage(file);
         const pendingImage = pendingImages[nextImages.length];
         URL.revokeObjectURL(pendingImage.previewUrl);
