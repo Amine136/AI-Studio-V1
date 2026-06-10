@@ -32,16 +32,22 @@ export default function BuyCodesButton({
     </>
   );
 
+  const handleTrack = () => {
+    if (typeof window !== "undefined" && window.fbq) {
+      window.fbq("trackCustom", "ClickPurchase");
+    }
+  };
+
   if (PAYMENT_LINK_IS_EXTERNAL) {
     return (
-      <a href={PAYMENT_LINK} target="_blank" rel="noopener noreferrer" className={className}>
+      <a href={PAYMENT_LINK} target="_blank" rel="noopener noreferrer" className={className} onClick={handleTrack}>
         {content}
       </a>
     );
   }
 
   return (
-    <Link href={PAYMENT_LINK} className={className}>
+    <Link href={PAYMENT_LINK} className={className} onClick={handleTrack}>
       {content}
     </Link>
   );

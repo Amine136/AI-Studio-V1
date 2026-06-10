@@ -86,7 +86,24 @@ export default function AuthPage() {
       .getProfile()
       .then(() => {
         if (cancelled) return;
-        router.replace("/dashboard");
+        // Honor a safe internal ?next= (e.g. /credits?code=VC-...) so users who
+        // arrived via a deep link land back there after logging in; default to dashboard.
+        // Resolve against our own origin so open-redirect payloads are rejected
+        // (//evil.com, /\evil.com, https://evil.com, javascript:...).
+        const rawNext = new URLSearchParams(window.location.search).get("next");
+        let safeNext = "/dashboard";
+        if (rawNext) {
+          try {
+            const url = new URL(rawNext, window.location.origin);
+            const path = `${url.pathname}${url.search}`;
+            if (url.origin === window.location.origin && !path.startsWith("/auth")) {
+              safeNext = path;
+            }
+          } catch {
+            /* malformed next — fall back to dashboard */
+          }
+        }
+        router.replace(safeNext);
       })
       .catch(async (err: unknown) => {
         if (cancelled) return;

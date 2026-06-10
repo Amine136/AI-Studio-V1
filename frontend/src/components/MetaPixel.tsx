@@ -20,6 +20,14 @@ export default function MetaPixel() {
     if (typeof window !== "undefined" && window.fbq) {
       // Fire PageView on every route change
       window.fbq("track", "PageView");
+
+      if (pathname === "/credits") {
+        window.fbq("trackCustom", "ViewCredits");
+      } else if (pathname === "/pricing") {
+        window.fbq("trackCustom", "ViewPricing");
+      } else if (pathname?.startsWith("/studio")) {
+        window.fbq("trackCustom", "EnterStudio");
+      }
     }
   }, [pathname, searchParams]);
 

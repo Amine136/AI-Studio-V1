@@ -39,7 +39,14 @@ export default function RequireActiveUser({ children }: { children: ReactNode })
           sessionStorage.removeItem("signingOut");
           router.replace("/auth");
         } else {
-          router.replace(`/auth?reason=unauthorized&next=${encodeURIComponent(pathname || "/dashboard")}`);
+          // Preserve the full path AND query string (e.g. /credits?code=VC-...) so the
+          // user lands back on the exact deep link after logging in. usePathname()
+          // drops the query, so read it from window.location.
+          const target =
+            typeof window !== "undefined"
+              ? `${window.location.pathname}${window.location.search}`
+              : pathname || "/dashboard";
+          router.replace(`/auth?reason=unauthorized&next=${encodeURIComponent(target)}`);
         }
         return;
       }
