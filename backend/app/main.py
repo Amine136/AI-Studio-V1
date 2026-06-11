@@ -61,6 +61,7 @@ from app.services.security_backend import (
     get_chat_conversation,
     get_chat_messages,
     get_history,
+    count_history,
     get_credit_breakdown,
     get_profile_change_status,
     get_user,
@@ -1279,8 +1280,9 @@ def get_dashboard_news(request: Request):
 @app.get("/history", tags=["Configuration"], summary="Get User History")
 @limiter.limit("30/minute")
 def get_user_history(request: Request, limit: int = 20, user: Dict[str, Any] = Depends(verify_firebase_user)):
-    capped_limit = min(max(limit, 1), 100)
-    return {"entries": get_history(user["uid"], capped_limit)}
+    capped_limit = min(max(limit, 1), 150)
+    uid = user["uid"]
+    return {"entries": get_history(uid, capped_limit), "total": count_history(uid)}
 
 
 @app.get("/credits/ledger", response_model=CreditLedgerListResponse, tags=["Configuration"], summary="Get User Credit Ledger")

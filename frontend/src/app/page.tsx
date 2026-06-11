@@ -21,17 +21,17 @@ const showcaseModels = [
     alt: "Photoreal model showcase image",
   },
   {
-    title: "NanoBanana 2",
+    title: "Grok Imagine Quality",
     badge: "Versatile",
     badgeClass: "bg-[#8392a6]/90 text-[#1c2b3c]",
-    image: "/landing/model-nanobanana-2-dark.png",
+    image: "/landing/model-grok-imagine-quality-dark.png",
     alt: "Versatile model showcase image",
   },
   {
-    title: "Gemini 3 Flash",
+    title: "GPT Image 2",
     badge: "Studio",
     badgeClass: "bg-[#424754]/90 text-white",
-    image: "/landing/model-gemini-3-flash-dark.png",
+    image: "/landing/model-gpt-image-2-dark.png",
     alt: "Studio model showcase image",
   },
 ];
@@ -458,7 +458,7 @@ export default function LandingPage() {
           <div className="flex flex-col items-center gap-2 md:items-start">
             <div className="font-headline text-lg font-bold text-blue-100">Vibecraft</div>
             <p className="text-center font-body text-xs uppercase tracking-widest text-slate-500 md:text-left">
-              © 2026 Vibecraft AI Studio. Engineered for the digital architect.
+              &copy; {new Date().getFullYear()} Vibecraft AI Studio. All rights reserved.
             </p>
           </div>
           <div className="flex flex-wrap justify-center gap-x-6 gap-y-4 md:gap-12">

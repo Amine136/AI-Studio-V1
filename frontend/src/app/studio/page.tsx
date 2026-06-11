@@ -6,13 +6,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../services/api";
 import type { PlainChatConversationItem, PlainChatModelItem } from "../../types";
-import { getProfile } from "../../lib/credits";
-import { getHistory, type HistoryEntry } from "../../lib/history";
 
-function isRenderableImageUrl(value?: string): boolean {
-  if (!value) return false;
-  return value.startsWith("http://") || value.startsWith("https://") || value.startsWith("/");
-}
+// Playground History pagination. Show 10 at a time and let the user reveal more
+// in batches of 10, capped at 70 for now (revisit once we settle on a final
+// user-data retention / max-history policy).
+const HISTORY_PAGE_SIZE = 10;
+const HISTORY_MAX = 70;
 
 function formatHistoryDate(value: Date): string {
   return new Intl.DateTimeFormat("en-US", {
@@ -26,38 +25,30 @@ function formatHistoryDate(value: Date): string {
 export default function StudioHomePage() {
   const router = useRouter();
   const { user } = useAuth();
-  const [credits, setCredits] = useState<number | null>(null);
-  const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [conversations, setConversations] = useState<PlainChatConversationItem[]>([]);
   const [plainChatModels, setPlainChatModels] = useState<PlainChatModelItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedConversationIds, setExpandedConversationIds] = useState<string[]>([]);
+  const [visibleCount, setVisibleCount] = useState(HISTORY_PAGE_SIZE);
 
   useEffect(() => {
     if (!user) return;
-    const uid = user.uid;
 
     let cancelled = false;
 
     async function loadStudioHome() {
       try {
-        const [profile, entries, conversationResponse, plainChatResponse] = await Promise.all([
-          getProfile(),
-          getHistory(uid, 8),
-          api.getPlainChatConversations(20),
+        const [conversationResponse, plainChatResponse] = await Promise.all([
+          api.getPlainChatConversations(HISTORY_MAX),
           api.getPlainChatModels(),
         ]);
 
         if (!cancelled) {
-          setCredits(profile.credits ?? 0);
-          setHistory(entries);
           setConversations(conversationResponse.conversations ?? []);
           setPlainChatModels(Array.isArray(plainChatResponse.models) ? plainChatResponse.models : []);
         }
       } catch {
         if (!cancelled) {
-          setCredits(null);
-          setHistory([]);
           setConversations([]);
           setPlainChatModels([]);
         }
@@ -75,7 +66,12 @@ export default function StudioHomePage() {
     };
   }, [user]);
 
-  const recentConversations = useMemo(() => conversations.slice(0, 20), [conversations]);
+  const cappedConversations = useMemo(() => conversations.slice(0, HISTORY_MAX), [conversations]);
+  const recentConversations = useMemo(
+    () => cappedConversations.slice(0, visibleCount),
+    [cappedConversations, visibleCount],
+  );
+  const canLoadMore = !loading && visibleCount < cappedConversations.length;
   const plainChatModelLookup = useMemo(() => {
     const lookup = new Map<string, string>();
     for (const model of plainChatModels) {
@@ -85,8 +81,6 @@ export default function StudioHomePage() {
     }
     return lookup;
   }, [plainChatModels]);
-  const imageCount = useMemo(() => history.filter((entry) => isRenderableImageUrl(entry.imageUrl)).length, [history]);
-  const captionCount = useMemo(() => history.filter((entry) => Boolean(entry.caption?.trim())).length, [history]);
 
   async function handleDeleteConversation(conversationId: string) {
     if (typeof window !== "undefined" && !window.confirm("Delete this conversation? This action cannot be undone.")) {
@@ -103,79 +97,115 @@ export default function StudioHomePage() {
 
   return (
     <section className="min-h-[calc(100vh-4rem)] px-4 py-8 sm:px-6 lg:px-10">
-      <div className="mx-auto max-w-[1500px] space-y-6 sm:space-y-8">
-        <section className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-          <div className="rounded-2xl border border-white/8 bg-[linear-gradient(135deg,rgba(21,27,45,0.96),rgba(12,19,36,0.94))] p-5 shadow-[0_30px_80px_-30px_rgba(0,0,0,0.6)] sm:p-8">
-            <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-[#adc6ff]/20 bg-[#adc6ff]/10 px-4 py-2 text-[10px] font-bold uppercase tracking-[0.22em] text-[#adc6ff]">
-              Studio Home
-            </div>
-            <h1 className="font-headline text-3xl font-bold tracking-tight text-white sm:text-4xl lg:text-5xl">
-              Ignite Your Creative Vision
-            </h1>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-[#c2c6d6] sm:mt-4 sm:text-base sm:leading-7 lg:text-lg">
-              Welcome to your creative command center
-            </p>
+      <div className="mx-auto max-w-[1400px] space-y-12">
+        <div className="max-w-3xl">
+          <h1 className="font-headline text-3xl font-bold tracking-tight text-white sm:text-4xl lg:text-5xl">
+            Choose how you want to work.
+          </h1>
+          <p className="mt-4 text-sm leading-6 text-[#c2c6d6] sm:text-base sm:leading-7 lg:text-lg">
+            Pick the faster conversational path for lightweight back-and-forth, or enter the guided smart workflow for precise content creation.
+          </p>
+        </div>
 
-            <div className="mt-6 flex flex-col gap-3 sm:mt-8 sm:flex-row sm:gap-4">
-              <Link
-                href="/studio/start"
-                className="inline-flex items-center justify-center gap-3 rounded-xl bg-gradient-to-r from-[#adc6ff] to-[#4d8eff] px-6 py-3.5 font-headline text-base font-bold text-[#00285d] shadow-[0_20px_40px_-20px_rgba(77,142,255,0.5)] transition-all hover:brightness-110 sm:px-8 sm:py-4"
-              >
-                <span className="material-symbols-outlined text-xl">add_circle</span>
-                Start Generation
-              </Link>
-              <Link
-                href="/gallery"
-                className="inline-flex items-center justify-center gap-3 rounded-xl border border-white/10 bg-[#191f31] px-6 py-3.5 text-base font-semibold text-white transition-colors hover:bg-[#23293c] sm:px-8 sm:py-4"
-              >
-                <span className="material-symbols-outlined text-xl">photo_library</span>
-                Open Gallery
-              </Link>
-            </div>
-          </div>
-
-          <div className="grid gap-6 sm:grid-cols-2 sm:items-start lg:grid-cols-1">
-            <div className="self-start rounded-2xl border border-white/8 bg-[#151b2d] p-5 sm:p-6">
-              <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#adc6ff]">Current Credits</div>
-              <div className="mt-3 font-headline text-4xl font-bold text-white sm:mt-4 sm:text-5xl">
-                {credits === null ? "..." : credits.toFixed(2)}
+        {/* Playground — the fast path */}
+        <div>
+          <Link
+            href="/studio/chat?new=1"
+            className="group flex flex-col items-start justify-between rounded-3xl border border-[#adc6ff]/30 bg-[linear-gradient(135deg,rgba(77,142,255,0.08),rgba(21,27,45,0.94))] p-6 shadow-[0_30px_80px_-30px_rgba(0,0,0,0.6)] transition-all hover:-translate-y-1 hover:border-[#adc6ff]/50 sm:p-10 md:flex-row md:items-center"
+          >
+            <div className="flex flex-col items-start gap-6 md:flex-row md:items-center md:gap-8">
+              <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-[#adc6ff] text-[#00285d] shadow-[0_0_20px_rgba(173,198,255,0.3)]">
+                <span className="material-symbols-outlined text-4xl">chat</span>
+              </div>
+              <div>
+                <h2 className="font-headline text-2xl font-bold text-white sm:text-3xl">Playground</h2>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-[#c2c6d6] sm:text-base sm:leading-7">
+                  Best for lightweight prompting, iteration, and direct AI generation. This is the fast path for users who want to interact with individual models directly.
+                </p>
               </div>
             </div>
+            <div className="mt-8 inline-flex shrink-0 items-center gap-2 rounded-full bg-white/10 px-6 py-3 font-semibold text-white transition-all group-hover:bg-white/20 md:mt-0">
+              Open Playground
+              <span className="material-symbols-outlined text-base transition-transform group-hover:translate-x-1">arrow_forward</span>
+            </div>
+          </Link>
+        </div>
 
-            <div className="rounded-2xl border border-white/8 bg-[#151b2d] p-5 sm:p-6">
-              <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#adc6ff]">Usage Snapshot</div>
-              <div className="mt-4 grid grid-cols-2 gap-3 sm:mt-5 sm:gap-4">
-                <div className="rounded-xl bg-[#191f31] p-3 sm:p-4">
-                  <div className="text-2xl font-bold text-white sm:text-3xl">{history.length + conversations.length}</div>
-                  <div className="mt-1 text-xs uppercase tracking-widest text-[#c2c6d6]">Recent Items</div>
-                </div>
-                <div className="rounded-xl bg-[#191f31] p-3 sm:p-4">
-                  <div className="text-2xl font-bold text-white sm:text-3xl">{imageCount}</div>
-                  <div className="mt-1 text-xs uppercase tracking-widest text-[#c2c6d6]">Images</div>
-                </div>
-                <div className="rounded-xl bg-[#191f31] p-3 sm:p-4">
-                  <div className="text-2xl font-bold text-white sm:text-3xl">{captionCount}</div>
-                  <div className="mt-1 text-xs uppercase tracking-widest text-[#c2c6d6]">Captions</div>
-                </div>
-                  <div className="rounded-xl bg-[#191f31] p-3 sm:p-4">
-                  <div className="text-2xl font-bold text-white sm:text-3xl">{recentConversations.length > 0 ? "Live" : "-"}</div>
-                  <div className="mt-1 text-xs uppercase tracking-widest text-[#c2c6d6]">Studio State</div>
-                </div>
+        {/* Workflows */}
+        <div>
+          <h2 className="font-headline text-2xl font-bold tracking-tight text-white sm:text-3xl">
+            Workflows
+          </h2>
+          <p className="mt-2 text-sm text-[#8c909f]">
+            Guided, multi-step engines designed for specific tasks.
+          </p>
+
+          <div className="mt-8 grid gap-6 md:grid-cols-3">
+            {/* 1. Smart Content Creation */}
+            <Link
+              href="/studio/create"
+              className="group flex flex-col rounded-2xl border border-[#adc6ff]/20 bg-[linear-gradient(135deg,rgba(21,27,45,0.96),rgba(12,19,36,0.94))] p-6 shadow-lg transition-all hover:-translate-y-1 hover:border-[#adc6ff]/40"
+            >
+              <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-[#2e3447] text-[#adc6ff] transition-colors group-hover:bg-[#adc6ff] group-hover:text-[#00285d]">
+                <span className="material-symbols-outlined text-2xl" style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
               </div>
+              <h3 className="font-headline text-lg font-bold text-white">Smart Content</h3>
+              <p className="mt-2 flex-grow text-sm leading-6 text-[#c2c6d6]">
+                Review prompts, choose precise settings, and generate structured content with our guided creation workflow.
+              </p>
+              <div className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-[#adc6ff] transition-all group-hover:gap-3">
+                Open Workflow
+                <span className="material-symbols-outlined text-base">arrow_forward</span>
+              </div>
+
+              <div className="mt-6 border-t border-white/10 pt-4 flex items-center gap-3">
+                <div className="flex -space-x-2 shrink-0">
+                  <img className="inline-block h-6 w-6 rounded-full ring-2 ring-[#0f1422]" src="https://i.pravatar.cc/100?img=33" alt="" />
+                  <img className="inline-block h-6 w-6 rounded-full ring-2 ring-[#0f1422]" src="https://i.pravatar.cc/100?img=47" alt="" />
+                  <img className="inline-block h-6 w-6 rounded-full ring-2 ring-[#0f1422]" src="https://i.pravatar.cc/100?img=12" alt="" />
+                </div>
+                <p className="text-[11px] text-[#8c909f] leading-snug">Only <strong className="text-white">70 creators</strong> have unlocked this so far.</p>
+              </div>
+            </Link>
+
+            {/* 2. Coming Soon (e.g., Storyboard Generator) */}
+            <div className="flex cursor-not-allowed flex-col rounded-2xl border border-white/5 bg-white/5 p-6 opacity-60 grayscale transition-all hover:opacity-80">
+              <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-[#23293c] text-slate-400">
+                <span className="material-symbols-outlined text-2xl">view_timeline</span>
+              </div>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <h3 className="font-headline text-lg font-bold text-white truncate">Storyboard Studio</h3>
+                <span className="shrink-0 rounded bg-white/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-white/70">Coming Soon</span>
+              </div>
+              <p className="mt-2 flex-grow text-sm leading-6 text-slate-400">
+                A sequential engine that breaks scripts into scenes and generates stylistically consistent visual frames.
+              </p>
+            </div>
+
+            {/* 3. Coming Soon (e.g., Video Generation) */}
+            <div className="flex cursor-not-allowed flex-col rounded-2xl border border-white/5 bg-white/5 p-6 opacity-60 grayscale transition-all hover:opacity-80">
+              <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-[#23293c] text-slate-400">
+                <span className="material-symbols-outlined text-2xl">movie</span>
+              </div>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <h3 className="font-headline text-lg font-bold text-white truncate">Video Generation</h3>
+                <span className="shrink-0 rounded bg-white/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-white/70">Coming Soon</span>
+              </div>
+              <p className="mt-2 flex-grow text-sm leading-6 text-slate-400">
+                An orchestration engine for storyboard generation, asset creation, and final video rendering.
+              </p>
             </div>
           </div>
-        </section>
+        </div>
 
+        {/* Playground History */}
         <section>
           <div className="rounded-2xl border border-white/8 bg-[#151b2d]">
-            <div className="flex items-center justify-between gap-3 border-b border-white/8 px-5 py-4 sm:px-6 sm:py-5">
+            <div className="border-b border-white/8 px-5 py-4 sm:px-6 sm:py-5">
               <div>
                 <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#adc6ff]">Recent Usage</div>
                 <h2 className="mt-2 font-headline text-xl font-bold text-white sm:text-2xl">Playground History</h2>
               </div>
-              <Link href="/studio/chat" className="text-sm font-semibold text-[#adc6ff] transition-colors hover:text-white">
-                Open chat
-              </Link>
             </div>
 
             <div className="divide-y divide-white/6">
@@ -320,6 +350,19 @@ export default function StudioHomePage() {
                 <div className="px-5 py-8 text-sm text-[#8c909f] sm:px-6 sm:py-10">No recent playground conversations yet.</div>
               ) : null}
             </div>
+
+            {canLoadMore ? (
+              <div className="border-t border-white/8 px-5 py-4 text-center sm:px-6">
+                <button
+                  type="button"
+                  onClick={() => setVisibleCount((count) => Math.min(count + HISTORY_PAGE_SIZE, HISTORY_MAX))}
+                  className="inline-flex items-center gap-2 rounded-full border border-[#adc6ff]/30 bg-white/5 px-5 py-2.5 text-sm font-semibold text-[#adc6ff] transition-colors hover:border-[#adc6ff]/50 hover:bg-white/10 hover:text-white"
+                >
+                  Load more
+                  <span className="material-symbols-outlined text-base">expand_more</span>
+                </button>
+              </div>
+            ) : null}
           </div>
         </section>
       </div>

@@ -32,6 +32,7 @@ from app.services.postgres_security_store import (  # noqa: F401
     list_credit_ledger_entries,
     get_credit_code,
     get_history,
+    count_history,
     get_admin_generation_job,
     is_email_deactivated,
     get_profile_change_status,
