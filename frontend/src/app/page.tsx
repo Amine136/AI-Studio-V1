@@ -21,17 +21,17 @@ const showcaseModels = [
     alt: "Photoreal model showcase image",
   },
   {
-    title: "NanoBanana 2",
+    title: "Grok Imagine Quality",
     badge: "Versatile",
     badgeClass: "bg-[#8392a6]/90 text-[#1c2b3c]",
-    image: "/landing/model-nanobanana-2-dark.png",
+    image: "/landing/model-grok-imagine-quality-dark.png",
     alt: "Versatile model showcase image",
   },
   {
-    title: "Gemini 3 Flash",
+    title: "GPT Image 2",
     badge: "Studio",
     badgeClass: "bg-[#424754]/90 text-white",
-    image: "/landing/model-gemini-3-flash-dark.png",
+    image: "/landing/model-gpt-image-2-dark.png",
     alt: "Studio model showcase image",
   },
 ];
