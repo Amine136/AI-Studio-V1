@@ -458,7 +458,7 @@ export default function LandingPage() {
           <div className="flex flex-col items-center gap-2 md:items-start">
             <div className="font-headline text-lg font-bold text-blue-100">Vibecraft</div>
             <p className="text-center font-body text-xs uppercase tracking-widest text-slate-500 md:text-left">
-              © 2026 Vibecraft AI Studio. Engineered for the digital architect.
+              &copy; {new Date().getFullYear()} Vibecraft AI Studio. All rights reserved.
             </p>
           </div>
           <div className="flex flex-wrap justify-center gap-x-6 gap-y-4 md:gap-12">
