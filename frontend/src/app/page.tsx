@@ -40,7 +40,7 @@ const roadmapItems = [
   {
     title: "Video generation",
     description: "Cinematic 4K motion synthesis.",
-    status: "Status: under developpement",
+    status: "Status: under development",
     icon: "movie",
     accent: "text-primary",
     dot: "bg-primary shadow-[0_0_20px_rgba(173,198,255,1)]",
@@ -50,7 +50,7 @@ const roadmapItems = [
   {
     title: "Voice content",
     description: "Cloning and synthetic narration with emotional depth.",
-    status: "Status: under intergration",
+    status: "Status: under integration",
     icon: "mic",
     accent: "text-secondary",
     dot: "bg-secondary shadow-[0_0_20px_rgba(208,188,255,1)]",
@@ -114,15 +114,34 @@ function LandingContent() {
           </div>
 
           <div className="flex shrink-0 items-center gap-2.5 sm:gap-3 lg:gap-6">
-            <div className="hidden sm:flex gap-1 mr-2">
-              <button onClick={() => setLanguage("en")} className={`px-2 py-1 rounded text-xs ${language === 'en' ? 'bg-[#adc6ff]/20 text-white' : 'text-slate-400'}`}>EN</button>
-              <button onClick={() => setLanguage("fr")} className={`px-2 py-1 rounded text-xs ${language === 'fr' ? 'bg-[#adc6ff]/20 text-white' : 'text-slate-400'}`}>FR</button>
-              <button onClick={() => setLanguage("ar")} className={`px-2 py-1 rounded text-xs ${language === 'ar' ? 'bg-[#adc6ff]/20 text-white' : 'text-slate-400'}`}>AR</button>
+            <div className="flex items-center rounded-full border border-white/10 bg-[#0c1324]/80 p-0.5 sm:p-1 shadow-inner backdrop-blur-md me-1 sm:me-2" dir="ltr">
+              {(
+                [
+                  { id: "en", label: "EN" },
+                  { id: "fr", label: "FR" },
+                  { id: "ar", label: "AR" },
+                ] as const
+              ).map((lang) => (
+                <button
+                  key={lang.id}
+                  onClick={() => setLanguage(lang.id)}
+                  className={`relative px-2 sm:px-3 py-1 text-[9px] sm:text-[10px] font-bold uppercase tracking-widest transition-all duration-300 ${
+                    language === lang.id
+                      ? "text-white"
+                      : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  {language === lang.id && (
+                    <div className="absolute inset-0 rounded-full bg-[#adc6ff]/20 shadow-[inset_0_0_10px_rgba(173,198,255,0.2)]" />
+                  )}
+                  <span className="relative z-10">{lang.label}</span>
+                </button>
+              ))}
             </div>
             <Link href={loginHref} className="font-headline text-xs tracking-tight text-slate-400 transition-colors duration-300 hover:text-blue-100 sm:text-sm">
               {t("Log In") || "Log In"}
             </Link>
-            <Link href={primaryHref} className="rounded-md bg-gradient-to-br from-[#adc6ff] to-[#4d8eff] px-3.5 py-2 text-xs font-medium text-[#002e6a] transition-transform duration-100 active:scale-95 sm:px-5 sm:text-sm lg:px-6">
+            <Link href={primaryHref} className="hidden sm:inline-flex rounded-md bg-gradient-to-br from-[#adc6ff] to-[#4d8eff] px-3.5 py-2 text-xs font-medium text-[#002e6a] transition-transform duration-100 active:scale-95 sm:px-5 sm:text-sm lg:px-6">
               {primaryLabel}
             </Link>
           </div>
@@ -250,16 +269,16 @@ function LandingContent() {
                       <div className="relative flex aspect-[16/10] overflow-hidden rounded-2xl bg-black">
                         <div className="hidden w-1/3 flex-col gap-6 bg-[#0c1324] p-6 sm:flex">
                           <div className="space-y-4">
-                            <label className="block text-[10px] font-bold uppercase tracking-widest text-[#adc6ff]/60">Style</label>
+                            <label className="block text-[10px] font-bold uppercase tracking-widest text-[#adc6ff]/60">{t("Style")}</label>
                             <div className="flex items-center justify-between rounded-lg border border-[#adc6ff]/20 bg-[#23293c] p-3">
-                              <span className="text-sm font-medium">3D</span>
+                              <span className="text-sm font-medium">{t("3D")}</span>
                               <span className="material-symbols-outlined text-sm opacity-50">expand_more</span>
                             </div>
                           </div>
                           <div className="space-y-4">
                             <div className="flex items-center justify-between">
-                              <label className="block text-[10px] font-bold uppercase tracking-widest text-[#adc6ff]/60">Contrast</label>
-                              <span className="font-mono text-[10px] text-[#adc6ff]">High</span>
+                              <label className="block text-[10px] font-bold uppercase tracking-widest text-[#adc6ff]/60">{t("Contrast")}</label>
+                              <span className="font-mono text-[10px] text-[#adc6ff]">{t("High")}</span>
                             </div>
                             <div className="relative h-1 rounded-full bg-[#2e3447]">
                               <div className="absolute inset-y-0 left-0 w-3/4 rounded-full bg-[#adc6ff]" />
@@ -267,14 +286,14 @@ function LandingContent() {
                             </div>
                           </div>
                           <div className="space-y-4">
-                            <label className="block text-[10px] font-bold uppercase tracking-widest text-[#adc6ff]/60">Resolution</label>
+                            <label className="block text-[10px] font-bold uppercase tracking-widest text-[#adc6ff]/60">{t("Resolution")}</label>
                             <div className="grid grid-cols-2 gap-2">
                               <div className="rounded border border-[#424754]/30 p-2 text-center text-[10px]">1080p</div>
                               <div className="rounded bg-[#adc6ff] p-2 text-center text-[10px] font-bold text-[#002e6a]">4K</div>
                             </div>
                           </div>
                           <div className="space-y-4">
-                            <label className="block text-[10px] font-bold uppercase tracking-widest text-[#adc6ff]/60">Aspect Ratio</label>
+                            <label className="block text-[10px] font-bold uppercase tracking-widest text-[#adc6ff]/60">{t("Aspect Ratio")}</label>
                             <div className="flex gap-2">
                               <div className="flex h-8 w-8 items-center justify-center rounded border border-[#adc6ff] bg-[#adc6ff]/10 text-[10px] font-bold">1:1</div>
                               <div className="flex h-8 w-8 items-center justify-center rounded border border-[#424754]/30 text-[10px] opacity-40">16:9</div>
@@ -282,7 +301,7 @@ function LandingContent() {
                             </div>
                           </div>
                           <div className="mt-auto">
-                            <button className="w-full rounded-xl bg-[#adc6ff] py-3 text-xs font-bold uppercase tracking-wider text-[#002e6a]">Refine Output</button>
+                            <button className="w-full rounded-xl bg-[#adc6ff] py-3 text-xs font-bold uppercase tracking-wider text-[#002e6a]">{t("Refine Output")}</button>
                           </div>
                         </div>
 
@@ -292,7 +311,7 @@ function LandingContent() {
                           <div className="absolute right-4 top-4 flex gap-2">
                             <span className="flex items-center gap-1 rounded-full bg-black/60 px-3 py-1 text-[10px] font-mono backdrop-blur-md">
                               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-green-400" />
-                              Rendering...
+                              {t("Rendering...")}
                             </span>
                           </div>
                           <div className="pointer-events-none absolute inset-0 grid grid-cols-3 grid-rows-3 border border-white/5">
@@ -400,7 +419,7 @@ function LandingContent() {
                 >
                   {item.side === "left" ? (
                     <>
-                      <div className="hidden text-right md:block">
+                      <div className="hidden text-end md:block">
                         <h3 className={`font-headline text-2xl font-bold ${item.accent}`}>{t(item.title)}</h3>
                         <p className="mt-2 text-[#c2c6d6]">{t(item.description)}</p>
                       </div>
@@ -425,7 +444,7 @@ function LandingContent() {
                           <p className={`text-sm font-mono uppercase tracking-tighter ${item.accent}/60`}>{t(item.status)}</p>
                         </div>
                       </div>
-                      <div className="order-1 hidden text-left md:order-2 md:block">
+                      <div className="order-1 hidden text-start md:order-2 md:block">
                         <h3 className={`font-headline text-2xl font-bold ${item.accent}`}>{t(item.title)}</h3>
                         <p className="mt-2 text-[#c2c6d6]">{t(item.description)}</p>
                       </div>
@@ -471,10 +490,10 @@ function LandingContent() {
           </div>
           <div className="flex flex-wrap justify-center gap-x-6 gap-y-4 md:gap-12">
             <Link href="/privacy" className="font-body text-xs uppercase tracking-widest text-slate-500 transition-opacity hover:text-white">
-              Privacy
+              {t("Privacy")}
             </Link>
             <Link href="/policy" className="font-body text-xs uppercase tracking-widest text-slate-500 transition-opacity hover:text-white">
-              Terms
+              {t("Terms")}
             </Link>
             <Link href="/dashboard" className="font-body text-xs uppercase tracking-widest text-slate-500 transition-opacity hover:text-white">
               {t("Studio")}

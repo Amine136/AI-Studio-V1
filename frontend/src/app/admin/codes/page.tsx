@@ -45,6 +45,8 @@ export default function AdminCodesPage() {
     
     const [showAllActiveGiftCodes, setShowAllActiveGiftCodes] = useState(false);
     const [showInactiveGiftCodes, setShowInactiveGiftCodes] = useState(false);
+    const [showAllDisabledBatches, setShowAllDisabledBatches] = useState(false);
+    const [showAllClaimedBatches, setShowAllClaimedBatches] = useState(false);
     const [actionMessage, setActionMessage] = useState("");
     const [actionError, setActionError] = useState("");
     const [actingTarget, setActingTarget] = useState("");
@@ -117,7 +119,13 @@ export default function AdminCodesPage() {
     const activeGiftCodes = codes.filter((item) => item.status === "active");
     const inactiveGiftCodes = codes.filter((item) => item.status === "inactive");
     const visibleActiveGiftCodes = showAllActiveGiftCodes ? activeGiftCodes : activeGiftCodes.slice(0, 5);
-    
+
+    const activeBatches = batches.filter((batch) => batch.status === "active");
+    const claimedBatches = batches.filter((batch) => batch.status === "claimed");
+    const disabledBatches = batches.filter((batch) => batch.status !== "active" && batch.status !== "claimed");
+    const visibleDisabledBatches = showAllDisabledBatches ? disabledBatches : disabledBatches.slice(0, 5);
+    const visibleClaimedBatches = showAllClaimedBatches ? claimedBatches : claimedBatches.slice(0, 5);
+
     const batchStatusSummaries = ["active", "inactive", "claimed"]
         .map((status) => batchSummaries.find((item) => item.status === status))
         .filter((item): item is AdminCreditCodeBatchStatusSummaryItem => Boolean(item));
@@ -128,6 +136,66 @@ export default function AdminCodesPage() {
 
     const getBatchSummary = (status: string) => batchStatusSummaries.find(s => s.status === status) || { codeCount: 0, totalCredits: 0, averageCredits: 0 };
     const getCodeSummary = (status: string) => compactSummaries.find(s => s.status === status) || { codeCount: 0, totalCredits: 0, averageCredits: 0 };
+
+    const renderBatchTable = (list: AdminCreditCodeBatchItem[], emptyLabel: string) => (
+        <div className="overflow-x-auto">
+            <table className="w-full text-left">
+                <thead>
+                    <tr className="font-label-caps text-label-caps text-on-surface-variant">
+                        <th className="pb-6">TITLE</th>
+                        <th className="pb-6">CREDITS</th>
+                        <th className="pb-6">CLAIMED</th>
+                        <th className="pb-6">STATUS</th>
+                        <th className="pb-6">ACTION</th>
+                    </tr>
+                </thead>
+                <tbody className="text-body-sm divide-y divide-outline-variant">
+                    {list.length === 0 && (
+                        <tr>
+                            <td colSpan={5} className="py-6 text-center text-on-surface-variant">{emptyLabel}</td>
+                        </tr>
+                    )}
+                    {list.map((batch) => (
+                        <tr key={batch.batchId} className="hover:bg-surface-container-highest/30 transition-colors">
+                            <td className="py-6 pr-4">
+                                <p className="font-bold text-on-surface">{batch.title}</p>
+                                <p className="text-[11px] text-on-surface-variant">{batch.totalCodes} codes</p>
+                            </td>
+                            <td className="py-6 pr-4">
+                                <span className="px-6 py-1 rounded-full bg-tertiary/10 text-tertiary border border-tertiary/20">{batch.credits.toFixed(2)}</span>
+                            </td>
+                            <td className="py-6 text-on-surface pr-4">{batch.claimedCodes} / {batch.totalCodes}</td>
+                            <td className="py-6 pr-4">
+                                {batch.status === "active" ? (
+                                    <span className="flex items-center gap-2 text-primary">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-primary glow-primary"></span>
+                                        active
+                                    </span>
+                                ) : (
+                                    <span className="flex items-center gap-2 text-on-surface-variant">
+                                        {batch.status}
+                                    </span>
+                                )}
+                            </td>
+                            <td className="py-6">
+                                {batch.status === "claimed" ? (
+                                    <span className="text-[11px] text-on-surface-variant italic">Claimed out</span>
+                                ) : (
+                                    <button
+                                        onClick={() => void handleBatchStatusChange(batch, batch.status === "inactive" ? "enable" : "disable")}
+                                        disabled={actingTarget === batch.batchId}
+                                        className={`px-6 py-1 border rounded-full text-[11px] transition-all disabled:opacity-50 ${batch.status === "inactive" ? 'border-tertiary text-tertiary hover:bg-tertiary/10' : 'border-secondary text-secondary hover:bg-secondary/10'}`}
+                                    >
+                                        {actingTarget === batch.batchId ? "Saving..." : batch.status === "inactive" ? "Enable" : "Disable"}
+                                    </button>
+                                )}
+                            </td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    );
 
     const handleCreateGiftCode = async () => {
         setCreating(true);
@@ -501,63 +569,76 @@ export default function AdminCodesPage() {
                             </div>
                         </div>
 
-                        {/* Table Content */}
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-left">
-                                <thead>
-                                    <tr className="font-label-caps text-label-caps text-on-surface-variant">
-                                        <th className="pb-6">TITLE</th>
-                                        <th className="pb-6">CREDITS</th>
-                                        <th className="pb-6">CLAIMED</th>
-                                        <th className="pb-6">STATUS</th>
-                                        <th className="pb-6">ACTION</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="text-body-sm divide-y divide-outline-variant">
-                                    {batches.length === 0 && (
-                                        <tr>
-                                            <td colSpan={5} className="py-6 text-center text-on-surface-variant">No one-time code batches yet.</td>
-                                        </tr>
+                        {/* Active Batches */}
+                        <div className="bg-surface-container-low border border-outline-variant rounded-lg overflow-hidden">
+                            <div className="p-6 bg-surface-container-high/50 flex justify-between items-center">
+                                <div>
+                                    <p className="font-title-md text-on-surface text-[16px] font-bold leading-none mb-1">Active Batches</p>
+                                    <p className="text-[11px] text-on-surface-variant">Enabled bulk exports still redeemable</p>
+                                </div>
+                                <span className="text-[11px] text-on-surface-variant">{activeBatches.length} batches</span>
+                            </div>
+                            <div className="p-6">
+                                {renderBatchTable(activeBatches, "No active code batches right now.")}
+                            </div>
+                        </div>
+
+                        {/* Disabled Batches */}
+                        <div className="bg-surface-container-low border border-outline-variant rounded-lg overflow-hidden">
+                            <div className="p-6 bg-surface-container-high/50 flex justify-between items-center">
+                                <div>
+                                    <p className="font-title-md text-on-surface text-[16px] font-bold leading-none mb-1">Disabled Batches</p>
+                                    <p className="text-[11px] text-on-surface-variant">Manually disabled bulk exports</p>
+                                </div>
+                                <div className="flex items-center gap-6">
+                                    <span className="text-[11px] text-on-surface-variant">{disabledBatches.length} batches</span>
+                                    {disabledBatches.length > 5 && (
+                                        <button
+                                            onClick={() => setShowAllDisabledBatches(!showAllDisabledBatches)}
+                                            className="px-6 py-1.5 bg-tertiary/10 text-tertiary border border-tertiary/20 rounded-lg text-[11px] font-bold hover:bg-tertiary hover:text-on-tertiary transition-all"
+                                        >
+                                            {showAllDisabledBatches ? "Show less" : `Show all (${disabledBatches.length})`}
+                                        </button>
                                     )}
-                                    {batches.map((batch) => (
-                                        <tr key={batch.batchId} className="hover:bg-surface-container-highest/30 transition-colors">
-                                            <td className="py-6 pr-4">
-                                                <p className="font-bold text-on-surface">{batch.title}</p>
-                                                <p className="text-[11px] text-on-surface-variant">{batch.totalCodes} codes</p>
-                                            </td>
-                                            <td className="py-6 pr-4">
-                                                <span className="px-6 py-1 rounded-full bg-tertiary/10 text-tertiary border border-tertiary/20">{batch.credits.toFixed(2)}</span>
-                                            </td>
-                                            <td className="py-6 text-on-surface pr-4">{batch.claimedCodes} / {batch.totalCodes}</td>
-                                            <td className="py-6 pr-4">
-                                                {batch.status === "active" ? (
-                                                    <span className="flex items-center gap-2 text-primary">
-                                                        <span className="w-1.5 h-1.5 rounded-full bg-primary glow-primary"></span>
-                                                        active
-                                                    </span>
-                                                ) : (
-                                                    <span className="flex items-center gap-2 text-on-surface-variant">
-                                                        {batch.status}
-                                                    </span>
-                                                )}
-                                            </td>
-                                            <td className="py-6">
-                                                {batch.status === "claimed" ? (
-                                                    <span className="text-[11px] text-on-surface-variant italic">Claimed out</span>
-                                                ) : (
-                                                    <button 
-                                                        onClick={() => void handleBatchStatusChange(batch, batch.status === "inactive" ? "enable" : "disable")}
-                                                        disabled={actingTarget === batch.batchId}
-                                                        className={`px-6 py-1 border rounded-full text-[11px] transition-all disabled:opacity-50 ${batch.status === "inactive" ? 'border-tertiary text-tertiary hover:bg-tertiary/10' : 'border-secondary text-secondary hover:bg-secondary/10'}`}
-                                                    >
-                                                        {actingTarget === batch.batchId ? "Saving..." : batch.status === "inactive" ? "Enable" : "Disable"}
-                                                    </button>
-                                                )}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                                </div>
+                            </div>
+                            <div className="p-6">
+                                {renderBatchTable(visibleDisabledBatches, "No disabled batches.")}
+                                {!showAllDisabledBatches && disabledBatches.length > 5 && (
+                                    <div className="mt-6">
+                                        <p className="text-[10px] text-on-surface-variant italic">Showing 5 of {disabledBatches.length} disabled batches.</p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Claimed / Exhausted Batches */}
+                        <div className="bg-surface-container-low border border-outline-variant rounded-lg overflow-hidden">
+                            <div className="p-6 bg-surface-container-high/50 flex justify-between items-center">
+                                <div>
+                                    <p className="font-title-md text-on-surface text-[16px] font-bold leading-none mb-1">Claimed Batches</p>
+                                    <p className="text-[11px] text-on-surface-variant">Fully redeemed / exhausted bulk exports</p>
+                                </div>
+                                <div className="flex items-center gap-6">
+                                    <span className="text-[11px] text-on-surface-variant">{claimedBatches.length} batches</span>
+                                    {claimedBatches.length > 5 && (
+                                        <button
+                                            onClick={() => setShowAllClaimedBatches(!showAllClaimedBatches)}
+                                            className="px-6 py-1.5 bg-tertiary/10 text-tertiary border border-tertiary/20 rounded-lg text-[11px] font-bold hover:bg-tertiary hover:text-on-tertiary transition-all"
+                                        >
+                                            {showAllClaimedBatches ? "Show less" : `Show all (${claimedBatches.length})`}
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                            <div className="p-6">
+                                {renderBatchTable(visibleClaimedBatches, "No claimed batches.")}
+                                {!showAllClaimedBatches && claimedBatches.length > 5 && (
+                                    <div className="mt-6">
+                                        <p className="text-[10px] text-on-surface-variant italic">Showing 5 of {claimedBatches.length} claimed batches.</p>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
                 </section>

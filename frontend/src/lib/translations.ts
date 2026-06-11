@@ -71,16 +71,26 @@ export const translations = {
     "What we are building next.": "What we are building next.",
     "Video generation": "Video generation",
     "Cinematic 4K motion synthesis.": "Cinematic 4K motion synthesis.",
-    "Status: under developpement": "Status: under developpement",
+    "Status: under development": "Status: under development",
     "Voice content": "Voice content",
     "Cloning and synthetic narration with emotional depth.": "Cloning and synthetic narration with emotional depth.",
-    "Status: under intergration": "Status: under intergration",
+    "Status: under integration": "Status: under integration",
     "Multiple generations": "Multiple generations",
     "Parallel workflow processing for large-scale campaigns.": "Parallel workflow processing for large-scale campaigns.",
     "Status: Architecture Design": "Status: Architecture Design",
     "Automatic social posting": "Automatic social posting",
     "Direct integration with social platforms via AI scheduler.": "Direct integration with social platforms via AI scheduler.",
     "Status: API Integration": "Status: API Integration",
+
+    // Smart Generation UI
+    "Style": "Style",
+    "3D": "3D",
+    "Contrast": "Contrast",
+    "High": "High",
+    "Resolution": "Resolution",
+    "Aspect Ratio": "Aspect Ratio",
+    "Refine Output": "Refine Output",
+    "Rendering...": "Rendering...",
 
     // CTA
     "Ready to Build?": "Ready to Build?",
@@ -136,7 +146,7 @@ export const translations = {
     "Log In": "Se Connecter",
 
     // Landing Page Hero
-    "Vibe at the speed of": "Vibrez à la vitesse de la",
+    "Vibe at the speed of": "Créez à la vitesse de la",
     "thought.": "pensée.",
     "Direct access to premium AI chat, image generation, and smarter creation flows built for fast creative work.": "Accès direct au chat IA premium, à la génération d'images et à des flux de création intelligents.",
     "View Models": "Voir les Modèles",
@@ -146,9 +156,9 @@ export const translations = {
     // Landing Page Features
     "Core Engine": "Moteur Principal",
     "Chat with models": "Discutez avec les modèles",
-    "Work directly with text, image, and multimodal models in playground. Send prompts, upload images, and iterate inside one conversation.": "Travaillez directement avec des modèles texte et image. Envoyez des prompts et uploadez des images dans une seule conversation.",
+    "Work directly with text, image, and multimodal models in playground. Send prompts, upload images, and iterate inside one conversation.": "Travaillez directement avec des modèles texte et image. Envoyez des prompts et importez des images dans une seule conversation.",
     "Edit images": "Modifier des images",
-    "Upload a reference, transform it with image-capable models, and continue refining results through follow-up instructions.": "Uploadez une référence, transformez-la et continuez à affiner les résultats via des instructions de suivi.",
+    "Upload a reference, transform it with image-capable models, and continue refining results through follow-up instructions.": "Importez une référence, transformez-la et continuez à affiner les résultats via des instructions de suivi.",
     "Smart generation": "Génération Intelligente",
     "Start from a simple idea, review the optimized direction, then generate images and captions with model-aware settings and billing visibility.": "Partez d'une idée simple, générez des images et des légendes avec des paramètres adaptés.",
     "Intent analysis before generation": "Analyse d'intention avant génération",
@@ -157,7 +167,7 @@ export const translations = {
 
     // Showcase
     "Model Showcase": "Galerie de Modèles",
-    "Models available across playground and Smart Creation workflows.": "Modèles disponibles dans le playground et les flux de Création Intelligente.",
+    "Models available across playground and Smart Creation workflows.": "Modèles disponibles dans le Playground et les flux de Création Intelligente.",
     "View Live Studio": "Voir le Studio en Direct",
     "Flagship": "Phare",
     "Photoreal": "Photoréaliste",
@@ -169,16 +179,26 @@ export const translations = {
     "What we are building next.": "Ce que nous construisons ensuite.",
     "Video generation": "Génération de vidéo",
     "Cinematic 4K motion synthesis.": "Synthèse de mouvement cinématique 4K.",
-    "Status: under developpement": "Statut: en développement",
+    "Status: under development": "Statut : en développement",
     "Voice content": "Contenu vocal",
     "Cloning and synthetic narration with emotional depth.": "Clonage et narration synthétique avec profondeur émotionnelle.",
-    "Status: under intergration": "Statut: en intégration",
+    "Status: under integration": "Statut : en intégration",
     "Multiple generations": "Générations multiples",
     "Parallel workflow processing for large-scale campaigns.": "Traitement de flux de travail parallèle pour les campagnes à grande échelle.",
-    "Status: Architecture Design": "Statut: Conception de l'Architecture",
+    "Status: Architecture Design": "Statut : Conception de l'Architecture",
     "Automatic social posting": "Publication sociale automatique",
     "Direct integration with social platforms via AI scheduler.": "Intégration directe aux réseaux sociaux via planificateur IA.",
-    "Status: API Integration": "Statut: Intégration API",
+    "Status: API Integration": "Statut : Intégration API",
+
+    // Smart Generation UI
+    "Style": "Style",
+    "3D": "3D",
+    "Contrast": "Contraste",
+    "High": "Élevé",
+    "Resolution": "Résolution",
+    "Aspect Ratio": "Format",
+    "Refine Output": "Optimiser le rendu",
+    "Rendering...": "Rendu en cours...",
 
     // CTA
     "Ready to Build?": "Prêt à Créer ?",
@@ -199,8 +219,8 @@ export const translations = {
     // Auth Page
     "Vibecraft": "Vibecraft",
     "AI Studio": "استوديو الذكاء الاصطناعي",
-    "The Digital Architect.": "المهندس الرقمي.",
-    "Engineered for creative excellence. Access your private workspace.": "مُصمم للتميز الإبداعي. قم بالوصول إلى مساحة العمل الخاصة بك.",
+    "The Digital Architect.": "المُبتكِر الرقمي.",
+    "Engineered for creative excellence. Access your private workspace.": "مُصمّم للتميز الإبداعي. ادخل إلى مساحة عملك",
     "Sign in with Google": "تسجيل الدخول باستخدام جوجل",
     "Signing in…": "جاري تسجيل الدخول…",
     "End-to-end Encrypted Sessions": "جلسات مشفرة من البداية للنهاية",
@@ -234,9 +254,9 @@ export const translations = {
     "Log In": "تسجيل الدخول",
 
     // Landing Page Hero
-    "Vibe at the speed of": "تخيل بسرعة",
+    "Vibe at the speed of": "أبدع بسرعة",
     "thought.": "الفكر.",
-    "Direct access to premium AI chat, image generation, and smarter creation flows built for fast creative work.": "وصول مباشر إلى دردشة الذكاء الاصطناعي المتميزة، وتوليد الصور، وتدفقات إبداعية أذكى مبنية للعمل السريع.",
+    "Direct access to premium AI chat, image generation, and smarter creation flows built for fast creative work.": "وصول مباشر إلى دردشة الذكاء الاصطناعي المتميزة، وتوليد الصور، ومسارات عمل إبداعية أكثر ذكاءً، صُمّمت لإنجاز سريع.",
     "View Models": "عرض النماذج",
     "Join 10,000+ creators": "انضم إلى أكثر من 10,000 مبدع",
     "Be one of the first 1,000 creators": "كن من أول 1,000 مبدع",
@@ -255,7 +275,7 @@ export const translations = {
 
     // Showcase
     "Model Showcase": "معرض النماذج",
-    "Models available across playground and Smart Creation workflows.": "نماذج متاحة في ساحة اللعب ومسارات العمل الذكية.",
+    "Models available across playground and Smart Creation workflows.": "نماذج متاحة في مساحة التجربة (Playground) ومسارات العمل الذكية.",
     "View Live Studio": "عرض الاستوديو المباشر",
     "Flagship": "الرائد",
     "Photoreal": "واقعي",
@@ -267,20 +287,30 @@ export const translations = {
     "What we are building next.": "ما نبنيه تالياً.",
     "Video generation": "توليد الفيديو",
     "Cinematic 4K motion synthesis.": "تركيب حركة سينمائية بدقة 4K.",
-    "Status: under developpement": "الحالة: قيد التطوير",
+    "Status: under development": "الحالة: قيد التطوير",
     "Voice content": "المحتوى الصوتي",
     "Cloning and synthetic narration with emotional depth.": "استنساخ وسرد صناعي بعمق عاطفي.",
-    "Status: under intergration": "الحالة: قيد الدمج",
+    "Status: under integration": "الحالة: قيد الدمج",
     "Multiple generations": "توليدات متعددة",
     "Parallel workflow processing for large-scale campaigns.": "معالجة سير عمل موازية للحملات واسعة النطاق.",
-    "Status: Architecture Design": "الحالة: تصميم البنية",
+    "Status: Architecture Design": "الحالة: تصميم بنية النظام",
     "Automatic social posting": "نشر تلقائي على الشبكات الاجتماعية",
     "Direct integration with social platforms via AI scheduler.": "دمج مباشر مع المنصات عبر مجدول الذكاء الاصطناعي.",
     "Status: API Integration": "الحالة: دمج واجهة برمجة التطبيقات",
 
+    // Smart Generation UI
+    "Style": "النمط",
+    "3D": "ثلاثي الأبعاد",
+    "Contrast": "التباين",
+    "High": "مرتفع",
+    "Resolution": "الدقة",
+    "Aspect Ratio": "نسبة الأبعاد",
+    "Refine Output": "تحسين المخرجات",
+    "Rendering...": "جاري المعالجة...",
+
     // CTA
     "Ready to Build?": "جاهز للإنشاء؟",
-    "Add credits and enjoy state-of-the-art AI models in one place, with top-ups in Tunisian dinar.": "أضف رصيداً واستمتع بأحدث نماذج الذكاء الاصطناعي في مكان واحد، مع تعبئة الرصيد بالدينار التونسي.",
+    "Add credits and enjoy state-of-the-art AI models in one place, with top-ups in Tunisian dinar.": "أضف رصيداً واستمتع بأحدث نماذج الذكاء الاصطناعي في مكان واحد، مع إمكانية الشحن بالدينار التونسي.",
     "Claim Early Access": "احصل على الوصول المبكر",
 
     // Footer Landing
