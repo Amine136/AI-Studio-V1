@@ -811,6 +811,15 @@ class SecurityRepository:
             ).scalars()
         )
 
+    def count_history(self, uid: str) -> int:
+        return int(
+            self.session.execute(
+                select(func.count())
+                .select_from(HistoryEntry)
+                .where(HistoryEntry.uid == uid)
+            ).scalar_one()
+        )
+
     def delete_history_entries_by_image_urls(self, uid: str, image_urls: set[str]) -> int:
         normalized_urls = {url.strip() for url in image_urls if url and url.strip()}
         if not normalized_urls:

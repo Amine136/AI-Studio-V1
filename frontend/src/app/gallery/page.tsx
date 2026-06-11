@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
 import AuthenticatedImage from "../../components/AuthenticatedImage";
-import { getHistory, type HistoryEntry } from "../../lib/history";
+import { getHistoryPage, type HistoryEntry } from "../../lib/history";
 import { api } from "../../services/api";
 import type { SystemConfig, PlainChatModelItem } from "../../types";
 
@@ -51,16 +51,24 @@ const filterTabs: { id: GalleryFilter; label: string }[] = [
   { id: "chat", label: "Playground" },
 ];
 
+// Gallery reveals tiles in batches to throttle the eager AuthenticatedImage
+// fetches (each rendered tile downloads its full image immediately). Show 19,
+// reveal +19 per click, fetch/render at most 150 for now (revisit with the
+// final user-data retention policy).
+const GALLERY_PAGE_SIZE = 19;
+const GALLERY_MAX = 150;
+
 export default function GalleryPage() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
   const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [total, setTotal] = useState(0);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [filter, setFilter] = useState<GalleryFilter>("all_images");
   const [selectedEntry, setSelectedEntry] = useState<HistoryEntry | null>(null);
   const [showFullPrompt, setShowFullPrompt] = useState(false);
   const [showFullCaption, setShowFullCaption] = useState(false);
-  const [showAllMobileEntries, setShowAllMobileEntries] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(GALLERY_PAGE_SIZE);
   const [config, setConfig] = useState<SystemConfig | null>(null);
   const [plainChatModels, setPlainChatModels] = useState<PlainChatModelItem[]>([]);
 
@@ -74,8 +82,9 @@ export default function GalleryPage() {
     if (!user) return;
     setHistoryLoading(true);
     try {
-      const entries = await getHistory(user.uid, 100);
-      setHistory(entries);
+      const page = await getHistoryPage(user.uid, GALLERY_MAX);
+      setHistory(page.entries);
+      setTotal(page.total);
     } finally {
       setHistoryLoading(false);
     }
@@ -129,8 +138,13 @@ export default function GalleryPage() {
     return history;
   }, [filter, history]);
 
-  const featuredEntry = filteredEntries[0] ?? null;
-  const gridEntries = featuredEntry ? filteredEntries.slice(1) : [];
+  const displayedEntries = useMemo(
+    () => filteredEntries.slice(0, visibleCount),
+    [filteredEntries, visibleCount],
+  );
+  const featuredEntry = displayedEntries[0] ?? null;
+  const gridEntries = featuredEntry ? displayedEntries.slice(1) : [];
+  const canLoadMore = !historyLoading && visibleCount < Math.min(filteredEntries.length, GALLERY_MAX);
   const imageCount = history.filter((entry) => isRenderableImageUrl(entry.imageUrl)).length;
   const captionCount = history.filter((entry) => hasCaption(entry.caption)).length;
   const selectedCaptionWords = splitCaptionWords(selectedEntry?.caption);
@@ -144,7 +158,7 @@ export default function GalleryPage() {
   }, [selectedEntry?.id]);
 
   useEffect(() => {
-    setShowAllMobileEntries(false);
+    setVisibleCount(GALLERY_PAGE_SIZE);
   }, [filter]);
 
   if (authLoading || !user) {
@@ -188,7 +202,7 @@ export default function GalleryPage() {
         <div className="grid grid-cols-3 gap-3 sm:gap-4 xl:grid-cols-1">
           <div className="rounded-md bg-[#151b2d] p-4 sm:p-5">
             <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#8c909f]">Saved Entries</p>
-            <div className="mt-3 text-2xl font-bold tracking-tight text-[#dce1fb] sm:text-4xl">{history.length}</div>
+            <div className="mt-3 text-2xl font-bold tracking-tight text-[#dce1fb] sm:text-4xl">{total}</div>
             <p className="mt-2 hidden text-sm text-[#c2c6d6] sm:block">All saved generations on this account.</p>
           </div>
           <div className="rounded-md bg-[#151b2d] p-4 sm:p-5">
@@ -276,12 +290,12 @@ export default function GalleryPage() {
           )}
 
           <section className="grid grid-cols-2 gap-4 sm:gap-6 md:grid-cols-3 2xl:grid-cols-4">
-            {gridEntries.map((entry, index) => (
+            {gridEntries.map((entry) => (
               <button
                 key={entry.id}
                 type="button"
                 onClick={() => setSelectedEntry(entry)}
-                className={`${index >= 16 && !showAllMobileEntries ? "hidden sm:block" : ""} overflow-hidden rounded-md border border-white/8 bg-[#151b2d] text-left transition-transform hover:-translate-y-1`}
+                className="overflow-hidden rounded-md border border-white/8 bg-[#151b2d] text-left transition-transform hover:-translate-y-1"
               >
                 <div className="relative aspect-square overflow-hidden bg-[#070d1f]">
                   {isRenderableImageUrl(entry.imageUrl) ? (
@@ -307,14 +321,15 @@ export default function GalleryPage() {
             ))}
           </section>
 
-          {!showAllMobileEntries && gridEntries.length > 16 ? (
-            <div className="flex justify-center sm:hidden">
+          {canLoadMore ? (
+            <div className="flex justify-center">
               <button
                 type="button"
-                onClick={() => setShowAllMobileEntries(true)}
-                className="rounded-sm border border-white/10 bg-[#070d1f] px-5 py-2.5 text-sm font-semibold text-[#dce1fb] transition hover:border-[#adc6ff]/30 hover:text-[#adc6ff]"
+                onClick={() => setVisibleCount((count) => Math.min(count + GALLERY_PAGE_SIZE, GALLERY_MAX))}
+                className="inline-flex items-center gap-2 rounded-sm border border-white/10 bg-[#070d1f] px-5 py-2.5 text-sm font-semibold text-[#dce1fb] transition hover:border-[#adc6ff]/30 hover:text-[#adc6ff]"
               >
                 Load more
+                <span className="material-symbols-outlined text-base">expand_more</span>
               </button>
             </div>
           ) : null}

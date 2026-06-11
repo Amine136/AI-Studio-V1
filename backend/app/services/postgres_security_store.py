@@ -1137,6 +1137,12 @@ def get_history(uid: str, max_items: int = 20) -> list[dict[str, Any]]:
         return [_history_dict_from_model(entry) for entry in repo.get_history(uid, max_items)]
 
 
+def count_history(uid: str) -> int:
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        return repo.count_history(uid)
+
+
 def delete_history_entries_by_image_urls(uid: str, image_urls: set[str]) -> int:
     with session_scope() as session:
         repo = SecurityRepository(session)
