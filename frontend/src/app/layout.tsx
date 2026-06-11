@@ -45,7 +45,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
-        <title>Vibecraft — Create with AI</title>
+        <title>Vibecraft</title>
         <meta name="description" content="Vibecraft is an AI-powered creative studio for generating captions, images, and more." />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <link rel="icon" href={`/best-version/favicon-32.png?v=${LOGO_VERSION}`} type="image/png" sizes="32x32" />

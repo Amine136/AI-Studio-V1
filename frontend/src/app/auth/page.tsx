@@ -35,9 +35,12 @@ function mapAuthErrorMessage(error: unknown): string {
   return rawMessage || "Google sign-in failed.";
 }
 
-export default function AuthPage() {
+import { LanguageProvider, useLanguage } from "../../context/LanguageContext";
+
+function AuthContent() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
+  const { t, language, setLanguage } = useLanguage();
 
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -86,10 +89,6 @@ export default function AuthPage() {
       .getProfile()
       .then(() => {
         if (cancelled) return;
-        // Honor a safe internal ?next= (e.g. /credits?code=VC-...) so users who
-        // arrived via a deep link land back there after logging in; default to dashboard.
-        // Resolve against our own origin so open-redirect payloads are rejected
-        // (//evil.com, /\evil.com, https://evil.com, javascript:...).
         const rawNext = new URLSearchParams(window.location.search).get("next");
         let safeNext = "/dashboard";
         if (rawNext) {
@@ -100,7 +99,7 @@ export default function AuthPage() {
               safeNext = path;
             }
           } catch {
-            /* malformed next — fall back to dashboard */
+            /* malformed next */
           }
         }
         router.replace(safeNext);
@@ -148,19 +147,72 @@ export default function AuthPage() {
   };
 
   return (
-    <main className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-[#0c1324] px-6 py-10 text-[#dce1fb]">
-      <div
-        className="pointer-events-none fixed inset-0"
-        aria-hidden="true"
-        style={{
-          background:
-            "radial-gradient(circle at 50% 50%, rgba(77, 142, 255, 0.08) 0%, rgba(12, 19, 36, 0) 70%)",
-        }}
-      />
-      <div className="pointer-events-none fixed left-[-10%] top-[-10%] h-[40%] w-[40%] rounded-full bg-[#adc6ff]/5 blur-[120px]" />
-      <div className="pointer-events-none fixed bottom-[-10%] right-[-10%] h-[40%] w-[40%] rounded-full bg-[#d0bcff]/5 blur-[120px]" />
+    <main className="relative flex min-h-screen w-full flex-col lg:flex-row overflow-hidden bg-[#0c1324] text-[#dce1fb]" dir={language === 'ar' ? 'rtl' : 'ltr'}>
+      <Link href="/" className="absolute top-6 left-6 z-50 flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-[#081121]/80 text-slate-400 backdrop-blur-md transition-all hover:border-blue-500/30 hover:bg-blue-500/10 hover:text-white hover:shadow-[0_0_15px_rgba(59,130,246,0.2)] rtl:left-auto rtl:right-6">
+        <span className="material-symbols-outlined text-[18px]">home</span>
+      </Link>
+      <div className="absolute top-6 right-6 z-50 flex items-center rounded-full border border-white/10 bg-[#081121]/80 p-1 backdrop-blur-md rtl:right-auto rtl:left-6" dir="ltr">
+        {(
+          [
+            { id: "en", label: "EN" },
+            { id: "fr", label: "FR" },
+            { id: "ar", label: "AR" },
+          ] as const
+        ).map((lang) => (
+          <button
+            key={lang.id}
+            onClick={() => setLanguage(lang.id)}
+            className={`relative px-4 py-1.5 text-xs font-bold uppercase tracking-wider transition-all duration-300 ${
+              language === lang.id
+                ? "text-white"
+                : "text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            {language === lang.id && (
+              <div className="absolute inset-0 rounded-full bg-blue-500/20 shadow-[inset_0_0_10px_rgba(59,130,246,0.3)]" />
+            )}
+            <span className="relative z-10">{lang.label}</span>
+          </button>
+        ))}
+      </div>
+      <div className="relative hidden lg:flex w-1/2 items-center justify-center border-r border-[#adc6ff]/10 bg-[#0c1324]">
+        <img 
+          src="/landing/auth-art.svg" 
+          alt="Vibecraft Art" 
+          className="absolute inset-0 h-full w-full object-cover" 
+        />
+        <div className="absolute inset-0 bg-gradient-to-r from-transparent to-[#0c1324]" />
+      </div>
 
-      <div className="relative z-10 w-full max-w-md">
+      <div className="relative flex w-full lg:w-1/2 flex-col items-center justify-center px-6 pt-24 pb-10 lg:pt-24 lg:pb-10">
+
+        <div
+          className="pointer-events-none absolute inset-0 z-0"
+          aria-hidden="true"
+          style={{
+            background:
+              "radial-gradient(circle at 50% 50%, rgba(77, 142, 255, 0.08) 0%, rgba(12, 19, 36, 0) 70%)",
+          }}
+        />
+        <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden opacity-40">
+          <svg className="absolute h-full w-full" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="glowAuth" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#4d8eff" stopOpacity="0.8"/>
+                <stop offset="50%" stopColor="#d0bcff" stopOpacity="0.4"/>
+                <stop offset="100%" stopColor="#0c1324" stopOpacity="0"/>
+              </linearGradient>
+              <filter id="blurAuth" x="-20%" y="-20%" width="140%" height="140%">
+                <feGaussianBlur stdDeviation="60" />
+              </filter>
+            </defs>
+            <path d="M-100 200 C 300 100, 400 600, 1000 300 S 1400 100, 2000 500" stroke="url(#glowAuth)" strokeWidth="40" fill="none" filter="url(#blurAuth)" />
+            <path d="M-100 800 C 400 500, 600 900, 1200 400 S 1600 200, 2200 600" stroke="url(#glowAuth)" strokeWidth="60" fill="none" filter="url(#blurAuth)" opacity="0.6"/>
+            <path d="M-100 500 C 200 800, 500 200, 1100 700 S 1500 500, 2000 800" stroke="url(#glowAuth)" strokeWidth="30" fill="none" filter="url(#blurAuth)" opacity="0.4"/>
+          </svg>
+        </div>
+
+        <div className="relative z-10 w-full max-w-md">
         <header className="mb-12 text-center">
           <div className="mb-2 flex items-center justify-center gap-3">
             <img
@@ -172,7 +224,7 @@ export default function AuthPage() {
               Vibecraft
             </h1>
           </div>
-          <p className="font-label text-[10px] uppercase tracking-[0.4em] text-[#adc6ff]/60">AI Studio</p>
+
         </header>
 
         <div className="rounded-xl border border-[#adc6ff]/15 bg-[rgba(25,31,49,0.6)] px-5 py-8 sm:p-10 text-center backdrop-blur-[24px]">
@@ -183,22 +235,22 @@ export default function AuthPage() {
           </div>
 
           <h2 className="font-headline mb-4 text-2xl font-medium tracking-tight text-slate-100">
-            The Digital Architect.
+            {t("The Digital Architect.")}
           </h2>
           <p className="mx-auto mb-10 max-w-[280px] text-sm leading-relaxed text-[#c2c6d6]">
-            Engineered for creative excellence. Access your private workspace.
+            {t("Engineered for creative excellence. Access your private workspace.")}
           </p>
 
           {error ? (
             <div className="mb-5 rounded-md border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
-              <p>{error}</p>
+              <p>{t(error)}</p>
               {error.toLowerCase().includes("deactivated") ? (
                 <div className="mt-3 flex flex-wrap gap-4 text-[11px] uppercase tracking-[0.16em]">
                   <Link href="/privacy" className="text-[#ffd6d1] underline underline-offset-4">
-                    Privacy Policy
+                    {t("Privacy Policy")}
                   </Link>
                   <Link href="/policy" className="text-[#ffd6d1] underline underline-offset-4">
-                    Terms of Service
+                    {t("Terms of Service")}
                   </Link>
                 </div>
               ) : null}
@@ -206,36 +258,36 @@ export default function AuthPage() {
           ) : null}
 
           {isInAppBrowser ? (
-            <div className="mb-6 w-full rounded-xl border border-white/5 bg-[rgba(16,21,36,0.5)] p-4 sm:p-6 text-left shadow-lg">
+            <div className="mb-6 w-full rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 sm:p-5 text-left rtl:text-right shadow-[0_4px_24px_rgba(245,158,11,0.05)] backdrop-blur-md">
               <div className="flex items-start gap-3 sm:gap-4">
-                <div className="flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-lg border border-amber-500/40 bg-amber-500/10 shadow-[0_0_15px_rgba(245,158,11,0.1)]">
-                  <span className="material-symbols-outlined text-[20px] sm:text-[24px] text-amber-400">warning</span>
+                <div className="flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-full border border-amber-500/20 bg-amber-500/10 shadow-[inset_0_0_10px_rgba(245,158,11,0.1)]">
+                  <span className="material-symbols-outlined text-[20px] sm:text-[24px] text-amber-400">gpp_maybe</span>
                 </div>
                 <div className="flex flex-col pt-0 sm:pt-0.5">
-                  <h3 className="mb-1 sm:mb-1.5 font-headline text-[11px] sm:text-[12px] font-bold tracking-[0.1em] sm:tracking-[0.15em] text-amber-400 uppercase whitespace-nowrap">
-                    Action Required
+                  <h3 className="mb-1 sm:mb-1.5 font-headline text-[11px] sm:text-[12px] font-bold tracking-[0.1em] sm:tracking-[0.15em] text-amber-400 uppercase">
+                    {t("Action Required")}
                   </h3>
-                  <p className="text-[12px] sm:text-[13.5px] leading-relaxed text-[#c2c6d6]">
-                    For security reasons, Google Sign-In does not work inside social media browsers.
+                  <p className="text-[12px] sm:text-[13px] leading-relaxed text-[#c2c6d6]">
+                    {t("For security reasons, Google Sign-In does not work inside social media browsers.")}
                   </p>
                 </div>
               </div>
               
-              <div className="mt-4 sm:mt-5 flex flex-col gap-3 sm:gap-3.5 pl-[3.25rem] sm:pl-[4rem]">
+              <div className="mt-4 sm:mt-5 flex flex-col gap-3 sm:gap-3.5 pl-[3.25rem] sm:pl-[4rem] rtl:pl-0 sm:rtl:pl-0 rtl:pr-[3.25rem] sm:rtl:pr-[4rem]">
                 <div className="flex items-start gap-2 sm:gap-3">
-                  <span className="mt-0.5 flex h-[16px] w-[16px] sm:h-[18px] sm:w-[18px] shrink-0 items-center justify-center rounded-full border border-amber-500/30 bg-amber-500/10 text-[9px] sm:text-[10px] font-bold text-amber-400">
+                  <span className="mt-0.5 flex h-4 w-4 sm:h-5 sm:w-5 shrink-0 items-center justify-center rounded-full bg-amber-500/20 text-[9px] sm:text-[10px] font-bold text-amber-400">
                     1
                   </span>
-                  <p className="text-[12px] sm:text-[13.5px] text-[#c2c6d6]">
-                    Tap the <span className="mx-0.5 sm:mx-1 inline-block rounded-md bg-[#252b3d] px-1.5 py-0.5 font-mono text-[9px] sm:text-[10px] font-bold tracking-widest text-white">•••</span> icon in your browser header.
+                  <p className="text-[12px] sm:text-[13px] text-[#c2c6d6]">
+                    {t("Tap the")} <span className="mx-1 inline-block rounded-md bg-[#0c1324] border border-white/10 px-1.5 py-0.5 font-mono text-[9px] sm:text-[10px] font-bold tracking-widest text-white shadow-sm">•••</span> {t("icon in your browser header.")}
                   </p>
                 </div>
                 <div className="flex items-start gap-2 sm:gap-3">
-                  <span className="mt-0.5 flex h-[16px] w-[16px] sm:h-[18px] sm:w-[18px] shrink-0 items-center justify-center rounded-full border border-amber-500/30 bg-amber-500/10 text-[9px] sm:text-[10px] font-bold text-amber-400">
+                  <span className="mt-0.5 flex h-4 w-4 sm:h-5 sm:w-5 shrink-0 items-center justify-center rounded-full bg-amber-500/20 text-[9px] sm:text-[10px] font-bold text-amber-400">
                     2
                   </span>
-                  <p className="text-[12px] sm:text-[13.5px] text-[#c2c6d6]">
-                    Select <span className="font-semibold text-[#81a1ff]">"Open in browser"</span> to continue securely.
+                  <p className="text-[12px] sm:text-[13px] text-[#c2c6d6]">
+                    {t("Select")} <span className="font-semibold text-amber-200">{t('"Open in browser"')}</span> {t("to continue securely.")}
                   </p>
                 </div>
               </div>
@@ -257,44 +309,54 @@ export default function AuthPage() {
                   <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
                 </svg>
               )}
-              <span className="tracking-wide">{loading ? "Signing in…" : "Sign in with Google"}</span>
+              <span className="tracking-wide">{loading ? t("Signing in…") : t("Sign in with Google")}</span>
             </button>
           )}
 
           <div className="mt-8 flex items-center justify-center gap-2 opacity-40">
             <span className="material-symbols-outlined text-xs">verified_user</span>
-            <span className="font-label text-[10px] uppercase tracking-widest">End-to-end Encrypted Sessions</span>
+            <span className="font-label text-[10px] uppercase tracking-widest">{t("End-to-end Encrypted Sessions")}</span>
           </div>
         </div>
 
         <footer className="mt-12 text-center">
           <p className="font-label text-[10px] uppercase tracking-[0.2em] text-slate-500">
-            © 2026 Vibecraft AI Studio. Engineered for the avant-garde.
+            &copy; {new Date().getFullYear()} Vibecraft AI Studio. {t("All rights reserved.")}
           </p>
           <div className="mt-4 flex justify-center gap-6">
             <Link
               href="/privacy"
               className="font-label text-[10px] uppercase tracking-[0.2em] text-slate-600 transition-colors hover:text-[#adc6ff]"
             >
-              Privacy
+              {t("Privacy")}
             </Link>
             <Link
               href="/policy"
               className="font-label text-[10px] uppercase tracking-[0.2em] text-slate-600 transition-colors hover:text-[#adc6ff]"
             >
-              Terms
+              {t("Terms")}
             </Link>
             <a
               href="mailto:ouni@novanode.tn"
               className="font-label text-[10px] uppercase tracking-[0.2em] text-slate-600 transition-colors hover:text-[#adc6ff]"
             >
-              Support
+              {t("Support")}
             </a>
           </div>
         </footer>
       </div>
+    </div>
 
       <div className="pointer-events-none fixed bottom-0 left-0 h-1 w-full bg-gradient-to-r from-transparent via-[#adc6ff]/20 to-transparent" />
     </main>
   );
 }
+
+export default function AuthPage() {
+  return (
+    <LanguageProvider>
+      <AuthContent />
+    </LanguageProvider>
+  );
+}
+
