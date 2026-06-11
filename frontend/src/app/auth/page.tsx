@@ -35,9 +35,12 @@ function mapAuthErrorMessage(error: unknown): string {
   return rawMessage || "Google sign-in failed.";
 }
 
-export default function AuthPage() {
+import { LanguageProvider, useLanguage } from "../../context/LanguageContext";
+
+function AuthContent() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
+  const { t, language, setLanguage } = useLanguage();
 
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -86,10 +89,6 @@ export default function AuthPage() {
       .getProfile()
       .then(() => {
         if (cancelled) return;
-        // Honor a safe internal ?next= (e.g. /credits?code=VC-...) so users who
-        // arrived via a deep link land back there after logging in; default to dashboard.
-        // Resolve against our own origin so open-redirect payloads are rejected
-        // (//evil.com, /\evil.com, https://evil.com, javascript:...).
         const rawNext = new URLSearchParams(window.location.search).get("next");
         let safeNext = "/dashboard";
         if (rawNext) {
@@ -100,7 +99,7 @@ export default function AuthPage() {
               safeNext = path;
             }
           } catch {
-            /* malformed next — fall back to dashboard */
+            /* malformed next */
           }
         }
         router.replace(safeNext);
@@ -149,16 +148,37 @@ export default function AuthPage() {
 
   return (
     <main className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-[#0c1324] px-6 py-10 text-[#dce1fb]">
+      <div className="absolute top-6 right-6 z-50 flex gap-2">
+        <button onClick={() => setLanguage("en")} className={`px-3 py-1 rounded text-sm ${language === 'en' ? 'bg-[#adc6ff]/20 text-white' : 'text-slate-400'}`}>EN</button>
+        <button onClick={() => setLanguage("fr")} className={`px-3 py-1 rounded text-sm ${language === 'fr' ? 'bg-[#adc6ff]/20 text-white' : 'text-slate-400'}`}>FR</button>
+        <button onClick={() => setLanguage("ar")} className={`px-3 py-1 rounded text-sm ${language === 'ar' ? 'bg-[#adc6ff]/20 text-white' : 'text-slate-400'}`}>AR</button>
+      </div>
+
       <div
-        className="pointer-events-none fixed inset-0"
+        className="pointer-events-none fixed inset-0 z-0"
         aria-hidden="true"
         style={{
           background:
             "radial-gradient(circle at 50% 50%, rgba(77, 142, 255, 0.08) 0%, rgba(12, 19, 36, 0) 70%)",
         }}
       />
-      <div className="pointer-events-none fixed left-[-10%] top-[-10%] h-[40%] w-[40%] rounded-full bg-[#adc6ff]/5 blur-[120px]" />
-      <div className="pointer-events-none fixed bottom-[-10%] right-[-10%] h-[40%] w-[40%] rounded-full bg-[#d0bcff]/5 blur-[120px]" />
+      <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden opacity-40">
+        <svg className="absolute h-full w-full" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="glowAuth" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#4d8eff" stopOpacity="0.8"/>
+              <stop offset="50%" stopColor="#d0bcff" stopOpacity="0.4"/>
+              <stop offset="100%" stopColor="#0c1324" stopOpacity="0"/>
+            </linearGradient>
+            <filter id="blurAuth" x="-20%" y="-20%" width="140%" height="140%">
+              <feGaussianBlur stdDeviation="60" />
+            </filter>
+          </defs>
+          <path d="M-100 200 C 300 100, 400 600, 1000 300 S 1400 100, 2000 500" stroke="url(#glowAuth)" strokeWidth="40" fill="none" filter="url(#blurAuth)" />
+          <path d="M-100 800 C 400 500, 600 900, 1200 400 S 1600 200, 2200 600" stroke="url(#glowAuth)" strokeWidth="60" fill="none" filter="url(#blurAuth)" opacity="0.6"/>
+          <path d="M-100 500 C 200 800, 500 200, 1100 700 S 1500 500, 2000 800" stroke="url(#glowAuth)" strokeWidth="30" fill="none" filter="url(#blurAuth)" opacity="0.4"/>
+        </svg>
+      </div>
 
       <div className="relative z-10 w-full max-w-md">
         <header className="mb-12 text-center">
@@ -172,7 +192,7 @@ export default function AuthPage() {
               Vibecraft
             </h1>
           </div>
-          <p className="font-label text-[10px] uppercase tracking-[0.4em] text-[#adc6ff]/60">AI Studio</p>
+
         </header>
 
         <div className="rounded-xl border border-[#adc6ff]/15 bg-[rgba(25,31,49,0.6)] px-5 py-8 sm:p-10 text-center backdrop-blur-[24px]">
@@ -183,22 +203,22 @@ export default function AuthPage() {
           </div>
 
           <h2 className="font-headline mb-4 text-2xl font-medium tracking-tight text-slate-100">
-            The Digital Architect.
+            {t("The Digital Architect.")}
           </h2>
           <p className="mx-auto mb-10 max-w-[280px] text-sm leading-relaxed text-[#c2c6d6]">
-            Engineered for creative excellence. Access your private workspace.
+            {t("Engineered for creative excellence. Access your private workspace.")}
           </p>
 
           {error ? (
             <div className="mb-5 rounded-md border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
-              <p>{error}</p>
+              <p>{t(error)}</p>
               {error.toLowerCase().includes("deactivated") ? (
                 <div className="mt-3 flex flex-wrap gap-4 text-[11px] uppercase tracking-[0.16em]">
                   <Link href="/privacy" className="text-[#ffd6d1] underline underline-offset-4">
-                    Privacy Policy
+                    {t("Privacy Policy")}
                   </Link>
                   <Link href="/policy" className="text-[#ffd6d1] underline underline-offset-4">
-                    Terms of Service
+                    {t("Terms of Service")}
                   </Link>
                 </div>
               ) : null}
@@ -213,10 +233,10 @@ export default function AuthPage() {
                 </div>
                 <div className="flex flex-col pt-0 sm:pt-0.5">
                   <h3 className="mb-1 sm:mb-1.5 font-headline text-[11px] sm:text-[12px] font-bold tracking-[0.1em] sm:tracking-[0.15em] text-amber-400 uppercase whitespace-nowrap">
-                    Action Required
+                    {t("Action Required")}
                   </h3>
                   <p className="text-[12px] sm:text-[13.5px] leading-relaxed text-[#c2c6d6]">
-                    For security reasons, Google Sign-In does not work inside social media browsers.
+                    {t("For security reasons, Google Sign-In does not work inside social media browsers.")}
                   </p>
                 </div>
               </div>
@@ -227,7 +247,7 @@ export default function AuthPage() {
                     1
                   </span>
                   <p className="text-[12px] sm:text-[13.5px] text-[#c2c6d6]">
-                    Tap the <span className="mx-0.5 sm:mx-1 inline-block rounded-md bg-[#252b3d] px-1.5 py-0.5 font-mono text-[9px] sm:text-[10px] font-bold tracking-widest text-white">•••</span> icon in your browser header.
+                    {t("Tap the")} <span className="mx-0.5 sm:mx-1 inline-block rounded-md bg-[#252b3d] px-1.5 py-0.5 font-mono text-[9px] sm:text-[10px] font-bold tracking-widest text-white">•••</span> {t("icon in your browser header.")}
                   </p>
                 </div>
                 <div className="flex items-start gap-2 sm:gap-3">
@@ -235,7 +255,7 @@ export default function AuthPage() {
                     2
                   </span>
                   <p className="text-[12px] sm:text-[13.5px] text-[#c2c6d6]">
-                    Select <span className="font-semibold text-[#81a1ff]">"Open in browser"</span> to continue securely.
+                    {t("Select")} <span className="font-semibold text-[#81a1ff]">{t('"Open in browser"')}</span> {t("to continue securely.")}
                   </p>
                 </div>
               </div>
@@ -257,38 +277,38 @@ export default function AuthPage() {
                   <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
                 </svg>
               )}
-              <span className="tracking-wide">{loading ? "Signing in…" : "Sign in with Google"}</span>
+              <span className="tracking-wide">{loading ? t("Signing in…") : t("Sign in with Google")}</span>
             </button>
           )}
 
           <div className="mt-8 flex items-center justify-center gap-2 opacity-40">
             <span className="material-symbols-outlined text-xs">verified_user</span>
-            <span className="font-label text-[10px] uppercase tracking-widest">End-to-end Encrypted Sessions</span>
+            <span className="font-label text-[10px] uppercase tracking-widest">{t("End-to-end Encrypted Sessions")}</span>
           </div>
         </div>
 
         <footer className="mt-12 text-center">
           <p className="font-label text-[10px] uppercase tracking-[0.2em] text-slate-500">
-            © 2026 Vibecraft AI Studio. Engineered for the avant-garde.
+            &copy; {new Date().getFullYear()} Vibecraft AI Studio. {t("All rights reserved.")}
           </p>
           <div className="mt-4 flex justify-center gap-6">
             <Link
               href="/privacy"
               className="font-label text-[10px] uppercase tracking-[0.2em] text-slate-600 transition-colors hover:text-[#adc6ff]"
             >
-              Privacy
+              {t("Privacy")}
             </Link>
             <Link
               href="/policy"
               className="font-label text-[10px] uppercase tracking-[0.2em] text-slate-600 transition-colors hover:text-[#adc6ff]"
             >
-              Terms
+              {t("Terms")}
             </Link>
             <a
               href="mailto:ouni@novanode.tn"
               className="font-label text-[10px] uppercase tracking-[0.2em] text-slate-600 transition-colors hover:text-[#adc6ff]"
             >
-              Support
+              {t("Support")}
             </a>
           </div>
         </footer>
@@ -298,3 +318,12 @@ export default function AuthPage() {
     </main>
   );
 }
+
+export default function AuthPage() {
+  return (
+    <LanguageProvider>
+      <AuthContent />
+    </LanguageProvider>
+  );
+}
+
