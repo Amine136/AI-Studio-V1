@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
+import { useLanguage } from "../../context/LanguageContext";
 import { api } from "../../services/api";
 import type { PlainChatConversationItem, PlainChatModelItem } from "../../types";
 
@@ -25,6 +26,7 @@ function formatHistoryDate(value: Date): string {
 export default function StudioHomePage() {
   const router = useRouter();
   const { user } = useAuth();
+  const { t } = useLanguage();
   const [conversations, setConversations] = useState<PlainChatConversationItem[]>([]);
   const [plainChatModels, setPlainChatModels] = useState<PlainChatModelItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -83,7 +85,7 @@ export default function StudioHomePage() {
   }, [plainChatModels]);
 
   async function handleDeleteConversation(conversationId: string) {
-    if (typeof window !== "undefined" && !window.confirm("Delete this conversation? This action cannot be undone.")) {
+    if (typeof window !== "undefined" && !window.confirm(t("Delete this conversation? This action cannot be undone."))) {
       return;
     }
 
@@ -100,10 +102,10 @@ export default function StudioHomePage() {
       <div className="mx-auto max-w-[1400px] space-y-12">
         <div className="max-w-3xl">
           <h1 className="font-headline text-3xl font-bold tracking-tight text-white sm:text-4xl lg:text-5xl">
-            Choose how you want to work.
+            {t("Choose how you want to work.")}
           </h1>
           <p className="mt-4 text-sm leading-6 text-[#c2c6d6] sm:text-base sm:leading-7 lg:text-lg">
-            Pick the faster conversational path for lightweight back-and-forth, or enter the guided smart workflow for precise content creation.
+            {t("Pick the faster conversational path for lightweight back-and-forth, or enter the guided smart workflow for precise content creation.")}
           </p>
         </div>
 
@@ -118,14 +120,14 @@ export default function StudioHomePage() {
                 <span className="material-symbols-outlined text-4xl">chat</span>
               </div>
               <div>
-                <h2 className="font-headline text-2xl font-bold text-white sm:text-3xl">Playground</h2>
+                <h2 className="font-headline text-2xl font-bold text-white sm:text-3xl">{t("Playground")}</h2>
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-[#c2c6d6] sm:text-base sm:leading-7">
-                  Best for lightweight prompting, iteration, and direct AI generation. This is the fast path for users who want to interact with individual models directly.
+                  {t("Best for lightweight prompting, iteration, and direct AI generation. This is the fast path for users who want to interact with individual models directly.")}
                 </p>
               </div>
             </div>
             <div className="mt-8 inline-flex shrink-0 items-center gap-2 rounded-full bg-white/10 px-6 py-3 font-semibold text-white transition-all group-hover:bg-white/20 md:mt-0">
-              Open Playground
+              {t("Open Playground")}
               <span className="material-symbols-outlined text-base transition-transform group-hover:translate-x-1">arrow_forward</span>
             </div>
           </Link>
@@ -134,10 +136,10 @@ export default function StudioHomePage() {
         {/* Workflows */}
         <div>
           <h2 className="font-headline text-2xl font-bold tracking-tight text-white sm:text-3xl">
-            Workflows
+            {t("Workflows")}
           </h2>
           <p className="mt-2 text-sm text-[#8c909f]">
-            Guided, multi-step engines designed for specific tasks.
+            {t("Guided, multi-step engines designed for specific tasks.")}
           </p>
 
           <div className="mt-8 grid gap-6 md:grid-cols-3">
@@ -149,12 +151,12 @@ export default function StudioHomePage() {
               <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-[#2e3447] text-[#adc6ff] transition-colors group-hover:bg-[#adc6ff] group-hover:text-[#00285d]">
                 <span className="material-symbols-outlined text-2xl" style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
               </div>
-              <h3 className="font-headline text-lg font-bold text-white">Smart Content</h3>
+              <h3 className="font-headline text-lg font-bold text-white">{t("Smart Content")}</h3>
               <p className="mt-2 flex-grow text-sm leading-6 text-[#c2c6d6]">
-                Review prompts, choose precise settings, and generate structured content with our guided creation workflow.
+                {t("Review prompts, choose precise settings, and generate structured content with our guided creation workflow.")}
               </p>
               <div className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-[#adc6ff] transition-all group-hover:gap-3">
-                Open Workflow
+                {t("Open Workflow")}
                 <span className="material-symbols-outlined text-base">arrow_forward</span>
               </div>
 
@@ -164,7 +166,7 @@ export default function StudioHomePage() {
                   <img className="inline-block h-6 w-6 rounded-full ring-2 ring-[#0f1422]" src="https://i.pravatar.cc/100?img=47" alt="" />
                   <img className="inline-block h-6 w-6 rounded-full ring-2 ring-[#0f1422]" src="https://i.pravatar.cc/100?img=12" alt="" />
                 </div>
-                <p className="text-[11px] text-[#8c909f] leading-snug">Only <strong className="text-white">70 creators</strong> have unlocked this so far.</p>
+                <p className="text-[11px] text-[#8c909f] leading-snug">{t("Only")} <strong className="text-white">70 {t("creators")}</strong> {t("have unlocked this so far.")}</p>
               </div>
             </Link>
 
@@ -174,11 +176,11 @@ export default function StudioHomePage() {
                 <span className="material-symbols-outlined text-2xl">view_timeline</span>
               </div>
               <div className="mb-2 flex items-center justify-between gap-2">
-                <h3 className="font-headline text-lg font-bold text-white truncate">Storyboard Studio</h3>
-                <span className="shrink-0 rounded bg-white/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-white/70">Coming Soon</span>
+                <h3 className="font-headline text-lg font-bold text-white truncate">{t("Storyboard Studio")}</h3>
+                <span className="shrink-0 rounded bg-white/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-white/70">{t("Coming Soon")}</span>
               </div>
               <p className="mt-2 flex-grow text-sm leading-6 text-slate-400">
-                A sequential engine that breaks scripts into scenes and generates stylistically consistent visual frames.
+                {t("A sequential engine that breaks scripts into scenes and generates stylistically consistent visual frames.")}
               </p>
             </div>
 
@@ -188,11 +190,11 @@ export default function StudioHomePage() {
                 <span className="material-symbols-outlined text-2xl">movie</span>
               </div>
               <div className="mb-2 flex items-center justify-between gap-2">
-                <h3 className="font-headline text-lg font-bold text-white truncate">Video Generation</h3>
-                <span className="shrink-0 rounded bg-white/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-white/70">Coming Soon</span>
+                <h3 className="font-headline text-lg font-bold text-white truncate">{t("Video Generation")}</h3>
+                <span className="shrink-0 rounded bg-white/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-white/70">{t("Coming Soon")}</span>
               </div>
               <p className="mt-2 flex-grow text-sm leading-6 text-slate-400">
-                An orchestration engine for storyboard generation, asset creation, and final video rendering.
+                {t("An orchestration engine for storyboard generation, asset creation, and final video rendering.")}
               </p>
             </div>
           </div>
@@ -203,8 +205,8 @@ export default function StudioHomePage() {
           <div className="rounded-2xl border border-white/8 bg-[#151b2d]">
             <div className="border-b border-white/8 px-5 py-4 sm:px-6 sm:py-5">
               <div>
-                <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#adc6ff]">Recent Usage</div>
-                <h2 className="mt-2 font-headline text-xl font-bold text-white sm:text-2xl">Playground History</h2>
+                <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-[#adc6ff]">{t("Recent Usage")}</div>
+                <h2 className="mt-2 font-headline text-xl font-bold text-white sm:text-2xl">{t("Playground History")}</h2>
               </div>
             </div>
 
@@ -228,9 +230,9 @@ export default function StudioHomePage() {
                         className="flex w-full items-center justify-between gap-3 text-left"
                       >
                         <div className="min-w-0">
-                          <div className="text-[10px] uppercase tracking-[0.18em] text-[#8c909f]">Name</div>
+                          <div className="text-[10px] uppercase tracking-[0.18em] text-[#8c909f]">{t("Name")}</div>
                           <div className="mt-1 truncate font-medium text-white">
-                            {conversation.title || "New Chat"}
+                            {conversation.title || t("New Chat")}
                           </div>
                         </div>
                         <span
@@ -245,23 +247,23 @@ export default function StudioHomePage() {
                       {expandedConversationIds.includes(conversation.id) ? (
                         <div className="mt-4 grid gap-4 rounded-xl border border-white/8 bg-[#101728] p-4">
                           <div className="min-w-0">
-                            <div className="text-[10px] uppercase tracking-[0.18em] text-[#8c909f]">Model used</div>
+                            <div className="text-[10px] uppercase tracking-[0.18em] text-[#8c909f]">{t("Model used")}</div>
                             <div className="mt-1 truncate font-medium text-white">
                               {plainChatModelLookup.get(conversation.model) ||
                                 plainChatModelLookup.get((conversation.model || "").toLowerCase()) ||
                                 conversation.model ||
-                                "Chat model"}
+                                t("Chat model")}
                             </div>
                           </div>
                           <div className="grid grid-cols-2 gap-4">
                             <div className="min-w-0">
-                              <div className="text-[10px] uppercase tracking-[0.18em] text-[#8c909f]">Last change</div>
+                              <div className="text-[10px] uppercase tracking-[0.18em] text-[#8c909f]">{t("Last change")}</div>
                               <div className="mt-1 text-sm text-[#c2c6d6]">
                                 {formatHistoryDate(new Date((conversation.lastMessageAt || conversation.updatedAt) * 1000))}
                               </div>
                             </div>
                             <div className="min-w-0">
-                              <div className="text-[10px] uppercase tracking-[0.18em] text-[#8c909f]">Credits charged</div>
+                              <div className="text-[10px] uppercase tracking-[0.18em] text-[#8c909f]">{t("Credits charged")}</div>
                               <div className="mt-1 font-medium text-white">
                                 {(conversation.totalCostCredits || 0).toFixed(2)} Cr
                               </div>
@@ -275,7 +277,7 @@ export default function StudioHomePage() {
                               }}
                               className="inline-flex items-center gap-2 text-sm font-semibold text-[#adc6ff]"
                             >
-                              Open chat
+                              {t("Open chat")}
                               <span className="material-symbols-outlined text-base">arrow_forward</span>
                             </button>
                             <button
@@ -298,26 +300,26 @@ export default function StudioHomePage() {
                       className="hidden cursor-pointer gap-4 lg:grid lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_auto_auto_auto_auto] lg:items-center"
                     >
                       <div className="min-w-0">
-                        <div className="text-[10px] uppercase tracking-[0.18em] text-[#8c909f]">Name</div>
+                        <div className="text-[10px] uppercase tracking-[0.18em] text-[#8c909f]">{t("Name")}</div>
                         <div className="mt-1 truncate font-medium text-white">
-                          {conversation.title || "New Chat"}
+                          {conversation.title || t("New Chat")}
                         </div>
                       </div>
                       <div className="min-w-0">
-                        <div className="text-[10px] uppercase tracking-[0.18em] text-[#8c909f]">Model used</div>
+                        <div className="text-[10px] uppercase tracking-[0.18em] text-[#8c909f]">{t("Model used")}</div>
                         <div className="mt-1 truncate font-medium text-white">
-                          {plainChatModelLookup.get(conversation.model) || plainChatModelLookup.get((conversation.model || "").toLowerCase()) || conversation.model || "Chat model"}
+                          {plainChatModelLookup.get(conversation.model) || plainChatModelLookup.get((conversation.model || "").toLowerCase()) || conversation.model || t("Chat model")}
                         </div>
                       </div>
                       <div className="min-w-0">
-                        <div className="text-[10px] uppercase tracking-[0.18em] text-[#8c909f]">Last change</div>
+                        <div className="text-[10px] uppercase tracking-[0.18em] text-[#8c909f]">{t("Last change")}</div>
                         <div className="mt-1 truncate text-sm text-[#c2c6d6]">
                           {formatHistoryDate(new Date((conversation.lastMessageAt || conversation.updatedAt) * 1000))}
                         </div>
                       </div>
                       <div className="flex min-w-0 items-center justify-between gap-3">
                         <div>
-                          <div className="text-[10px] uppercase tracking-[0.18em] text-[#8c909f]">Credits charged</div>
+                          <div className="text-[10px] uppercase tracking-[0.18em] text-[#8c909f]">{t("Credits charged")}</div>
                           <div className="mt-1 font-medium text-white">
                             {(conversation.totalCostCredits || 0).toFixed(2)} Cr
                           </div>
@@ -345,9 +347,9 @@ export default function StudioHomePage() {
               ) : null}
 
               {loading ? (
-                <div className="px-5 py-8 text-sm text-[#8c909f] sm:px-6 sm:py-10">Loading playground history…</div>
+                <div className="px-5 py-8 text-sm text-[#8c909f] sm:px-6 sm:py-10">{t("Loading playground history…")}</div>
               ) : recentConversations.length === 0 ? (
-                <div className="px-5 py-8 text-sm text-[#8c909f] sm:px-6 sm:py-10">No recent playground conversations yet.</div>
+                <div className="px-5 py-8 text-sm text-[#8c909f] sm:px-6 sm:py-10">{t("No recent playground conversations yet.")}</div>
               ) : null}
             </div>
 
@@ -358,7 +360,7 @@ export default function StudioHomePage() {
                   onClick={() => setVisibleCount((count) => Math.min(count + HISTORY_PAGE_SIZE, HISTORY_MAX))}
                   className="inline-flex items-center gap-2 rounded-full border border-[#adc6ff]/30 bg-white/5 px-5 py-2.5 text-sm font-semibold text-[#adc6ff] transition-colors hover:border-[#adc6ff]/50 hover:bg-white/10 hover:text-white"
                 >
-                  Load more
+                  {t("Load more")}
                   <span className="material-symbols-outlined text-base">expand_more</span>
                 </button>
               </div>

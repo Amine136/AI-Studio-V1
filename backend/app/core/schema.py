@@ -549,8 +549,14 @@ class DashboardNewsItemResponse(BaseModel):
     badge: str = ""
     when: str = ""
     title: str
+    titleFr: str = ""
+    titleAr: str = ""
     description: str = ""
+    descriptionFr: str = ""
+    descriptionAr: str = ""
     linkLabel: str = ""
+    linkLabelFr: str = ""
+    linkLabelAr: str = ""
     linkHref: str = "/studio"
     tone: str = "blue"
     sortOrder: int = 0
@@ -567,14 +573,25 @@ class DashboardNewsListResponse(BaseModel):
 class DashboardNewsUpsertRequest(BaseModel):
     badge: Literal["AI News", "Platform Updates", "New Features"] = "AI News"
     title: str = Field(..., min_length=1, max_length=160)
+    titleFr: str = Field(default="", max_length=160)
+    titleAr: str = Field(default="", max_length=160)
     description: str = Field(default="", max_length=600)
+    descriptionFr: str = Field(default="", max_length=600)
+    descriptionAr: str = Field(default="", max_length=600)
     linkLabel: str = Field(default="", max_length=80)
+    linkLabelFr: str = Field(default="", max_length=80)
+    linkLabelAr: str = Field(default="", max_length=80)
     linkHref: str = Field(default="/studio", max_length=255)
     tone: Literal["blue", "purple", "slate"] = "blue"
     sortOrder: int = Field(default=0, ge=0, le=999)
     isActive: bool = True
 
-    @field_validator("title", "description", "linkLabel", "linkHref")
+    @field_validator(
+        "title", "titleFr", "titleAr",
+        "description", "descriptionFr", "descriptionAr",
+        "linkLabel", "linkLabelFr", "linkLabelAr",
+        "linkHref",
+    )
     @classmethod
     def normalize_text_fields(cls, value: str) -> str:
         return str(value or "").strip()

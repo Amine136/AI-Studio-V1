@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { signOutUser } from "../../lib/auth";
+import { useLanguage } from "../../context/LanguageContext";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: "dashboard" },
@@ -17,6 +18,7 @@ const navItems = [
 export default function AppSidebar({ activePath, hideMobileNav = false }: { activePath: string; hideMobileNav?: boolean }) {
   const router = useRouter();
   const [signingOut, setSigningOut] = useState(false);
+  const { t } = useLanguage();
 
   const handleSignOut = async () => {
     if (signingOut) return;
@@ -41,7 +43,7 @@ export default function AppSidebar({ activePath, hideMobileNav = false }: { acti
             />
             <h1 className="font-headline text-xl font-bold tracking-tighter text-[#adc6ff]">Vibecraft</h1>
           </div>
-          <p className="mt-1 text-xs uppercase tracking-[0.28em] text-[#b9c8de]/70">Workspace</p>
+          <p className="mt-1 text-xs uppercase tracking-[0.28em] text-[#b9c8de]/70">{t("Workspace")}</p>
         </div>
 
         <nav className="flex-1 space-y-2 font-headline text-sm tracking-wide">
@@ -63,7 +65,7 @@ export default function AppSidebar({ activePath, hideMobileNav = false }: { acti
                 >
                   {item.icon}
                 </span>
-                <span>{item.label}</span>
+                <span>{t(item.label)}</span>
               </Link>
             );
           })}
@@ -76,7 +78,7 @@ export default function AppSidebar({ activePath, hideMobileNav = false }: { acti
             className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-[#b9c8de]/70 transition-colors hover:bg-[#1a2333]"
           >
             <span className="material-symbols-outlined">logout</span>
-            <span>{signingOut ? "Signing Out..." : "Sign Out"}</span>
+            <span>{signingOut ? t("Signing Out...") : t("Sign Out")}</span>
           </button>
         </div>
       </aside>
@@ -93,7 +95,7 @@ export default function AppSidebar({ activePath, hideMobileNav = false }: { acti
                 >
                   {item.icon}
                 </span>
-                <span className="truncate text-[9px] font-bold uppercase tracking-tighter">{item.label}</span>
+                <span className="truncate text-[9px] font-bold uppercase tracking-tighter">{t(item.label)}</span>
               </Link>
             );
           })}

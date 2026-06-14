@@ -162,8 +162,14 @@ class SecurityRepository:
         badge: str,
         when_label: str,
         title: str,
+        title_fr: str,
+        title_ar: str,
         description: str,
+        description_fr: str,
+        description_ar: str,
         link_label: str,
+        link_label_fr: str,
+        link_label_ar: str,
         link_href: str,
         tone: str,
         sort_order: int,
@@ -175,8 +181,14 @@ class SecurityRepository:
             badge=badge,
             when_label=when_label,
             title=title,
+            title_fr=title_fr,
+            title_ar=title_ar,
             description=description,
+            description_fr=description_fr,
+            description_ar=description_ar,
             link_label=link_label,
+            link_label_fr=link_label_fr,
+            link_label_ar=link_label_ar,
             link_href=link_href,
             tone=tone,
             sort_order=sort_order,
@@ -195,8 +207,14 @@ class SecurityRepository:
         badge: str,
         when_label: str,
         title: str,
+        title_fr: str,
+        title_ar: str,
         description: str,
+        description_fr: str,
+        description_ar: str,
         link_label: str,
+        link_label_fr: str,
+        link_label_ar: str,
         link_href: str,
         tone: str,
         sort_order: int,
@@ -205,8 +223,14 @@ class SecurityRepository:
         item.badge = badge
         item.when_label = when_label
         item.title = title
+        item.title_fr = title_fr
+        item.title_ar = title_ar
         item.description = description
+        item.description_fr = description_fr
+        item.description_ar = description_ar
         item.link_label = link_label
+        item.link_label_fr = link_label_fr
+        item.link_label_ar = link_label_ar
         item.link_href = link_href
         item.tone = tone
         item.sort_order = sort_order

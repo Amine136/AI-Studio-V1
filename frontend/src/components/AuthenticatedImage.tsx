@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { useAuth } from "../context/AuthContext";
+import { useLanguage } from "../context/LanguageContext";
 
 export function isPrivateFileUrl(url?: string): boolean {
   if (!url) return false;
@@ -40,6 +41,7 @@ export default function AuthenticatedImage({
   className: string;
 }) {
   const { user } = useAuth();
+  const { t } = useLanguage();
   const isRenderable = isRenderableImageUrl(src);
   const isPrivate = isPrivateFileUrl(src);
   const [resolvedSrc, setResolvedSrc] = useState<string | null>(isPrivate ? null : isRenderable ? src : null);
@@ -94,7 +96,7 @@ export default function AuthenticatedImage({
   if (status === "loading") {
     return (
       <div className="flex min-h-40 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 py-6 text-xs text-white/60">
-        Loading image...
+        {t("Loading image...")}
       </div>
     );
   }
@@ -102,7 +104,7 @@ export default function AuthenticatedImage({
   if (status === "error") {
     return (
       <div className="flex min-h-40 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 py-6 text-xs text-white/60">
-        Private image unavailable
+        {t("Private image unavailable")}
       </div>
     );
   }

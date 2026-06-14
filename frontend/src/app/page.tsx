@@ -40,7 +40,7 @@ const roadmapItems = [
   {
     title: "Video generation",
     description: "Cinematic 4K motion synthesis.",
-    status: "Status: under developpement",
+    status: "Status: under development",
     icon: "movie",
     accent: "text-primary",
     dot: "bg-primary shadow-[0_0_20px_rgba(173,198,255,1)]",
@@ -50,7 +50,7 @@ const roadmapItems = [
   {
     title: "Voice content",
     description: "Cloning and synthetic narration with emotional depth.",
-    status: "Status: under intergration",
+    status: "Status: under integration",
     icon: "mic",
     accent: "text-secondary",
     dot: "bg-secondary shadow-[0_0_20px_rgba(208,188,255,1)]",
@@ -79,10 +79,13 @@ const roadmapItems = [
   },
 ];
 
-export default function LandingPage() {
+import { useLanguage } from "../context/LanguageContext";
+
+function LandingContent() {
   const { user, loading } = useAuth();
+  const { t, language, setLanguage } = useLanguage();
   const primaryHref = user ? "/dashboard" : "/auth";
-  const primaryLabel = user ? "Open Dashboard" : "Get Started";
+  const primaryLabel = user ? t("Open Dashboard") : t("Get Started");
   const loginHref = user ? "/dashboard" : "/auth";
 
   return (
@@ -100,21 +103,45 @@ export default function LandingPage() {
 
           <div className="hidden items-center gap-10 md:flex">
             <a href="#features" className="border-b-2 border-blue-400 pb-1 font-headline text-sm tracking-tight text-blue-200 transition-colors duration-300 hover:text-blue-100">
-              Features
+              {t("Features")}
             </a>
             <a href="#models" className="font-headline text-sm tracking-tight text-slate-400 transition-colors duration-300 hover:text-blue-100">
-              Models
+              {t("Models")}
             </a>
             <a href="#horizon" className="font-headline text-sm tracking-tight text-slate-400 transition-colors duration-300 hover:text-blue-100">
-              Coming Soon
+              {t("Coming Soon") || "Coming Soon"}
             </a>
           </div>
 
           <div className="flex shrink-0 items-center gap-2.5 sm:gap-3 lg:gap-6">
+            <div className="flex items-center rounded-full border border-white/10 bg-[#0c1324]/80 p-0.5 sm:p-1 shadow-inner backdrop-blur-md me-1 sm:me-2" dir="ltr">
+              {(
+                [
+                  { id: "en", label: "EN" },
+                  { id: "fr", label: "FR" },
+                  { id: "ar", label: "AR" },
+                ] as const
+              ).map((lang) => (
+                <button
+                  key={lang.id}
+                  onClick={() => setLanguage(lang.id)}
+                  className={`relative px-2 sm:px-3 py-1 text-[9px] sm:text-[10px] font-bold uppercase tracking-widest transition-all duration-300 ${
+                    language === lang.id
+                      ? "text-white"
+                      : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  {language === lang.id && (
+                    <div className="absolute inset-0 rounded-full bg-[#adc6ff]/20 shadow-[inset_0_0_10px_rgba(173,198,255,0.2)]" />
+                  )}
+                  <span className="relative z-10">{lang.label}</span>
+                </button>
+              ))}
+            </div>
             <Link href={loginHref} className="font-headline text-xs tracking-tight text-slate-400 transition-colors duration-300 hover:text-blue-100 sm:text-sm">
-              Log In
+              {t("Log In") || "Log In"}
             </Link>
-            <Link href={primaryHref} className="rounded-md bg-gradient-to-br from-[#adc6ff] to-[#4d8eff] px-3.5 py-2 text-xs font-medium text-[#002e6a] transition-transform duration-100 active:scale-95 sm:px-5 sm:text-sm lg:px-6">
+            <Link href={primaryHref} className="hidden sm:inline-flex rounded-md bg-gradient-to-br from-[#adc6ff] to-[#4d8eff] px-3.5 py-2 text-xs font-medium text-[#002e6a] transition-transform duration-100 active:scale-95 sm:px-5 sm:text-sm lg:px-6">
               {primaryLabel}
             </Link>
           </div>
@@ -128,18 +155,18 @@ export default function LandingPage() {
         </div>
         <div className="relative z-10 mx-auto max-w-4xl text-center animate-fade-in-up stagger-children">
           <h1 className="font-headline text-[2.45rem] font-bold leading-[1.04] tracking-tight text-[#dce1fb] sm:text-5xl md:text-7xl lg:text-8xl">
-            Vibe at the speed of{" "}
-            <span className="bg-gradient-to-r from-[#adc6ff] to-[#d0bcff] bg-clip-text text-transparent">thought.</span>
+            {t("Vibe at the speed of")}{" "}
+            <span className="bg-gradient-to-r from-[#adc6ff] to-[#d0bcff] bg-clip-text text-transparent">{t("thought.")}</span>
           </h1>
           <p className="mx-auto mb-8 mt-6 max-w-2xl text-base font-light leading-relaxed text-[#c2c6d6] sm:mb-12 sm:mt-8 sm:text-lg md:text-xl">
-            Direct access to premium AI chat, image generation, and smarter creation flows built for fast creative work.
+            {t("Direct access to premium AI chat, image generation, and smarter creation flows built for fast creative work.")}
           </p>
           <div className="flex flex-col justify-center gap-3 sm:flex-row sm:gap-4">
             <Link href={primaryHref} className="rounded-md bg-gradient-to-br from-[#adc6ff] to-[#4d8eff] px-8 py-3.5 text-base font-semibold text-[#002e6a] transition-all hover:shadow-[0_0_40px_-10px_rgba(173,198,255,0.5)] sm:px-10 sm:py-4 sm:text-lg">
-              {user ? "Launch Dashboard" : "Launch Studio"}
+              {user ? (t("Launch Dashboard") || "Launch Dashboard") : t("Launch Studio")}
             </Link>
-            <a href="#models" className="rounded-md border border-[#424754]/20 bg-[#23293c]/40 px-8 py-3.5 text-base font-semibold text-[#dce1fb] backdrop-blur-md transition-colors hover:bg-[#2e3447]/60 sm:px-10 sm:py-4 sm:text-lg">
-              View Models
+            <a href="#models" className="rounded-md bg-slate-800/50 px-8 py-3.5 text-base font-medium text-slate-300 backdrop-blur-sm transition-colors hover:bg-slate-700/50 hover:text-white sm:px-10 sm:py-4 sm:text-lg border border-slate-700/50">
+              {t("View Models")}
             </a>
           </div>
           
@@ -155,7 +182,7 @@ export default function LandingPage() {
                   <span key={i} className="material-symbols-outlined text-sm">star</span>
                 ))}
               </div>
-              <p className="text-sm font-medium text-[#c2c6d6]">Be one of the first 1,000 creators</p>
+              <p className="text-sm font-medium text-[#c2c6d6]">{t("Be one of the first 1,000 creators")}</p>
             </div>
           </div>
         </div>
@@ -164,7 +191,7 @@ export default function LandingPage() {
       <section id="features" className="bg-[#0c1324] px-4 py-16 sm:px-6 sm:py-24 lg:px-12 lg:py-32">
         <div className="mx-auto max-w-[1600px]">
           <div className="mb-10 sm:mb-20">
-            <h2 className="font-headline text-3xl font-bold tracking-tight sm:text-4xl">Core Engine</h2>
+            <h2 className="font-headline text-3xl font-bold tracking-tight sm:text-4xl">{t("Core Engine")}</h2>
             <div className="mt-4 h-1 w-20 bg-[#adc6ff]" />
           </div>
 
@@ -180,9 +207,9 @@ export default function LandingPage() {
               <div className="absolute inset-0 bg-gradient-to-t from-[#0c1324] via-[#0c1324]/20 to-transparent" />
               <div className="absolute bottom-0 p-6 sm:p-10">
                 <span className="material-symbols-outlined mb-3 text-3xl text-[#adc6ff] sm:mb-4 sm:text-4xl">auto_awesome</span>
-                <h3 className="font-headline text-2xl font-bold sm:text-3xl">Chat with models</h3>
+                <h3 className="font-headline text-2xl font-bold sm:text-3xl">{t("Chat with models")}</h3>
                 <p className="mt-3 max-w-md text-sm leading-relaxed text-[#c2c6d6] sm:text-base">
-                  Work directly with text, image, and multimodal models in playground. Send prompts, upload images, and iterate inside one conversation.
+                  {t("Work directly with text, image, and multimodal models in playground. Send prompts, upload images, and iterate inside one conversation.")}
                 </p>
               </div>
             </motion.div>
@@ -198,9 +225,9 @@ export default function LandingPage() {
               <div className="absolute inset-0 bg-gradient-to-t from-[#0c1324] via-[#0c1324]/20 to-transparent" />
               <div className="absolute bottom-0 p-6 sm:p-10">
                 <span className="material-symbols-outlined mb-3 text-3xl text-[#adc6ff] sm:mb-4 sm:text-4xl">brush</span>
-                <h3 className="font-headline text-2xl font-bold">Edit images</h3>
+                <h3 className="font-headline text-2xl font-bold">{t("Edit images")}</h3>
                 <p className="mt-3 text-sm leading-relaxed text-[#c2c6d6] sm:text-base">
-                  Upload a reference, transform it with image-capable models, and continue refining results through follow-up instructions.
+                  {t("Upload a reference, transform it with image-capable models, and continue refining results through follow-up instructions.")}
                 </p>
               </div>
             </motion.div>
@@ -215,22 +242,22 @@ export default function LandingPage() {
               <div className="grid items-center lg:grid-cols-5">
                 <div className="p-6 sm:p-10 lg:col-span-2 lg:p-12">
                   <span className="material-symbols-outlined mb-4 text-4xl text-[#adc6ff]">psychology</span>
-                  <h3 className="font-headline text-2xl font-bold sm:text-3xl">Smart generation</h3>
+                  <h3 className="font-headline text-2xl font-bold sm:text-3xl">{t("Smart generation")}</h3>
                   <p className="mt-4 text-base leading-relaxed text-[#c2c6d6] sm:mt-6 sm:text-lg">
-                    Start from a simple idea, review the optimized direction, then generate images and captions with model-aware settings and billing visibility.
+                    {t("Start from a simple idea, review the optimized direction, then generate images and captions with model-aware settings and billing visibility.")}
                   </p>
                   <ul className="mt-6 space-y-3 text-sm sm:mt-8 sm:space-y-4 sm:text-base">
                     <li className="flex items-center gap-3 text-[#dce1fb]">
                       <span className="material-symbols-outlined text-[#adc6ff]">check_circle</span>
-                      Intent analysis before generation
+                      {t("Intent analysis before generation")}
                     </li>
                     <li className="flex items-center gap-3 text-[#dce1fb]">
                       <span className="material-symbols-outlined text-[#adc6ff]">check_circle</span>
-                      Optimized prompts before execution
+                      {t("Optimized prompts before execution")}
                     </li>
                     <li className="flex items-center gap-3 text-[#dce1fb]">
                       <span className="material-symbols-outlined text-[#adc6ff]">check_circle</span>
-                      Controlled image and caption outputs
+                      {t("Controlled image and caption outputs")}
                     </li>
                   </ul>
                 </div>
@@ -242,16 +269,16 @@ export default function LandingPage() {
                       <div className="relative flex aspect-[16/10] overflow-hidden rounded-2xl bg-black">
                         <div className="hidden w-1/3 flex-col gap-6 bg-[#0c1324] p-6 sm:flex">
                           <div className="space-y-4">
-                            <label className="block text-[10px] font-bold uppercase tracking-widest text-[#adc6ff]/60">Style</label>
+                            <label className="block text-[10px] font-bold uppercase tracking-widest text-[#adc6ff]/60">{t("Style")}</label>
                             <div className="flex items-center justify-between rounded-lg border border-[#adc6ff]/20 bg-[#23293c] p-3">
-                              <span className="text-sm font-medium">3D</span>
+                              <span className="text-sm font-medium">{t("3D")}</span>
                               <span className="material-symbols-outlined text-sm opacity-50">expand_more</span>
                             </div>
                           </div>
                           <div className="space-y-4">
                             <div className="flex items-center justify-between">
-                              <label className="block text-[10px] font-bold uppercase tracking-widest text-[#adc6ff]/60">Contrast</label>
-                              <span className="font-mono text-[10px] text-[#adc6ff]">High</span>
+                              <label className="block text-[10px] font-bold uppercase tracking-widest text-[#adc6ff]/60">{t("Contrast")}</label>
+                              <span className="font-mono text-[10px] text-[#adc6ff]">{t("High")}</span>
                             </div>
                             <div className="relative h-1 rounded-full bg-[#2e3447]">
                               <div className="absolute inset-y-0 left-0 w-3/4 rounded-full bg-[#adc6ff]" />
@@ -259,14 +286,14 @@ export default function LandingPage() {
                             </div>
                           </div>
                           <div className="space-y-4">
-                            <label className="block text-[10px] font-bold uppercase tracking-widest text-[#adc6ff]/60">Resolution</label>
+                            <label className="block text-[10px] font-bold uppercase tracking-widest text-[#adc6ff]/60">{t("Resolution")}</label>
                             <div className="grid grid-cols-2 gap-2">
                               <div className="rounded border border-[#424754]/30 p-2 text-center text-[10px]">1080p</div>
                               <div className="rounded bg-[#adc6ff] p-2 text-center text-[10px] font-bold text-[#002e6a]">4K</div>
                             </div>
                           </div>
                           <div className="space-y-4">
-                            <label className="block text-[10px] font-bold uppercase tracking-widest text-[#adc6ff]/60">Aspect Ratio</label>
+                            <label className="block text-[10px] font-bold uppercase tracking-widest text-[#adc6ff]/60">{t("Aspect Ratio")}</label>
                             <div className="flex gap-2">
                               <div className="flex h-8 w-8 items-center justify-center rounded border border-[#adc6ff] bg-[#adc6ff]/10 text-[10px] font-bold">1:1</div>
                               <div className="flex h-8 w-8 items-center justify-center rounded border border-[#424754]/30 text-[10px] opacity-40">16:9</div>
@@ -274,7 +301,7 @@ export default function LandingPage() {
                             </div>
                           </div>
                           <div className="mt-auto">
-                            <button className="w-full rounded-xl bg-[#adc6ff] py-3 text-xs font-bold uppercase tracking-wider text-[#002e6a]">Refine Output</button>
+                            <button className="w-full rounded-xl bg-[#adc6ff] py-3 text-xs font-bold uppercase tracking-wider text-[#002e6a]">{t("Refine Output")}</button>
                           </div>
                         </div>
 
@@ -284,7 +311,7 @@ export default function LandingPage() {
                           <div className="absolute right-4 top-4 flex gap-2">
                             <span className="flex items-center gap-1 rounded-full bg-black/60 px-3 py-1 text-[10px] font-mono backdrop-blur-md">
                               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-green-400" />
-                              Rendering...
+                              {t("Rendering...")}
                             </span>
                           </div>
                           <div className="pointer-events-none absolute inset-0 grid grid-cols-3 grid-rows-3 border border-white/5">
@@ -313,11 +340,11 @@ export default function LandingPage() {
         <div className="mx-auto max-w-[1600px]">
           <div className="mb-10 flex flex-col gap-4 sm:mb-20 sm:gap-6 md:flex-row md:items-end md:justify-between">
             <div>
-              <h2 className="font-headline text-3xl font-bold tracking-tight sm:text-4xl">Model Showcase</h2>
-              <p className="mt-4 text-[#c2c6d6]">Models available across playground and Smart Creation workflows.</p>
+              <h2 className="font-headline text-3xl font-bold tracking-tight sm:text-4xl">{t("Model Showcase")}</h2>
+              <p className="mt-4 text-[#c2c6d6]">{t("Models available across playground and Smart Creation workflows.")}</p>
             </div>
             <Link href={primaryHref} className="flex items-center gap-2 font-semibold text-[#adc6ff] transition-all hover:gap-4">
-              View Live Studio
+              {t("View Live Studio")}
               <span className="material-symbols-outlined">arrow_forward</span>
             </Link>
           </div>
@@ -336,7 +363,7 @@ export default function LandingPage() {
                 <div className="absolute inset-0 bg-gradient-to-t from-[#0c1324]/90 via-[#0c1324]/20 to-transparent transition-colors group-hover:via-transparent" />
                 <div className="absolute bottom-6 left-6">
                   <span className={`mb-2 inline-block rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-widest ${model.badgeClass}`}>
-                    {model.badge}
+                    {t(model.badge)}
                   </span>
                   <h4 className="font-headline text-xl font-bold text-white">{model.title}</h4>
                 </div>
@@ -349,8 +376,8 @@ export default function LandingPage() {
       <section id="horizon" className="relative overflow-hidden bg-[#0c1324] px-4 py-16 sm:px-6 sm:py-24 lg:px-12 lg:py-32">
         <div className="relative z-10 mx-auto max-w-[1600px]">
           <div className="mb-8 text-center sm:mb-24">
-            <h2 className="font-headline text-3xl font-bold tracking-tight sm:text-5xl">The Horizon</h2>
-            <p className="mx-auto mt-4 max-w-xl text-sm text-[#c2c6d6] sm:mt-6 sm:text-base">What we are building next.</p>
+            <h2 className="font-headline text-3xl font-bold tracking-tight sm:text-5xl">{t("The Horizon")}</h2>
+            <p className="mx-auto mt-4 max-w-xl text-sm text-[#c2c6d6] sm:mt-6 sm:text-base">{t("What we are building next.")}</p>
           </div>
 
           <div className="relative md:hidden">
@@ -368,8 +395,8 @@ export default function LandingPage() {
                   <div className={`absolute left-[7px] top-3 h-3 w-3 rounded-full ${item.dot}`} />
                   <div className="flex items-center justify-between gap-3 rounded-lg border border-[#424754]/20 bg-[#191f31] px-4 py-3">
                     <div className="min-w-0">
-                      <h3 className="truncate font-headline text-base font-bold text-[#dce1fb]">{item.title}</h3>
-                      <p className={`mt-1 text-[11px] font-mono uppercase tracking-tight ${item.accent}/60`}>{item.status}</p>
+                      <h3 className="truncate font-headline text-base font-bold text-[#dce1fb]">{t(item.title)}</h3>
+                      <p className={`mt-1 text-[11px] font-mono uppercase tracking-tight ${item.accent}/60`}>{t(item.status)}</p>
                     </div>
                     <span className={`material-symbols-outlined text-xl ${item.accent}`}>{item.icon}</span>
                   </div>
@@ -392,17 +419,17 @@ export default function LandingPage() {
                 >
                   {item.side === "left" ? (
                     <>
-                      <div className="hidden text-right md:block">
-                        <h3 className={`font-headline text-2xl font-bold ${item.accent}`}>{item.title}</h3>
-                        <p className="mt-2 text-[#c2c6d6]">{item.description}</p>
+                      <div className="hidden text-end md:block">
+                        <h3 className={`font-headline text-2xl font-bold ${item.accent}`}>{t(item.title)}</h3>
+                        <p className="mt-2 text-[#c2c6d6]">{t(item.description)}</p>
                       </div>
                       <div className="relative">
                         <div className={`absolute left-[-10px] top-1/2 z-20 h-4 w-4 -translate-y-1/2 rounded-full md:left-[-60px] ${item.dot}`} />
                         <div className={`rounded-xl border border-[#424754]/20 bg-[#191f31] p-6 transition-colors sm:p-8 ${item.border}`}>
                           <span className={`material-symbols-outlined mb-4 text-4xl ${item.accent}`}>{item.icon}</span>
-                          <h4 className="mb-2 font-headline text-xl font-bold md:hidden">{item.title}</h4>
-                          <p className="mb-4 text-[#c2c6d6] md:hidden">{item.description}</p>
-                          <p className={`text-sm font-mono uppercase tracking-tighter ${item.accent}/60`}>{item.status}</p>
+                          <h4 className="mb-2 font-headline text-xl font-bold md:hidden">{t(item.title)}</h4>
+                          <p className="mb-4 text-[#c2c6d6] md:hidden">{t(item.description)}</p>
+                          <p className={`text-sm font-mono uppercase tracking-tighter ${item.accent}/60`}>{t(item.status)}</p>
                         </div>
                       </div>
                     </>
@@ -412,14 +439,14 @@ export default function LandingPage() {
                         <div className={`absolute right-[-10px] top-1/2 z-20 h-4 w-4 -translate-y-1/2 rounded-full md:right-[-60px] ${item.dot}`} />
                         <div className={`rounded-xl border border-[#424754]/20 bg-[#191f31] p-6 transition-colors sm:p-8 ${item.border}`}>
                           <span className={`material-symbols-outlined mb-4 text-4xl ${item.accent}`}>{item.icon}</span>
-                          <h4 className="mb-2 font-headline text-xl font-bold md:hidden">{item.title}</h4>
-                          <p className="mb-4 text-[#c2c6d6] md:hidden">{item.description}</p>
-                          <p className={`text-sm font-mono uppercase tracking-tighter ${item.accent}/60`}>{item.status}</p>
+                          <h4 className="mb-2 font-headline text-xl font-bold md:hidden">{t(item.title)}</h4>
+                          <p className="mb-4 text-[#c2c6d6] md:hidden">{t(item.description)}</p>
+                          <p className={`text-sm font-mono uppercase tracking-tighter ${item.accent}/60`}>{t(item.status)}</p>
                         </div>
                       </div>
-                      <div className="order-1 hidden text-left md:order-2 md:block">
-                        <h3 className={`font-headline text-2xl font-bold ${item.accent}`}>{item.title}</h3>
-                        <p className="mt-2 text-[#c2c6d6]">{item.description}</p>
+                      <div className="order-1 hidden text-start md:order-2 md:block">
+                        <h3 className={`font-headline text-2xl font-bold ${item.accent}`}>{t(item.title)}</h3>
+                        <p className="mt-2 text-[#c2c6d6]">{t(item.description)}</p>
                       </div>
                     </>
                   )}
@@ -436,13 +463,13 @@ export default function LandingPage() {
             <div className="absolute right-0 top-0 p-8 opacity-10">
               <span className="material-symbols-outlined text-[10rem]">rocket_launch</span>
             </div>
-            <h2 className="font-headline text-3xl font-bold sm:text-4xl lg:text-5xl">Ready to Build?</h2>
+            <h2 className="font-headline text-3xl font-bold sm:text-4xl lg:text-5xl">{t("Ready to Build?")}</h2>
             <p className="mx-auto mb-8 mt-4 max-w-xl text-base leading-relaxed text-[#c2c6d6] sm:mb-10 sm:mt-6 sm:text-lg">
-              Add credits and enjoy state-of-the-art AI models in one place, with top-ups in Tunisian dinar.
+              {t("Add credits and enjoy state-of-the-art AI models in one place, with top-ups in Tunisian dinar.")}
             </p>
             <div className="flex flex-col justify-center gap-6 sm:flex-row">
               <Link href={primaryHref} className="rounded-md bg-[#adc6ff] px-6 py-4 text-base font-bold text-[#002e6a] shadow-lg shadow-[#adc6ff]/20 transition-all hover:scale-105 active:scale-95 sm:px-12 sm:py-5 sm:text-xl">
-                {user ? "Open Dashboard" : "Claim Early Access"}
+                {user ? t("Open Dashboard") : t("Claim Early Access")}
               </Link>
             </div>
           </div>
@@ -463,20 +490,24 @@ export default function LandingPage() {
           </div>
           <div className="flex flex-wrap justify-center gap-x-6 gap-y-4 md:gap-12">
             <Link href="/privacy" className="font-body text-xs uppercase tracking-widest text-slate-500 transition-opacity hover:text-white">
-              Privacy
+              {t("Privacy")}
             </Link>
             <Link href="/policy" className="font-body text-xs uppercase tracking-widest text-slate-500 transition-opacity hover:text-white">
-              Terms
+              {t("Terms")}
             </Link>
             <Link href="/dashboard" className="font-body text-xs uppercase tracking-widest text-slate-500 transition-opacity hover:text-white">
-              Studio
+              {t("Studio")}
             </Link>
             <Link href="/credits" className="font-body text-xs uppercase tracking-widest text-slate-500 transition-opacity hover:text-white">
-              Credits
+              {t("Credits")}
             </Link>
           </div>
         </div>
       </footer>
     </main>
   );
+}
+
+export default function LandingPage() {
+  return <LandingContent />;
 }

@@ -6,9 +6,12 @@ import { useAuth } from "../../context/AuthContext";
 import AppSidebar from "../../components/app-shell/AppSidebar";
 import { getProfile } from "../../lib/credits";
 import RequireActiveUser from "../../components/auth/RequireActiveUser";
+import { Suspense } from "react";
+import { useLanguage } from "../../context/LanguageContext";
 
 export default function StudioLayout({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
+  const { t } = useLanguage();
   const pathname = usePathname();
   const [credits, setCredits] = useState<number | null>(null);
 
@@ -71,9 +74,9 @@ export default function StudioLayout({ children }: { children: React.ReactNode }
 
         <main className={`flex min-w-0 flex-1 flex-col ${hideSharedHeader || hideSidebar ? "" : "lg:ml-48"}`}>
           {hideSharedHeader ? null : (
-            <header className="sticky top-0 z-40 flex h-16 items-center justify-between border-b border-white/10 bg-[#0c1324]/80 px-4 font-headline shadow-[0_16px_40px_rgba(0,0,0,0.2)] backdrop-blur-xl sm:px-8">
+            <header dir="ltr" className="sticky top-0 z-40 flex h-16 items-center justify-between border-b border-white/10 bg-[#0c1324]/80 px-4 font-headline shadow-[0_16px_40px_rgba(0,0,0,0.2)] backdrop-blur-xl sm:px-8">
               <div className="flex items-center gap-4">
-                <h2 className="text-xl font-bold tracking-tight text-[#dce1fb]">Studio</h2>
+                <h2 className="text-xl font-bold tracking-tight text-[#dce1fb]">{t("Studio")}</h2>
               </div>
 
               <div className="flex items-center gap-2 sm:gap-4">
@@ -82,7 +85,7 @@ export default function StudioLayout({ children }: { children: React.ReactNode }
                     bolt
                   </span>
                   <span className="text-xs font-bold text-blue-100 sm:text-sm">
-                    {credits === null ? "..." : `${credits.toFixed(2)} Credits`}
+                    {credits === null ? "..." : `${t("Balance:")} ${credits.toFixed(2)}`}
                   </span>
                 </div>
                 <div

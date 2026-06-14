@@ -6,6 +6,7 @@ import { AuthProvider } from "../context/AuthContext";
 import { applyAccentColorToDocument, readAccentColorFromCookie } from "../lib/accentColor";
 import MetaPixel from "../components/MetaPixel";
 import GoogleAnalytics from "../components/GoogleAnalytics";
+import { LanguageProvider } from "../context/LanguageContext";
 
 const LOGO_VERSION = "20260506-1210";
 const MATERIAL_SYMBOLS_STYLESHEET =
@@ -45,7 +46,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
-        <title>Vibecraft — Create with AI</title>
+        <title>Vibecraft</title>
         <meta name="description" content="Vibecraft is an AI-powered creative studio for generating captions, images, and more." />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <link rel="icon" href={`/best-version/favicon-32.png?v=${LOGO_VERSION}`} type="image/png" sizes="32x32" />
@@ -66,7 +67,9 @@ export default function RootLayout({
           <GoogleAnalytics />
         </Suspense>
         <AuthProvider>
-          {children}
+          <LanguageProvider>
+            {children}
+          </LanguageProvider>
         </AuthProvider>
       </body>
     </html>

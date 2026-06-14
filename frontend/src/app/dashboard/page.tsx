@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
+import { useLanguage } from "../../context/LanguageContext";
 import AuthenticatedImage from "../../components/AuthenticatedImage";
 import { getHistory, type HistoryEntry } from "../../lib/history";
 import { getProfile } from "../../lib/credits";
@@ -112,6 +113,21 @@ function newsBadgeClass(tone: DashboardNewsItem["tone"]) {
   return "bg-blue-400/10 text-blue-400";
 }
 
+// Picks the news title/description/link label in the active language, falling
+// back to English whenever that translation was left blank in the admin panel.
+function localizedNews(item: DashboardNewsItem, language: string) {
+  const pick = (en: string, fr?: string, ar?: string) => {
+    if (language === "fr") return (fr && fr.trim()) || en;
+    if (language === "ar") return (ar && ar.trim()) || en;
+    return en;
+  };
+  return {
+    title: pick(item.title, item.titleFr, item.titleAr),
+    description: pick(item.description, item.descriptionFr, item.descriptionAr),
+    linkLabel: pick(item.linkLabel, item.linkLabelFr, item.linkLabelAr),
+  };
+}
+
 function formatRelativeTime(timestamp?: number | null) {
   if (!timestamp) return "Just now";
   const seconds = Math.max(0, Math.floor(Date.now() / 1000) - timestamp);
@@ -155,7 +171,7 @@ const playgroundQuickStarts: PlaygroundQuickStart[] = [
     modelId: "grok-imagine-image-quality",
     tagline: "Grok's high-quality renderer for bold, stylized, high-impact visuals.",
     prompt:
-      "A dramatic cinematic poster of a lone astronaut standing on a neon-lit alien dune at dusk, volumetric light, vivid magenta and teal palette, ultra-detailed, film grain.",
+      "Une affiche cinématographique spectaculaire d'un astronaute solitaire debout sur une dune extraterrestre éclairée au néon au crépuscule, lumière volumétrique, palette magenta et turquoise éclatante, ultra-détaillée, grain argentique.",
     icon: "diamond",
     accent: "#d0bcff",
   },
@@ -163,7 +179,7 @@ const playgroundQuickStarts: PlaygroundQuickStart[] = [
     modelId: "recraftv4_1_vector",
     tagline: "Recraft's vector engine — clean, scalable SVG output made for designers.",
     prompt:
-      "A minimal flat vector logo of a fox head built from simple geometric shapes, bold two-color palette, crisp clean lines, scalable SVG icon style on a plain background.",
+      "شعار متجهي مسطّح وبسيط لرأس ثعلب مكوَّن من أشكال هندسية بسيطة، لوحة ألوان جريئة من لونين، خطوط نظيفة وحادّة، بأسلوب أيقونة SVG قابلة للتكبير على خلفية سادة.",
     icon: "polyline",
     accent: "#f0a868",
     badge: "SVG · For designers",
@@ -212,6 +228,7 @@ function modelOutputBadges(outputModalities: string[]): string[] {
 export default function DashboardPage() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
+  const { t, isRtl, language } = useLanguage();
 
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
@@ -374,21 +391,21 @@ export default function DashboardPage() {
 
   if (suspension) {
     return (
-      <section className="rounded-xl border border-[#93000a]/20 bg-[#151b2d] p-10">
+      <section dir={isRtl ? "rtl" : "ltr"} className="rounded-xl border border-[#93000a]/20 bg-[#151b2d] p-10">
         <div className="mx-auto max-w-2xl text-center">
           <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-md border border-[#93000a]/30 bg-[#93000a]/10 text-[#ffb4ab]">
             <span className="material-symbols-outlined text-3xl">gpp_bad</span>
           </div>
-          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#ffb4ab]/80">Account Restricted</p>
-          <h2 className="mt-3 font-headline text-3xl font-bold text-[#dce1fb]">This account is currently suspended</h2>
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#ffb4ab]/80">{t("Account Restricted")}</p>
+          <h2 className="mt-3 font-headline text-3xl font-bold text-[#dce1fb]">{t("This account is currently suspended")}</h2>
           <p className="mt-4 text-sm leading-7 text-[#c2c6d6]">{suspension.reason}</p>
           <div className="mt-6 rounded-md border border-white/10 bg-[#070d1f] px-5 py-4 text-left">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#8c909f]">Status</p>
-            <p className="mt-2 text-base font-semibold text-[#dce1fb]">{suspension.endsAtLabel || "Suspended until admin review"}</p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#8c909f]">{t("Status")}</p>
+            <p className="mt-2 text-base font-semibold text-[#dce1fb]">{suspension.endsAtLabel || t("Suspended until admin review")}</p>
           </div>
           <div className="mt-6">
             <Link href="/policy" className="inline-flex rounded-sm border border-white/10 bg-[#070d1f] px-4 py-2 text-sm text-[#c2c6d6] transition hover:border-[#adc6ff]/30 hover:text-[#dce1fb]">
-              View Usage Policy
+              {t("View Usage Policy")}
             </Link>
           </div>
         </div>
@@ -397,13 +414,13 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="space-y-8 sm:space-y-12">
+    <div dir={isRtl ? "rtl" : "ltr"} className="space-y-8 sm:space-y-12">
       <section className="relative space-y-6">
         {/* Welcome + credits */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-2">
             <h2 className="font-headline text-2xl font-bold tracking-tighter text-blue-100 sm:text-4xl">
-              Welcome, {user.displayName?.split(" ")[0] || user.email?.split("@")[0] || "Creator"}
+              {t("Welcome,")} {user.displayName?.split(" ")[0] || user.email?.split("@")[0] || t("Creator")}
             </h2>
           </div>
 
@@ -418,7 +435,7 @@ export default function DashboardPage() {
               href="/credits"
               className="shrink-0 rounded-md border border-white/5 bg-[#23293c] px-3 py-1.5 text-[11px] font-bold uppercase tracking-widest transition-all hover:border-[#adc6ff]/40"
             >
-              Top Up
+              {t("Top Up")}
             </Link>
           </div>
         </div>
@@ -472,7 +489,7 @@ export default function DashboardPage() {
                         </div>
 
                         <div className="mt-4 rounded-lg border border-white/5 bg-[#070d1f] p-3">
-                          <span className="text-[10px] font-bold uppercase tracking-widest text-[#6b7a8f]">Starter prompt</span>
+                          <span className="text-[10px] font-bold uppercase tracking-widest text-[#6b7a8f]">{t("Starter prompt")}</span>
                           <p className="mt-1 text-xs leading-5 text-[#aeb6c8] line-clamp-2 md:line-clamp-none">{quickStart.prompt}</p>
                         </div>
                       </div>
@@ -484,7 +501,7 @@ export default function DashboardPage() {
                           style={{ background: `linear-gradient(135deg, ${quickStart.accent}, #4d8eff)` }}
                         >
                           <span className="material-symbols-outlined text-[18px]">bolt</span>
-                          Start in Playground
+                          {t("Start in Playground")}
                         </Link>
                       </div>
                     </div>
@@ -516,9 +533,9 @@ export default function DashboardPage() {
 
       <section className="space-y-6">
         <div className="flex items-end justify-between gap-3">
-          <h3 className="font-headline text-xl font-bold tracking-tight sm:text-2xl">Latest Generations</h3>
+          <h3 className="font-headline text-xl font-bold tracking-tight sm:text-2xl">{t("Latest Generations")}</h3>
           <Link href="/gallery" className="flex items-center gap-1 text-sm font-medium text-[#adc6ff] hover:underline">
-            Explore Gallery <span className="material-symbols-outlined text-sm">arrow_forward</span>
+            {t("Explore Gallery")} <span className="material-symbols-outlined text-sm">arrow_forward</span>
           </Link>
         </div>
 
@@ -531,8 +548,8 @@ export default function DashboardPage() {
                       <span className="material-symbols-outlined text-[72px]">hourglass_top</span>
                     </div>
                   </div>
-                  <h4 className="font-semibold text-blue-100">Loading...</h4>
-                  <p className="text-xs text-[#c2c6d6]">Syncing...</p>
+                  <h4 className="font-semibold text-blue-100">{t("Loading...")}</h4>
+                  <p className="text-xs text-[#c2c6d6]">{t("Syncing...")}</p>
                 </div>
               ))
             : latestItems.map((entry) => (
@@ -551,7 +568,7 @@ export default function DashboardPage() {
                       </span>
                     </div>
                   </div>
-                  <h4 className="font-semibold text-blue-100">{entry.prompt.slice(0, 24) || "Untitled"}</h4>
+                  <h4 className="font-semibold text-blue-100">{entry.prompt.slice(0, 24) || t("Untitled")}</h4>
                   <p className="text-xs text-[#c2c6d6]">
                     {entry.createdAt.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                   </p>
@@ -566,13 +583,13 @@ export default function DashboardPage() {
           <div className="space-y-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-3">
-                <h3 className="font-headline text-xl font-bold tracking-tight sm:text-2xl">Recommended</h3>
+                <h3 className="font-headline text-xl font-bold tracking-tight sm:text-2xl">{t("Recommended")}</h3>
                 <span className="rounded bg-[#adc6ff]/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-[#adc6ff]">
-                  Top picks
+                  {t("Top picks")}
                 </span>
               </div>
               <Link href="/studio/chat" className="flex items-center gap-1 text-sm font-medium text-[#adc6ff] hover:underline">
-                Open Playground <span className="material-symbols-outlined text-sm">arrow_forward</span>
+                {t("Open Playground")} <span className="material-symbols-outlined text-sm">arrow_forward</span>
               </Link>
             </div>
 
@@ -607,7 +624,7 @@ export default function DashboardPage() {
                           </div>
 
                           <p className="mt-4 flex-1 text-sm leading-6 text-[#c2c6d6] line-clamp-2">
-                            {model.description || "Available in the Playground."}
+                            {model.description || t("Available in the Playground.")}
                           </p>
 
                           {(badges.length > 0 || model.supportsImageInput) && (
@@ -617,19 +634,19 @@ export default function DashboardPage() {
                                   key={badge}
                                   className="rounded border border-white/5 bg-white/[0.03] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#aeb6c8]"
                                 >
-                                  {badge}
+                                  {t(badge)}
                                 </span>
                               ))}
                               {model.supportsImageInput && (
                                 <span className="rounded border border-white/5 bg-white/[0.03] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#aeb6c8]">
-                                  Image input
+                                  {t("Image input")}
                                 </span>
                               )}
                             </div>
                           )}
 
                           <span className="mt-5 inline-flex items-center gap-1.5 text-sm font-bold text-[#adc6ff]">
-                            Open in Playground
+                            {t("Open in Playground")}
                             <span className="material-symbols-outlined text-[16px] transition-transform group-hover:translate-x-1">
                               arrow_forward
                             </span>
@@ -645,17 +662,17 @@ export default function DashboardPage() {
           <div className="space-y-5">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <h3 className="font-headline text-xl font-bold tracking-tight sm:text-2xl">Providers</h3>
+                <h3 className="font-headline text-xl font-bold tracking-tight sm:text-2xl">{t("Providers")}</h3>
                 {playgroundModels.length > 0 && (
                   <span className="rounded bg-[#adc6ff]/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-[#adc6ff]">
-                    {playgroundModels.length} models
+                    {playgroundModels.length} {t("models")}
                   </span>
                 )}
               </div>
               {providerSummaries.length > 0 && (
                 <span className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-emerald-400">
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                  All active
+                  {t("All active")}
                 </span>
               )}
             </div>
@@ -678,13 +695,13 @@ export default function DashboardPage() {
                         </div>
                         <span className="flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[8px] font-bold uppercase tracking-wider text-emerald-400">
                           <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                          Active
+                          {t("Active")}
                         </span>
                       </div>
                       <div className="min-w-0">
                         <h5 className="truncate text-sm font-bold text-blue-100">{provider.title}</h5>
                         <p className="text-[10px] font-medium text-[#8c909f]">
-                          {provider.count} model{provider.count === 1 ? "" : "s"}
+                          {provider.count} {provider.count === 1 ? t("model") : t("models")}
                         </p>
                       </div>
                     </div>
@@ -695,9 +712,11 @@ export default function DashboardPage() {
 
         <aside className="col-span-12 space-y-8 xl:col-span-4">
           <section className="space-y-4">
-            <h3 className="font-headline text-xl font-bold tracking-tight sm:text-2xl">Studio News</h3>
+            <h3 className="font-headline text-xl font-bold tracking-tight sm:text-2xl">{t("Studio News")}</h3>
             <div className="relative h-48 overflow-hidden rounded-xl border border-blue-400/20 bg-[#151b2d]">
-              {newsItems.map((item, index) => (
+              {newsItems.map((item, index) => {
+                const localized = localizedNews(item, language);
+                return (
                 <div
                   key={item.id}
                   aria-hidden={index !== activeNewsIndex}
@@ -712,16 +731,17 @@ export default function DashboardPage() {
                     <span className="text-[10px] font-bold text-slate-500">{formatRelativeTime(item.updatedAt ?? item.createdAt)}</span>
                   </div>
                   <div>
-                    <h4 className="mb-1 text-lg font-bold text-blue-100">{item.title}</h4>
-                    <p className="text-xs leading-relaxed text-[#c2c6d6]">{item.description}</p>
+                    <h4 className="mb-1 text-lg font-bold text-blue-100">{localized.title}</h4>
+                    <p className="text-xs leading-relaxed text-[#c2c6d6]">{localized.description}</p>
                   </div>
-                  {(item.linkLabel || item.linkHref) ? (
+                  {(localized.linkLabel || item.linkHref) ? (
                     <Link href={item.linkHref || "/studio"} className="flex items-center gap-1 self-start text-xs font-bold text-[#adc6ff] hover:underline">
-                      {item.linkLabel || "Learn more"} <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
+                      {localized.linkLabel || t("Learn more")} <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
                     </Link>
                   ) : null}
                 </div>
-              ))}
+                );
+              })}
               <div className="absolute bottom-4 right-6 flex gap-1.5">
                 {newsItems.map((item, index) => (
                   <div
@@ -734,7 +754,7 @@ export default function DashboardPage() {
           </section>
 
           <section className="space-y-4">
-            <h3 className="font-headline text-xl font-bold tracking-tight sm:text-2xl">System Updates</h3>
+            <h3 className="font-headline text-xl font-bold tracking-tight sm:text-2xl">{t("System Updates")}</h3>
             <div className="relative overflow-hidden rounded-xl border border-emerald-500/15 bg-[#191f31] p-6">
               <div className="absolute right-0 top-0 p-3">
                 <span className="flex h-2 w-2">
@@ -742,15 +762,15 @@ export default function DashboardPage() {
                   <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
                 </span>
               </div>
-              <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-400">Status</span>
+              <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-400">{t("Status")}</span>
               <h4 className="mt-3 flex items-center gap-2 font-bold text-blue-100">
                 <span className="material-symbols-outlined text-[20px] text-emerald-400" style={{ fontVariationSettings: "'FILL' 1" }}>
                   check_circle
                 </span>
-                All systems operational
+                {t("All systems operational")}
               </h4>
               <p className="mt-2 text-xs leading-relaxed text-[#c2c6d6]">
-                All providers are online and available. No incidents reported.
+                {t("All providers are online and available. No incidents reported.")}
               </p>
             </div>
           </section>

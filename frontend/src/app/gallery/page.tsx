@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
+import { useLanguage } from "../../context/LanguageContext";
 import AuthenticatedImage from "../../components/AuthenticatedImage";
 import { getHistoryPage, type HistoryEntry } from "../../lib/history";
 import { api } from "../../services/api";
@@ -61,6 +62,7 @@ const GALLERY_MAX = 150;
 export default function GalleryPage() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
+  const { t } = useLanguage();
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [total, setTotal] = useState(0);
   const [historyLoading, setHistoryLoading] = useState(true);
@@ -173,12 +175,12 @@ export default function GalleryPage() {
     <div className="space-y-8 sm:space-y-12">
       <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1.05fr_0.95fr]">
         <div className="rounded-md bg-[#151b2d] p-5 sm:p-8">
-          <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#8c909f]">Visual Archive</p>
+          <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#8c909f]">{t("Visual Archive")}</p>
           <h1 className="mt-3 font-headline text-4xl font-bold tracking-tight text-[#dce1fb] sm:text-6xl">
-            Gallery
+            {t("Gallery")}
           </h1>
           <p className="mt-4 max-w-2xl text-sm leading-6 text-[#c2c6d6] sm:text-base sm:leading-8">
-            Browse and revisit all your generated images, inspect their prompts, and rediscover your visual creations.
+            {t("Browse and revisit all your generated images, inspect their prompts, and rediscover your visual creations.")}
           </p>
 
           <div className="mt-6 flex flex-wrap gap-2 sm:mt-8 sm:gap-3">
@@ -193,7 +195,7 @@ export default function GalleryPage() {
                     : "border border-white/10 bg-[#070d1f] text-[#c2c6d6] hover:border-[#adc6ff]/30 hover:text-[#dce1fb]"
                 }`}
               >
-                {tab.label}
+                {t(tab.label)}
               </button>
             ))}
           </div>
@@ -201,19 +203,19 @@ export default function GalleryPage() {
 
         <div className="grid grid-cols-3 gap-3 sm:gap-4 xl:grid-cols-1">
           <div className="rounded-md bg-[#151b2d] p-4 sm:p-5">
-            <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#8c909f]">Saved Entries</p>
+            <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#8c909f]">{t("Saved Entries")}</p>
             <div className="mt-3 text-2xl font-bold tracking-tight text-[#dce1fb] sm:text-4xl">{total}</div>
-            <p className="mt-2 hidden text-sm text-[#c2c6d6] sm:block">All saved generations on this account.</p>
+            <p className="mt-2 hidden text-sm text-[#c2c6d6] sm:block">{t("All saved generations on this account.")}</p>
           </div>
           <div className="rounded-md bg-[#151b2d] p-4 sm:p-5">
-            <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#8c909f]">Image Outputs</p>
+            <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#8c909f]">{t("Image Outputs")}</p>
             <div className="mt-3 text-2xl font-bold tracking-tight text-[#dce1fb] sm:text-4xl">{imageCount}</div>
-            <p className="mt-2 hidden text-sm text-[#c2c6d6] sm:block">Renderable visual results currently stored.</p>
+            <p className="mt-2 hidden text-sm text-[#c2c6d6] sm:block">{t("Renderable visual results currently stored.")}</p>
           </div>
           <div className="rounded-md bg-[#151b2d] p-4 sm:p-5">
-            <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#8c909f]">Caption Results</p>
+            <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#8c909f]">{t("Caption Results")}</p>
             <div className="mt-3 text-2xl font-bold tracking-tight text-[#dce1fb] sm:text-4xl">{captionCount}</div>
-            <p className="mt-2 hidden text-sm text-[#c2c6d6] sm:block">Text outputs available for reuse and campaigns.</p>
+            <p className="mt-2 hidden text-sm text-[#c2c6d6] sm:block">{t("Text outputs available for reuse and campaigns.")}</p>
           </div>
         </div>
       </section>
@@ -226,16 +228,16 @@ export default function GalleryPage() {
         </div>
       ) : filteredEntries.length === 0 ? (
         <section className="rounded-md bg-[#151b2d] p-10">
-          <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#8c909f]">No Saved Items</p>
-          <h2 className="mt-3 font-headline text-3xl font-bold tracking-tight text-[#dce1fb]">This gallery is still empty.</h2>
+          <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#8c909f]">{t("No Saved Items")}</p>
+          <h2 className="mt-3 font-headline text-3xl font-bold tracking-tight text-[#dce1fb]">{t("This gallery is still empty.")}</h2>
           <p className="mt-4 max-w-xl text-base leading-8 text-[#c2c6d6]">
-            Generate something in the studio first. Once a result is saved, it will appear here automatically.
+            {t("Generate something in the studio first. Once a result is saved, it will appear here automatically.")}
           </p>
           <Link
             href="/studio"
             className="mt-8 inline-flex rounded-sm bg-[linear-gradient(90deg,#adc6ff,#4d8eff)] px-6 py-3 text-sm font-bold text-[#002e6a]"
           >
-            Open Studio
+            {t("Open Studio")}
           </Link>
         </section>
       ) : (
@@ -254,8 +256,8 @@ export default function GalleryPage() {
                     <span className="material-symbols-outlined text-[88px]">description</span>
                   </div>
                 )}
-                <div className="absolute left-5 top-5 rounded-sm bg-[#0c1324]/80 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-[#adc6ff]">
-                  Featured
+                <div className="absolute left-5 top-5 rounded-sm bg-[#0c1324]/80 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-[#adc6ff] rtl:left-auto rtl:right-5">
+                  {t("Featured")}
                 </div>
               </div>
 
@@ -270,7 +272,7 @@ export default function GalleryPage() {
                     </span>
                   </div>
 
-                  <h2 className="mt-5 font-headline text-2xl font-bold tracking-tight text-[#dce1fb] sm:text-3xl">Latest saved generation</h2>
+                  <h2 className="mt-5 font-headline text-2xl font-bold tracking-tight text-[#dce1fb] sm:text-3xl">{t("Latest saved generation")}</h2>
                   <p className="mt-4 text-sm leading-6 text-[#dce1fb] sm:text-base sm:leading-8">{featuredEntry.prompt}</p>
 
                   {hasCaption(featuredEntry.caption) ? (
@@ -279,9 +281,9 @@ export default function GalleryPage() {
                 </div>
 
                 <div className="mt-6 flex items-center justify-between gap-4 border-t border-white/8 pt-4 sm:mt-8 sm:pt-5">
-                  <div className="text-xs text-[#c2c6d6] sm:text-sm">Saved at {formatTime(featuredEntry.createdAt)}</div>
+                  <div className="text-xs text-[#c2c6d6] sm:text-sm">{t("Saved at")} {formatTime(featuredEntry.createdAt)}</div>
                   <div className="inline-flex items-center gap-2 text-sm font-medium text-[#adc6ff]">
-                    Open details
+                    {t("Open details")}
                     <span className="material-symbols-outlined text-[18px]">arrow_outward</span>
                   </div>
                 </div>
@@ -305,7 +307,7 @@ export default function GalleryPage() {
                       <span className="material-symbols-outlined text-[72px]">article</span>
                     </div>
                   )}
-                  <div className="absolute left-4 top-4 rounded-sm bg-[#0c1324]/80 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-[#adc6ff]">
+                  <div className="absolute left-4 top-4 rounded-sm bg-[#0c1324]/80 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-[#adc6ff] rtl:left-auto rtl:right-4">
                     {resolveModelName(entry.model)}
                   </div>
                 </div>
@@ -328,7 +330,7 @@ export default function GalleryPage() {
                 onClick={() => setVisibleCount((count) => Math.min(count + GALLERY_PAGE_SIZE, GALLERY_MAX))}
                 className="inline-flex items-center gap-2 rounded-sm border border-white/10 bg-[#070d1f] px-5 py-2.5 text-sm font-semibold text-[#dce1fb] transition hover:border-[#adc6ff]/30 hover:text-[#adc6ff]"
               >
-                Load more
+                {t("Load more")}
                 <span className="material-symbols-outlined text-base">expand_more</span>
               </button>
             </div>
@@ -363,7 +365,7 @@ export default function GalleryPage() {
                 </div>
 
                 <div className="mt-6">
-                  <div className="text-xs font-bold uppercase tracking-[0.22em] text-[#8c909f]">Prompt</div>
+                  <div className="text-xs font-bold uppercase tracking-[0.22em] text-[#8c909f]">{t("Prompt")}</div>
                   <div className={`mt-3 rounded-sm bg-[#070d1f]/45 px-3 py-2 ${showFullPrompt ? "max-h-44 overflow-y-auto" : ""}`}>
                     <p className="whitespace-pre-wrap text-sm leading-7 text-[#dce1fb]">
                       {showFullPrompt || !hasLongSelectedPrompt
@@ -377,14 +379,14 @@ export default function GalleryPage() {
                       onClick={() => setShowFullPrompt((current) => !current)}
                       className="mt-3 text-sm font-medium text-[#adc6ff] transition hover:text-[#dce1fb]"
                     >
-                      {showFullPrompt ? "Read less" : "Read more"}
+                      {showFullPrompt ? t("Read less") : t("Read more")}
                     </button>
                   ) : null}
                 </div>
 
                 {hasCaption(selectedEntry.caption) ? (
                   <div className="mt-6">
-                    <div className="text-xs font-bold uppercase tracking-[0.22em] text-[#8c909f]">Caption</div>
+                    <div className="text-xs font-bold uppercase tracking-[0.22em] text-[#8c909f]">{t("Caption")}</div>
                     <div className={`mt-3 rounded-sm bg-[#070d1f]/45 px-3 py-2 ${showFullCaption ? "max-h-44 overflow-y-auto" : ""}`}>
                       <p className="whitespace-pre-wrap text-sm leading-7 text-[#c2c6d6]">
                         {showFullCaption || !hasLongSelectedCaption
@@ -398,20 +400,20 @@ export default function GalleryPage() {
                         onClick={() => setShowFullCaption((current) => !current)}
                         className="mt-3 text-sm font-medium text-[#adc6ff] transition hover:text-[#dce1fb]"
                       >
-                        {showFullCaption ? "Read less" : "Read more"}
+                        {showFullCaption ? t("Read less") : t("Read more")}
                       </button>
                     ) : null}
                   </div>
                 ) : null}
 
                 <div className="mt-6 flex items-center justify-between gap-4 border-t border-white/8 pt-4 sm:mt-8 sm:pt-5">
-                  <div className="text-xs text-[#c2c6d6] sm:text-sm">Saved at {formatTime(selectedEntry.createdAt)}</div>
+                  <div className="text-xs text-[#c2c6d6] sm:text-sm">{t("Saved at")} {formatTime(selectedEntry.createdAt)}</div>
                   <button
                     type="button"
                     onClick={() => setSelectedEntry(null)}
                     className="rounded-sm border border-white/10 bg-[#070d1f] px-4 py-2 text-sm text-[#c2c6d6] transition hover:border-[#adc6ff]/30 hover:text-[#dce1fb]"
                   >
-                    Close
+                    {t("Close")}
                   </button>
                 </div>
               </div>

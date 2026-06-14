@@ -3,6 +3,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { PAYMENT_LINK, PAYMENT_LINK_IS_EXTERNAL } from "../lib/payment";
+import { useLanguage } from "../context/LanguageContext";
 
 interface BuyCodesButtonProps {
   className?: string;
@@ -18,9 +19,10 @@ interface BuyCodesButtonProps {
  */
 export default function BuyCodesButton({
   className = "",
-  children = "Buy Codes",
+  children,
   showIcon = true,
 }: BuyCodesButtonProps) {
+  const { t } = useLanguage();
   const content = (
     <>
       {showIcon && (
@@ -28,7 +30,7 @@ export default function BuyCodesButton({
           shopping_bag
         </span>
       )}
-      {children}
+      {children ?? t("Buy Codes")}
     </>
   );
 
