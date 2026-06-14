@@ -8,6 +8,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { api } from "../../../services/api";
 import { GenerateRequest, GenerationMeta, UISchemaItem, OutputType, ModelCatalogEntry, PlainChatParameterSchemaEntry, SystemConfig } from "../../../types";
 import { useAuth } from "../../../context/AuthContext";
+import { useLanguage } from "../../../context/LanguageContext";
 
 import StepIndicator from "../../../components/StepIndicator";
 import ReviewCard from "../../../components/ReviewCard";
@@ -469,6 +470,7 @@ export default function Home() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, loading: authLoading } = useAuth();
+  const { t } = useLanguage();
   const selectedMode = "smart" as const;
   const creditsRef = useRef<CreditsDisplayHandle>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -575,7 +577,7 @@ export default function Home() {
           setAccountReady(true);
           return;
         }
-        showToast(getErrorMessage(error, "Could not load your account."));
+        showToast(getErrorMessage(error, t("Could not load your account.")));
         setAccountReady(true);
       });
 
@@ -619,7 +621,7 @@ export default function Home() {
       if (captureSuspension(error)) {
         return;
       }
-      showToast("Could not load configuration. Is the backend running?");
+      showToast(t("Could not load configuration. Is the backend running?"));
     });
   }, [accountReady, suspension, refreshConfig, captureSuspension]);
 
@@ -776,7 +778,7 @@ export default function Home() {
       url: image.url!,
     }));
   const usesSharedNanoBanana = false;
-  const primaryEngineLabel = "Custom Workflow";
+  const primaryEngineLabel = t("Custom Workflow");
   const aspectRatioValue = String(
     modelParameterValues.image.aspectRatio
     || imageSettings.aspectRatio
@@ -800,7 +802,7 @@ export default function Home() {
     modelParameterValues.image.seed
     || imageSettings.seed
     || getSchemaDisplayDefault(selectedImageParameterSchema, "seed")
-    || "Random"
+    || t("Random")
   );
 
   const HIDDEN_MODELS = [
@@ -986,10 +988,10 @@ export default function Home() {
     try {
       for (const originalFile of filesToUpload) {
         if (!["image/png", "image/jpeg", "image/webp"].includes(originalFile.type)) {
-          throw new Error("Only PNG, JPEG, and WEBP images are supported.");
+          throw new Error(t("Only PNG, JPEG, and WEBP images are supported."));
         }
         if (originalFile.size > MAX_UPLOAD_BYTES) {
-          throw new Error("Each image must be 10 MB or smaller.");
+          throw new Error(t("Each image must be 10 MB or smaller."));
         }
         const { width, height } = await readImageDimensions(originalFile);
         if (Math.min(width, height) < constraints.minDim) {
@@ -1035,7 +1037,7 @@ export default function Home() {
         return;
       }
       console.error("Image upload error:", error);
-      showToast(getErrorMessage(error, "Could not process that image."));
+      showToast(getErrorMessage(error, t("Could not process that image.")));
     }
   }, [captureSuspension]);
 
@@ -1121,14 +1123,14 @@ export default function Home() {
       } else if (response.status === "error") {
         showToast(
           response.meta?.error_message ||
-            "This service is temporarily unavailable. Please try again later."
+            t("This service is temporarily unavailable. Please try again later.")
         );
       }
     } catch (error) {
       if (captureSuspension(error)) {
         return;
       }
-      showToast(getErrorMessage(error, "Error contacting backend. Please try again."));
+      showToast(getErrorMessage(error, t("Error contacting backend. Please try again.")));
     } finally {
       setLoading(false);
     }
@@ -1202,16 +1204,16 @@ export default function Home() {
         }
       } else if (response.status === "error") {
         showToast(
-          response.meta?.error_message || "This generation request could not be processed. No credits were charged."
+          response.meta?.error_message || t("This generation request could not be processed. No credits were charged.")
         );
       } else {
-        showToast("This generation request could not be completed. Please try again.");
+        showToast(t("This generation request could not be completed. Please try again."));
       }
     } catch (error) {
       if (captureSuspension(error)) {
         return;
       }
-      showToast(getErrorMessage(error, "Generation failed. Please try again."));
+      showToast(getErrorMessage(error, t("Generation failed. Please try again.")));
     } finally {
       setLoading(false);
     }
@@ -1632,10 +1634,10 @@ export default function Home() {
               </div>
 
               <p className="text-xs font-semibold uppercase tracking-[0.28em] text-red-300/80">
-                Account Restricted
+                {t("Account Restricted")}
               </p>
               <h2 className="mt-3 text-2xl font-bold text-white sm:text-3xl">
-                This account is currently suspended
+                {t("This account is currently suspended")}
               </h2>
               <p className="mt-4 text-sm leading-7 text-slate-300">
                 {suspension.reason}
@@ -1643,7 +1645,7 @@ export default function Home() {
               {suspension.endsAtLabel ? (
                 <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] px-5 py-4 text-left">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
-                    Access Restores
+                    {t("Access Restores")}
                   </p>
                   <p className="mt-2 text-base font-semibold text-white">
                     {suspension.endsAtLabel}
@@ -1652,10 +1654,10 @@ export default function Home() {
               ) : (
                 <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] px-5 py-4 text-left">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
-                    Status
+                    {t("Status")}
                   </p>
                   <p className="mt-2 text-base font-semibold text-white">
-                    Suspended until admin review
+                    {t("Suspended until admin review")}
                   </p>
                 </div>
               )}
@@ -1664,7 +1666,7 @@ export default function Home() {
                   href="/policy"
                   className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-300 transition hover:bg-white/10 hover:text-white"
                 >
-                  View Usage Policy
+                  {t("View Usage Policy")}
                 </Link>
               </div>
             </div>
@@ -1704,36 +1706,36 @@ export default function Home() {
           >
             <div className="mb-4 lg:hidden">
               <div className="flex items-center justify-between">
-                <p className="font-headline text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Step 1 of 3</p>
+                <p className="font-headline text-[10px] font-bold uppercase tracking-[0.24em] text-primary">{t("Step 1 of 3")}</p>
                 <Link href="/studio/start" className="inline-flex items-center gap-1 text-xs text-slate-400 transition hover:text-white">
                   <span className="material-symbols-outlined text-sm">arrow_back</span>
-                  Back
+                  {t("Back")}
                 </Link>
               </div>
-              <h2 className="mt-2 font-headline text-xl font-bold text-white">Idea</h2>
+              <h2 className="mt-2 font-headline text-xl font-bold text-white">{t("Idea")}</h2>
             </div>
             <div className="mb-10 hidden items-center justify-center gap-4 overflow-x-auto pb-1 lg:flex">
               <div className="flex shrink-0 items-center gap-3 rounded-full border border-primary bg-primary/10 px-4 py-2 shadow-[0_0_20px_rgba(77,142,255,0.15)] sm:px-6">
                 <span className="material-symbols-outlined text-sm text-primary">check_circle</span>
-                <span className="font-headline text-xs font-bold uppercase tracking-widest text-white">Idea</span>
+                <span className="font-headline text-xs font-bold uppercase tracking-widest text-white">{t("Idea")}</span>
               </div>
               <div className="h-px w-8 shrink-0 bg-outline-variant/30 sm:w-12" />
               <div className="flex shrink-0 items-center gap-3 rounded-full border border-transparent bg-surface-container-low px-4 py-2 sm:px-6">
                 <span className="material-symbols-outlined text-sm text-slate-600">settings_input_component</span>
-                <span className="font-headline text-xs font-bold uppercase tracking-widest text-slate-600">Optimize</span>
+                <span className="font-headline text-xs font-bold uppercase tracking-widest text-slate-600">{t("Optimize")}</span>
               </div>
               <div className="h-px w-8 shrink-0 bg-outline-variant/30 sm:w-12" />
               <div className="flex shrink-0 items-center gap-3 rounded-full border border-transparent bg-surface-container-low px-4 py-2 sm:px-6">
                 <span className="material-symbols-outlined text-sm text-slate-600">auto_awesome</span>
-                <span className="font-headline text-xs font-bold uppercase tracking-widest text-slate-600">Results</span>
+                <span className="font-headline text-xs font-bold uppercase tracking-widest text-slate-600">{t("Results")}</span>
               </div>
             </div>
 
             <header className="mb-4 sm:mb-6 2xl:mx-auto 2xl:w-full 2xl:max-w-[1240px]">
               <h1 className="font-headline text-2xl font-bold leading-tight tracking-tighter text-white sm:text-[32px]">
-                Architect your{" "}
+                {t("Architect your")}{" "}
                 <span className="bg-gradient-to-r from-[#adc6ff] via-[#d0bcff] to-[#4d8eff] bg-clip-text text-transparent">
-                  visual identity.
+                  {t("visual identity.")}
                 </span>
               </h1>
             </header>
@@ -1771,7 +1773,7 @@ export default function Home() {
                       </span>
                     </div>
                     <div>
-                      <h3 className="text-xs font-bold text-white sm:text-sm">{option.title}</h3>
+                      <h3 className="text-xs font-bold text-white sm:text-sm">{t(option.title)}</h3>
                     </div>
                     <div className="mt-0.5 h-0.5 w-full overflow-hidden rounded-full bg-[#191f31]">
                       <div className={`h-full bg-[#adc6ff] transition-all duration-700 ${option.active ? "w-full" : "w-0 group-hover:w-full"}`} />
@@ -1784,28 +1786,28 @@ export default function Home() {
             <div className="mb-5 grid min-h-0 flex-grow grid-cols-1 items-start gap-5 md:grid-cols-[minmax(0,1fr)_280px] lg:grid-cols-5 2xl:mx-auto 2xl:w-full 2xl:max-w-[1240px] 2xl:grid-cols-[minmax(0,1fr)_260px] 2xl:justify-end">
               <div className="flex h-full flex-col lg:col-span-3 2xl:col-span-1">
                 <div className="mb-1.5 flex items-end justify-between">
-                  <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#c2c6d6]">Creative Brief</label>
-                  <span className="text-[8px] text-[#adc6ff]/60">AI Optimized Processing</span>
+                  <label className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#c2c6d6]">{t("Creative Brief")}</label>
+                  <span className="text-[8px] text-[#adc6ff]/60">{t("AI Optimized Processing")}</span>
                 </div>
                 <div className="group relative min-h-[120px] flex-grow">
                   <div className="absolute inset-0 rounded-xl bg-[#adc6ff]/5 opacity-0 blur-lg transition-opacity group-focus-within:opacity-100" />
                   <textarea
                     className="relative h-full min-h-[120px] w-full resize-none rounded-xl border-0 bg-[#070d1f] p-5 text-sm font-light text-white transition-all placeholder:text-slate-600 focus:ring-1 focus:ring-[#adc6ff]/40"
                     maxLength={2000}
-                    placeholder="Describe what you want to create..."
+                    placeholder={t("Describe what you want to create...")}
                     value={userText}
                     onChange={(e) => setUserText(e.target.value)}
                     onPaste={handleImagePaste}
                   />
                   <div className="pointer-events-none absolute bottom-3 right-4 flex items-center gap-2 opacity-40">
                     <span className="material-symbols-outlined text-[10px]">keyboard_command_key</span>
-                    <span className="text-[8px] font-bold">ENTER TO GENERATE</span>
+                    <span className="text-[8px] font-bold">{t("ENTER TO GENERATE")}</span>
                   </div>
                 </div>
               </div>
 
               <div className="flex h-full flex-col lg:col-span-2 2xl:col-span-1">
-                <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.2em] text-[#c2c6d6]">Reference Assets</label>
+                <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.2em] text-[#c2c6d6]">{t("Reference Assets")}</label>
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -1871,7 +1873,7 @@ export default function Home() {
                           ))}
                         </div>
                         <p className="mt-1.5 max-w-full truncate text-[10px] font-medium text-white">
-                          {inputImages.length} / {maxInputImagesFor(selectedImageModel)} images attached
+                          {inputImages.length} / {maxInputImagesFor(selectedImageModel)} {t("images attached")}
                         </p>
                         <div className="mt-2 flex gap-2">
                           <button
@@ -1882,7 +1884,7 @@ export default function Home() {
                             }}
                             className="rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-[10px] font-semibold text-white transition hover:bg-white/10"
                           >
-                            Add
+                            {t("Add")}
                           </button>
                           <button
                             type="button"
@@ -1892,17 +1894,17 @@ export default function Home() {
                             }}
                             className="rounded-md border border-white/10 bg-[#93000a]/20 px-3 py-1.5 text-[10px] font-semibold text-[#ffdad6] transition hover:bg-[#93000a]/30"
                           >
-                            Remove
+                            {t("Remove")}
                           </button>
                         </div>
                       </>
                     ) : (
                       <>
-                        <p className="mb-0.5 text-[11px] font-medium text-white">Drag &amp; drop image</p>
+                        <p className="mb-0.5 text-[11px] font-medium text-white">{t("Drag & drop image")}</p>
                         <p className="text-[10px] text-[#c2c6d6]">
-                          or <span className="text-[#adc6ff]">browse</span>
+                          {t("or")} <span className="text-[#adc6ff]">{t("browse")}</span>
                         </p>
-                        <p className="mt-2 text-[8px] uppercase tracking-widest text-[#8c909f]">Max 10MB • JPG, PNG, WEBP</p>
+                        <p className="mt-2 text-[8px] uppercase tracking-widest text-[#8c909f]">{t("Max 10MB • JPG, PNG, WEBP")}</p>
                       </>
                     )}
                   </div>
@@ -1918,12 +1920,12 @@ export default function Home() {
                   </div>
                   <div>
                     <h3 className="text-sm font-bold text-red-200">
-                      {insufficientCredits ? "Insufficient credits" : "Model configuration unavailable"}
+                      {insufficientCredits ? t("Insufficient credits") : t("Model configuration unavailable")}
                     </h3>
                     <p className="mt-1 text-xs leading-6 text-red-200/75">
                       {insufficientCredits
-                        ? `Minimum required credits: ${minimumRequiredCredits.toFixed(2)}. This account currently has ${currentCredits?.toFixed(2) ?? "0.00"} credits available.`
-                        : "A valid model is not currently available for one of the selected outputs."}
+                        ? `${t("Minimum required credits:")} ${minimumRequiredCredits.toFixed(2)}. ${t("This account currently has")} ${currentCredits?.toFixed(2) ?? "0.00"} ${t("credits available.")}`
+                        : t("A valid model is not currently available for one of the selected outputs.")}
                     </p>
                   </div>
                 </div>
@@ -1938,8 +1940,8 @@ export default function Home() {
                   <img className="inline-block h-8 w-8 rounded-full ring-2 ring-[#0c1324]" src="https://i.pravatar.cc/100?img=12" alt="" />
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-[11px] text-[#8c909f] leading-snug">Only <strong className="text-white">70 creators</strong> have unlocked this so far.</span>
-                  <span className="text-[11px] text-[#8c909f] leading-snug"><strong className="text-slate-300">Be the 71st creator</strong> to master this workflow.</span>
+                  <span className="text-[11px] text-[#8c909f] leading-snug">{t("Only")} <strong className="text-white">70 {t("creators")}</strong> {t("have unlocked this so far.")}</span>
+                  <span className="text-[11px] text-[#8c909f] leading-snug"><strong className="text-slate-300">{t("Be the 71st creator")}</strong> {t("to master this workflow.")}</span>
                 </div>
               </div>
               <button
@@ -1949,12 +1951,12 @@ export default function Home() {
               >
                 <span>
                   {loading
-                    ? "Preparing..."
+                    ? t("Preparing...")
                     : hasUploadingInputImages
-                        ? "Uploading..."
+                        ? t("Uploading...")
                     : missingRequiredModel
-                        ? "Model unavailable"
-                        : "Next"}
+                        ? t("Model unavailable")
+                        : t("Next")}
                 </span>
                 {!loading && <span className="material-symbols-outlined text-lg transition-transform group-hover:translate-x-1">arrow_forward</span>}
               </button>
@@ -1975,26 +1977,26 @@ export default function Home() {
               className="pb-24 sm:pb-36"
             >
               <div className="mb-5 sm:hidden">
-                <p className="font-headline text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Step 2 of 3</p>
+                <p className="font-headline text-[10px] font-bold uppercase tracking-[0.24em] text-primary">{t("Step 2 of 3")}</p>
                 <div className="mt-2 flex items-center justify-between">
-                  <h2 className="font-headline text-xl font-bold text-white">Optimize</h2>
-                  <span className="text-xs text-slate-500">Idea complete</span>
+                  <h2 className="font-headline text-xl font-bold text-white">{t("Optimize")}</h2>
+                  <span className="text-xs text-slate-500">{t("Idea complete")}</span>
                 </div>
               </div>
               <div className="mb-12 hidden items-center justify-center gap-4 overflow-x-auto pb-1 sm:flex">
                 <div className="flex shrink-0 items-center gap-3 rounded-full border border-primary/20 bg-surface-container-high px-4 py-2 sm:px-6">
                   <span className="material-symbols-outlined text-sm text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
-                  <span className="font-headline text-xs font-bold uppercase tracking-widest text-primary">Idea</span>
+                  <span className="font-headline text-xs font-bold uppercase tracking-widest text-primary">{t("Idea")}</span>
                 </div>
                 <div className="h-px w-8 shrink-0 bg-outline-variant/30 sm:w-12" />
                 <div className="flex shrink-0 items-center gap-3 rounded-full border border-primary bg-primary/10 px-4 py-2 shadow-[0_0_20px_rgba(77,142,255,0.15)] sm:px-6">
                   <span className="material-symbols-outlined text-sm text-primary">settings_input_component</span>
-                  <span className="font-headline text-xs font-bold uppercase tracking-widest text-white">Optimize</span>
+                  <span className="font-headline text-xs font-bold uppercase tracking-widest text-white">{t("Optimize")}</span>
                 </div>
                 <div className="h-px w-8 shrink-0 bg-outline-variant/30 sm:w-12" />
                 <div className="flex shrink-0 items-center gap-3 rounded-full border border-transparent bg-surface-container-low px-4 py-2 sm:px-6">
                   <span className="material-symbols-outlined text-sm text-slate-600">auto_awesome</span>
-                  <span className="font-headline text-xs font-bold uppercase tracking-widest text-slate-600">Results</span>
+                  <span className="font-headline text-xs font-bold uppercase tracking-widest text-slate-600">{t("Results")}</span>
                 </div>
               </div>
 
@@ -2027,30 +2029,30 @@ export default function Home() {
 
                   <div className="relative z-10 flex flex-col gap-3.5">
                     <div className="flex flex-wrap items-center gap-2.5">
-                      <span className="font-headline text-[10px] font-black uppercase tracking-[0.32em] text-primary">Original User Idea</span>
+                      <span className="font-headline text-[10px] font-black uppercase tracking-[0.32em] text-primary">{t("Original User Idea")}</span>
                       <span className="rounded-full border border-[#4d8eff]/15 bg-[#4d8eff]/10 px-3 py-1 font-headline text-[9px] font-bold uppercase tracking-[0.22em] text-[#adc6ff]">
-                        Creative Direction
+                        {t("Creative Direction")}
                       </span>
                     </div>
 
                     <h2 className="max-w-3xl break-words font-headline text-lg font-bold leading-tight tracking-tight text-white sm:text-xl md:text-[1.7rem]">
-                      {userText || "Your creative direction will appear here."}
+                      {userText || t("Your creative direction will appear here.")}
                     </h2>
 
                     <div className="flex flex-wrap gap-2 pt-1">
                       {selectedOutputs.includes("image") && (
                         <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[#c2c6d6]">
-                          Image
+                          {t("Image")}
                         </span>
                       )}
                       {selectedOutputs.includes("caption") && (
                         <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[#c2c6d6]">
-                          Caption
+                          {t("Caption")}
                         </span>
                       )}
                       {hasInputImages && (
                         <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-[#c2c6d6]">
-                          {inputImages.length} Reference Images Attached
+                          {inputImages.length} {t("Reference Images Attached")}
                         </span>
                       )}
                     </div>
@@ -2062,13 +2064,13 @@ export default function Home() {
                 {selectedOutputs.includes("image") && (
                   <section className="flex flex-col gap-6">
                     <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
-                      <h3 className="font-headline text-xl font-bold tracking-tight text-white sm:text-2xl">Image</h3>
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Asset Parameters</span>
+                      <h3 className="font-headline text-xl font-bold tracking-tight text-white sm:text-2xl">{t("Image")}</h3>
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">{t("Asset Parameters")}</span>
                     </div>
                     <div className="rounded-xl border border-[rgba(140,144,159,0.1)] bg-[rgba(25,31,49,0.7)] p-4 backdrop-blur-xl sm:p-6">
                       <div className="flex flex-col gap-6">
                         <div className="flex flex-col gap-3">
-                          <label className="font-headline text-xs font-bold uppercase tracking-widest text-slate-400">Generated Prompt for Image</label>
+                          <label className="font-headline text-xs font-bold uppercase tracking-widest text-slate-400">{t("Generated Prompt for Image")}</label>
                           <textarea
                             className="h-36 w-full resize-none rounded-lg border border-outline-variant/10 bg-surface-container-lowest p-4 text-sm leading-relaxed text-on-surface outline-none transition focus:border-primary/40 focus:ring-1 focus:ring-primary/20"
                             value={contentPrompts.image_prompt || ""}
@@ -2078,9 +2080,9 @@ export default function Home() {
 
                         <div className="flex flex-col gap-3">
                           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                            <label className="font-headline text-[10px] font-bold uppercase tracking-widest text-slate-500">Image Configuration</label>
+                            <label className="font-headline text-[10px] font-bold uppercase tracking-widest text-slate-500">{t("Image Configuration")}</label>
                             <span className="rounded-full border border-[#4d8eff]/20 bg-[#4d8eff]/10 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-[#adc6ff]">
-                              {selectedImageModelEntry?.display_name || selectedImageModel || "No model"}
+                              {selectedImageModelEntry?.display_name || selectedImageModel || t("No model")}
                             </span>
                           </div>
 
@@ -2090,7 +2092,7 @@ export default function Home() {
                                 <summary className="flex cursor-pointer items-center justify-between p-4 hover:bg-surface-variant/30">
                                   <span className="flex items-center gap-2 font-headline text-[11px] font-bold uppercase tracking-widest text-primary">
                                     <span className="material-symbols-outlined text-lg">tune</span>
-                                    Image Intent
+                                    {t("Image Intent")}
                                   </span>
                                   <span className="material-symbols-outlined text-slate-500 transition-transform duration-300 group-open:rotate-180">expand_more</span>
                                 </summary>
@@ -2099,7 +2101,7 @@ export default function Home() {
                                     .filter(([key]) => key !== "aspect_ratio")
                                     .map(([key, item]) => (
                                     <div key={key} className="space-y-2">
-                                      <label className="text-[9px] font-bold uppercase tracking-wider text-slate-500">{item.label}</label>
+                                      <label className="text-[9px] font-bold uppercase tracking-wider text-slate-500">{t(item.label)}</label>
                                       <div className="flex flex-wrap gap-2">
                                         {item.options.map((opt) => {
                                           const active = item.value === opt;
@@ -2114,7 +2116,7 @@ export default function Home() {
                                                   : "border-[#4d8eff]/20 bg-[#adc6ff]/10 text-[#adc6ff] hover:bg-[#4d8eff] hover:text-[#00285d]"
                                               }`}
                                             >
-                                              {opt}
+                                              {t(opt)}
                                             </button>
                                           );
                                         })}
@@ -2130,7 +2132,7 @@ export default function Home() {
                                 <summary className="flex cursor-pointer items-center justify-between p-4 hover:bg-surface-variant/30">
                                   <span className="flex items-center gap-2 font-headline text-[11px] font-bold uppercase tracking-widest text-[#b9c8de]">
                                     <span className="material-symbols-outlined text-lg">palette</span>
-                                    Model Intent
+                                    {t("Model Intent")}
                                   </span>
                                   <span className="material-symbols-outlined text-slate-500 transition-transform duration-300 group-open:rotate-180">expand_more</span>
                                 </summary>
@@ -2149,13 +2151,13 @@ export default function Home() {
                 {selectedOutputs.includes("caption") && (
                   <section className="flex flex-col gap-6">
                     <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
-                      <h3 className="font-headline text-xl font-bold tracking-tight text-white sm:text-2xl">Caption</h3>
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Copywriting Parameters</span>
+                      <h3 className="font-headline text-xl font-bold tracking-tight text-white sm:text-2xl">{t("Caption")}</h3>
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">{t("Copywriting Parameters")}</span>
                     </div>
                     <div className="rounded-xl border border-[rgba(140,144,159,0.1)] bg-[rgba(25,31,49,0.7)] p-4 backdrop-blur-xl sm:p-6">
                       <div className="flex flex-col gap-6">
                         <div className="flex flex-col gap-3">
-                          <label className="font-headline text-xs font-bold uppercase tracking-widest text-slate-400">Generated Prompt for Caption</label>
+                          <label className="font-headline text-xs font-bold uppercase tracking-widest text-slate-400">{t("Generated Prompt for Caption")}</label>
                           <textarea
                             className="h-36 w-full resize-none rounded-lg border border-outline-variant/10 bg-surface-container-lowest p-4 text-sm leading-relaxed text-on-surface outline-none transition focus:border-primary/40 focus:ring-1 focus:ring-primary/20"
                             value={contentPrompts.caption_prompt || ""}
@@ -2165,9 +2167,9 @@ export default function Home() {
 
                         <div className="flex flex-col gap-3">
                           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                            <label className="font-headline text-[10px] font-bold uppercase tracking-widest text-slate-500">Caption Configuration</label>
+                            <label className="font-headline text-[10px] font-bold uppercase tracking-widest text-slate-500">{t("Caption Configuration")}</label>
                             <span className="rounded-full border border-[#d0bcff]/20 bg-[#d0bcff]/10 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-[#d0bcff]">
-                              {selectedCaptionModelEntry?.display_name || selectedCaptionModel || "No model"}
+                              {selectedCaptionModelEntry?.display_name || selectedCaptionModel || t("No model")}
                             </span>
                           </div>
 
@@ -2177,14 +2179,14 @@ export default function Home() {
                                 <summary className="flex cursor-pointer items-center justify-between p-4 hover:bg-surface-variant/30">
                                   <span className="flex items-center gap-2 font-headline text-[11px] font-bold uppercase tracking-widest text-primary">
                                     <span className="material-symbols-outlined text-lg">auto_mode</span>
-                                    Model Intent
+                                    {t("Caption Intent")}
                                   </span>
                                   <span className="material-symbols-outlined text-slate-500 transition-transform duration-300 group-open:rotate-180">expand_more</span>
                                 </summary>
                                 <div className="space-y-4 px-4 pb-4 pt-2">
                                   {Object.entries(uiSchema.caption).map(([key, item]) => (
                                     <div key={key} className="space-y-2">
-                                      <label className="text-[9px] font-bold uppercase tracking-wider text-slate-500">{item.label}</label>
+                                      <label className="text-[9px] font-bold uppercase tracking-wider text-slate-500">{t(item.label)}</label>
                                       <div className="flex flex-wrap gap-2">
                                         {item.options.map((opt) => {
                                           const active = item.value === opt;
@@ -2199,7 +2201,7 @@ export default function Home() {
                                                   : "border-[#4d8eff]/20 bg-[#adc6ff]/10 text-[#adc6ff] hover:bg-[#4d8eff] hover:text-[#00285d]"
                                               }`}
                                             >
-                                              {opt}
+                                              {t(opt)}
                                             </button>
                                           );
                                         })}
@@ -2215,7 +2217,7 @@ export default function Home() {
                                 <summary className="flex cursor-pointer items-center justify-between p-4 hover:bg-surface-variant/30">
                                   <span className="flex items-center gap-2 font-headline text-[11px] font-bold uppercase tracking-widest text-secondary">
                                     <span className="material-symbols-outlined text-lg">description</span>
-                                    Caption Intent
+                                    {t("Model Intent")}
                                   </span>
                                   <span className="material-symbols-outlined text-slate-500 transition-transform duration-300 group-open:rotate-180">expand_more</span>
                                 </summary>
@@ -2244,18 +2246,18 @@ export default function Home() {
                     <div className="flex items-center gap-4">
                       <button type="button" onClick={handleBackFromReview} className="group flex items-center gap-2 text-slate-400 transition-colors hover:text-white">
                         <span className="material-symbols-outlined text-lg">arrow_back</span>
-                        <span className="font-headline text-xs font-bold uppercase tracking-widest">Back to Concept</span>
+                        <span className="font-headline text-xs font-bold uppercase tracking-widest">{t("Back to Concept")}</span>
                       </button>
                     </div>
 
                     <div className="flex w-full flex-col items-start gap-4 lg:w-auto lg:flex-row lg:items-center">
                       <div className="text-left lg:text-right">
-                        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">Optimization Complete</p>
+                        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">{t("Optimization Complete")}</p>
                         <p className="mt-1 text-xs font-medium text-on-surface-variant">
-                          {`Expected generation: ${expectedGenerationCredits.toFixed(4)} credits`}
+                          {`${t("Expected generation:")} ${expectedGenerationCredits.toFixed(4)} ${t("credits")}`}
                         </p>
                         <p className="mt-1 text-[11px] text-slate-500">
-                          {`Analysis fee already charged: ${smartAnalysisFee.toFixed(2)} credits`}
+                          {`${t("Analysis fee already charged:")} ${smartAnalysisFee.toFixed(2)} ${t("credits")}`}
                         </p>
                       </div>
                       <button
@@ -2263,7 +2265,7 @@ export default function Home() {
                         disabled={loading || insufficientExpectedCredits}
                         className="w-full rounded-lg bg-gradient-to-r from-primary to-primary-container px-6 py-4 font-headline text-sm font-bold uppercase tracking-[0.2em] text-on-primary-container shadow-[0_0_30px_rgba(77,142,255,0.3)] transition-all hover:shadow-[0_0_45px_rgba(77,142,255,0.4)] active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:px-10"
                       >
-                        {loading ? "Generating..." : insufficientExpectedCredits ? `Need ${expectedGenerationCredits.toFixed(4)} Credits` : "Generate Results"}
+                        {loading ? t("Generating...") : insufficientExpectedCredits ? `${t("Need")} ${expectedGenerationCredits.toFixed(4)} ${t("Credits")}` : t("Generate Results")}
                       </button>
                     </div>
                   </div>
@@ -2283,38 +2285,38 @@ export default function Home() {
               className="space-y-10 pb-20"
             >
               <div className="mb-5 sm:hidden">
-                <p className="font-headline text-[10px] font-bold uppercase tracking-[0.24em] text-primary">Step 3 of 3</p>
+                <p className="font-headline text-[10px] font-bold uppercase tracking-[0.24em] text-primary">{t("Step 3 of 3")}</p>
                 <div className="mt-2 flex items-center justify-between">
-                  <h2 className="font-headline text-xl font-bold text-white">Result</h2>
-                  <span className="text-xs text-slate-500">Complete</span>
+                  <h2 className="font-headline text-xl font-bold text-white">{t("Result")}</h2>
+                  <span className="text-xs text-slate-500">{t("Complete")}</span>
                 </div>
               </div>
               <div className="mb-16 hidden items-center justify-center gap-4 overflow-x-auto sm:flex">
                 <div className="flex items-center gap-3 rounded-full border border-primary/20 bg-surface-container-high px-6 py-2">
                   <span className="material-symbols-outlined text-sm text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
-                  <span className="font-headline text-xs font-bold uppercase tracking-widest text-primary">Idea</span>
+                  <span className="font-headline text-xs font-bold uppercase tracking-widest text-primary">{t("Idea")}</span>
                 </div>
                 <div className="h-px w-12 bg-outline-variant/30" />
                 <div className="flex items-center gap-3 rounded-full border border-primary/20 bg-surface-container-high px-6 py-2">
                   <span className="material-symbols-outlined text-sm text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
-                  <span className="font-headline text-xs font-bold uppercase tracking-widest text-primary">Optimize</span>
+                  <span className="font-headline text-xs font-bold uppercase tracking-widest text-primary">{t("Optimize")}</span>
                 </div>
                 <div className="h-px w-12 bg-outline-variant/30" />
                 <div className="flex items-center gap-3 rounded-full border border-primary bg-primary/10 px-6 py-2 shadow-[0_0_20px_rgba(77,142,255,0.15)]">
                   <span className="material-symbols-outlined text-sm text-primary">auto_awesome</span>
-                  <span className="font-headline text-xs font-bold uppercase tracking-widest text-white">Result</span>
+                  <span className="font-headline text-xs font-bold uppercase tracking-widest text-white">{t("Result")}</span>
                 </div>
               </div>
 
               <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
                 <div className="max-w-3xl">
                   <h1 className="font-display text-3xl font-extrabold tracking-tighter text-on-surface sm:text-4xl">
-                    Generated Result
+                    {t("Generated Result")}
                   </h1>
                   <div className="mt-4 space-y-2">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-outline">Original Request:</p>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-outline">{t("Original Request:")}</p>
                     <p className="max-w-2xl break-words text-sm font-medium leading-6 text-on-surface-variant sm:text-lg sm:leading-relaxed">
-                      {userText.trim() || "No original request provided."}
+                      {userText.trim() || t("No original request provided.")}
                     </p>
                   </div>
                 </div>
@@ -2325,7 +2327,7 @@ export default function Home() {
                     className="flex items-center gap-2 rounded-lg border border-outline-variant/10 bg-surface-container-high px-5 py-2.5 text-sm font-medium text-on-surface transition-colors hover:bg-surface-bright"
                   >
                     <span className="material-symbols-outlined text-sm">arrow_back</span>
-                    Back to Studio
+                    {t("Back to Studio")}
                   </button>
                 </div>
               </div>
@@ -2353,7 +2355,7 @@ export default function Home() {
                       <div className="flex h-full items-center justify-center bg-surface-container-lowest">
                         <div className="text-center">
                           <span className="material-symbols-outlined text-5xl text-primary">notes</span>
-                          <p className="mt-4 font-headline text-2xl font-bold text-white">Caption Result Ready</p>
+                          <p className="mt-4 font-headline text-2xl font-bold text-white">{t("Caption Result Ready")}</p>
                         </div>
                       </div>
                     )}
@@ -2361,7 +2363,7 @@ export default function Home() {
 
                   {finalResults.caption && (
                     <div className="relative rounded-[1.25rem] border border-white/10 bg-[#151b2d] p-5 shadow-[0_10px_30px_rgba(0,0,0,0.18)] sm:p-8">
-                      <h3 className="mb-4 text-[10px] font-bold uppercase tracking-[0.2em] text-outline">AI Generated Caption</h3>
+                      <h3 className="mb-4 text-[10px] font-bold uppercase tracking-[0.2em] text-outline">{t("AI Generated Caption")}</h3>
                       <p className="mb-6 max-w-3xl text-lg font-light italic leading-relaxed text-on-surface-variant">
                         &quot;{finalResults.caption}&quot;
                       </p>
@@ -2370,15 +2372,15 @@ export default function Home() {
                         onClick={async () => {
                           try {
                             await navigator.clipboard.writeText(finalResults.caption);
-                            showToast("Caption copied.", "success");
+                            showToast(t("Caption copied."), "success");
                           } catch {
-                            showToast("Could not copy caption.");
+                            showToast(t("Could not copy caption."));
                           }
                         }}
                         className="flex items-center gap-2 text-xs font-bold text-primary transition-colors hover:text-white"
                       >
                         <span className="material-symbols-outlined text-sm">content_copy</span>
-                        Copy Caption
+                        {t("Copy Caption")}
                       </button>
                     </div>
                   )}
@@ -2386,34 +2388,34 @@ export default function Home() {
 
                 <div className="col-span-12 space-y-6 lg:order-1 lg:col-span-4">
                   <section className="rounded-xl border border-white/10 bg-[#151b2d] p-4 shadow-[0_10px_30px_rgba(0,0,0,0.18)] sm:p-6">
-                    <h3 className="mb-4 text-[10px] font-bold uppercase tracking-[0.2em] text-outline">Technical Specifications</h3>
+                    <h3 className="mb-4 text-[10px] font-bold uppercase tracking-[0.2em] text-outline">{t("Technical Specifications")}</h3>
                     <div className="space-y-3 rounded-lg border border-white/5 bg-[#191f31] p-4">
                       <div className="flex items-center justify-between">
-                        <span className="text-xs text-on-surface-variant">Aspect Ratio</span>
+                        <span className="text-xs text-on-surface-variant">{t("Aspect Ratio")}</span>
                         <span className="text-xs font-bold text-on-surface">{aspectRatioValue}</span>
                       </div>
                       <div className="flex items-center justify-between">
-                        <span className="text-xs text-on-surface-variant">Resolution</span>
+                        <span className="text-xs text-on-surface-variant">{t("Resolution")}</span>
                         <span className="text-xs font-bold text-on-surface">{resolutionValue}</span>
                       </div>
                       <div className="flex items-center justify-between">
-                        <span className="text-xs text-on-surface-variant">Seed</span>
+                        <span className="text-xs text-on-surface-variant">{t("Seed")}</span>
                         <span className="font-mono text-xs text-on-surface">{seedValue}</span>
                       </div>
                     </div>
                   </section>
 
                   <section className="rounded-xl border border-white/10 bg-[#151b2d] p-4 shadow-[0_10px_30px_rgba(0,0,0,0.18)] sm:p-6">
-                    <h3 className="mb-6 text-[10px] font-bold uppercase tracking-[0.2em] text-outline">Usage &amp; Billing</h3>
+                    <h3 className="mb-6 text-[10px] font-bold uppercase tracking-[0.2em] text-outline">{t("Usage & Billing")}</h3>
                     <div className="grid grid-cols-1 gap-4">
                       <div className="rounded-lg border border-white/5 bg-[#191f31] p-5">
-                        <p className="mb-1 text-[10px] text-on-surface-variant">Generation Cost</p>
+                        <p className="mb-1 text-[10px] text-on-surface-variant">{t("Generation Cost")}</p>
                         <p className="font-display text-lg font-bold leading-tight text-on-surface sm:text-xl lg:text-2xl">
-                          {actualChargedCost > 0 ? `${actualChargedCost.toFixed(4)} credits` : "—"}
+                          {actualChargedCost > 0 ? `${actualChargedCost.toFixed(4)} ${t("credits")}` : "—"}
                         </p>
                       </div>
                       <div className="hidden rounded-lg border border-white/5 bg-[#191f31] p-5 sm:block">
-                        <p className="mb-1 text-[10px] text-on-surface-variant">Tokens Used</p>
+                        <p className="mb-1 text-[10px] text-on-surface-variant">{t("Tokens Used")}</p>
                         <p className="font-display text-2xl font-bold text-on-surface">
                           {totalTokensUsed > 0 ? totalTokensUsed.toLocaleString() : "—"}
                         </p>
@@ -2422,7 +2424,7 @@ export default function Home() {
                   </section>
 
                   <section className="hidden rounded-xl border border-white/10 bg-[#151b2d] p-4 shadow-[0_10px_30px_rgba(0,0,0,0.18)] sm:block sm:p-6">
-                    <h3 className="mb-4 text-[10px] font-bold uppercase tracking-[0.2em] text-outline">Inference Engine</h3>
+                    <h3 className="mb-4 text-[10px] font-bold uppercase tracking-[0.2em] text-outline">{t("Inference Engine")}</h3>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-secondary-container/30 text-secondary">
@@ -2430,7 +2432,7 @@ export default function Home() {
                         </div>
                         <div>
                           <p className="text-sm font-bold text-on-surface">{primaryEngineLabel}</p>
-                          <p className="text-[10px] text-on-surface-variant">Usage-based generation engine</p>
+                          <p className="text-[10px] text-on-surface-variant">{t("Usage-based generation engine")}</p>
                         </div>
                       </div>
                       <span className="material-symbols-outlined text-outline">verified</span>
@@ -2456,7 +2458,7 @@ export default function Home() {
         <div className="fixed inset-0 z-50 bg-[#070d1f]/70 backdrop-blur-sm">
           <button
             type="button"
-            aria-label="Close workflow drawer"
+            aria-label={t("Close workflow drawer")}
             onClick={handleCloseModePicker}
             className="absolute inset-0 h-full w-full"
           />
@@ -2464,7 +2466,7 @@ export default function Home() {
             <div className="absolute right-0 top-0 flex h-full w-full max-w-[760px] items-stretch">
               <div className="pointer-events-auto flex h-full w-full flex-col border-l border-white/5 bg-[rgba(12,19,36,0.92)] px-5 py-6 shadow-[0_20px_50px_rgba(0,0,0,0.5)] backdrop-blur-[20px] sm:px-6">
                 <div className="flex items-center justify-between">
-                  <h2 className="font-headline text-xl font-bold tracking-tight text-slate-100">Generation Settings</h2>
+                  <h2 className="font-headline text-xl font-bold tracking-tight text-slate-100">{t("Generation Settings")}</h2>
                   <button
                     type="button"
                     onClick={handleCloseModePicker}
@@ -2480,8 +2482,8 @@ export default function Home() {
                       {usesSharedNanoBanana ? (
                         <div className="flex flex-col rounded-2xl border border-white/10 bg-white/[0.02] p-4 shadow-sm backdrop-blur-md">
                           <div className="mb-4 flex items-center justify-between border-b border-white/10 pb-3 text-xs text-[#c2c6d6]">
-                            <span className="font-semibold text-white">Multimodal Pipeline</span>
-                            <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-[10px] font-bold text-white/80">{sharedMultimodalModels.length} available</span>
+                            <span className="font-semibold text-white">{t("Multimodal Pipeline")}</span>
+                            <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-[10px] font-bold text-white/80">{sharedMultimodalModels.length} {t("available")}</span>
                           </div>
                           <div className="flex max-h-[300px] flex-col gap-2 overflow-y-auto pr-1">
                             {sharedMultimodalModels.map((modelId) => {
@@ -2513,7 +2515,7 @@ export default function Home() {
                             })}
                             {sharedMultimodalModels.length === 0 && (
                               <div className="flex h-20 items-center justify-center rounded-xl border border-dashed border-white/10">
-                                <p className="text-sm text-[#8c909f]">No multimodal models available.</p>
+                                <p className="text-sm text-[#8c909f]">{t("No multimodal models available.")}</p>
                               </div>
                             )}
                           </div>
@@ -2523,8 +2525,8 @@ export default function Home() {
                           {selectedOutputs.includes("caption") && (
                             <div className="flex flex-col rounded-2xl border border-white/10 bg-white/[0.02] p-4 shadow-sm backdrop-blur-md">
                               <div className="mb-4 flex items-center justify-between border-b border-white/10 pb-3 text-xs text-[#c2c6d6]">
-                                <span className="font-semibold text-white">Text Engine</span>
-                                <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-[10px] font-bold text-white/80">{filteredCaptionModels.length} available</span>
+                                <span className="font-semibold text-white">{t("Text Engine")}</span>
+                                <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-[10px] font-bold text-white/80">{filteredCaptionModels.length} {t("available")}</span>
                               </div>
                               <div className="flex max-h-[300px] flex-col gap-2 overflow-y-auto pr-1">
                                 {filteredCaptionModels.map((modelId) => {
@@ -2553,7 +2555,7 @@ export default function Home() {
                                 })}
                                 {filteredCaptionModels.length === 0 && (
                                   <div className="flex h-20 items-center justify-center rounded-xl border border-dashed border-white/10">
-                                    <p className="text-sm text-[#8c909f]">No text models available.</p>
+                                    <p className="text-sm text-[#8c909f]">{t("No text models available.")}</p>
                                   </div>
                                 )}
                               </div>
@@ -2562,8 +2564,8 @@ export default function Home() {
                           {selectedOutputs.includes("image") && (
                             <div className="flex flex-col rounded-2xl border border-white/10 bg-white/[0.02] p-4 shadow-sm backdrop-blur-md">
                               <div className="mb-4 flex items-center justify-between border-b border-white/10 pb-3 text-xs text-[#c2c6d6]">
-                                <span className="font-semibold text-white">Image Engine</span>
-                                <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-[10px] font-bold text-white/80">{filteredImageModels.length} available</span>
+                                <span className="font-semibold text-white">{t("Image Engine")}</span>
+                                <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-[10px] font-bold text-white/80">{filteredImageModels.length} {t("available")}</span>
                               </div>
                               <div className="flex max-h-[300px] flex-col gap-2 overflow-y-auto pr-1">
                                 {filteredImageModels.map((modelId) => {
@@ -2592,7 +2594,7 @@ export default function Home() {
                                 })}
                                 {filteredImageModels.length === 0 && (
                                   <div className="flex h-20 items-center justify-center rounded-xl border border-dashed border-white/10">
-                                    <p className="text-sm text-[#8c909f]">No image models available.</p>
+                                    <p className="text-sm text-[#8c909f]">{t("No image models available.")}</p>
                                   </div>
                                 )}
                               </div>
@@ -2604,35 +2606,35 @@ export default function Home() {
                   </section>
 
                   <section className="space-y-4 pt-2">
-                    <label className="block text-xs font-bold uppercase tracking-[0.15em] text-[#adc6ff]">Estimated Cost</label>
+                    <label className="block text-xs font-bold uppercase tracking-[0.15em] text-[#adc6ff]">{t("Estimated Cost")}</label>
                     <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-md">
                       <div className="space-y-4 p-5">
                         <div className="flex items-center justify-between gap-3 text-sm">
                           <span className="flex items-center gap-2 text-slate-400">
                             <span className="material-symbols-outlined text-base">notes</span>
-                            Text generation
+                            {t("Text generation")}
                           </span>
                           <span className="font-medium text-white">{draftCaptionMinimumCost.toFixed(2)} cr</span>
                         </div>
                         <div className="flex items-center justify-between gap-3 text-sm">
                           <span className="flex items-center gap-2 text-slate-400">
                             <span className="material-symbols-outlined text-base">image</span>
-                            Image generation
+                            {t("Image generation")}
                           </span>
                           <span className="font-medium text-white">{draftImageMinimumCost.toFixed(2)} cr</span>
                         </div>
                         <div className="flex items-center justify-between gap-3 text-sm">
                           <span className="flex items-center gap-2 text-slate-400">
                             <span className="material-symbols-outlined text-base">auto_awesome</span>
-                            Smart analysis
+                            {t("Smart analysis")}
                           </span>
                           <span className="font-medium text-white">{smartAnalysisFee.toFixed(2)} cr</span>
                         </div>
                       </div>
                       <div className="border-t border-white/10 bg-white/5 p-4 sm:px-5">
                         <div className="flex items-center justify-between gap-3">
-                          <span className="font-headline font-bold text-white">Minimum required</span>
-                          <span className="font-headline text-lg font-bold text-[#adc6ff]">{draftMinimumRequiredCredits.toFixed(2)} credits</span>
+                          <span className="font-headline font-bold text-white">{t("Minimum required")}</span>
+                          <span className="font-headline text-lg font-bold text-[#adc6ff]">{draftMinimumRequiredCredits.toFixed(2)} {t("credits")}</span>
                         </div>
                       </div>
                     </div>
@@ -2640,7 +2642,7 @@ export default function Home() {
                       <div className="mt-4 flex items-start gap-3 rounded-xl border border-red-500/20 bg-red-500/10 p-4">
                         <span className="material-symbols-outlined text-red-400">error</span>
                         <p className="text-sm leading-6 text-red-200">
-                          You need at least <span className="font-bold text-white">{draftMinimumRequiredCredits.toFixed(2)} credits</span> to start the Smart workflow. Please add credits to continue.
+                          {t("You need at least")} <span className="font-bold text-white">{draftMinimumRequiredCredits.toFixed(2)} {t("credits")}</span> {t("to start the Smart workflow. Please add credits to continue.")}
                         </p>
                       </div>
                     )}
@@ -2655,14 +2657,14 @@ export default function Home() {
                     className="flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[#adc6ff] to-[#4d8eff] py-4 text-sm font-bold tracking-wide text-[#002e6a] shadow-[0_8px_20px_rgba(77,142,255,0.3)] transition-all active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {loading ? (
-                      <LoadingSpinner text="Preparing..." />
+                      <LoadingSpinner text={t("Preparing...")} />
                     ) : hasUploadingInputImages ? (
-                      "Uploading images..."
+                      t("Uploading images...")
                     ) : insufficientDraftSmartCredits ? (
-                      `Insufficient Credits (${draftMinimumRequiredCredits.toFixed(2)} needed)`
+                      `${t("Insufficient Credits")} (${draftMinimumRequiredCredits.toFixed(2)} ${t("needed")})`
                     ) : (
                       <>
-                        Continue with Smart
+                        {t("Continue with Smart")}
                         <span className="material-symbols-outlined text-base">arrow_forward</span>
                       </>
                     )}

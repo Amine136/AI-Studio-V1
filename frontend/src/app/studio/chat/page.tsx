@@ -4,11 +4,13 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Fragment, useEffect, useMemo, useRef, useState, type ChangeEvent, type ClipboardEvent, type ReactNode } from "react";
 import { useAuth } from "../../../context/AuthContext";
+import { useLanguage } from "../../../context/LanguageContext";
 import InteractiveAuthenticatedImage from "../../../components/InteractiveAuthenticatedImage";
 import { isRenderableImageUrl } from "../../../components/AuthenticatedImage";
 import { ColorPickerPopover } from "../../../components/ColorPickerPopover";
 import { api } from "../../../services/api";
 import { addHistoryEntry } from "../../../lib/history";
+import { getModelDescription } from "../../../lib/modelDescriptions";
 import { getUploadConstraints, maxInputImagesForModelId, preferredOutputType, providerLabelForModelId, readImageDimensions, type UploadImageConstraints } from "../../../lib/imageInputConstraints";
 import type { BillingBreakdown, BillingUsage, ModelPricingSummary, PlainChatModelItem, PlainChatParameterSchemaEntry, PlainChatPart, PlainChatTurnMeta, UploadedImageResult } from "../../../types";
 
@@ -730,6 +732,7 @@ async function normalizeUploadImage(file: File, constraints: UploadImageConstrai
 
 export default function StudioChatPage() {
   const { user, loading: authLoading } = useAuth();
+  const { t, language } = useLanguage();
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -972,7 +975,7 @@ export default function StudioChatPage() {
         }
       } catch {
         if (!cancelled) {
-          setError("Could not load chat models.");
+          setError(t("Could not load chat models."));
         }
       } finally {
         if (!cancelled) {
@@ -1073,7 +1076,7 @@ export default function StudioChatPage() {
       } catch (err) {
         if (cancelled) return;
         failedConversationLoadRef.current = conversationId;
-        setError(err instanceof Error ? err.message : "Could not load chat history.");
+        setError(err instanceof Error ? err.message : t("Could not load chat history."));
         setConversationId("");
         setConversationTitle(DEFAULT_CONVERSATION_TITLE);
         setConversationTitleDraft(DEFAULT_CONVERSATION_TITLE);
@@ -1127,7 +1130,7 @@ export default function StudioChatPage() {
         const providerMatches = !providerQuery || group.provider.toLowerCase().includes(providerQuery);
         const models = group.models.filter((model) => {
           if (modelQuery) {
-            const haystack = `${model.displayName} ${model.description || ""}`.toLowerCase();
+            const haystack = `${model.displayName} ${getModelDescription(model.id, language) || model.description || ""}`.toLowerCase();
             if (!haystack.includes(modelQuery)) return false;
           }
           return providerMatches;
@@ -1135,7 +1138,7 @@ export default function StudioChatPage() {
         return { ...group, models };
       })
       .filter((group) => group.models.length > 0);
-  }, [modelSearch, providerGroups, providerSearch]);
+  }, [modelSearch, providerGroups, providerSearch, language]);
 
   const visibleActiveProviderGroup = useMemo(() => {
     return visibleProviderGroups.find((group) => group.provider === selectedProvider) || visibleProviderGroups[0] || null;
@@ -1265,10 +1268,10 @@ export default function StudioChatPage() {
       const providerLabel = providerLabelForModelId(lockedModel?.id);
       for (const originalFile of filesToUpload) {
         if (!["image/png", "image/jpeg", "image/webp"].includes(originalFile.type)) {
-          throw new Error("Only PNG, JPEG, and WEBP images are supported.");
+          throw new Error(t("Only PNG, JPEG, and WEBP images are supported."));
         }
         if (originalFile.size > MAX_UPLOAD_BYTES) {
-          throw new Error("Each image must be 10 MB or smaller.");
+          throw new Error(t("Each image must be 10 MB or smaller."));
         }
         const { width, height } = await readImageDimensions(originalFile);
         if (Math.min(width, height) < constraints.minDim) {
@@ -1310,7 +1313,7 @@ export default function StudioChatPage() {
         if (!keep) URL.revokeObjectURL(image.previewUrl);
         return keep;
       }));
-      setError(err instanceof Error ? err.message : "Could not upload image.");
+      setError(err instanceof Error ? err.message : t("Could not upload image."));
     } finally {
       setUploadingImage(false);
     }
@@ -1359,7 +1362,7 @@ export default function StudioChatPage() {
       setInput("");
       clearAttachedImages();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not start a chat.");
+      setError(err instanceof Error ? err.message : t("Could not start a chat."));
     } finally {
       setLoadingReply(false);
     }
@@ -1430,7 +1433,7 @@ export default function StudioChatPage() {
       });
 
       if (response.status !== "success" || !response.userMessage || !response.assistantMessage) {
-        throw new Error(typeof response.meta?.error_message === "string" ? response.meta.error_message : "The chat model did not return a reply.");
+        throw new Error(typeof response.meta?.error_message === "string" ? response.meta.error_message : t("The chat model did not return a reply."));
       }
 
       const userMessage: ChatMessage = {
@@ -1487,7 +1490,7 @@ export default function StudioChatPage() {
       setMessages((current) => current.slice(0, -1));
       setInput(inputBeforeSend);
       setInputImages(attachedImages);
-      setError(err instanceof Error ? err.message : "Could not get a reply.");
+      setError(err instanceof Error ? err.message : t("Could not get a reply."));
     } finally {
       setLoadingReply(false);
     }
@@ -1522,7 +1525,7 @@ export default function StudioChatPage() {
               }}
               className="text-[10px] font-bold uppercase text-[#adc6ff] hover:underline"
             >
-              Reset
+              {t("Reset")}
             </button>
           ) : null}
         </div>
@@ -1557,7 +1560,7 @@ export default function StudioChatPage() {
                 </div>
           ) : (
             <div className={`${isMobile ? "rounded-lg border border-white/8 bg-[#151b2d] px-4 py-5" : "px-1 py-2"} text-sm leading-6 text-[#8c909f]`}>
-              This model does not expose editable chat parameters yet.
+              {t("This model does not expose editable chat parameters yet.")}
             </div>
           )}
         </div>
@@ -1594,7 +1597,7 @@ export default function StudioChatPage() {
       setInput("");
       clearAttachedImages();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not start a new chat.");
+      setError(err instanceof Error ? err.message : t("Could not start a new chat."));
     } finally {
       setLoadingReply(false);
     }
@@ -1603,7 +1606,7 @@ export default function StudioChatPage() {
   async function handleDeleteConversation() {
     if (!conversationId) return;
     const deletedConversationId = conversationId;
-    if (typeof window !== "undefined" && !window.confirm("Delete this conversation? This action cannot be undone.")) {
+    if (typeof window !== "undefined" && !window.confirm(t("Delete this conversation? This action cannot be undone."))) {
       return;
     }
 
@@ -1625,7 +1628,7 @@ export default function StudioChatPage() {
       setInput("");
       clearAttachedImages();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not delete this chat.");
+      setError(err instanceof Error ? err.message : t("Could not delete this chat."));
     } finally {
       setLoadingReply(false);
     }
@@ -1648,7 +1651,7 @@ export default function StudioChatPage() {
       setConversationTitleDraft(nextTitle);
       setEditingConversationTitle(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not rename this chat.");
+      setError(err instanceof Error ? err.message : t("Could not rename this chat."));
     }
   }
 
@@ -1670,7 +1673,7 @@ export default function StudioChatPage() {
             const affordable = currentCredits === null || getChatModelExpectedCost(lockedModel, nextValues) <= currentCredits;
             return (
               <option key={nextOption} value={nextOption} disabled={!affordable}>
-                {nextOption}{!affordable ? " — locked" : ""}
+                {nextOption}{!affordable ? ` — ${t("locked")}` : ""}
               </option>
             );
           })}
@@ -1691,7 +1694,7 @@ export default function StudioChatPage() {
               : "border-white/10 bg-[#101728] text-[#dce1fb]"
           }`}
         >
-          <span>{Boolean(value) ? "Enabled" : "Disabled"}</span>
+          <span>{Boolean(value) ? t("Enabled") : t("Disabled")}</span>
           <span
             className={`h-5 w-10 rounded-full transition-colors ${
               Boolean(value) ? "bg-[#4d8eff]" : "bg-[#2b3347]"
@@ -1763,7 +1766,7 @@ export default function StudioChatPage() {
             onChange={(next) => setParameterValues((current) => ({ ...current, [key]: next }))}
             onClear={() => setParameterValues((current) => ({ ...current, [key]: "" }))}
           />
-          <span className="font-mono text-[12px] text-[#8c909f]">{hex || "None"}</span>
+          <span className="font-mono text-[12px] text-[#8c909f]">{hex || t("None")}</span>
         </div>
       );
     }
@@ -1801,7 +1804,7 @@ export default function StudioChatPage() {
               onClick={() => setParameterValues((current) => ({ ...current, [key]: [...list, "#10b981"] }))}
               className="rounded-md border border-dashed border-white/20 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-[#8c909f] hover:border-white/40 hover:text-[#dce1fb]"
             >
-              + Add color
+              + {t("Add color")}
             </button>
           ) : null}
         </div>
@@ -1810,7 +1813,7 @@ export default function StudioChatPage() {
 
     return (
       <div className="rounded-md border border-white/10 bg-[#101728] px-3 py-2 text-sm text-[#8c909f]">
-        Unsupported parameter type.
+        {t("Unsupported parameter type.")}
       </div>
     );
   }
@@ -1825,8 +1828,8 @@ export default function StudioChatPage() {
           <div className="relative z-10 flex flex-1 flex-col px-4 py-5 sm:px-6 sm:py-7 lg:px-8">
             <section className="mb-10">
               <div className="mb-6 flex flex-col gap-2">
-                <p className="font-mono text-[11px] font-medium uppercase tracking-[0.18em] text-[#8c909f]">Playground</p>
-                <h1 className="font-headline text-3xl font-bold tracking-tight text-[#d4e4fa] sm:text-4xl">Engineered AI</h1>
+                <p className="font-mono text-[11px] font-medium uppercase tracking-[0.18em] text-[#8c909f]">{t("Playground")}</p>
+                <h1 className="font-headline text-3xl font-bold tracking-tight text-[#d4e4fa] sm:text-4xl">{t("Engineered AI")}</h1>
               </div>
 
               <div className="mb-7 max-w-2xl">
@@ -1836,7 +1839,7 @@ export default function StudioChatPage() {
                     type="text"
                     value={modelSearch}
                     onChange={(event) => setModelSearch(event.target.value)}
-                    placeholder="Search across all models..."
+                    placeholder={t("Search across all models...")}
                     className="w-full rounded-full border border-[#424754]/50 bg-[#010f1f]/65 py-3 pl-12 pr-6 text-sm text-[#d4e4fa] backdrop-blur-sm placeholder:text-[#8c909f]/55 transition-all focus:border-[#adc6ff] focus:outline-none focus:ring-2 focus:ring-[#adc6ff]/20"
                   />
                 </div>
@@ -1877,9 +1880,9 @@ export default function StudioChatPage() {
             <section className="flex min-h-0 flex-1 flex-col pb-24">
               <div className="mb-7 flex items-center justify-between gap-4">
                 <div>
-                  <h2 className="font-mono text-[12px] font-medium uppercase tracking-[0.18em] text-[#8c909f]">Available Models</h2>
+                  <h2 className="font-mono text-[12px] font-medium uppercase tracking-[0.18em] text-[#8c909f]">{t("Available Models")}</h2>
                   {visibleActiveProviderGroup ? (
-                    <p className="mt-1 text-sm text-[#c2c6d6]/70">{visibleActiveProviderGroup.provider} - {visibleActiveProviderGroup.models.length} visible</p>
+                    <p className="mt-1 text-sm text-[#c2c6d6]/70">{visibleActiveProviderGroup.provider} - {visibleActiveProviderGroup.models.length} {t("visible")}</p>
                   ) : null}
                 </div>
                 <div className="hidden gap-2 sm:flex">
@@ -1901,7 +1904,7 @@ export default function StudioChatPage() {
               </div>
 
               {loadingConfig ? (
-                <div className="rounded-2xl border border-[#334155]/45 bg-[#0f172a]/40 p-8 text-sm text-[#c2c6d6] backdrop-blur-xl">Loading models...</div>
+                <div className="rounded-2xl border border-[#334155]/45 bg-[#0f172a]/40 p-8 text-sm text-[#c2c6d6] backdrop-blur-xl">{t("Loading models...")}</div>
               ) : visibleActiveProviderGroup ? (
                 <div className={`grid gap-4 ${viewMode === "grid" ? "grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4" : "grid-cols-1"}`}>
                   {visibleActiveProviderGroup.models.map((model) => {
@@ -1934,16 +1937,16 @@ export default function StudioChatPage() {
                           ) : null}
                         </div>
 
-                        <p className="mb-3 hidden line-clamp-2 flex-1 text-[13px] leading-5 text-[#c2c6d6]/80 sm:block">{model.description || "Usage-based conversational model for playground."}</p>
+                        <p className="mb-3 hidden line-clamp-2 flex-1 text-[13px] leading-5 text-[#c2c6d6]/80 sm:block">{getModelDescription(model.id, language) || t("Usage-based conversational model for playground.")}</p>
 
                         {!affordable ? (
-                          <p className="mb-3 text-[11px] font-medium text-[#ffb4ab]">Need at least {minimumCost.toFixed(2)} credits.</p>
+                          <p className="mb-3 text-[11px] font-medium text-[#ffb4ab]">{t("Need at least")} {minimumCost.toFixed(2)} {t("credits.")}</p>
                         ) : null}
 
                         <div className="mt-auto flex flex-wrap gap-2">
                           {featureLabels.map((label) => (
                             <span key={label} className="rounded-full border border-[#424754]/70 px-3 py-1 text-[10px] font-medium uppercase tracking-[0.08em] text-[#8c909f]">
-                              {label}
+                              {t(label)}
                             </span>
                           ))}
                         </div>
@@ -1952,7 +1955,7 @@ export default function StudioChatPage() {
                   })}
                 </div>
               ) : (
-                <div className="rounded-2xl border border-[#334155]/45 bg-[#0f172a]/40 p-8 text-sm text-[#c2c6d6] backdrop-blur-xl">No models available for the current search.</div>
+                <div className="rounded-2xl border border-[#334155]/45 bg-[#0f172a]/40 p-8 text-sm text-[#c2c6d6] backdrop-blur-xl">{t("No models available for the current search.")}</div>
               )}
             </section>
           </div>
@@ -1961,7 +1964,7 @@ export default function StudioChatPage() {
             <div className="flex flex-col justify-between gap-4 px-4 py-4 sm:flex-row sm:items-center sm:px-6 lg:px-8">
               <Link href="/studio/start" className="flex items-center gap-2 font-mono text-[11px] font-medium uppercase tracking-[0.12em] text-[#c2c6d6] transition-colors hover:text-[#d4e4fa]">
                 <span className="material-symbols-outlined text-[18px]">arrow_back</span>
-                Provider
+                {t("Provider")}
               </Link>
               <button
                 type="button"
@@ -1969,7 +1972,7 @@ export default function StudioChatPage() {
                 disabled={!visibleSelectedModelOption || loadingConfig || loadingReply || insufficientSelectedModelCredits}
                 className="group flex w-full items-center justify-center gap-2 rounded-xl bg-[#adc6ff] px-6 py-3 font-mono text-[13px] font-medium uppercase tracking-[0.05em] text-[#002e6a] shadow-[0_0_24px_rgba(173,198,255,0.2)] transition-all hover:scale-[1.02] hover:bg-[#adc6ff]/90 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
               >
-                <span>{loadingReply ? "Starting..." : insufficientSelectedModelCredits ? `Need ${selectedModelMinimumCost.toFixed(2)} Credits` : "Continue"}</span>
+                <span>{loadingReply ? t("Starting...") : insufficientSelectedModelCredits ? `${t("Need")} ${selectedModelMinimumCost.toFixed(2)} ${t("Credits")}` : t("Continue")}</span>
                 <span className="material-symbols-outlined text-[18px] transition-transform group-hover:translate-x-1">arrow_forward</span>
               </button>
             </div>
@@ -2022,12 +2025,12 @@ export default function StudioChatPage() {
                   }}
                   className="group flex min-w-0 items-center gap-1.5"
                 >
-                  <h1 className="max-w-[128px] truncate text-sm font-semibold text-white sm:max-w-xs">{normalizedConversationTitle}</h1>
+                  <h1 className="max-w-[128px] truncate text-sm font-semibold text-white sm:max-w-xs">{normalizedConversationTitle === DEFAULT_CONVERSATION_TITLE ? t("New Chat") : normalizedConversationTitle}</h1>
                   <span className="material-symbols-outlined shrink-0 text-[14px] text-white/25 transition-colors group-hover:text-white/60">edit</span>
                 </button>
               )}
               <span className="hidden text-white/15 sm:inline">.</span>
-              <span className="hidden max-w-[160px] truncate text-[11px] font-medium text-[#6b7a8f] sm:inline">{lockedModel?.displayName || "Model"}</span>
+              <span className="hidden max-w-[160px] truncate text-[11px] font-medium text-[#6b7a8f] sm:inline">{lockedModel?.displayName || t("Model")}</span>
             </div>
 
             <div className={`items-center gap-1 ${editingConversationTitle ? "hidden sm:flex" : "flex"}`}>
@@ -2042,13 +2045,13 @@ export default function StudioChatPage() {
               </div>
               <div className="mr-0.5 hidden h-4 w-px bg-white/[0.06] lg:block" />
 
-              <button type="button" onClick={() => void handleNewChat()} title="New Chat" className="chat-topbar-btn">
+              <button type="button" onClick={() => void handleNewChat()} title={t("New Chat")} className="chat-topbar-btn">
                 <span className="material-symbols-outlined text-[18px]">add</span>
               </button>
-              <button type="button" onClick={() => void handleDeleteConversation()} disabled={!conversationId || loadingReply} title="Delete Chat" className="chat-topbar-btn hover:!text-red-400/80">
+              <button type="button" onClick={() => void handleDeleteConversation()} disabled={!conversationId || loadingReply} title={t("Delete Chat")} className="chat-topbar-btn hover:!text-red-400/80">
                 <span className="material-symbols-outlined text-[18px]">delete_outline</span>
               </button>
-              <Link href="/studio/start" title="Back to Choice" className="chat-topbar-btn">
+              <Link href="/studio/start" title={t("Back to Choice")} className="chat-topbar-btn">
                 <span className="material-symbols-outlined text-[18px]">arrow_back</span>
               </Link>
 
@@ -2059,14 +2062,14 @@ export default function StudioChatPage() {
                 <span className="text-[11px] font-bold tabular-nums text-blue-100/80">{currentCredits === null ? "..." : currentCredits.toFixed(2)}</span>
               </div>
 
-              <button type="button" onClick={() => setSettingsPanelOpen((prev) => !prev)} className={`chat-topbar-btn ${settingsPanelOpen ? "!text-[#adc6ff] bg-white/[0.04]" : ""}`} title="Model Settings">
+              <button type="button" onClick={() => setSettingsPanelOpen((prev) => !prev)} className={`chat-topbar-btn ${settingsPanelOpen ? "!text-[#adc6ff] bg-white/[0.04]" : ""}`} title={t("Model Settings")}>
                 <span className="material-symbols-outlined text-[18px]">tune</span>
               </button>
             </div>
           </header>
 
           <div className="flex items-center justify-center gap-4 border-b border-white/[0.04] bg-[#0a0f1e]/60 px-4 py-1.5 text-[11px] text-[#6b7a8f] lg:hidden">
-            <span className="tabular-nums">{conversationTotalTokens.toLocaleString()} tokens</span>
+            <span className="tabular-nums">{conversationTotalTokens.toLocaleString()} {t("tokens")}</span>
             <span className="text-white/10">.</span>
             <span className="tabular-nums text-[#adc6ff]/60">{conversationCostTotal.toFixed(2)} Cr</span>
           </div>
@@ -2090,12 +2093,12 @@ export default function StudioChatPage() {
                         <div className="chat-empty-icon-glow" />
                       </div>
                       <h2 className="mt-6 text-xl font-semibold tracking-[-0.01em] text-white/90">
-                        {lockedModelIsOneShotImage ? "One-shot image generation" : "What will you create?"}
+                        {lockedModelIsOneShotImage ? t("One-shot image generation") : t("What will you create?")}
                       </h2>
                       <p className="mt-2.5 max-w-[360px] text-center text-[13px] leading-relaxed text-[#5a6580]">
                         {lockedModelIsOneShotImage
-                          ? `${lockedModel?.displayName || "This model"} generates an image directly from your prompt. It does not use chat memory, so write the full image request in one message.`
-                          : `Ask a question, describe an image, or start a brainstorming session with ${lockedModel?.displayName || "your model"}.`}
+                          ? `${lockedModel?.displayName || t("This model")} ${t("generates an image directly from your prompt. It does not use chat memory, so write the full image request in one message.")}`
+                          : `${t("Ask a question, describe an image, or start a brainstorming session with")} ${lockedModel?.displayName || t("your model")}.`}
                       </p>
                     </div>
                   ) : (
@@ -2108,7 +2111,7 @@ export default function StudioChatPage() {
                         >
                           <div className={`group relative max-w-[88%] sm:max-w-[78%] ${message.role === "user" ? "chat-msg-user" : "chat-msg-assistant"}`}>
                             <div className={`chat-msg-label flex items-center gap-2 ${message.role === "user" ? "justify-end text-[#adc6ff]/45" : "text-white/25"}`}>
-                              {message.role === "user" ? displayName : lockedModel?.displayName || "Assistant"}
+                              {message.role === "user" ? displayName : lockedModel?.displayName || t("Assistant")}
                             </div>
                             {message.role === "user" ? <UserMessageContent message={message} /> : <AssistantMessageContent message={message} />}
                           </div>
@@ -2119,7 +2122,7 @@ export default function StudioChatPage() {
                         <div className="chat-message-in flex justify-start">
                           <div className="chat-msg-assistant">
                             <div className="chat-msg-label text-white/25">
-                              {lockedModel?.displayName || "Assistant"}
+                              {lockedModel?.displayName || t("Assistant")}
                             </div>
                             <div className="flex items-center gap-2 py-1">
                               <div className="chat-typing-dot" />
@@ -2169,7 +2172,7 @@ export default function StudioChatPage() {
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-[13px] font-medium text-white/80">
-                          {inputImages.length} / {maxInputImages} images attached
+                          {inputImages.length} / {maxInputImages} {t("images attached")}
                         </div>
                       </div>
                       <button
@@ -2200,7 +2203,7 @@ export default function StudioChatPage() {
                           void handleSend();
                         }
                       }}
-                      placeholder={lockedModel?.supportsImageInput ? "Ask anything, or drop an image..." : "Ask anything..."}
+                      placeholder={lockedModel?.supportsImageInput ? t("Ask anything, or drop an image...") : t("Ask anything...")}
                       rows={1}
                       className="w-full resize-none bg-transparent text-[14px] leading-relaxed text-white/90 outline-none placeholder:text-white/20"
                     />
@@ -2213,7 +2216,7 @@ export default function StudioChatPage() {
                             onClick={() => fileInputRef.current?.click()}
                             disabled={uploadingImage || loadingReply}
                             className="chat-attach-btn"
-                            title="Upload image"
+                            title={t("Upload image")}
                           >
                             <span className="material-symbols-outlined text-[17px]">add_photo_alternate</span>
                           </button>
@@ -2236,7 +2239,7 @@ export default function StudioChatPage() {
                         }
                         className="chat-send-btn"
                       >
-                        <span>{uploadingImage ? "Uploading..." : "Send"}</span>
+                        <span>{uploadingImage ? t("Uploading...") : t("Send")}</span>
                         <span className="material-symbols-outlined text-[15px]">arrow_upward</span>
                       </button>
                     </div>
@@ -2250,7 +2253,7 @@ export default function StudioChatPage() {
                 <div className="chat-panel-backdrop fixed inset-0 z-40 bg-black/20 backdrop-blur-[1px] lg:hidden" onClick={() => setSettingsPanelOpen(false)} />
                 <aside className="chat-panel-slide fixed bottom-0 right-0 top-0 z-50 flex w-[56vw] min-w-[210px] max-w-[280px] flex-col border-l border-white/[0.05] bg-[#080c1a]/95 backdrop-blur-2xl sm:w-72 lg:relative lg:bottom-auto lg:top-auto lg:z-auto lg:w-[280px]">
                   <div className="flex h-12 shrink-0 items-center justify-between border-b border-white/[0.06] px-4">
-                    <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/35">Model Controls</span>
+                    <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/35">{t("Model Controls")}</span>
                     <div className="flex items-center gap-1">
                       {lockedModelParameters.length > 0 ? (
                         <button
@@ -2261,7 +2264,7 @@ export default function StudioChatPage() {
                           }}
                           className="text-[10px] font-bold uppercase tracking-wider text-[#adc6ff]/60 transition-colors hover:text-[#adc6ff]"
                         >
-                          Reset
+                          {t("Reset")}
                         </button>
                       ) : null}
                       <button type="button" onClick={() => setSettingsPanelOpen(false)} className="chat-topbar-btn !h-7 !w-7">
@@ -2296,7 +2299,7 @@ export default function StudioChatPage() {
                     ) : (
                       <div className="chat-settings-group text-center text-[13px] leading-relaxed text-[#5a6580]">
                         <span className="material-symbols-outlined mb-2 block text-xl text-white/15">settings_suggest</span>
-                        No editable parameters for this model.
+                        {t("No editable parameters for this model.")}
                       </div>
                     )}
                   </div>

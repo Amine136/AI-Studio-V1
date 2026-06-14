@@ -79,7 +79,7 @@ const roadmapItems = [
   },
 ];
 
-import { LanguageProvider, useLanguage } from "../context/LanguageContext";
+import { useLanguage } from "../context/LanguageContext";
 
 function LandingContent() {
   const { user, loading } = useAuth();
@@ -509,9 +509,5 @@ function LandingContent() {
 }
 
 export default function LandingPage() {
-  return (
-    <LanguageProvider>
-      <LandingContent />
-    </LanguageProvider>
-  );
+  return <LandingContent />;
 }

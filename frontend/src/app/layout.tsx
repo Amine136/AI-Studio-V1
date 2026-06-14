@@ -6,6 +6,7 @@ import { AuthProvider } from "../context/AuthContext";
 import { applyAccentColorToDocument, readAccentColorFromCookie } from "../lib/accentColor";
 import MetaPixel from "../components/MetaPixel";
 import GoogleAnalytics from "../components/GoogleAnalytics";
+import { LanguageProvider } from "../context/LanguageContext";
 
 const LOGO_VERSION = "20260506-1210";
 const MATERIAL_SYMBOLS_STYLESHEET =
@@ -66,7 +67,9 @@ export default function RootLayout({
           <GoogleAnalytics />
         </Suspense>
         <AuthProvider>
-          {children}
+          <LanguageProvider>
+            {children}
+          </LanguageProvider>
         </AuthProvider>
       </body>
     </html>

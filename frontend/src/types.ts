@@ -279,8 +279,14 @@ export interface DashboardNewsItem {
   badge: DashboardNewsBadge;
   when: string;
   title: string;
+  titleFr?: string;
+  titleAr?: string;
   description: string;
+  descriptionFr?: string;
+  descriptionAr?: string;
   linkLabel: string;
+  linkLabelFr?: string;
+  linkLabelAr?: string;
   linkHref: string;
   tone: DashboardNewsTone;
   sortOrder: number;
@@ -297,8 +303,14 @@ export interface DashboardNewsListResponse {
 export interface DashboardNewsUpsertRequest {
   badge: DashboardNewsBadge;
   title: string;
+  titleFr?: string;
+  titleAr?: string;
   description: string;
+  descriptionFr?: string;
+  descriptionAr?: string;
   linkLabel: string;
+  linkLabelFr?: string;
+  linkLabelAr?: string;
   linkHref: string;
   tone: DashboardNewsTone;
   sortOrder: number;

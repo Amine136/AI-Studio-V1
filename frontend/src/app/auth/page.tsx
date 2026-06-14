@@ -35,7 +35,7 @@ function mapAuthErrorMessage(error: unknown): string {
   return rawMessage || "Google sign-in failed.";
 }
 
-import { LanguageProvider, useLanguage } from "../../context/LanguageContext";
+import { useLanguage } from "../../context/LanguageContext";
 
 function AuthContent() {
   const router = useRouter();
@@ -175,7 +175,7 @@ function AuthContent() {
           </button>
         ))}
       </div>
-      <div className="relative hidden lg:flex w-1/2 items-center justify-center border-r border-[#adc6ff]/10 bg-[#0c1324]">
+      <div className="relative hidden lg:flex w-1/2 items-center justify-center border-r border-[#adc6ff]/10 bg-[#0c1324] rtl:lg:order-2">
         <img 
           src="/landing/auth-art.svg" 
           alt="Vibecraft Art" 
@@ -184,7 +184,7 @@ function AuthContent() {
         <div className="absolute inset-0 bg-gradient-to-r from-transparent to-[#0c1324]" />
       </div>
 
-      <div className="relative flex w-full lg:w-1/2 flex-col items-center justify-center px-6 pt-24 pb-10 lg:pt-24 lg:pb-10">
+      <div className="relative flex w-full lg:w-1/2 flex-col items-center justify-center px-6 pt-24 pb-10 lg:pt-24 lg:pb-10 rtl:lg:order-1">
 
         <div
           className="pointer-events-none absolute inset-0 z-0"
@@ -353,10 +353,6 @@ function AuthContent() {
 }
 
 export default function AuthPage() {
-  return (
-    <LanguageProvider>
-      <AuthContent />
-    </LanguageProvider>
-  );
+  return <AuthContent />;
 }
 

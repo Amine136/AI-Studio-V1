@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { LanguageProvider, useLanguage } from "@/context/LanguageContext";
+import { useLanguage } from "@/context/LanguageContext";
 
 const policyLocales = {
   en: {
@@ -397,9 +397,5 @@ function PolicyContent() {
 }
 
 export default function PolicyPage() {
-  return (
-    <LanguageProvider>
-      <PolicyContent />
-    </LanguageProvider>
-  );
+  return <PolicyContent />;
 }

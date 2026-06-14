@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { useAuth } from "../../context/AuthContext";
+import { useLanguage } from "../../context/LanguageContext";
 import { api } from "../../services/api";
 import confetti from "canvas-confetti";
 import BuyCodesButton from "../../components/BuyCodesButton";
@@ -132,6 +133,29 @@ function formatExpiresIn(expiresAt: number): string {
 export default function CreditsPage() {
   const router = useRouter();
   const { user, loading } = useAuth();
+  const { t } = useLanguage();
+
+  // Translate server-generated activity labels (finite set) + the "Chat: <prompt>"
+  // prefix, keeping the user's own prompt text intact.
+  const translateActivity = (activity: string) => {
+    const chat = activity.match(/^Chat:\s*"([\s\S]*)"$/);
+    if (chat) return `${t("Chat:")} "${chat[1]}"`;
+    return t(activity);
+  };
+  // Translate the server redeem-success message, preserving the numeric amount
+  // and reconstructing the gift-validity sentence (incl. duration units).
+  const translateRedeemMessage = (message: string) => {
+    const added = message.match(/^\+([\d.]+)\s+(credit|credits)\s+added to your account!/);
+    if (!added) return message;
+    const unit = added[2] === "credits" ? t("credits added to your account!") : t("credit added to your account!");
+    let out = `+${added[1]} ${unit}`;
+    const valid = message.match(/These gift credits are valid for\s+(.+?)\s+—\s+use them before they expire\./);
+    if (valid) {
+      const dur = valid[1].replace(/(\d+)\s+(days?|hours?|minutes?)/g, (_m, n, u) => `${n} ${t(u)}`);
+      out += ` ${t("These gift credits are valid for")} ${dur} ${t("— use them before they expire.")}`;
+    }
+    return out;
+  };
 
   const [history, setHistory] = useState<CreditActivityEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
@@ -249,7 +273,7 @@ export default function CreditsPage() {
       setProfileError(null);
     } catch (error) {
       const message =
-        error instanceof Error && error.message ? error.message : "Could not load your credit balance.";
+        error instanceof Error && error.message ? error.message : t("Could not load your credit balance.");
       setCredits(0);
       setProfileError(message);
     }
@@ -322,7 +346,7 @@ export default function CreditsPage() {
     if (!user || !codeToUse.trim()) return;
     if (redeemBlockedUntil && redeemBlockedUntil > Date.now()) {
       setCodeMessage({
-        text: "This account reached 5 failed credit code attempts in 5 minutes. Please wait about 5 minutes before trying again and review the usage policy.",
+        text: t("This account reached 5 failed credit code attempts in 5 minutes. Please wait about 5 minutes before trying again and review the usage policy."),
         success: false,
         showPolicyLink: true,
       });
@@ -377,7 +401,7 @@ export default function CreditsPage() {
         await fetchBalance();
       }
     } catch (error) {
-      const message = error instanceof Error && error.message ? error.message : "Could not redeem this code right now.";
+      const message = error instanceof Error && error.message ? error.message : t("Could not redeem this code right now.");
       setCodeMessage({ text: message, success: false, showPolicyLink: shouldShowPolicyLink(message) });
       if (/your account is suspended|account is suspended|suspended/i.test(message)) {
         const parsed = parseSuspensionState(message.startsWith("Your account is suspended") ? message : `Your account is suspended: ${message}`);
@@ -437,19 +461,19 @@ export default function CreditsPage() {
             <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-lg border border-[#93000a]/40 bg-[#93000a]/20 text-[#ffb4ab]">
               <span className="material-symbols-outlined text-3xl">gpp_bad</span>
             </div>
-            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#ffb4ab]/80">Account Restricted</p>
-            <h1 className="mt-4 font-headline text-4xl font-bold tracking-tight text-blue-50">This account is currently suspended</h1>
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-[#ffb4ab]/80">{t("Account Restricted")}</p>
+            <h1 className="mt-4 font-headline text-4xl font-bold tracking-tight text-blue-50">{t("This account is currently suspended")}</h1>
             <p className="mt-4 text-sm leading-7 text-[#c2c6d6]">{suspension.reason}</p>
             <div className="mt-6 rounded-lg border border-white/10 bg-[#151b2d] px-5 py-4 text-left">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#8c909f]">Status</p>
-              <p className="mt-2 text-base font-semibold text-white">{suspension.endsAtLabel || "Suspended until admin review"}</p>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#8c909f]">{t("Status")}</p>
+              <p className="mt-2 text-base font-semibold text-white">{suspension.endsAtLabel || t("Suspended until admin review")}</p>
             </div>
             <div className="mt-6 flex justify-center gap-3">
               <Link href="/policy" className="rounded-md border border-white/10 bg-white/5 px-4 py-2 text-sm text-[#c2c6d6] transition hover:bg-white/10 hover:text-white">
-                View Usage Policy
+                {t("View Usage Policy")}
               </Link>
               <Link href="/privacy" className="rounded-md border border-white/10 bg-white/5 px-4 py-2 text-sm text-[#c2c6d6] transition hover:bg-white/10 hover:text-white">
-                Privacy
+                {t("Privacy")}
               </Link>
             </div>
           </div>
@@ -475,11 +499,11 @@ export default function CreditsPage() {
         <section className="mb-10 sm:mb-16">
           <div className="flex flex-col justify-between gap-8 md:flex-row md:items-end">
             <div className="max-w-2xl">
-              <h1 className="font-headline text-4xl font-bold tracking-tighter text-blue-50 sm:text-5xl md:text-7xl">Fuel Your Vision</h1>
+              <h1 className="font-headline text-4xl font-bold tracking-tighter text-blue-50 sm:text-5xl md:text-7xl">{t("Fuel Your Vision")}</h1>
             </div>
 
             <div className={`rounded-xl border p-4 backdrop-blur-xl sm:min-w-[260px] sm:p-6 transition-all duration-700 ${getSpotlightClasses()}`}>
-              <span className="text-xs font-semibold uppercase tracking-[0.28em] text-[#adc6ff]">Available Balance</span>
+              <span className="text-xs font-semibold uppercase tracking-[0.28em] text-[#adc6ff]">{t("Available Balance")}</span>
               <div className={`mt-2 text-3xl font-bold tracking-tight text-white sm:text-4xl transition-transform duration-300 ${codeMessage?.success || isAnimatingSpotlight ? "scale-105 drop-shadow-[0_0_15px_rgba(173,198,255,0.4)]" : ""}`}>
                 {displayCredits === null ? "..." : `${displayCredits.toFixed(2)} Cr`}
               </div>
@@ -493,26 +517,26 @@ export default function CreditsPage() {
                   <span className="material-symbols-outlined text-[16px]">
                     {showBalanceDetails ? "expand_less" : "expand_more"}
                   </span>
-                  {showBalanceDetails ? "Hide details" : "View details"}
+                  {showBalanceDetails ? t("Hide details") : t("View details")}
                 </button>
                 {showBalanceDetails && (
                   <div className="mt-2 space-y-1.5 rounded-lg border border-white/10 bg-black/20 p-3 text-sm">
                     <div className="flex items-center justify-between text-[#c2c6d6]">
-                      <span>Your credits</span>
+                      <span>{t("Your credits")}</span>
                       <span className="font-semibold text-white">{breakdown.own.toFixed(2)} Cr</span>
                     </div>
                     {breakdown.gifts.map((gift, index) => (
                       <div key={index} className="flex items-center justify-between">
                         <span className="flex items-center gap-1.5 text-[#ffd6a5]">
                           <span className="material-symbols-outlined text-[15px]">redeem</span>
-                          Gift · {formatExpiresIn(gift.expiresAt)}
+                          {t("Gift")} · {formatExpiresIn(gift.expiresAt)}
                         </span>
                         <span className="font-semibold text-white">{gift.credits.toFixed(2)} Cr</span>
                       </div>
                     ))}
                     {breakdown.reserved > 0 && (
                       <div className="flex items-center justify-between border-t border-white/10 pt-1.5 text-[#8c909f]">
-                        <span>Reserved (in progress)</span>
+                        <span>{t("Reserved (in progress)")}</span>
                         <span>{breakdown.reserved.toFixed(2)} Cr</span>
                       </div>
                     )}
@@ -524,7 +548,7 @@ export default function CreditsPage() {
               <div className="h-full bg-[#adc6ff]" style={{ width: progressWidth }} />
             </div>
             <p className="mt-4 text-sm text-[#c2c6d6]">
-              {profileError || "Generation and Smart analysis draw from the same live account balance."}
+              {profileError || t("Generation and Smart analysis draw from the same live account balance.")}
             </p>
           </div>
         </div>
@@ -532,10 +556,10 @@ export default function CreditsPage() {
 
       <section id="redeem-code" className="mb-12 sm:mb-24">
         <h2 className="mb-8 flex items-center gap-3 font-headline text-2xl font-bold tracking-tight text-blue-50">
-          <span className="h-px w-8 bg-[#adc6ff]" /> Redeem Code
+          <span className="h-px w-8 bg-[#adc6ff]" /> {t("Redeem Code")}
         </h2>
         <div className="max-w-2xl rounded-xl border border-white/10 bg-[rgba(25,31,49,0.7)] p-5 backdrop-blur-xl sm:p-8">
-          <p className="mb-6 text-sm text-[#c2c6d6]">Enter a credit code or a gift code to instantly top up your balance.</p>
+          <p className="mb-6 text-sm text-[#c2c6d6]">{t("Enter a credit code or a gift code to instantly top up your balance.")}</p>
           <div className="flex flex-col gap-4 sm:flex-row">
             <div className="relative flex-grow">
               <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-xl text-[#c2c6d6]">
@@ -558,13 +582,13 @@ export default function CreditsPage() {
               disabled={redeeming || !codeInput.trim() || Boolean(redeemBlockedUntil && redeemBlockedUntil > Date.now())}
               className="whitespace-nowrap rounded-md bg-[linear-gradient(90deg,#adc6ff,#4d8eff)] px-8 py-3 font-bold text-[#002e6a] shadow-lg shadow-[#adc6ff]/10 transition-all active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {redeeming ? "Redeeming..." : "Redeem"}
+              {redeeming ? t("Redeeming...") : t("Redeem")}
             </button>
           </div>
-          <p className="mt-4 text-[10px] uppercase tracking-[0.28em] text-[#c2c6d6]/60">Codes are sensitive. Single use only.</p>
+          <p className="mt-4 text-[10px] uppercase tracking-[0.28em] text-[#c2c6d6]/60">{t("Codes are sensitive. Single use only.")}</p>
 
           <div className="mt-6 flex flex-col items-start gap-3 border-t border-white/10 pt-5 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm text-[#c2c6d6]">Don&apos;t have a code yet?</p>
+            <p className="text-sm text-[#c2c6d6]">{t("Don't have a code yet?")}</p>
             <BuyCodesButton className="inline-flex items-center gap-2 whitespace-nowrap rounded-md border border-[#adc6ff]/40 bg-[#adc6ff]/10 px-6 py-2.5 text-sm font-bold text-[#adc6ff] transition-all hover:scale-105 hover:bg-[#adc6ff]/20 active:scale-95" />
           </div>
 
@@ -581,7 +605,7 @@ export default function CreditsPage() {
               }`}
             >
               <div className="flex items-center gap-2">
-                <p className="flex-1 font-medium">{codeMessage.text}</p>
+                <p className="flex-1 font-medium">{translateRedeemMessage(codeMessage.text)}</p>
                 {codeMessage.success && redeemedTier === 35 && <span className="material-symbols-outlined text-[#adc6ff] animate-pulse">star</span>}
                 {codeMessage.success && redeemedTier === 70 && <span className="material-symbols-outlined text-[#ffd700] animate-pulse">diamond</span>}
               </div>
@@ -589,7 +613,7 @@ export default function CreditsPage() {
               {codeMessage.success && (
                 <div className="mt-4 flex flex-wrap items-center gap-3">
                   <Link href="/studio/start" className="inline-block rounded-md bg-[linear-gradient(90deg,#adc6ff,#4d8eff)] px-5 py-2 text-xs font-bold uppercase tracking-wider text-[#002e6a] hover:scale-105 active:scale-95 transition-all shadow-lg shadow-[#adc6ff]/20">
-                    Go to Studio
+                    {t("Go to Studio")}
                   </Link>
                   {showReplayButton && (
                     <button
@@ -598,7 +622,7 @@ export default function CreditsPage() {
                       className="inline-flex items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-4 py-2 text-xs font-bold uppercase tracking-wider text-white hover:bg-white/20 transition-all active:scale-95 animate-in fade-in zoom-in duration-500"
                     >
                       <span className="material-symbols-outlined text-[16px]">replay</span>
-                      Replay
+                      {t("Replay")}
                     </button>
                   )}
                 </div>
@@ -606,7 +630,7 @@ export default function CreditsPage() {
 
               {codeMessage.showPolicyLink ? (
                 <Link href="/policy" className="mt-3 inline-flex text-xs font-semibold uppercase tracking-[0.22em] text-[#adc6ff] hover:underline">
-                  View usage policy
+                  {t("View usage policy")}
                 </Link>
               ) : null}
             </div>
@@ -619,22 +643,22 @@ export default function CreditsPage() {
       <section className="mb-12 sm:mb-24">
         <div>
           <div className="mb-8 flex items-center justify-between">
-            <h2 className="font-headline text-2xl font-bold tracking-tight text-blue-50">Recent History</h2>
+            <h2 className="font-headline text-2xl font-bold tracking-tight text-blue-50">{t("Recent History")}</h2>
           </div>
           <div className="hidden overflow-hidden rounded-xl border border-white/10 sm:block">
             <table className="w-full text-left">
               <thead className="bg-[#23293c] text-xs uppercase tracking-[0.22em] text-[#c2c6d6]">
                 <tr>
-                  <th className="px-6 py-4 font-semibold">Date</th>
-                  <th className="px-6 py-4 font-semibold">Activity</th>
-                  <th className="px-6 py-4 text-right font-semibold">Amount</th>
+                  <th className="px-6 py-4 font-semibold">{t("Date")}</th>
+                  <th className="px-6 py-4 font-semibold">{t("Activity")}</th>
+                  <th className="px-6 py-4 text-right font-semibold">{t("Amount")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/10 bg-[#151b2d]/50">
                 {historyLoading ? (
                   <tr>
                     <td colSpan={3} className="px-6 py-8 text-sm text-[#c2c6d6]">
-                      Loading recent usage…
+                      {t("Loading recent usage…")}
                     </td>
                   </tr>
                 ) : visibleUsageEvents.length ? (
@@ -642,7 +666,7 @@ export default function CreditsPage() {
                     <tr key={event.id}>
                       <td className="px-6 py-5 text-sm">{event.date}</td>
                       <td className="px-6 py-5">
-                        <p className="font-medium text-white">{event.activity}</p>
+                        <p className="font-medium text-white">{translateActivity(event.activity)}</p>
                       </td>
                       <td className="px-6 py-5 text-right">
                         <span className={getAmountBadgeClass(event.positive, event.rawCredits)}>
@@ -654,7 +678,7 @@ export default function CreditsPage() {
                 ) : (
                   <tr>
                     <td colSpan={3} className="px-6 py-8 text-sm text-[#c2c6d6]">
-                      No recent credit transactions yet. Your balance changes will appear here.
+                      {t("No recent credit transactions yet. Your balance changes will appear here.")}
                     </td>
                   </tr>
                 )}
@@ -663,13 +687,13 @@ export default function CreditsPage() {
           </div>
           <div className="space-y-3 sm:hidden">
             {historyLoading ? (
-              <div className="rounded-xl border border-white/10 bg-[#151b2d]/50 p-5 text-sm text-[#c2c6d6]">Loading recent usage…</div>
+              <div className="rounded-xl border border-white/10 bg-[#151b2d]/50 p-5 text-sm text-[#c2c6d6]">{t("Loading recent usage…")}</div>
             ) : visibleUsageEvents.length ? (
               visibleUsageEvents.map((event) => (
                 <div key={event.id} className="rounded-xl border border-white/10 bg-[#151b2d]/50 p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="font-medium text-white">{event.activity}</p>
+                      <p className="font-medium text-white">{translateActivity(event.activity)}</p>
                       <p className="mt-1 text-xs text-[#c2c6d6]">{event.date}</p>
                     </div>
                     <div className="shrink-0">
@@ -682,7 +706,7 @@ export default function CreditsPage() {
               ))
             ) : (
               <div className="rounded-xl border border-white/10 bg-[#151b2d]/50 p-5 text-sm text-[#c2c6d6]">
-                No recent credit transactions yet. Your balance changes will appear here.
+                {t("No recent credit transactions yet. Your balance changes will appear here.")}
               </div>
             )}
           </div>
@@ -693,7 +717,7 @@ export default function CreditsPage() {
                 onClick={() => setShowAllTransactions((current) => !current)}
                 className="rounded-md border border-white/10 bg-white/5 px-4 py-2 text-sm text-[#adc6ff] transition hover:bg-white/10"
               >
-                {showAllTransactions ? "Show Less" : `Show ${hiddenTransactionCount} More`}
+                {showAllTransactions ? t("Show Less") : `${t("Show")} ${hiddenTransactionCount} ${t("More")}`}
               </button>
             </div>
           ) : null}
@@ -701,12 +725,12 @@ export default function CreditsPage() {
       </section>
 
       <section className="mx-auto mb-12 max-w-4xl sm:mb-24">
-        <h2 className="mb-6 text-center font-headline text-2xl font-bold tracking-tighter text-blue-50 sm:mb-12 sm:text-3xl">Usage Questions</h2>
+        <h2 className="mb-6 text-center font-headline text-2xl font-bold tracking-tighter text-blue-50 sm:mb-12 sm:text-3xl">{t("Usage Questions")}</h2>
         <div className="grid grid-cols-1 gap-4 sm:gap-8 md:grid-cols-2">
           {faqItems.map((item) => (
             <div key={item.title} className="rounded-lg border-l-2 border-[#adc6ff] bg-[#151b2d] p-6">
-              <h3 className="mb-3 font-semibold text-white">{item.title}</h3>
-              <p className="text-sm leading-relaxed text-[#c2c6d6]">{item.body}</p>
+              <h3 className="mb-3 font-semibold text-white">{t(item.title)}</h3>
+              <p className="text-sm leading-relaxed text-[#c2c6d6]">{t(item.body)}</p>
             </div>
           ))}
         </div>

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
+import { useLanguage } from "../../context/LanguageContext";
 import { getProfile } from "../../lib/credits";
 import AppSidebar from "../../components/app-shell/AppSidebar";
 import RequireActiveUser from "../../components/auth/RequireActiveUser";
@@ -14,6 +15,7 @@ function initialsFromName(value?: string | null) {
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
+  const { t } = useLanguage();
   const [credits, setCredits] = useState<number | null>(null);
 
   const displayName = user?.displayName || user?.email?.split("@")[0] || "Vibecraft";
@@ -50,9 +52,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <AppSidebar activePath="/dashboard" />
 
         <main className="flex min-w-0 flex-1 flex-col lg:ml-48">
-          <header className="sticky top-0 z-40 flex h-16 items-center justify-between border-b border-white/10 bg-[#0c1324]/80 px-4 font-headline shadow-[0_16px_40px_rgba(0,0,0,0.2)] backdrop-blur-xl sm:px-8">
+          <header dir="ltr" className="sticky top-0 z-40 flex h-16 items-center justify-between border-b border-white/10 bg-[#0c1324]/80 px-4 font-headline shadow-[0_16px_40px_rgba(0,0,0,0.2)] backdrop-blur-xl sm:px-8">
             <div className="flex items-center gap-4">
-              <h2 className="text-xl font-bold tracking-tight text-[#dce1fb]">Dashboard</h2>
+              <h2 className="text-xl font-bold tracking-tight text-[#dce1fb]">{t("Dashboard")}</h2>
             </div>
 
             <div className="flex items-center gap-2 sm:gap-4">
@@ -61,7 +63,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   bolt
                 </span>
                 <span className="text-xs font-bold text-blue-100 sm:text-sm">
-                  {credits === null ? "..." : `${credits.toFixed(2)} Credits`}
+                  {credits === null ? "..." : `${credits.toFixed(2)} ${t("Credits")}`}
                 </span>
               </div>
               <div

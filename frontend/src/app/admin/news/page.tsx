@@ -7,13 +7,40 @@ import type { DashboardNewsItem, DashboardNewsUpsertRequest } from "../../../typ
 const emptyNewsForm: DashboardNewsUpsertRequest = {
     badge: "AI News",
     title: "",
+    titleFr: "",
+    titleAr: "",
     description: "",
+    descriptionFr: "",
+    descriptionAr: "",
     linkLabel: "Learn more",
+    linkLabelFr: "",
+    linkLabelAr: "",
     linkHref: "/studio",
     tone: "blue",
     sortOrder: 0,
     isActive: true,
 };
+
+// Text fields that have per-language variants edited via the EN/FR/AR tabs.
+type NewsLang = "en" | "fr" | "ar";
+type NewsTextField =
+    | "title" | "titleFr" | "titleAr"
+    | "description" | "descriptionFr" | "descriptionAr"
+    | "linkLabel" | "linkLabelFr" | "linkLabelAr"
+    | "linkHref";
+
+const NEWS_LANG_TABS: { id: NewsLang; label: string }[] = [
+    { id: "en", label: "English" },
+    { id: "fr", label: "Français" },
+    { id: "ar", label: "العربية" },
+];
+
+// Maps the active tab to the matching form field for a given base field.
+function langField(base: "title" | "description" | "linkLabel", lang: NewsLang): NewsTextField {
+    if (lang === "fr") return `${base}Fr` as NewsTextField;
+    if (lang === "ar") return `${base}Ar` as NewsTextField;
+    return base;
+}
 
 export default function AdminNewsPage() {
     const [items, setItems] = useState<DashboardNewsItem[]>([]);
@@ -22,6 +49,11 @@ export default function AdminNewsPage() {
     const [newsForm, setNewsForm] = useState<DashboardNewsUpsertRequest>(emptyNewsForm);
     const [editingNewsId, setEditingNewsId] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
+    const [langTab, setLangTab] = useState<NewsLang>("en");
+
+    const setTextField = useCallback((key: NewsTextField, value: string) => {
+        setNewsForm((current) => ({ ...current, [key]: value }) as DashboardNewsUpsertRequest);
+    }, []);
 
     const loadItems = useCallback(async () => {
         setLoading(true);
@@ -43,6 +75,7 @@ export default function AdminNewsPage() {
     const resetForm = useCallback(() => {
         setEditingNewsId(null);
         setNewsForm(emptyNewsForm);
+        setLangTab("en");
         setError("");
     }, []);
 
@@ -56,11 +89,18 @@ export default function AdminNewsPage() {
     const handleEdit = useCallback((item: DashboardNewsItem) => {
         setEditingNewsId(item.id);
         setError("");
+        setLangTab("en");
         setNewsForm({
             badge: item.badge,
             title: item.title,
+            titleFr: item.titleFr ?? "",
+            titleAr: item.titleAr ?? "",
             description: item.description,
+            descriptionFr: item.descriptionFr ?? "",
+            descriptionAr: item.descriptionAr ?? "",
             linkLabel: item.linkLabel,
+            linkLabelFr: item.linkLabelFr ?? "",
+            linkLabelAr: item.linkLabelAr ?? "",
             linkHref: item.linkHref,
             tone: item.tone,
             sortOrder: item.sortOrder,
@@ -227,25 +267,56 @@ export default function AdminNewsPage() {
                                 </select>
                             </div>
                             
+                            {/* Language tabs — English is required; FR/AR are optional and
+                                fall back to English on the dashboard when left blank. */}
+                            <div className="space-y-2">
+                                <div className="flex items-center gap-1 rounded-lg border border-outline-variant bg-surface-container-lowest p-1">
+                                    {NEWS_LANG_TABS.map((tab) => {
+                                        const active = langTab === tab.id;
+                                        return (
+                                            <button
+                                                key={tab.id}
+                                                type="button"
+                                                onClick={() => setLangTab(tab.id)}
+                                                className={`flex-1 rounded-md px-2 py-1.5 text-[11px] font-label-caps transition-all ${active ? "bg-primary text-on-primary" : "text-on-surface-variant hover:text-on-surface"}`}
+                                            >
+                                                {tab.label}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                                {langTab !== "en" && (
+                                    <p className="text-[11px] text-on-surface-variant opacity-70">
+                                        Optional — leave blank to show the English text for {langTab === "fr" ? "French" : "Arabic"} users.
+                                    </p>
+                                )}
+                            </div>
+
                             <div className="space-y-1">
-                                <label className="text-label-caps font-label-caps text-on-surface-variant">TITLE</label>
-                                <input 
-                                    required
-                                    value={newsForm.title}
-                                    onChange={(e) => handleFieldChange("title", e.target.value)}
-                                    className="w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-4 py-2 text-body-sm focus:ring-2 focus:ring-primary/50 outline-none" 
-                                    placeholder="Quick and Smart workflows are active" 
-                                    type="text" 
+                                <label className="text-label-caps font-label-caps text-on-surface-variant">
+                                    TITLE {langTab !== "en" && <span className="opacity-60">({langTab.toUpperCase()})</span>}
+                                </label>
+                                <input
+                                    required={langTab === "en"}
+                                    value={(newsForm[langField("title", langTab)] as string) ?? ""}
+                                    onChange={(e) => setTextField(langField("title", langTab), e.target.value)}
+                                    dir={langTab === "ar" ? "rtl" : "ltr"}
+                                    className="w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-4 py-2 text-body-sm focus:ring-2 focus:ring-primary/50 outline-none"
+                                    placeholder={langTab === "en" ? "Quick and Smart workflows are active" : "Leave blank to use English"}
+                                    type="text"
                                 />
                             </div>
-                            
+
                             <div className="space-y-1">
-                                <label className="text-label-caps font-label-caps text-on-surface-variant">DESCRIPTION</label>
-                                <textarea 
-                                    value={newsForm.description}
-                                    onChange={(e) => handleFieldChange("description", e.target.value)}
-                                    className="w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-4 py-2 text-body-sm focus:ring-2 focus:ring-primary/50 outline-none resize-none" 
-                                    placeholder="Short dashboard message..." 
+                                <label className="text-label-caps font-label-caps text-on-surface-variant">
+                                    DESCRIPTION {langTab !== "en" && <span className="opacity-60">({langTab.toUpperCase()})</span>}
+                                </label>
+                                <textarea
+                                    value={(newsForm[langField("description", langTab)] as string) ?? ""}
+                                    onChange={(e) => setTextField(langField("description", langTab), e.target.value)}
+                                    dir={langTab === "ar" ? "rtl" : "ltr"}
+                                    className="w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-4 py-2 text-body-sm focus:ring-2 focus:ring-primary/50 outline-none resize-none"
+                                    placeholder={langTab === "en" ? "Short dashboard message..." : "Leave blank to use English"}
                                     rows={3}
                                 ></textarea>
                             </div>
@@ -257,6 +328,8 @@ export default function AdminNewsPage() {
                                         type="button"
                                         onClick={() => {
                                             handleFieldChange("linkLabel", "");
+                                            setTextField("linkLabelFr", "");
+                                            setTextField("linkLabelAr", "");
                                             handleFieldChange("linkHref", "");
                                         }}
                                         className="text-[11px] font-label-caps text-error hover:text-error/80 transition-colors"
@@ -269,13 +342,16 @@ export default function AdminNewsPage() {
                             {(newsForm.linkLabel || newsForm.linkHref) ? (
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="space-y-1">
-                                        <label className="text-label-caps font-label-caps text-on-surface-variant">LINK LABEL</label>
-                                        <input 
-                                            value={newsForm.linkLabel}
-                                            onChange={(e) => handleFieldChange("linkLabel", e.target.value)}
-                                            className="w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-4 py-2 text-body-sm focus:ring-2 focus:ring-primary/50 outline-none" 
-                                            placeholder="Learn more" 
-                                            type="text" 
+                                        <label className="text-label-caps font-label-caps text-on-surface-variant">
+                                            LINK LABEL {langTab !== "en" && <span className="opacity-60">({langTab.toUpperCase()})</span>}
+                                        </label>
+                                        <input
+                                            value={(newsForm[langField("linkLabel", langTab)] as string) ?? ""}
+                                            onChange={(e) => setTextField(langField("linkLabel", langTab), e.target.value)}
+                                            dir={langTab === "ar" ? "rtl" : "ltr"}
+                                            className="w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-4 py-2 text-body-sm focus:ring-2 focus:ring-primary/50 outline-none"
+                                            placeholder={langTab === "en" ? "Learn more" : "Leave blank to use English"}
+                                            type="text"
                                         />
                                     </div>
                                     <div className="space-y-1">

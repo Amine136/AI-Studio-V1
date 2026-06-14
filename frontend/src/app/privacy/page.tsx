@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { LanguageProvider, useLanguage } from "@/context/LanguageContext";
+import { useLanguage } from "@/context/LanguageContext";
 
 const privacyLocales = {
   en: {
@@ -364,9 +364,5 @@ function PrivacyContent() {
 }
 
 export default function PrivacyPage() {
-  return (
-    <LanguageProvider>
-      <PrivacyContent />
-    </LanguageProvider>
-  );
+  return <PrivacyContent />;
 }

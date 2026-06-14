@@ -1,6 +1,7 @@
 "use client";
 
 import { useAuth } from "../../context/AuthContext";
+import { useLanguage } from "../../context/LanguageContext";
 import AppSidebar from "../../components/app-shell/AppSidebar";
 import RequireActiveUser from "../../components/auth/RequireActiveUser";
 
@@ -12,6 +13,7 @@ function initialsFromName(value?: string | null) {
 
 export default function CreditsLayout({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
+  const { t } = useLanguage();
 
   const displayName = user?.displayName || user?.email?.split("@")[0] || "Vibecraft User";
   const photoUrl = user?.photoURL || null;
@@ -22,12 +24,13 @@ export default function CreditsLayout({ children }: { children: React.ReactNode 
         <AppSidebar activePath="/credits" />
 
         <main className="flex min-w-0 flex-1 flex-col lg:ml-48">
-          <header className="sticky top-0 z-40 flex h-16 items-center justify-between border-b border-white/10 bg-[#0c1324]/80 px-4 font-headline shadow-[0_16px_40px_rgba(0,0,0,0.2)] backdrop-blur-xl sm:px-8">
+          <header dir="ltr" className="sticky top-0 z-40 flex h-16 items-center justify-between border-b border-white/10 bg-[#0c1324]/80 px-4 font-headline shadow-[0_16px_40px_rgba(0,0,0,0.2)] backdrop-blur-xl sm:px-8">
             <div className="flex items-center gap-4">
-              <h2 className="text-xl font-bold tracking-tight text-[#dce1fb]">Credits & Usage</h2>
+              <h2 className="text-xl font-bold tracking-tight text-[#dce1fb]">{t("Credits & Usage")}</h2>
             </div>
 
-            <div className="flex items-center">
+            <div className="flex items-center gap-2 sm:gap-4">
+              <div className="flex items-center">
               <div
                 className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-md border bg-[#1a2333]"
                 style={{
@@ -41,6 +44,7 @@ export default function CreditsLayout({ children }: { children: React.ReactNode 
                 ) : (
                   <span className="text-xs font-bold text-[#adc6ff]">{initialsFromName(displayName)}</span>
                 )}
+              </div>
               </div>
             </div>
           </header>
