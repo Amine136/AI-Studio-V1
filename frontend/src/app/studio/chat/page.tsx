@@ -62,6 +62,15 @@ const MAX_PROXY_IMAGE_DIMENSION = 768;
 const MAX_PROXY_IMAGE_BYTES = 120_000;
 const MAX_CHAT_TEXT_CHARS = 4000;
 const DEFAULT_CONVERSATION_TITLE = "New Chat";
+// Curated "Recommended" tab surfaced before the real providers. Models are keyed by
+// slug (model.id) and rendered in this order. Gold-accented, vs. the blue providers.
+const RECOMMENDED_PROVIDER = "Recommended";
+const RECOMMENDED_MODEL_IDS = [
+  "gemini-3.1-flash-image-preview", // Nano Banana 2
+  "imagen-4.0-generate-001", // Imagen 4 Standard
+  "grok-imagine-image-quality-editing", // Grok Imagine Quality Editing
+  "recraftv4_1_vector", // Recraft V4.1 vector
+];
 const CHAT_PARAMETER_KEY_MAP = {
   temperature: "temperature",
   topP: "topP",
@@ -351,6 +360,7 @@ function toProviderLabel(provider?: string) {
 
 function getProviderIcon(provider: string) {
   const normalized = provider.toLowerCase();
+  if (normalized.includes("recommend")) return "star";
   if (normalized.includes("openai")) return "psychology";
   if (normalized.includes("google")) return "auto_awesome";
   if (normalized.includes("anthropic")) return "bolt";
@@ -376,6 +386,12 @@ function isOneShotImageModel(model: ChatModelOption | null): boolean {
   if (!model) return false;
   const outputModalities = model.outputModalities.map((value) => value.toUpperCase());
   return outputModalities.includes("IMAGE") && !outputModalities.includes("TEXT");
+}
+
+// Image-output models are surfaced first within a provider (e.g. Nano Banana Pro
+// above Gemini 2.5 Flash), text-only models fall to the bottom.
+function outputsImage(model: ChatModelOption): boolean {
+  return model.outputModalities.some((value) => value.toUpperCase() === "IMAGE");
 }
 
 function maxInputImagesForModel(model: ChatModelOption | null): number {
@@ -937,12 +953,23 @@ export default function StudioChatPage() {
           return acc;
         }, {});
 
-        const nextGroups = Object.entries(grouped)
+        const providerGroupsList = Object.entries(grouped)
           .sort(([a], [b]) => a.localeCompare(b))
           .map(([provider, models]) => ({
             provider,
-            models: models.sort((a, b) => a.displayName.localeCompare(b.displayName)),
+            models: models.sort((a, b) =>
+              (outputsImage(a) === outputsImage(b) ? 0 : outputsImage(a) ? -1 : 1)
+              || a.displayName.localeCompare(b.displayName),
+            ),
           }));
+
+        // Prepend the curated "Recommended" tab (only models that actually exist).
+        const recommendedModels = RECOMMENDED_MODEL_IDS
+          .map((id) => entries.find((model) => model.id === id))
+          .filter((model): model is ChatModelOption => Boolean(model));
+        const nextGroups = recommendedModels.length
+          ? [{ provider: RECOMMENDED_PROVIDER, models: recommendedModels }, ...providerGroupsList]
+          : providerGroupsList;
 
         if (!cancelled) {
           setProviderGroups(nextGroups);
@@ -1826,7 +1853,7 @@ export default function StudioChatPage() {
           <div className="pointer-events-none absolute bottom-[-10rem] left-[20%] h-[24rem] w-[24rem] rounded-full bg-[#4d8eff]/5 blur-[100px]" />
 
           <div className="relative z-10 flex flex-1 flex-col px-4 py-5 sm:px-6 sm:py-7 lg:px-8">
-            <section className="mb-10">
+            <section className="mb-6 sm:mb-10">
               <div className="mb-6 flex flex-col gap-2">
                 <p className="font-mono text-[11px] font-medium uppercase tracking-[0.18em] text-[#8c909f]">{t("Playground")}</p>
                 <h1 className="font-headline text-3xl font-bold tracking-tight text-[#d4e4fa] sm:text-4xl">{t("Engineered AI")}</h1>
@@ -1845,9 +1872,10 @@ export default function StudioChatPage() {
                 </div>
               </div>
 
-              <div className="flex gap-4 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              <div className="hidden gap-4 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:flex">
                 {providerGroups.map((group) => {
                   const active = (visibleActiveProviderGroup?.provider || selectedProvider) === group.provider;
+                  const recommended = group.provider === RECOMMENDED_PROVIDER;
                   return (
                     <button
                       key={group.provider}
@@ -1858,19 +1886,57 @@ export default function StudioChatPage() {
                       }}
                       className={`flex flex-shrink-0 items-center gap-3 rounded-2xl border px-5 py-3 text-left backdrop-blur-xl transition-all duration-300 ${
                         active
-                          ? "border-[#adc6ff] bg-[#adc6ff]/10 text-[#d4e4fa] shadow-[0_0_15px_rgba(173,198,255,0.2)]"
-                          : "border-[#334155]/45 bg-[#0f172a]/40 text-[#c2c6d6] hover:border-[#adc6ff]/70 hover:bg-[#1c2b3c]/55 hover:text-[#d4e4fa]"
+                          ? recommended
+                            ? "border-[#f5c97b] bg-[#f5c97b]/10 text-[#f8e3b8] shadow-[0_0_15px_rgba(245,201,123,0.22)]"
+                            : "border-[#adc6ff] bg-[#adc6ff]/10 text-[#d4e4fa] shadow-[0_0_15px_rgba(173,198,255,0.2)]"
+                          : recommended
+                            ? "border-[#f5c97b]/40 bg-[#f5c97b]/[0.04] text-[#e9d3a3] hover:border-[#f5c97b]/70 hover:bg-[#f5c97b]/10 hover:text-[#f8e3b8]"
+                            : "border-[#334155]/45 bg-[#0f172a]/40 text-[#c2c6d6] hover:border-[#adc6ff]/70 hover:bg-[#1c2b3c]/55 hover:text-[#d4e4fa]"
                       }`}
                     >
-                      <span className={`material-symbols-outlined text-[21px] ${active ? "text-[#adc6ff]" : "text-[#c2c6d6]"}`} style={active ? { fontVariationSettings: "'FILL' 1" } : undefined}>
+                      <span className={`material-symbols-outlined text-[21px] ${recommended ? "text-[#f5c97b]" : active ? "text-[#adc6ff]" : "text-[#c2c6d6]"}`} style={active || recommended ? { fontVariationSettings: "'FILL' 1" } : undefined}>
                         {getProviderIcon(group.provider)}
                       </span>
-                      <span className="font-mono text-[12px] font-medium uppercase tracking-wider">{group.provider}</span>
+                      <span className="font-mono text-[12px] font-medium uppercase tracking-wider">{recommended ? t("Recommended") : group.provider}</span>
                       {active ? (
-                        <span className="material-symbols-outlined text-[18px] text-[#adc6ff]">check_circle</span>
+                        <span className={`material-symbols-outlined text-[18px] ${recommended ? "text-[#f5c97b]" : "text-[#adc6ff]"}`}>check_circle</span>
                       ) : (
                         <span className="rounded-full bg-[#273647]/70 px-2 py-0.5 text-[10px] text-[#8c909f]">{group.models.length}</span>
                       )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="flex flex-wrap gap-2 sm:hidden">
+                {providerGroups.map((group) => {
+                  const active = (visibleActiveProviderGroup?.provider || selectedProvider) === group.provider;
+                  const recommended = group.provider === RECOMMENDED_PROVIDER;
+                  return (
+                    <button
+                      key={group.provider}
+                      type="button"
+                      onClick={() => {
+                        setSelectedProvider(group.provider);
+                        setSelectedModel(group.models[0]?.id || "");
+                      }}
+                      className={`flex flex-shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-[11px] font-medium uppercase tracking-wide backdrop-blur-xl transition-all duration-300 ${
+                        active
+                          ? recommended
+                            ? "border-[#f5c97b] bg-[#f5c97b]/10 text-[#f8e3b8] shadow-[0_0_15px_rgba(245,201,123,0.22)]"
+                            : "border-[#adc6ff] bg-[#adc6ff]/10 text-[#d4e4fa] shadow-[0_0_15px_rgba(173,198,255,0.2)]"
+                          : recommended
+                            ? "border-[#f5c97b]/40 bg-[#f5c97b]/[0.04] text-[#e9d3a3] hover:border-[#f5c97b]/70 hover:text-[#f8e3b8]"
+                            : "border-[#334155]/45 bg-[#0f172a]/40 text-[#c2c6d6] hover:border-[#adc6ff]/70 hover:text-[#d4e4fa]"
+                      }`}
+                    >
+                      <span className={`material-symbols-outlined text-[16px] ${recommended ? "text-[#f5c97b]" : active ? "text-[#adc6ff]" : "text-[#8c909f]"}`} style={active || recommended ? { fontVariationSettings: "'FILL' 1" } : undefined}>
+                        {getProviderIcon(group.provider)}
+                      </span>
+                      <span className="font-mono">{recommended ? t("Recommended") : group.provider}</span>
+                      {active ? (
+                        <span className={`material-symbols-outlined text-[14px] ${recommended ? "text-[#f5c97b]" : "text-[#adc6ff]"}`}>check_circle</span>
+                      ) : null}
                     </button>
                   );
                 })}
@@ -1882,7 +1948,7 @@ export default function StudioChatPage() {
                 <div>
                   <h2 className="font-mono text-[12px] font-medium uppercase tracking-[0.18em] text-[#8c909f]">{t("Available Models")}</h2>
                   {visibleActiveProviderGroup ? (
-                    <p className="mt-1 text-sm text-[#c2c6d6]/70">{visibleActiveProviderGroup.provider} - {visibleActiveProviderGroup.models.length} {t("visible")}</p>
+                    <p className="mt-1 text-sm text-[#c2c6d6]/70">{visibleActiveProviderGroup.provider === RECOMMENDED_PROVIDER ? t("Recommended") : visibleActiveProviderGroup.provider} - {visibleActiveProviderGroup.models.length} {t("visible")}</p>
                   ) : null}
                 </div>
                 <div className="hidden gap-2 sm:flex">
@@ -1909,6 +1975,7 @@ export default function StudioChatPage() {
                 <div className={`grid gap-4 ${viewMode === "grid" ? "grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4" : "grid-cols-1"}`}>
                   {visibleActiveProviderGroup.models.map((model) => {
                     const active = (visibleSelectedModelOption?.id || selectedModel) === model.id;
+                    const recommendedActive = visibleActiveProviderGroup.provider === RECOMMENDED_PROVIDER;
                     const minimumCost = getChatModelMinimumCost(model);
                     const affordable = currentCredits === null || currentCredits >= minimumCost;
                     const featureLabels = getModelFeatureLabels(model);
@@ -1926,18 +1993,22 @@ export default function StudioChatPage() {
                           !affordable
                             ? "cursor-not-allowed border-[#334155]/30 bg-[#0f172a]/25 opacity-55"
                             : active
-                            ? "border-[#adc6ff]/70 bg-[#adc6ff]/10 shadow-[0_0_20px_rgba(173,198,255,0.14)]"
+                            ? recommendedActive
+                              ? "border-[#f5c97b]/70 bg-[#f5c97b]/10 shadow-[0_0_20px_rgba(245,201,123,0.16)]"
+                              : "border-[#adc6ff]/70 bg-[#adc6ff]/10 shadow-[0_0_20px_rgba(173,198,255,0.14)]"
+                            : recommendedActive
+                            ? "border-[#f5c97b]/25 bg-[#0f172a]/40 hover:border-[#f5c97b] hover:bg-[#241d10]/50 hover:shadow-[0_0_20px_rgba(245,201,123,0.12)]"
                             : "border-[#334155]/45 bg-[#0f172a]/40 hover:border-[#adc6ff] hover:bg-[#1c2b3c]/50 hover:shadow-[0_0_20px_rgba(173,198,255,0.1)]"
                         }`}
                       >
                         <div className="mb-2 flex items-start justify-between gap-3">
-                          <h3 className="font-mono text-[13px] font-medium uppercase tracking-[0.04em] text-[#d4e4fa] transition-colors group-hover:text-[#adc6ff]">{model.displayName}</h3>
+                          <h3 className={`font-mono text-[13px] font-medium uppercase tracking-[0.04em] text-[#d4e4fa] transition-colors ${recommendedActive ? "group-hover:text-[#f5c97b]" : "group-hover:text-[#adc6ff]"}`}>{model.displayName}</h3>
                           {active ? (
-                            <span className="material-symbols-outlined text-[20px] text-[#adc6ff]" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+                            <span className={`material-symbols-outlined text-[20px] ${recommendedActive ? "text-[#f5c97b]" : "text-[#adc6ff]"}`} style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
                           ) : null}
                         </div>
 
-                        <p className="mb-3 hidden line-clamp-2 flex-1 text-[13px] leading-5 text-[#c2c6d6]/80 sm:block">{getModelDescription(model.id, language) || t("Usage-based conversational model for playground.")}</p>
+                        <p className="mb-3 line-clamp-2 flex-1 text-[13px] leading-5 text-[#c2c6d6]/80">{getModelDescription(model.id, language) || t("Usage-based conversational model for playground.")}</p>
 
                         {!affordable ? (
                           <p className="mb-3 text-[11px] font-medium text-[#ffb4ab]">{t("Need at least")} {minimumCost.toFixed(2)} {t("credits.")}</p>
