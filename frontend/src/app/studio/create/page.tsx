@@ -1,7 +1,7 @@
 // frontend/src/app/page.tsx
 "use client";
 
-import { useState, useEffect, useRef, useMemo, useCallback, type ChangeEvent, type ClipboardEvent } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback, type ChangeEvent, type ClipboardEvent, type DragEvent } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
@@ -63,6 +63,17 @@ const maxInputImagesFor = (modelId: string | undefined | null): number =>
   maxInputImagesForModelId(modelId);
 const MAX_PROXY_IMAGE_DIMENSION = 768;
 const MAX_PROXY_IMAGE_BYTES = 120_000;
+// Input images must stay compatible with whichever image model the user finally
+// picks — they can switch models after uploading. So normalize against the
+// strictest cross-provider rules (PNG/JPEG only, never WebP, and the largest
+// min-dimension) instead of the rules of the model selected at upload time. The
+// upload validation below still uses the selected model's looser minimum so small
+// images aren't rejected needlessly; this only governs the re-encode output.
+const UNIVERSAL_INPUT_CONSTRAINTS: UploadImageConstraints = {
+  maxImages: 3,
+  minDim: 256,
+  formats: ["image/png", "image/jpeg"],
+};
 
 function isRenderableImageUrl(value?: string): boolean {
   if (!value) return false;
@@ -487,6 +498,7 @@ export default function Home() {
   // --- State ---
   const [step, setStep] = useState<Step>("INPUT");
   const [loading, setLoading] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
   const [toast, setToast] = useState<Toast | null>(null);
   const [isModePickerOpen, setIsModePickerOpen] = useState(false);
 
@@ -813,6 +825,24 @@ export default function Home() {
     "Grok Imagine Image Editing"
   ];
 
+  // Preferred ordering for the step-1 model picker (by slug). Listed models are
+  // surfaced first in this order; everything else keeps its catalog order after.
+  const CAPTION_MODEL_ORDER = [
+    "gemini-3.1-flash-lite-preview", // Gemini 3.1 Flash Lite
+    "gemini-3.5-flash", // Gemini 3.5 Flash
+    "gemini-3-flash-preview", // Gemini 3 Flash
+    "gemini-2.5-flash", // Gemini 2.5 Flash
+  ];
+  const IMAGE_MODEL_ORDER = [
+    "grok-imagine-image-quality-editing", // Grok Imagine Quality Editing
+    "gemini-3.1-flash-image-preview", // Nano Banana 2
+    "imagen-4.0-generate-001", // Imagen 4 Standard
+  ];
+  const orderRank = (order: string[], id: string) => {
+    const index = order.indexOf(id);
+    return index === -1 ? Number.MAX_SAFE_INTEGER : index;
+  };
+
   const filteredCaptionModels = useMemo(() => {
     const entries = modelCatalog.caption || {};
     return Object.entries(entries)
@@ -821,20 +851,28 @@ export default function Home() {
         const outputModalities = new Set(model.output_modalities || []);
         return outputModalities.has("TEXT") && !outputModalities.has("IMAGE");
       })
-      .map(([id]) => id);
+      .map(([id]) => id)
+      .sort((a, b) => orderRank(CAPTION_MODEL_ORDER, a) - orderRank(CAPTION_MODEL_ORDER, b));
   }, [modelCatalog]);
 
   const filteredImageModels = useMemo(() => {
     const entries = modelCatalog.image || {};
+    const requiredInputImages = inputImages.length;
     return Object.entries(entries)
-      .filter(([, model]) => {
+      .filter(([id, model]) => {
         if (model.display_name && HIDDEN_MODELS.includes(model.display_name)) return false;
         if (!selectedOutputs.includes("image")) return false;
         const outputModalities = new Set(model.output_modalities || []);
-        return outputModalities.has("IMAGE");
+        if (!outputModalities.has("IMAGE")) return false;
+        // Only surface models that can consume however many input images are attached:
+        // 0 images -> every image model; N images -> models that accept at least N.
+        const acceptsImageInput = (model.input_modalities || []).includes("IMAGE");
+        const maxInputImages = acceptsImageInput ? maxInputImagesForModelId(id) : 0;
+        return maxInputImages >= requiredInputImages;
       })
-      .map(([id]) => id);
-  }, [modelCatalog, selectedOutputs]);
+      .map(([id]) => id)
+      .sort((a, b) => orderRank(IMAGE_MODEL_ORDER, a) - orderRank(IMAGE_MODEL_ORDER, b));
+  }, [modelCatalog, selectedOutputs, inputImages.length]);
 
   const sharedMultimodalModels = usesSharedNanoBanana
     ? filteredImageModels.filter((modelId) => filteredCaptionModels.includes(modelId))
@@ -1011,7 +1049,7 @@ export default function Home() {
 
       const nextImages: UploadedImageState[] = [];
       for (const originalFile of filesToUpload) {
-        const file = await normalizeUploadImage(originalFile, constraints);
+        const file = await normalizeUploadImage(originalFile, UNIVERSAL_INPUT_CONSTRAINTS);
         const uploaded = await api.uploadInputImage(file);
         const pendingImage = pendingImages[nextImages.length];
         URL.revokeObjectURL(pendingImage.previewUrl);
@@ -1056,6 +1094,30 @@ export default function Home() {
     event.preventDefault();
     void uploadInputImageFiles(pastedFiles);
   }, [uploadInputImageFiles]);
+
+  // Drag-and-drop onto the Reference Assets box. Without preventDefault on dragOver
+  // *and* drop, the browser falls back to its default of opening the dropped file
+  // in a new tab instead of attaching it here.
+  const handleImageDragOver = useCallback((event: DragEvent<HTMLDivElement>) => {
+    if (loading) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    setIsDragOver(true);
+  }, [loading]);
+
+  const handleImageDragLeave = useCallback((event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsDragOver(false);
+  }, []);
+
+  const handleImageDrop = useCallback((event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsDragOver(false);
+    if (loading) return;
+    const droppedFiles = Array.from(event.dataTransfer.files || []).filter((file) => file.type.startsWith("image/"));
+    if (droppedFiles.length === 0) return;
+    void uploadInputImageFiles(droppedFiles);
+  }, [loading, uploadInputImageFiles]);
 
   const removeInputImage = useCallback((localId: string) => {
     setInputImages((prev) => prev.filter((image) => {
@@ -1826,9 +1888,12 @@ export default function Home() {
                       fileInputRef.current?.click();
                     }
                   }}
+                  onDragOver={handleImageDragOver}
+                  onDragLeave={handleImageDragLeave}
+                  onDrop={handleImageDrop}
                   className="group relative min-h-[120px] flex-grow cursor-pointer"
                 >
-                  <div className="absolute inset-0 rounded-xl border-2 border-dashed border-[#424754]/50 transition-colors group-hover:border-[#adc6ff]/50" />
+                  <div className={`absolute inset-0 rounded-xl border-2 border-dashed transition-colors ${isDragOver ? "border-[#adc6ff] bg-[#adc6ff]/5" : "border-[#424754]/50 group-hover:border-[#adc6ff]/50"}`} />
                   {hasInputImages ? (
                     <>
                       {/* eslint-disable-next-line @next/next/no-img-element */}

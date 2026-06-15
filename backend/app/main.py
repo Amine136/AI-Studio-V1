@@ -2447,18 +2447,15 @@ def _validate_generate_request(payload: GenerateRequest) -> None:
     _validate_selected_model_exists("caption", prefs, wants_caption)
     _validate_selected_model_exists("image", prefs, wants_image)
 
+    # Text/caption rules are unchanged. The only relaxation for input images is that
+    # the caption model no longer has to be a shared Nano Banana — any Gemini text
+    # model accepts image input and can caption from the uploaded image.
     if wants_caption:
         caption_model = _resolve_model_choice("caption", prefs)
         if caption_model:
             caption_entry = settings.model_catalog.get("caption", {}).get(caption_model, {})
             if wants_image:
-                if has_input_images:
-                    if not _is_gemini_image_model(caption_entry):
-                        raise HTTPException(
-                            status_code=400,
-                            detail="For image-plus-text output with an uploaded image, the shared model must be a Nano Banana model.",
-                        )
-                elif not _is_gemini_text_model(caption_entry):
+                if not _is_gemini_text_model(caption_entry):
                     raise HTTPException(
                         status_code=400,
                         detail="For text output, the selected text model must support Gemini text generation.",
@@ -2470,31 +2467,30 @@ def _validate_generate_request(payload: GenerateRequest) -> None:
                         detail="For text-only output, the selected text model must be a Gemini text model without image output.",
                     )
 
+    # Image rules are capability-based, not provider-locked: any model that outputs
+    # images is allowed, and when input images are uploaded it just has to accept
+    # image input and have enough input-image slots (Recraft=1, others=3, Imagen=0).
     if wants_image:
         image_model = _resolve_model_choice("image", prefs)
-        if image_model and has_input_images:
-            image_entry = settings.model_catalog.get("image", {}).get(image_model, {})
-            if not _is_gemini_image_model(image_entry):
-                raise HTTPException(
-                    status_code=400,
-                    detail="When an input image is uploaded, the image model must be a Gemini image model.",
-                )
-        elif image_model:
+        if image_model:
             image_entry = settings.model_catalog.get("image", {}).get(image_model, {})
             if not _is_image_capable_model(image_entry):
                 raise HTTPException(
                     status_code=400,
                     detail="For image output, the selected image model must support image generation.",
                 )
-
-    if has_input_images and wants_caption and wants_image:
-        caption_model = _resolve_model_choice("caption", prefs)
-        image_model = _resolve_model_choice("image", prefs)
-        if not caption_model or not image_model or caption_model != image_model:
-            raise HTTPException(
-                status_code=400,
-                detail="For image-plus-text output with an uploaded image, caption and image must use the same Nano Banana model.",
-            )
+            if has_input_images:
+                max_input_images = _max_input_images_for_entry(image_entry)
+                if max_input_images <= 0:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="The selected image model does not accept input images. Remove the uploaded image or choose an image-editing model.",
+                    )
+                if len(input_images) > max_input_images:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"The selected image model accepts at most {max_input_images} input image(s).",
+                    )
 
     _validate_generate_model_parameters(payload, prefs)
 
@@ -2968,6 +2964,17 @@ def _is_gemini_image_model(model_entry: Dict[str, Any]) -> bool:
 def _is_image_capable_model(model_entry: Dict[str, Any]) -> bool:
     output_modalities = set(model_entry.get("output_modalities") or [])
     return "IMAGE" in output_modalities
+
+
+def _max_input_images_for_entry(model_entry: Dict[str, Any]) -> int:
+    """How many input images a model accepts (mirrors the AKM gateway guardrail and
+    the frontend's imageInputConstraints). 0 when the model has no IMAGE input
+    modality (e.g. Imagen, Ideogram); Recraft's image-to-image takes a single source."""
+    if "IMAGE" not in set(model_entry.get("input_modalities") or []):
+        return 0
+    if model_entry.get("provider") == "recraft":
+        return 1
+    return MAX_EDITING_INPUT_IMAGES
 
 
 def _prepare_input_images(input_images, owner_uid: str) -> list[Dict[str, str]]:
