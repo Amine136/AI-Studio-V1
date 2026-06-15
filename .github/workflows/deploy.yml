@@ -37,7 +37,8 @@ jobs:
           cd /home/ouni/vibecraft
           PREVIOUS_COMMIT=$(git rev-parse HEAD)
           echo "Previous commit was: $PREVIOUS_COMMIT"
-          git pull origin main
+          git fetch origin main
+          git reset --hard origin/main
           cd frontend
           npm install
           if ! npm run build; then
@@ -68,7 +69,8 @@ jobs:
           cd /home/ouni/AI-Studio-V1-staging
           PREVIOUS_COMMIT=$(git rev-parse HEAD)
           echo "Previous commit was: $PREVIOUS_COMMIT"
-          git pull origin staging
+          git fetch origin staging
+          git reset --hard origin/staging
           cd frontend
           npm install
           if ! npm run build; then
