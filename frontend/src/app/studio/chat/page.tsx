@@ -512,6 +512,16 @@ function toParameterLabel(key: string) {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
+// Display-only label for enum options. The underlying value (sent in the
+// request) is unchanged; this only affects what the user sees. e.g. the
+// Output Mime Type options render as "png" / "jpeg" instead of "image/png".
+function toEnumOptionLabel(key: string, option: string) {
+  if (key === "outputMimeType" && option.startsWith("image/")) {
+    return option.slice("image/".length);
+  }
+  return option;
+}
+
 function toResolvedCostNumber(value: string | number | undefined) {
   if (typeof value === "number") return Number.isFinite(value) ? value : 0;
   if (typeof value === "string") {
@@ -799,6 +809,22 @@ export default function StudioChatPage() {
     Boolean(requestedConversationId) && requestedConversationId !== deletedConversationIdRef.current;
   const isBootstrappingRequestedConversation = requestedConversationIsActive && requestedConversationId !== conversationId;
   const renderPhase: ChatPhase = requestedConversationIsActive ? "chat" : phase;
+
+  // On large screens, reveal the Model Controls panel automatically when a chat
+  // opens. Only auto-opens once per entry into the chat phase, so the user can
+  // still close it and it won't fight them until they go back and reopen a chat.
+  const autoOpenedControlsRef = useRef(false);
+  useEffect(() => {
+    if (renderPhase !== "chat") {
+      autoOpenedControlsRef.current = false;
+      return;
+    }
+    if (autoOpenedControlsRef.current) return;
+    if (typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches) {
+      setSettingsPanelOpen(true);
+      autoOpenedControlsRef.current = true;
+    }
+  }, [renderPhase]);
 
   useEffect(() => {
     loadingReplyRef.current = loadingReply;
@@ -1700,7 +1726,7 @@ export default function StudioChatPage() {
             const affordable = currentCredits === null || getChatModelExpectedCost(lockedModel, nextValues) <= currentCredits;
             return (
               <option key={nextOption} value={nextOption} disabled={!affordable}>
-                {nextOption}{!affordable ? ` — ${t("locked")}` : ""}
+                {toEnumOptionLabel(key, nextOption)}{!affordable ? ` — ${t("locked")}` : ""}
               </option>
             );
           })}
