@@ -8,7 +8,7 @@ import { useLanguage } from "../../../context/LanguageContext";
 import InteractiveAuthenticatedImage from "../../../components/InteractiveAuthenticatedImage";
 import { isRenderableImageUrl } from "../../../components/AuthenticatedImage";
 import { ColorPickerPopover } from "../../../components/ColorPickerPopover";
-import { api } from "../../../services/api";
+import { api, CONTENT_BLOCKED_MESSAGE, MODERATION_UNAVAILABLE_MESSAGE } from "../../../services/api";
 import { addHistoryEntry } from "../../../lib/history";
 import { getModelDescription } from "../../../lib/modelDescriptions";
 import { getUploadConstraints, maxInputImagesForModelId, preferredOutputType, providerLabelForModelId, readImageDimensions, type UploadImageConstraints } from "../../../lib/imageInputConstraints";
@@ -759,6 +759,24 @@ async function normalizeUploadImage(file: File, constraints: UploadImageConstrai
 export default function StudioChatPage() {
   const { user, loading: authLoading } = useAuth();
   const { t, language } = useLanguage();
+  const localizeChatWindow = (win: string): string => {
+    const w = win.trim();
+    if (/^1\s+minutes?$/i.test(w)) return t("1 minute");
+    const m = w.match(/^(\d+)\s+minutes?$/i);
+    if (m) return t("{count} minutes").replace("{count}", m[1]);
+    return w;
+  };
+  const localizeChatError = (message: string): string => {
+    if (!message) return message;
+    if (message === MODERATION_UNAVAILABLE_MESSAGE) return t(MODERATION_UNAVAILABLE_MESSAGE);
+    const rl = message.match(/early-stage Plain Chat limit of\s+(\d+)\s+messages per\s+([^.]+)\./i);
+    if (rl) {
+      return t("You reached the current early-stage Plain Chat limit of {count} messages per {window}. We are still in test mode and will make these limits more flexible later.")
+        .replace("{count}", rl[1])
+        .replace("{window}", localizeChatWindow(rl[2]));
+    }
+    return t(message);
+  };
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -2238,9 +2256,18 @@ export default function StudioChatPage() {
               <div className="shrink-0 px-2.5 pb-3 pt-2 sm:px-5 sm:pb-5">
                 <div className="mx-auto max-w-4xl">
                   {error ? (
-                    <div className="mb-3 rounded-xl border border-red-500/20 bg-red-500/[0.07] px-4 py-2.5 text-[13px] text-red-200/90">
-                      {error}
-                    </div>
+                    error === CONTENT_BLOCKED_MESSAGE ? (
+                      <div className="mb-3 rounded-xl border border-amber-500/30 bg-amber-500/[0.08] px-4 py-2.5 text-[13px] text-amber-200/90">
+                        {t("This request was blocked by our content safety filters and was not charged. Repeated violations may lead to your account being suspended.")}{" "}
+                        <Link href="/policy" className="font-medium underline transition hover:text-amber-100">
+                          {t("Review our content policy.")}
+                        </Link>
+                      </div>
+                    ) : (
+                      <div className="mb-3 rounded-xl border border-red-500/20 bg-red-500/[0.07] px-4 py-2.5 text-[13px] text-red-200/90">
+                        {localizeChatError(error)}
+                      </div>
+                    )
                   ) : null}
 
                   <input ref={fileInputRef} type="file" multiple accept="image/png,image/jpeg,image/webp" className="hidden" onChange={handleImageUpload} />

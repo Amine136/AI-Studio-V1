@@ -58,6 +58,7 @@ from app.services.postgres_security_store import (  # noqa: F401
     list_users,
     mark_generation_job_awaiting_review,
     preload_postgres as preload_security_store,
+    record_moderation_rejection,
     redeem_credit_code,
     release_generation_credits,
     reserve_generation_credits,

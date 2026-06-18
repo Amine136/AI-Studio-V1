@@ -17,6 +17,23 @@ BEARER_AUTH = HTTPBearer(auto_error=False)
 GOOGLE_REQUEST = GoogleRequest()
 
 
+def format_suspension_detail(reason: str | None, until: Any | None) -> str:
+    """Build the user-facing suspension message used in 403 responses.
+
+    Shared so every place that signals a suspension (the auth dependency and the
+    moderation auto-ban path) produces the exact same string the frontend keys on
+    to eject the user to the sign-in page.
+    """
+    detail = "Your account is suspended."
+    reason_text = str(reason or "").strip()
+    if reason_text:
+        detail = f"Your account is suspended: {reason_text}"
+    if until:
+        until_text = datetime.fromtimestamp(int(until), tz=timezone.utc).isoformat()
+        detail = f"{detail} Suspension ends at {until_text}."
+    return detail
+
+
 async def verify_api_key(api_key: str = Security(API_KEY_HEADER)):
     """FastAPI dependency: validates the X-API-Key header."""
     if not settings.api_key:
@@ -72,15 +89,11 @@ async def verify_firebase_user(
         raise HTTPException(status_code=403, detail=detail)
     suspension = get_active_suspension(uid)
     if suspension:
-        detail = "Your account is suspended."
         reason = str(suspension.get("reason") or profile.get("suspensionReason") or "").strip()
-        until = suspension.get("until")
-        if reason:
-            detail = f"Your account is suspended: {reason}"
-        if until:
-            until_text = datetime.fromtimestamp(int(until), tz=timezone.utc).isoformat()
-            detail = f"{detail} Suspension ends at {until_text}."
-        raise HTTPException(status_code=403, detail=detail)
+        raise HTTPException(
+            status_code=403,
+            detail=format_suspension_detail(reason, suspension.get("until")),
+        )
 
     return {
         "uid": uid,

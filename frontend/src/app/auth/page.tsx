@@ -35,6 +35,13 @@ function mapAuthErrorMessage(error: unknown): string {
   return rawMessage || "Google sign-in failed.";
 }
 
+function formatSuspensionEndsAt(raw: string, language: string): string {
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return raw;
+  const locale = language === "ar" ? "ar" : language === "fr" ? "fr-FR" : "en-US";
+  return new Intl.DateTimeFormat(locale, { dateStyle: "long", timeStyle: "short", timeZone: "UTC" }).format(d) + " UTC";
+}
+
 import { useLanguage } from "../../context/LanguageContext";
 
 function AuthContent() {
@@ -146,6 +153,19 @@ function AuthContent() {
     }
   };
 
+  const isDynamicSuspension = /your account is suspended/i.test(error);
+  let suspensionReason = "";
+  let suspensionEndsLabel = "";
+  if (isDynamicSuspension) {
+    const endsMatch = error.match(/Suspension ends at\s+([^.]+)\./i);
+    suspensionEndsLabel = endsMatch ? formatSuspensionEndsAt(endsMatch[1].trim(), language) : "";
+    suspensionReason = error
+      .replace(/^Your account is suspended:\s*/i, "")
+      .replace(/^Your account is suspended\.?\s*/i, "")
+      .replace(/\s*Suspension ends at\s+[^.]+\.\s*/i, "")
+      .trim();
+  }
+
   return (
     <main className="relative flex min-h-screen w-full flex-col lg:flex-row overflow-hidden bg-[#0c1324] text-[#dce1fb]" dir={language === 'ar' ? 'rtl' : 'ltr'}>
       <Link href="/" className="absolute top-6 left-6 z-50 flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-[#081121]/80 text-slate-400 backdrop-blur-md transition-all hover:border-blue-500/30 hover:bg-blue-500/10 hover:text-white hover:shadow-[0_0_15px_rgba(59,130,246,0.2)] rtl:left-auto rtl:right-6">
@@ -243,7 +263,15 @@ function AuthContent() {
 
           {error ? (
             <div className="mb-5 rounded-md border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
-              <p>{t(error)}</p>
+              {isDynamicSuspension ? (
+                <p>
+                  {t("Your account is suspended:")}
+                  {suspensionReason ? " " + t(suspensionReason) : ""}
+                  {suspensionEndsLabel ? " " + t("Your suspension ends on") + " " + suspensionEndsLabel + "." : ""}
+                </p>
+              ) : (
+                <p>{t(error)}</p>
+              )}
               {error.toLowerCase().includes("deactivated") ? (
                 <div className="mt-3 flex flex-wrap gap-4 text-[11px] uppercase tracking-[0.16em]">
                   <Link href="/privacy" className="text-[#ffd6d1] underline underline-offset-4">

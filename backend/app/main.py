@@ -26,7 +26,7 @@ from app.db.repositories.security import SecurityRepository
 from app.graph.workflow import studio_graph_app
 from app.services.admin_auth import AdminAuthRateLimitError, authenticate_admin, list_admin_auth_failure_summaries, revoke_admin_session
 from app.services.apikeymanager_client import ApiKeyManagerProxyError, check_apikeymanager_ready
-from app.services.auth import verify_admin_csrf, verify_admin_session, verify_api_key, verify_firebase_user
+from app.services.auth import format_suspension_detail, verify_admin_csrf, verify_admin_session, verify_api_key, verify_firebase_user
 from app.services.catalog_store import catalog_store
 from app.services.model_visibility import filter_catalog, list_model_visibility, update_model_visibility
 from app.services.chat_service import assemble_plain_chat_context, list_plain_chat_models, minimum_required_credits_for_plain_chat, normalize_plain_chat_system, prepare_plain_chat_conversation_request, preview_plain_chat_prompt, send_plain_chat, serialize_plain_chat_parts
@@ -852,6 +852,7 @@ def create_plain_chat_conversation_message(
     user: Dict[str, Any] = Depends(verify_firebase_user),
 ):
     charged_cost = 0.0
+    model_name = ""
 
     try:
         catalog_store.get_catalog()
@@ -994,6 +995,27 @@ def create_plain_chat_conversation_message(
             raise HTTPException(status_code=422, detail=detail) from exc
         return PlainChatConversationTurnResponse(status="error", meta={"error_message": detail})
     except ApiKeyManagerProxyError as exc:
+        if exc.error_type == "content_blocked":
+            from app.services.security_backend import record_moderation_rejection
+            ban = record_moderation_rejection(
+                user["uid"], model_name or "plain_chat", exc.code, moderation=getattr(exc, "moderation", None)
+            )
+            if isinstance(ban, dict) and ban.get("banned") and not ban.get("alreadySuspended"):
+                # This block crossed the threshold and just suspended the account →
+                # return the suspension response so the client ejects to sign-in
+                # immediately instead of showing the per-block warning.
+                raise HTTPException(
+                    status_code=403,
+                    detail=format_suspension_detail(ban.get("reason"), ban.get("until")),
+                )
+            raise HTTPException(status_code=403, detail={"error": {"code": "CONTENT_BLOCKED"}})
+        if exc.error_type == "moderation_unavailable":
+            # The safety gate could not reach a moderation backend and blocked
+            # defensively (fail-closed). This is an infrastructure condition, NOT a
+            # user violation: no rejection is recorded (no ban), nothing is charged,
+            # and the client is told it is a transient "try again" error.
+            raise HTTPException(status_code=503, detail={"error": {"code": "MODERATION_UNAVAILABLE"}})
+
         current_profile = get_user(user["uid"])
         return PlainChatConversationTurnResponse(
             status="error",
@@ -2139,6 +2161,13 @@ def generate_content(request: Request, payload: GenerateRequest, user: Dict[str,
                 or final_state.get("error_message")
                 or "We couldn't deliver the generated result. No credits were charged."
             )
+            if failure_reason == "content_blocked":
+                raise HTTPException(status_code=403, detail={"error": {"code": "CONTENT_BLOCKED"}})
+            if failure_reason == "moderation_unavailable":
+                # Defensive fail-closed block (moderation backend unreachable), not a
+                # user violation: credits already released above, no ban, transient error.
+                raise HTTPException(status_code=503, detail={"error": {"code": "MODERATION_UNAVAILABLE"}})
+
             return GenerationResult(
                 status="error",
                 meta={
@@ -2191,6 +2220,37 @@ def generate_content(request: Request, payload: GenerateRequest, user: Dict[str,
     except HTTPException:
         raise
     except ApiKeyManagerProxyError as exc:
+        if exc.error_type == "content_blocked":
+            from app.services.security_backend import record_moderation_rejection
+            ban = record_moderation_rejection(
+                user["uid"],
+                f"generate:{getattr(payload.mode, 'value', payload.mode)}",
+                exc.code,
+                moderation=getattr(exc, "moderation", None),
+            )
+            if direct_generation and generation_job_id:
+                release_generation_credits(generation_job_id, failure_reason="content_blocked")
+            elif not direct_generation and analyze_session:
+                refund_analyze_session(analyze_session["id"], user["uid"])
+            if isinstance(ban, dict) and ban.get("banned") and not ban.get("alreadySuspended"):
+                # This block crossed the threshold and just suspended the account →
+                # return the suspension response so the client ejects to sign-in
+                # immediately instead of showing the per-block warning.
+                raise HTTPException(
+                    status_code=403,
+                    detail=format_suspension_detail(ban.get("reason"), ban.get("until")),
+                )
+            raise HTTPException(status_code=403, detail={"error": {"code": "CONTENT_BLOCKED"}})
+        if exc.error_type == "moderation_unavailable":
+            # Defensive fail-closed block (no moderation backend reachable), NOT a user
+            # violation: release reserved credits, record NO rejection (no ban), and
+            # return a transient "try again" error distinct from a content block.
+            if direct_generation and generation_job_id:
+                release_generation_credits(generation_job_id, failure_reason="moderation_unavailable")
+            elif not direct_generation and analyze_session:
+                refund_analyze_session(analyze_session["id"], user["uid"])
+            raise HTTPException(status_code=503, detail={"error": {"code": "MODERATION_UNAVAILABLE"}})
+
         failure_reason = f"provider_{exc.error_type}"
         current_profile = get_user(user["uid"])
         return GenerationResult(

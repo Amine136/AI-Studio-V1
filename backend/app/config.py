@@ -133,6 +133,39 @@ class Config:
         self.redeem_consecutive_window_seconds = int(os.getenv("REDEEM_CONSECUTIVE_WINDOW_SECONDS", str(24 * 60 * 60)))
         self.redeem_temp_suspension_seconds = int(os.getenv("REDEEM_TEMP_SUSPENSION_SECONDS", str(60 * 60)))
 
+        # Content-moderation repeat-offender bans (Section 2 of the moderation layer).
+        # THRESHOLD content_blocked rejections within the rolling window → a ban,
+        # counted only since the user's last ban (a served ban resets the count to
+        # 0). The ban duration escalates per the ladder below; after that many
+        # temporary bans the next ban is permanent.
+        self.moderation_rejection_threshold = int(os.getenv("MODERATION_REJECTION_THRESHOLD", "3"))
+        self.moderation_rejection_window_seconds = int(
+            os.getenv("MODERATION_REJECTION_WINDOW_SECONDS", str(10 * 24 * 60 * 60))
+        )
+        # Ordered ladder of temporary-ban durations in seconds, one per successive
+        # ban: 1st ban → 24h, 2nd ban → 7 days. After len(ladder) temporary bans the
+        # next ban is permanent. Override with a comma-separated list of seconds.
+        _mod_temp_ban_env = os.getenv("MODERATION_TEMP_BAN_DURATIONS_SECONDS")
+        if _mod_temp_ban_env:
+            self.moderation_temp_ban_durations_seconds = [
+                int(x) for x in _mod_temp_ban_env.split(",") if x.strip()
+            ]
+        else:
+            self.moderation_temp_ban_durations_seconds = [24 * 60 * 60, 7 * 24 * 60 * 60]
+        self.moderation_max_temp_bans = len(self.moderation_temp_ban_durations_seconds)
+
+        # Zero-tolerance hard ban. Certain categories (child sexual content) are an
+        # immediate + PERMANENT ban that bypasses the escalating ladder and the
+        # rolling-window count entirely - even on a first offence. Triggered when the
+        # AKM moderation cause reports one of these categories strictly above the
+        # score floor.
+        self.moderation_hard_ban_categories = {
+            c.strip()
+            for c in os.getenv("MODERATION_HARD_BAN_CATEGORIES", "sexual/minors").split(",")
+            if c.strip()
+        }
+        self.moderation_hard_ban_score = float(os.getenv("MODERATION_HARD_BAN_SCORE", "0.3"))
+
         # Gift-credit expiry. A reservation will not draw from a gift lot that
         # would expire within this safety window (so a long-running generation
         # can't be caught mid-flight by expiry). Should be >= the maximum

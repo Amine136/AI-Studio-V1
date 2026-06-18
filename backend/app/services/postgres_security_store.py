@@ -371,6 +371,10 @@ def unsuspend_user(
         previous_reason = user.suspension_reason or ""
         user.is_suspended = False
         user.suspension_reason = None
+        # Clear any timed-suspension marker so a stale ``suspended_until`` can't
+        # linger after an admin lift. The lifetime ``moderation_ban_count`` is
+        # intentionally preserved so future violations still escalate.
+        user.suspended_until = None
         user.updated_at = now
         repo.delete_rate_limit_bucket(_redeem_temp_suspension_key(uid))
         repo.delete_rate_limit_bucket(_redeem_failed_window_key(uid))
@@ -1117,11 +1121,35 @@ def get_active_suspension(uid: str) -> dict[str, Any] | None:
         repo = SecurityRepository(session)
         user = repo.get_user(uid)
         if user is not None and bool(user.is_suspended):
-            return {
-                "isPermanent": True,
-                "reason": user.suspension_reason or "Account suspended by system policy.",
-                "until": None,
-            }
+            until = getattr(user, "suspended_until", None)
+            if until is not None and int(until) <= now:
+                # A timed moderation ban has expired → auto-unsuspend. Take a row
+                # lock only now (keeps this hot gate lock/write-free in the common
+                # case). The lifetime moderation_ban_count is preserved so the next
+                # offence still escalates; last_moderation_ban_at is bumped so the
+                # rejections that earned this ban don't immediately re-trigger.
+                locked = repo.get_user_for_update(uid)
+                if (
+                    locked is not None
+                    and bool(locked.is_suspended)
+                    and getattr(locked, "suspended_until", None) is not None
+                    and int(locked.suspended_until) <= now
+                ):
+                    locked.is_suspended = False
+                    locked.suspension_reason = None
+                    locked.suspended_until = None
+                    locked.last_moderation_ban_at = now
+                    locked.updated_at = now
+                    session.flush()
+                # fall through: no active moderation ban now, check redeem temp bans
+            else:
+                # Permanent (suspended_until IS NULL, incl. admin suspensions) or
+                # still inside the timed window → blocked.
+                return {
+                    "isPermanent": until is None,
+                    "reason": user.suspension_reason or "Account suspended by system policy.",
+                    "until": int(until) if until is not None else None,
+                }
 
         temp_bucket = repo.get_rate_limit_bucket(_redeem_temp_suspension_key(uid))
         if temp_bucket is None or int(temp_bucket.reset_at) <= now:
@@ -1131,6 +1159,174 @@ def get_active_suspension(uid: str) -> dict[str, Any] | None:
             "isPermanent": False,
             "reason": _temporary_redeem_ban_reason(int(temp_bucket.count)),
             "until": int(temp_bucket.reset_at),
+        }
+
+
+HARD_BAN_REASON = "Account permanently suspended for a severe violation of our Terms of Use."
+
+
+def _is_hard_ban_cause(moderation: dict[str, Any] | None) -> bool:
+    """True when the AKM moderation cause reports a zero-tolerance category
+    (child sexual content) strictly above the configured hard-ban score floor.
+    Defensive: any malformed/missing cause returns False (never hard-ban on noise)."""
+    if not isinstance(moderation, dict):
+        return False
+    categories = settings.moderation_hard_ban_categories
+    if not categories:
+        return False
+    floor = float(settings.moderation_hard_ban_score)
+    scores = moderation.get("scores")
+    if not isinstance(scores, dict):
+        return False
+    for cat in categories:
+        try:
+            if float(scores.get(cat, 0) or 0) > floor:
+                return True
+        except (TypeError, ValueError):
+            continue
+    return False
+
+
+def record_moderation_rejection(
+    uid: str,
+    model: str | None = None,
+    code: str | None = None,
+    moderation: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Record a content_blocked rejection and apply the escalating moderation ban.
+
+    Rule (Section 2 / §2.2): once a user accumulates
+    ``settings.moderation_rejection_threshold`` content_blocked rejections within
+    the rolling ``moderation_rejection_window_seconds`` window — counted only since
+    the user's last ban — they are auto-suspended. The duration escalates by the
+    lifetime ``moderation_ban_count`` per the
+    ``moderation_temp_ban_durations_seconds`` ladder (e.g. 24h then 7 days); after
+    ``len(ladder)`` temporary bans the next ban is permanent.
+
+    Transactional with a ``FOR UPDATE`` lock on the user row, mirroring the credit
+    paths. Never raises for an unknown/empty uid — moderation must not break the
+    request flow.
+    """
+    uid = str(uid or "").strip()
+    if not uid:
+        return {"banned": False}
+
+    now = int(time.time())
+    window = max(int(settings.moderation_rejection_window_seconds), 1)
+    threshold = max(int(settings.moderation_rejection_threshold), 1)
+    ban_ladder = [max(int(d), 1) for d in settings.moderation_temp_ban_durations_seconds]
+    max_temp_bans = len(ban_ladder)
+
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        user = repo.get_user_for_update(uid)
+        if user is None:
+            return {"banned": False}
+
+        repo.add_moderation_rejection(uid=uid, model=model, code=code, created_at=now)
+
+        # Zero-tolerance hard ban (child sexual content). If the AKM cause reports a
+        # hard-ban category above the score floor, ban immediately + PERMANENTLY,
+        # bypassing the rolling-window count and the escalating ladder — even on a
+        # first offence, and even upgrading an existing (temporary) suspension to
+        # permanent. This runs BEFORE the already-suspended short-circuit on purpose.
+        if _is_hard_ban_cause(moderation):
+            prior_bans = int(getattr(user, "moderation_ban_count", 0) or 0)
+            already_perm = bool(user.is_suspended) and getattr(user, "suspended_until", None) is None
+            user.is_suspended = True
+            user.suspension_reason = HARD_BAN_REASON
+            user.suspended_until = None  # permanent
+            if not already_perm:
+                user.moderation_ban_count = prior_bans + 1
+                user.last_moderation_ban_at = now
+            user.updated_at = now
+            repo.add_admin_audit_log(
+                admin_uid=None,
+                admin_email=AUTO_SUSPEND_AUDIT_EMAIL,
+                action="user_moderation_hard_ban",
+                target_type="user",
+                target_id=uid,
+                reason=HARD_BAN_REASON,
+                metadata_json={
+                    "permanent": True,
+                    "hard_ban": True,
+                    "categories": sorted(settings.moderation_hard_ban_categories),
+                    "cause_scores": (moderation or {}).get("scores", {}),
+                    "model": model or "",
+                    "code": code or "",
+                },
+                created_at=now,
+            )
+            session.flush()
+            return {
+                "banned": True,
+                "permanent": True,
+                "until": None,
+                "banCount": int(user.moderation_ban_count or 0),
+                "reason": HARD_BAN_REASON,
+                "hardBan": True,
+                "alreadySuspended": already_perm,
+            }
+
+        # Already suspended (any reason) → leave the existing ban untouched.
+        if bool(user.is_suspended):
+            session.flush()
+            return {"banned": True, "alreadySuspended": True}
+
+        # Only count rejections since the last served ban (a served ban wipes the
+        # slate so the old offences don't immediately re-trigger a new ban).
+        # `+ 1`: count STRICTLY after the last ban. The ban's own triggering
+        # rejection was stored at created_at == last_moderation_ban_at; since the
+        # repository counts `created_at >= since`, without this the previous
+        # cycle's final rejection leaks into the next cycle (whenever that ban is
+        # still inside the rolling window) and fires the next ban one rejection
+        # early — e.g. 4 instead of 5. (When never banned, ban_at is 0/None →
+        # 0+1=1, far below now-window, so the window floor still wins.)
+        since = max(now - window, int(getattr(user, "last_moderation_ban_at", 0) or 0) + 1)
+        recent = repo.count_moderation_rejections_since(uid, since)
+
+        if recent < threshold:
+            session.flush()
+            return {"banned": False, "recent": recent, "threshold": threshold}
+
+        prior_bans = int(getattr(user, "moderation_ban_count", 0) or 0)
+        permanent = prior_bans >= max_temp_bans
+        reason = "Repeated requests violating our Terms of Use"
+
+        user.is_suspended = True
+        user.suspension_reason = reason
+        # Escalating duration: ban #1 → ban_ladder[0], #2 → ban_ladder[1], …;
+        # once the ladder is exhausted (permanent) suspended_until stays None.
+        user.suspended_until = None if permanent else now + ban_ladder[prior_bans]
+        user.moderation_ban_count = prior_bans + 1
+        user.last_moderation_ban_at = now
+        user.updated_at = now
+
+        repo.add_admin_audit_log(
+            admin_uid=None,
+            admin_email=AUTO_SUSPEND_AUDIT_EMAIL,
+            action="user_moderation_ban",
+            target_type="user",
+            target_id=uid,
+            reason=reason,
+            metadata_json={
+                "permanent": permanent,
+                "ban_count": prior_bans + 1,
+                "suspended_until": user.suspended_until,
+                "rejections": recent,
+                "window_seconds": window,
+                "model": model or "",
+                "code": code or "",
+            },
+            created_at=now,
+        )
+        session.flush()
+        return {
+            "banned": True,
+            "permanent": permanent,
+            "until": user.suspended_until,
+            "banCount": prior_bans + 1,
+            "reason": reason,
         }
 
 
@@ -2126,6 +2322,8 @@ def _user_dict_from_model(user: Any) -> dict[str, Any]:
         "lastSeenAt": user.last_seen_at,
         "isSuspended": bool(user.is_suspended),
         "suspensionReason": user.suspension_reason or "",
+        "suspendedUntil": getattr(user, "suspended_until", None),
+        "moderationBanCount": int(getattr(user, "moderation_ban_count", 0) or 0),
         "isDeactivated": bool(user.is_deactivated),
         "deactivatedAt": user.deactivated_at,
         "deactivationReason": user.deactivation_reason or "",

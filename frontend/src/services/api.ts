@@ -32,10 +32,35 @@ import {
   UploadedImageResult,
 } from '../types';
 import { auth } from '../lib/firebase';
+import { signOutUser } from '../lib/auth';
 import { getAdminCsrfToken, isAdminHost } from '../lib/admin';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api';
 const NETWORK_ERROR_MESSAGE = 'Connection interrupted. Check your internet connection and try again.';
+
+// Sentinel message + typed error for requests rejected by the content-moderation
+// gate (HTTP 403 with detail.error.code === 'CONTENT_BLOCKED'). The UI special-cases
+// this to show a distinct warning with a link to the content policy, leaking no category.
+export const CONTENT_BLOCKED_MESSAGE = 'Content blocked by safety filters.';
+
+export class ContentBlockedError extends Error {
+  readonly code = 'CONTENT_BLOCKED';
+  constructor(message: string = CONTENT_BLOCKED_MESSAGE) {
+    super(message);
+    this.name = 'ContentBlockedError';
+  }
+}
+
+export function isContentBlockedError(error: unknown): boolean {
+  return error instanceof ContentBlockedError;
+}
+
+// Sentinel for requests blocked because the moderation backend was unreachable
+// (HTTP 503 detail.error.code === 'MODERATION_UNAVAILABLE'). This is NOT a user
+// violation — show a neutral, transient "try again" message, never the
+// content-policy warning, and it never counts toward an account ban.
+export const MODERATION_UNAVAILABLE_MESSAGE =
+  'Safety checks are temporarily unavailable, so this request could not be processed. No credits were charged — please try again in a moment.';
 
 // Create axios instance with default headers
 const client = axios.create({
@@ -73,6 +98,8 @@ function extractErrorMessage(error: unknown): string | undefined {
   }
 
   const payload = error.response?.data;
+  if (payload?.detail?.error?.code === 'CONTENT_BLOCKED') return CONTENT_BLOCKED_MESSAGE;
+  if (payload?.detail?.error?.code === 'MODERATION_UNAVAILABLE') return MODERATION_UNAVAILABLE_MESSAGE;
   if (typeof payload?.detail === 'string') return payload.detail;
   if (typeof payload?.message === 'string') return payload.message;
   if (typeof payload?.error === 'string') return payload.error;
@@ -81,6 +108,12 @@ function extractErrorMessage(error: unknown): string | undefined {
 }
 
 function normalizeApiError(error: unknown): Error {
+  if (
+    axios.isAxiosError(error) &&
+    error.response?.data?.detail?.error?.code === 'CONTENT_BLOCKED'
+  ) {
+    return new ContentBlockedError();
+  }
   const detail = extractErrorMessage(error);
   if (detail) return new Error(detail);
   if (error instanceof TypeError) return new Error(NETWORK_ERROR_MESSAGE);
@@ -88,9 +121,46 @@ function normalizeApiError(error: unknown): Error {
   return new Error('Request failed. Please try again.');
 }
 
+// A suspended/deactivated account gets a 403 with a plain-string `detail` from the
+// auth dependency (and from the moderation auto-ban response). Detect it globally so
+// the user is ejected to sign-in the instant any request comes back inactive — no
+// page refresh required — instead of lingering on a now-locked page.
+function detectInactiveAccount(error: unknown): 'suspended' | 'deactivated' | null {
+  if (!axios.isAxiosError(error) || error.response?.status !== 403) return null;
+  const detail = (error.response?.data as { detail?: unknown } | undefined)?.detail;
+  const message =
+    typeof detail === 'string'
+      ? detail
+      : detail && typeof detail === 'object' && typeof (detail as { message?: unknown }).message === 'string'
+        ? (detail as { message: string }).message
+        : '';
+  const lower = message.toLowerCase();
+  if (lower.includes('deactivated')) return 'deactivated';
+  if (lower.includes('suspended')) return 'suspended';
+  return null;
+}
+
+let inactiveRedirectInFlight = false;
+function ejectInactiveAccount(reason: 'suspended' | 'deactivated') {
+  if (typeof window === 'undefined' || inactiveRedirectInFlight) return;
+  const path = window.location.pathname;
+  // /auth would loop; /credits keeps its own in-app suspension lock (code redemption).
+  if (path.startsWith('/auth') || path.startsWith('/credits')) return;
+  inactiveRedirectInFlight = true;
+  void signOutUser()
+    .catch(() => undefined)
+    .finally(() => {
+      window.location.replace(`/auth?reason=${reason}`);
+    });
+}
+
 client.interceptors.response.use(
   (response) => response,
-  (error) => Promise.reject(normalizeApiError(error)),
+  (error) => {
+    const inactive = detectInactiveAccount(error);
+    if (inactive) ejectInactiveAccount(inactive);
+    return Promise.reject(normalizeApiError(error));
+  },
 );
 
 function shouldLogApiError(error: unknown): boolean {
