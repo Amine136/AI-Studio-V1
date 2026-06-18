@@ -154,6 +154,7 @@ function LandingContent() {
           <div className="absolute bottom-[-5%] left-[-5%] h-[400px] w-[400px] rounded-full bg-[#d0bcff]/10 blur-[100px]" />
         </div>
         <div className="relative z-10 mx-auto max-w-4xl text-center animate-fade-in-up stagger-children">
+          <p className="mb-4 text-sm font-bold tracking-widest text-[#adc6ff] uppercase">{t("The Premier Tunisian AI Studio")}</p>
           <h1 className="font-headline text-[2.45rem] font-bold leading-[1.04] tracking-tight text-[#dce1fb] sm:text-5xl md:text-7xl lg:text-8xl">
             {t("Vibe at the speed of")}{" "}
             <span className="bg-gradient-to-r from-[#adc6ff] to-[#d0bcff] bg-clip-text text-transparent">{t("thought.")}</span>
@@ -483,9 +484,9 @@ function LandingContent() {
       <footer className="w-full border-t border-slate-800/30 bg-[#0c1324] px-4 py-12 sm:px-6 sm:py-16 lg:px-12">
         <div className="mx-auto flex max-w-[1600px] flex-col items-center justify-between gap-8 md:flex-row">
           <div className="flex flex-col items-center gap-2 md:items-start">
-            <div className="font-headline text-lg font-bold text-blue-100">Vibecraft</div>
+            <div className="font-headline text-lg font-bold text-blue-100">{t("Vibecraft Tunisian AI Studio")}</div>
             <p className="text-center font-body text-xs uppercase tracking-widest text-slate-500 md:text-left">
-              &copy; {new Date().getFullYear()} Vibecraft AI Studio. All rights reserved.
+              &copy; {new Date().getFullYear()} {t("Vibecraft AI Tunis. The premier Tunisian AI studio. All rights reserved.")}
             </p>
           </div>
           <div className="flex flex-wrap justify-center gap-x-6 gap-y-4 md:gap-12">
