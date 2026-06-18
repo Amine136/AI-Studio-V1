@@ -227,6 +227,42 @@ def analyze_intent(state: StudioState) -> StudioState:
         except Exception as exc:
             last_error = exc
             logger.warning(f"   ├─ ⚠️ Analyze model failed: {system_llm_model}: {exc}")
+            if isinstance(exc, ApiKeyManagerProxyError) and exc.error_type == "content_blocked":
+                logger.error("   └─ ❌ Moderation rejected analyze intent request")
+                owner_uid = str(state.get("owner_uid") or "")
+                if owner_uid:
+                    from app.services.security_backend import record_moderation_rejection
+                    record_moderation_rejection(owner_uid, system_llm_model, exc.code, moderation=getattr(exc, "moderation", None))
+                return {
+                    "status": "error",
+                    "failure_reason": "content_blocked",
+                    "error_message": "CONTENT_BLOCKED",
+                    "final_response": {
+                        "status": "error",
+                        "meta": {
+                            "failure_reason": "content_blocked",
+                            "error_message": "CONTENT_BLOCKED",
+                            "provider_error": exc.to_metadata(),
+                        },
+                    },
+                }
+            if isinstance(exc, ApiKeyManagerProxyError) and exc.error_type == "moderation_unavailable":
+                # Moderation backend unreachable → blocked defensively (fail-closed),
+                # NOT a user violation: no ban is recorded and the message is neutral.
+                logger.error("   └─ ⚠️ Moderation unavailable for analyze intent (not a violation)")
+                return {
+                    "status": "error",
+                    "failure_reason": "moderation_unavailable",
+                    "error_message": "MODERATION_UNAVAILABLE",
+                    "final_response": {
+                        "status": "error",
+                        "meta": {
+                            "failure_reason": "moderation_unavailable",
+                            "error_message": "MODERATION_UNAVAILABLE",
+                            "provider_error": exc.to_metadata(),
+                        },
+                    },
+                }
 
     if extracted_data is None:
         logger.error("   └─ ❌ All analyze models failed")
@@ -493,6 +529,26 @@ def execute_generation(state: StudioState) -> StudioState:
             }
         except Exception as e:
             error_msg = str(e)
+            if isinstance(e, ApiKeyManagerProxyError) and e.error_type == "content_blocked":
+                if owner_uid:
+                    from app.services.security_backend import record_moderation_rejection
+                    record_moderation_rejection(owner_uid, model_name, e.code, moderation=getattr(e, "moderation", None))
+                return {
+                    "generated_assets": {},
+                    "total_cost": 0,
+                    "status": "error",
+                    "error_message": "CONTENT_BLOCKED",
+                    "failure_reason": "content_blocked",
+                }
+            if isinstance(e, ApiKeyManagerProxyError) and e.error_type == "moderation_unavailable":
+                # Moderation unreachable → defensive block, not a user violation: no ban.
+                return {
+                    "generated_assets": {},
+                    "total_cost": 0,
+                    "status": "error",
+                    "error_message": "MODERATION_UNAVAILABLE",
+                    "failure_reason": "moderation_unavailable",
+                }
             failures.append(f"multimodal bundle failed: {error_msg}")
             logger.error(f"   │  └─ ❌ Generation failed: {error_msg}")
             traceback.print_exc()
@@ -582,6 +638,26 @@ def execute_generation(state: StudioState) -> StudioState:
             
         except Exception as e:
             error_msg = str(e)
+            if isinstance(e, ApiKeyManagerProxyError) and e.error_type == "content_blocked":
+                if owner_uid:
+                    from app.services.security_backend import record_moderation_rejection
+                    record_moderation_rejection(owner_uid, model_name, e.code, moderation=getattr(e, "moderation", None))
+                return {
+                    "generated_assets": {},
+                    "total_cost": 0,
+                    "status": "error",
+                    "error_message": "CONTENT_BLOCKED",
+                    "failure_reason": "content_blocked",
+                }
+            if isinstance(e, ApiKeyManagerProxyError) and e.error_type == "moderation_unavailable":
+                # Moderation unreachable → defensive block, not a user violation: no ban.
+                return {
+                    "generated_assets": {},
+                    "total_cost": 0,
+                    "status": "error",
+                    "error_message": "MODERATION_UNAVAILABLE",
+                    "failure_reason": "moderation_unavailable",
+                }
             failures.append(f"{task_type} generation failed: {error_msg}")
             logger.error(f"   │  └─ ❌ Generation failed: {error_msg}")
             traceback.print_exc()

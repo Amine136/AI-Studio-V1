@@ -27,6 +27,7 @@ class ApiKeyManagerProxyError(RuntimeError):
         provider: str | None = None,
         upstream_status: int | None = None,
         http_status: int | None = None,
+        moderation: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(message)
         self.error_type = error_type
@@ -36,6 +37,9 @@ class ApiKeyManagerProxyError(RuntimeError):
         self.provider = provider
         self.upstream_status = upstream_status
         self.http_status = http_status
+        # Server-to-server moderation cause ({categories, scores}); intentionally NOT
+        # included in to_metadata() so it never reaches the browser.
+        self.moderation = moderation
 
     def to_metadata(self) -> dict[str, Any]:
         return {
@@ -621,6 +625,8 @@ def _build_proxy_error(response: httpx.Response, payload: dict[str, Any] | None 
         upstream_status = int(upstream_status) if upstream_status is not None else None
     except (TypeError, ValueError):
         upstream_status = None
+    moderation_cause = error_payload.get("moderation") if isinstance(error_payload, dict) else None
+    moderation_cause = moderation_cause if isinstance(moderation_cause, dict) else None
 
     return ApiKeyManagerProxyError(
         error_type=error_type,
@@ -630,6 +636,7 @@ def _build_proxy_error(response: httpx.Response, payload: dict[str, Any] | None 
         provider=str(provider) if provider else None,
         upstream_status=upstream_status,
         http_status=int(response.status_code),
+        moderation=moderation_cause,
     )
 
 

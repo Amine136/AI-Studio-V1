@@ -5,7 +5,7 @@ import { useState, useEffect, useRef, useMemo, useCallback, type ChangeEvent, ty
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { api } from "../../../services/api";
+import { api, isContentBlockedError } from "../../../services/api";
 import { GenerateRequest, GenerationMeta, UISchemaItem, OutputType, ModelCatalogEntry, PlainChatParameterSchemaEntry, SystemConfig } from "../../../types";
 import { useAuth } from "../../../context/AuthContext";
 import { useLanguage } from "../../../context/LanguageContext";
@@ -536,6 +536,7 @@ export default function Home() {
   // History State
   const [accountReady, setAccountReady] = useState(false);
   const [suspension, setSuspension] = useState<SuspensionState | null>(null);
+  const [blockedNotice, setBlockedNotice] = useState(false);
 
   // --- Toast helper ---
   const showToast = (message: string, type: "error" | "success" = "error") => {
@@ -555,6 +556,14 @@ export default function Home() {
     const nextSuspension = parseSuspensionState(error.message);
     if (!nextSuspension) return false;
     setSuspension(nextSuspension);
+    setStep("INPUT");
+    setLoading(false);
+    return true;
+  }, []);
+
+  const captureContentBlocked = useCallback((error: unknown): boolean => {
+    if (!isContentBlockedError(error)) return false;
+    setBlockedNotice(true);
     setStep("INPUT");
     setLoading(false);
     return true;
@@ -1145,6 +1154,7 @@ export default function Home() {
     const effectiveText = (ideaOverride ?? userText).trim();
     if (!effectiveText) return;
 
+    setBlockedNotice(false);
     setLoading(true);
     try {
       const { imageModels, captionModels } = await refreshConfig();
@@ -1192,6 +1202,9 @@ export default function Home() {
       if (captureSuspension(error)) {
         return;
       }
+      if (captureContentBlocked(error)) {
+        return;
+      }
       showToast(getErrorMessage(error, t("Error contacting backend. Please try again.")));
     } finally {
       setLoading(false);
@@ -1199,6 +1212,7 @@ export default function Home() {
   };
 
   const handleGenerate = async () => {
+    setBlockedNotice(false);
     setLoading(true);
     try {
       const { imageModels, captionModels } = await refreshConfig();
@@ -1273,6 +1287,9 @@ export default function Home() {
       }
     } catch (error) {
       if (captureSuspension(error)) {
+        return;
+      }
+      if (captureContentBlocked(error)) {
         return;
       }
       showToast(getErrorMessage(error, t("Generation failed. Please try again.")));
@@ -1766,6 +1783,24 @@ export default function Home() {
             transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
             className="mx-auto flex w-full max-w-5xl flex-col flex-grow"
           >
+            {blockedNotice && (
+              <div className="mb-4 flex items-start justify-between gap-3 rounded-xl border border-amber-500/30 bg-amber-500/[0.08] px-4 py-3 text-[13px] text-amber-200/90">
+                <p className="leading-6">
+                  {t("This request was blocked by our content safety filters and was not charged. Repeated violations may lead to your account being suspended.")}{" "}
+                  <Link href="/policy" className="font-medium underline transition hover:text-amber-100">
+                    {t("Review our content policy.")}
+                  </Link>
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setBlockedNotice(false)}
+                  className="shrink-0 text-amber-200/60 transition hover:text-amber-100"
+                  aria-label={t("Dismiss")}
+                >
+                  <span className="material-symbols-outlined text-base">close</span>
+                </button>
+              </div>
+            )}
             <div className="mb-4 lg:hidden">
               <div className="flex items-center justify-between">
                 <p className="font-headline text-[10px] font-bold uppercase tracking-[0.24em] text-primary">{t("Step 1 of 3")}</p>

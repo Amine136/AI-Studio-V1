@@ -1,5 +1,19 @@
 export const translations = {
   en: {
+    // Plain-chat rate-limit / moderation-unavailable warnings
+    "Safety checks are temporarily unavailable, so this request could not be processed. No credits were charged — please try again in a moment.": "Safety checks are temporarily unavailable, so this request could not be processed. No credits were charged — please try again in a moment.",
+    "You reached the current early-stage Plain Chat limit of {count} messages per {window}. We are still in test mode and will make these limits more flexible later.": "You reached the current early-stage Plain Chat limit of {count} messages per {window}. We are still in test mode and will make these limits more flexible later.",
+    "1 minute": "1 minute",
+    "{count} minutes": "{count} minutes",
+
+    // Auth / suspension messages
+    "Your account is suspended:": "Your account is suspended:",
+    "Your account has been suspended. Access to Vibecraft is currently unavailable.": "Your account has been suspended. Access to Vibecraft is currently unavailable.",
+    "Repeated requests violating our Terms of Use": "Repeated requests violating our Terms of Use",
+    "Account permanently suspended for a severe violation of our Terms of Use.": "Account permanently suspended for a severe violation of our Terms of Use.",
+    "Your suspension ends on": "Your suspension ends on",
+    "You need an active Vibecraft account to access that page.": "You need an active Vibecraft account to access that page.",
+
 
     // Settings Page
     "Not available": "Not available",
@@ -507,10 +521,28 @@ export const translations = {
     "Error contacting backend. Please try again.": "Error contacting backend. Please try again.",
     "This generation request could not be processed. No credits were charged.": "This generation request could not be processed. No credits were charged.",
     "This generation request could not be completed. Please try again.": "This generation request could not be completed. Please try again.",
+    "Content blocked by safety filters.": "Content blocked by safety filters.",
+    "This request was blocked by our content safety filters and was not charged. Repeated violations may lead to your account being suspended.": "This request was blocked by our content safety filters and was not charged. Repeated violations may lead to your account being suspended.",
+    "Review our content policy.": "Review our content policy.",
+    "Dismiss": "Dismiss",
     "Generation failed. Please try again.": "Generation failed. Please try again.",
     "Close workflow drawer": "Close workflow drawer"
   },
   fr: {
+    // Plain-chat rate-limit / moderation-unavailable warnings
+    "Safety checks are temporarily unavailable, so this request could not be processed. No credits were charged — please try again in a moment.": "Les vérifications de sécurité sont temporairement indisponibles ; cette requête n'a donc pas pu être traitée. Aucun crédit n'a été facturé — veuillez réessayer dans un instant.",
+    "You reached the current early-stage Plain Chat limit of {count} messages per {window}. We are still in test mode and will make these limits more flexible later.": "Vous avez atteint la limite actuelle (phase de test) du Chat Simple : {count} messages par {window}. Nous sommes encore en mode test et assouplirons ces limites plus tard.",
+    "1 minute": "1 minute",
+    "{count} minutes": "{count} minutes",
+
+    // Auth / suspension messages
+    "Your account is suspended:": "Votre compte est suspendu :",
+    "Your account has been suspended. Access to Vibecraft is currently unavailable.": "Votre compte a été suspendu. L'accès à Vibecraft est actuellement indisponible.",
+    "Repeated requests violating our Terms of Use": "Demandes répétées enfreignant nos Conditions d'utilisation",
+    "Account permanently suspended for a severe violation of our Terms of Use.": "Compte suspendu définitivement pour une violation grave de nos Conditions d'utilisation.",
+    "Your suspension ends on": "Votre suspension prend fin le",
+    "You need an active Vibecraft account to access that page.": "Vous avez besoin d'un compte Vibecraft actif pour accéder à cette page.",
+
 
     // Settings Page
     "Not available": "Indisponible",
@@ -1018,6 +1050,10 @@ export const translations = {
     "Error contacting backend. Please try again.": "Erreur de connexion au backend. Veuillez réessayer.",
     "This generation request could not be processed. No credits were charged.": "Cette demande de génération n'a pas pu être traitée. Aucun crédit n'a été facturé.",
     "This generation request could not be completed. Please try again.": "Cette demande de génération n'a pas pu être complétée. Veuillez réessayer.",
+    "Content blocked by safety filters.": "Contenu bloqué par les filtres de sécurité.",
+    "This request was blocked by our content safety filters and was not charged. Repeated violations may lead to your account being suspended.": "Cette requête a été bloquée par nos filtres de sécurité du contenu et n'a pas été facturée. Toute récidive peut entraîner la suspension de votre compte.",
+    "Review our content policy.": "Consultez notre politique de contenu.",
+    "Dismiss": "Fermer",
     "Generation failed. Please try again.": "La génération a échoué. Veuillez réessayer.",
     "Close workflow drawer": "Fermer le tiroir du workflow",
 
@@ -1133,6 +1169,20 @@ export const translations = {
     "Heavy (6+ for emphasis)": "Intensif (6+ pour l'emphase)"
   },
   ar: {
+    // Plain-chat rate-limit / moderation-unavailable warnings
+    "Safety checks are temporarily unavailable, so this request could not be processed. No credits were charged — please try again in a moment.": "فحوصات الأمان غير متاحة مؤقتًا، لذلك تعذّرت معالجة هذا الطلب. لم يُخصم أي رصيد — يُرجى المحاولة مرة أخرى بعد قليل.",
+    "You reached the current early-stage Plain Chat limit of {count} messages per {window}. We are still in test mode and will make these limits more flexible later.": "لقد وصلت إلى الحد الحالي للدردشة النصية في المرحلة التجريبية: {count} رسالة لكل {window}. ما زلنا في الوضع التجريبي وسنجعل هذه الحدود أكثر مرونة لاحقًا.",
+    "1 minute": "دقيقة واحدة",
+    "{count} minutes": "{count} دقائق",
+
+    // Auth / suspension messages
+    "Your account is suspended:": "تم تعليق حسابك:",
+    "Your account has been suspended. Access to Vibecraft is currently unavailable.": "تم تعليق حسابك. الوصول إلى Vibecraft غير متاح حاليًا.",
+    "Repeated requests violating our Terms of Use": "طلبات متكررة تنتهك شروط الاستخدام الخاصة بنا",
+    "Account permanently suspended for a severe violation of our Terms of Use.": "تم تعليق الحساب نهائيًا بسبب انتهاك جسيم لشروط الاستخدام الخاصة بنا.",
+    "Your suspension ends on": "ينتهي تعليق حسابك في",
+    "You need an active Vibecraft account to access that page.": "تحتاج إلى حساب Vibecraft نشط للوصول إلى هذه الصفحة.",
+
 
     // Settings Page
     "Not available": "غير متوفر",
@@ -1498,6 +1548,10 @@ export const translations = {
     "Continue": "متابعة",
     "Reset": "إعادة تعيين",
     "This model does not expose editable chat parameters yet.": "لا يوفّر هذا النموذج معاملات محادثة قابلة للتعديل بعد.",
+    "Content blocked by safety filters.": "تم حظر المحتوى بواسطة فلاتر الأمان.",
+    "This request was blocked by our content safety filters and was not charged. Repeated violations may lead to your account being suspended.": "تم حظر هذا الطلب بواسطة فلاتر أمان المحتوى لدينا ولم يتم احتساب أي رسوم عليه. قد يؤدي تكرار المخالفات إلى تعليق حسابك.",
+    "Review our content policy.": "راجع سياسة المحتوى الخاصة بنا.",
+    "Dismiss": "إغلاق",
     "Enabled": "مُفعّل",
     "Disabled": "مُعطّل",
     "None": "لا شيء",

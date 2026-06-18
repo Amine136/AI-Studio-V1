@@ -10,7 +10,7 @@ from sqlalchemy import case, delete, func, select
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from app.db.models import AdminAccount, AdminAuditLog, AdminSession, AnalyzeSession, ChatConversation, ChatMessage, CreditCode, CreditCodeClaim, CreditLedgerEntry, CreditLot, CreditLotAllocation, DashboardNewsItem, DeactivatedEmail, GenerationJob, HistoryEntry, RateLimitBucket, User, UserFile
+from app.db.models import AdminAccount, AdminAuditLog, AdminSession, AnalyzeSession, ChatConversation, ChatMessage, CreditCode, CreditCodeClaim, CreditLedgerEntry, CreditLot, CreditLotAllocation, DashboardNewsItem, DeactivatedEmail, GenerationJob, HistoryEntry, ModerationRejection, RateLimitBucket, User, UserFile
 
 USERNAME_ALLOWED_RE = re.compile(r"[^a-z0-9._-]+")
 
@@ -358,6 +358,39 @@ class SecurityRepository:
         return self.session.execute(
             select(User).where(User.uid == uid).with_for_update()
         ).scalar_one_or_none()
+
+    def add_moderation_rejection(
+        self,
+        *,
+        uid: str,
+        model: str | None,
+        code: str | None,
+        created_at: int,
+        rejection_id: str | None = None,
+    ) -> ModerationRejection:
+        entry = ModerationRejection(
+            id=rejection_id or str(uuid.uuid4()),
+            uid=uid,
+            model=(model or "")[:255],
+            code=(code or "")[:64],
+            created_at=created_at,
+        )
+        self.session.add(entry)
+        self.session.flush()
+        return entry
+
+    def count_moderation_rejections_since(self, uid: str, since_ts: int) -> int:
+        return int(
+            self.session.execute(
+                select(func.count())
+                .select_from(ModerationRejection)
+                .where(
+                    ModerationRejection.uid == uid,
+                    ModerationRejection.created_at >= since_ts,
+                )
+            ).scalar_one()
+            or 0
+        )
 
     def create_user_file(
         self,

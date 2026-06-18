@@ -31,6 +31,9 @@ class User(Base):
     is_deactivated: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     deactivated_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     deactivation_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    suspended_until: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    moderation_ban_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    last_moderation_ban_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
 
     created_codes: Mapped[list["CreditCode"]] = relationship(
         back_populates="created_by_user",
@@ -51,12 +54,29 @@ class User(Base):
     chat_messages: Mapped[list["ChatMessage"]] = relationship(back_populates="user")
     files: Mapped[list["UserFile"]] = relationship(back_populates="user")
     admin_audit_logs: Mapped[list["AdminAuditLog"]] = relationship(back_populates="admin_user")
+    moderation_rejections: Mapped[list["ModerationRejection"]] = relationship(back_populates="user")
 
     __table_args__ = (
         CheckConstraint("credits_minor >= 0", name="ck_users_credits_minor_nonnegative"),
         CheckConstraint("reserved_credits_minor >= 0", name="ck_users_reserved_credits_minor_nonnegative"),
         Index("ix_users_email", "email"),
         Index("ix_users_last_seen_at", "last_seen_at"),
+    )
+
+
+class ModerationRejection(Base):
+    __tablename__ = "moderation_rejections"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    uid: Mapped[str] = mapped_column(String(128), ForeignKey("users.uid", ondelete="CASCADE"), nullable=False)
+    model: Mapped[str] = mapped_column(String(255), default="", nullable=False)
+    code: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+    user: Mapped["User"] = relationship(back_populates="moderation_rejections")
+
+    __table_args__ = (
+        Index("ix_moderation_rejections_uid_created_at", "uid", "created_at"),
     )
 
 

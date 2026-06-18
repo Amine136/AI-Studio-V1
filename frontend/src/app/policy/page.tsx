@@ -1,7 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { useLanguage } from "@/context/LanguageContext";
+
+const chrome = {
+  en: { home: "Home", policy: "Policy", privacy: "Privacy", toc: "Table of Contents", ctaTitle: "Have questions about this policy?", ctaBtn: "Contact Support", rights: "All rights reserved.", support: "Support" },
+  fr: { home: "Accueil", policy: "Politique", privacy: "Confidentialité", toc: "Table des matières", ctaTitle: "Des questions sur cette politique ?", ctaBtn: "Contacter le support", rights: "Tous droits réservés.", support: "Support" },
+  ar: { home: "الرئيسية", policy: "السياسة", privacy: "الخصوصية", toc: "جدول المحتويات", ctaTitle: "هل لديك أسئلة حول هذه السياسة؟", ctaBtn: "تواصل مع الدعم", rights: "جميع الحقوق محفوظة.", support: "الدعم" },
+} as const;
 
 const policyLocales = {
   en: {
@@ -12,7 +19,7 @@ const policyLocales = {
     },
     effective: {
       label: "Effective",
-      date: "April 24, 2026",
+      date: "June 18, 2026",
       desc: "This policy applies to the current Vibecraft production workflow unless replaced by a later revision.",
     },
     support: {
@@ -55,6 +62,8 @@ const policyLocales = {
           "If a request succeeds and provider cost is already incurred, the delivered result may still be charged even if the final account balance becomes slightly negative.",
           "Standard Vibecraft credits do not expire unless a specific promotional credit explicitly says otherwise.",
           "Credits are non-transferable and are not intended to be traded, resold, or pooled across accounts.",
+          "Credit purchases are billed in Tunisian Dinar (TND) through the local payment gateways offered in the product.",
+          "Refunds are handled in platform credits, not in local currency: the cost of a request is reserved before it runs, and if the result is not delivered the reserved credits are automatically returned to your balance — no charge is applied and nothing is refunded to your original payment method.",
         ],
       },
       {
@@ -78,6 +87,17 @@ const policyLocales = {
           "No attempts to abuse the platform, bypass moderation, or attack providers.",
           "Do not upload content you do not have the right to use, process, transform, or generate from.",
           "Do not use Vibecraft for spam, credential attacks, provider probing, scraping, or automated abuse.",
+        ],
+      },
+      {
+        title: "Automated Content Moderation",
+        summary: "How requests are screened for policy-violating content before processing, and the consequences of violations.",
+        items: [
+          "Every request is screened by automated content moderation before it is processed.",
+          "Prohibited content includes, without limitation: sexual content involving minors, hateful or harassing content, violent or graphic content, self-harm, as well as any attempt to bypass moderation or abuse provider accounts.",
+          "Requests that violate this policy are blocked and are not charged.",
+          "Violations of this policy may result in temporary or permanent suspension of your account, depending on the nature and severity of the violation.",
+          "Moderation is automated and may occasionally make mistakes; if you believe a request was blocked in error, contact Vibecraft Support at ouni@novanode.tn.",
         ],
       },
       {
@@ -108,7 +128,7 @@ const policyLocales = {
     },
     effective: {
       label: "Date d'effet",
-      date: "24 Avril 2026",
+      date: "18 Juin 2026",
       desc: "Cette politique s'applique au workflow de production actuel de Vibecraft à moins d'être remplacée par une révision ultérieure.",
     },
     support: {
@@ -151,6 +171,8 @@ const policyLocales = {
           "Si une demande réussit et qu'un coût fournisseur est déjà engagé, le résultat livré reste facturable même si le solde final du compte devient légèrement négatif.",
           "Les crédits Vibecraft standard n'expirent pas, à moins qu'un crédit promotionnel spécifique ne dise explicitement le contraire.",
           "Les crédits sont non transférables et ne sont pas destinés à être échangés, revendus ou mis en commun entre les comptes.",
+          "Les achats de crédits sont facturés en dinar tunisien (TND) via les passerelles de paiement locales proposées dans le produit.",
+          "Les remboursements se font en crédits de la plateforme, et non en monnaie locale : le coût d'une requête est réservé avant son exécution et, si le résultat n'est pas livré, les crédits réservés sont automatiquement restitués à votre solde — aucun montant n'est facturé et rien n'est remboursé sur votre moyen de paiement d'origine.",
         ],
       },
       {
@@ -174,6 +196,17 @@ const policyLocales = {
           "Aucune tentative d'abuser de la plateforme, de contourner la modération ou d'attaquer les fournisseurs.",
           "Ne téléchargez pas de contenu que vous n'avez pas le droit d'utiliser, de traiter, de transformer ou à partir duquel générer.",
           "N'utilisez pas Vibecraft pour le spam, les attaques par force brute sur les identifiants, le sondage de fournisseurs, le web scraping ou les abus automatisés.",
+        ],
+      },
+      {
+        title: "Modération Automatique du Contenu",
+        summary: "Comment les requêtes sont analysées pour détecter tout contenu interdit avant traitement, et les conséquences en cas de violation.",
+        items: [
+          "Chaque requête est analysée par une modération de contenu automatisée avant d'être traitée.",
+          "Le contenu interdit comprend, sans s'y limiter : le contenu sexuel impliquant des mineurs, le contenu haineux ou de harcèlement, le contenu violent ou explicite, l'automutilation, ainsi que toute tentative de contourner la modération ou d'abuser des comptes des fournisseurs.",
+          "Les requêtes qui violent cette politique sont bloquées et ne sont pas facturées.",
+          "Toute violation de cette politique peut entraîner une suspension temporaire ou permanente de votre compte, selon la nature et la gravité de la violation.",
+          "La modération est automatisée et peut parfois commettre des erreurs ; si vous pensez qu'une requête a été bloquée par erreur, contactez le support de Vibecraft à ouni@novanode.tn.",
         ],
       },
       {
@@ -204,7 +237,7 @@ const policyLocales = {
     },
     effective: {
       label: "تاريخ السريان",
-      date: "24 أبريل 2026",
+      date: "18 يونيو 2026",
       desc: "تنطبق هذه السياسة على سير عمل إنتاج Vibecraft الحالي ما لم يتم استبدالها بمراجعة لاحقة.",
     },
     support: {
@@ -247,6 +280,8 @@ const policyLocales = {
           "إذا نجح الطلب وتم تكبد تكلفة المزود بالفعل، فقد تظل النتيجة المسلمة مشحونة حتى إذا أصبح الرصيد النهائي للحساب سالبًا بشكل طفيف.",
           "لا تنتهي صلاحية أرصدة Vibecraft القياسية ما لم ينص رصيد ترويجي محدد صراحة على خلاف ذلك.",
           "الأرصدة غير قابلة للتحويل ولا يُقصد تداولها أو إعادة بيعها أو تجميعها عبر الحسابات.",
+          "تتم فوترة شراء الأرصدة بالدينار التونسي (TND) عبر بوابات الدفع المحلية المتوفرة داخل المنتج.",
+          "تتم عمليات الاسترداد بأرصدة المنصة وليس بالعملة المحلية: يتم حجز تكلفة الطلب قبل تنفيذه، وإذا لم تُسلَّم النتيجة تُعاد الأرصدة المحجوزة تلقائيًا إلى رصيدك — دون احتساب أي رسوم ودون رد أي مبلغ إلى وسيلة الدفع الأصلية.",
         ],
       },
       {
@@ -273,6 +308,17 @@ const policyLocales = {
         ],
       },
       {
+        title: "الإشراف التلقائي على المحتوى",
+        summary: "كيفية فحص الطلبات بحثًا عن محتوى مخالف للسياسة قبل معالجتها، وعواقب المخالفات.",
+        items: [
+          "تتم مراجعة كل طلب بواسطة نظام إشراف تلقائي على المحتوى قبل معالجته.",
+          "يشمل المحتوى المحظور، على سبيل المثال لا الحصر: المحتوى الجنسي المتعلق بالقاصرين، والمحتوى الذي يحضّ على الكراهية أو التحرش، والمحتوى العنيف أو الصادم، وإيذاء النفس، بالإضافة إلى أي محاولة لتجاوز الإشراف أو إساءة استخدام حسابات المزوّدين.",
+          "يتم حظر الطلبات التي تخالف هذه السياسة ولا يتم احتساب أي رسوم عليها.",
+          "قد تؤدي مخالفة هذه السياسة إلى تعليق حسابك مؤقتًا أو دائمًا، وذلك بحسب طبيعة المخالفة وخطورتها.",
+          "الإشراف تلقائي وقد يرتكب أخطاءً أحيانًا؛ إذا كنت تعتقد أن طلبًا قد حُظر عن طريق الخطأ، فتواصل مع دعم Vibecraft على ouni@novanode.tn.",
+        ],
+      },
+      {
         title: "الإنفاذ والتعليق",
         summary: "ماذا يمكن أن يحدث إذا تم انتهاك هذه القواعد.",
         items: [
@@ -296,103 +342,184 @@ const policyLocales = {
 
 function PolicyContent() {
   const { language, setLanguage } = useLanguage();
-  
-  // Type assertion to ensure language falls back gracefully
+  const [scrolled, setScrolled] = useState(false);
+  const [activeId, setActiveId] = useState("");
+
+  // Language fallback
   const currentLang = (language && policyLocales[language as keyof typeof policyLocales]) ? language as keyof typeof policyLocales : 'en';
   const content = policyLocales[currentLang];
+  const ui = chrome[currentLang];
+  const isRtl = currentLang === 'ar';
+
+  // Scroll spy for the table of contents + sticky-header shadow
+  useEffect(() => {
+    const handler = () => {
+      setScrolled(window.scrollY > 20);
+      const secs = Array.from(document.querySelectorAll<HTMLElement>('section[data-spy]'));
+      let current = "";
+      for (const s of secs) {
+        if (window.scrollY >= s.offsetTop - 150) current = s.id;
+      }
+      setActiveId(current);
+    };
+    handler();
+    window.addEventListener('scroll', handler, { passive: true });
+    return () => window.removeEventListener('scroll', handler);
+  }, [currentLang]);
 
   return (
-    <main className="relative min-h-screen bg-[#070d19] px-4 py-10 sm:px-6 lg:px-8 lg:py-14" dir={currentLang === 'ar' ? 'rtl' : 'ltr'}>
-      <Link href="/" className="absolute top-6 left-6 z-50 flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-[#081121]/80 text-slate-400 backdrop-blur-md transition-all hover:border-blue-500/30 hover:bg-blue-500/10 hover:text-white hover:shadow-[0_0_15px_rgba(59,130,246,0.2)] rtl:left-auto rtl:right-6">
-        <span className="material-symbols-outlined text-[18px]">home</span>
-      </Link>
-      <div className="absolute top-6 right-6 z-50 flex items-center rounded-full border border-white/10 bg-[#081121]/80 p-1 backdrop-blur-md rtl:right-auto rtl:left-6" dir="ltr">
-        {(
-          [
-            { id: "en", label: "EN" },
-            { id: "fr", label: "FR" },
-            { id: "ar", label: "AR" },
-          ] as const
-        ).map((lang) => (
-          <button
-            key={lang.id}
-            onClick={() => setLanguage(lang.id)}
-            className={`relative px-4 py-1.5 text-xs font-bold uppercase tracking-wider transition-all duration-300 ${
-              currentLang === lang.id
-                ? "text-white"
-                : "text-slate-400 hover:text-slate-200"
-            }`}
-          >
-            {currentLang === lang.id && (
-              <span className="absolute inset-0 rounded-full bg-blue-500/20 border border-blue-500/30 shadow-[0_0_15px_rgba(59,130,246,0.2)]" />
-            )}
-            <span className="relative z-10">{lang.label}</span>
-          </button>
-        ))}
-      </div>
+    <div className="vc-policy min-h-screen bg-[#0b1326] text-[#dae2fd] selection:bg-[#57f1db]/30" dir={isRtl ? 'rtl' : 'ltr'}>
+      <style dangerouslySetInnerHTML={{ __html: `
+        @import url('https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+        .vc-policy { font-family: 'Inter', system-ui, sans-serif; scroll-behavior: smooth; }
+        .vc-display { font-family: 'Hanken Grotesk', system-ui, sans-serif; }
+        .vc-mono { font-family: 'JetBrains Mono', monospace; }
+        .vc-policy-content h2 { font-family: 'Hanken Grotesk', sans-serif; font-size: 24px; font-weight: 600; margin-top: 48px; margin-bottom: 20px; color: #57f1db; scroll-margin-top: 120px; }
+        .vc-policy-content p { margin-bottom: 16px; line-height: 1.7; }
+        .vc-policy-content ul { margin-bottom: 24px; padding-left: 1.5rem; }
+        .vc-policy-content li { position: relative; margin-bottom: 12px; list-style: none; line-height: 1.7; color: rgba(218, 226, 253, 0.9); }
+        .vc-policy-content li::before { content: ""; position: absolute; left: -1.5rem; top: 0.7rem; width: 8px; height: 2px; background-color: #57f1db; }
+        [dir="rtl"] .vc-policy-content ul { padding-left: 0; padding-right: 1.5rem; }
+        [dir="rtl"] .vc-policy-content li::before { left: auto; right: -1.5rem; }
+        .vc-glass { background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.06); }
+        .vc-tocnav { border-left: 1px solid rgba(60, 74, 70, 0.35); }
+        [dir="rtl"] .vc-tocnav { border-left: none; border-right: 1px solid rgba(60, 74, 70, 0.35); }
+        .vc-toc-link { display: block; padding-left: 1rem; border-left: 2px solid transparent; transition: color .2s, border-color .2s; color: #9fb0ab; }
+        .vc-toc-link:hover { color: #57f1db; }
+        .vc-toc-link.active { color: #57f1db; border-left-color: #57f1db; }
+        [dir="rtl"] .vc-toc-link { padding-left: 0; padding-right: 1rem; border-left: none; border-right: 2px solid transparent; }
+        [dir="rtl"] .vc-toc-link.active { border-right-color: #57f1db; }
+      ` }} />
 
-      <div className="mx-auto max-w-6xl space-y-8 mt-8">
-        <section className="overflow-hidden rounded-2xl border border-white/8 bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.2),transparent_30%),radial-gradient(circle_at_right,rgba(139,92,246,0.18),transparent_28%),#081121] p-6 shadow-[0_35px_100px_rgba(0,0,0,0.42)] sm:p-8 lg:p-10">
-          <div className="grid gap-8 xl:grid-cols-[1.15fr_0.85fr]">
-            <div>
-              <div className="text-xs uppercase tracking-[0.28em] text-slate-500">{content.header.label}</div>
-              <h1 className="mt-4 max-w-3xl text-2xl font-bold tracking-tight text-white sm:text-3xl">
+      {/* Top navigation */}
+      <header className={`fixed top-0 inset-x-0 z-50 h-20 border-b backdrop-blur-md transition-all duration-300 ${scrolled ? 'bg-[#0b1326]/95 shadow-lg border-[#3c4a46]/40' : 'bg-[#0b1326]/80 border-[#3c4a46]/20'}`}>
+        <div className="flex h-full items-center justify-between max-w-[1280px] mx-auto px-5 lg:px-12">
+          <div className="flex items-center gap-8">
+            <Link href="/" className="vc-display text-2xl font-bold text-[#57f1db] tracking-tight">Vibecraft</Link>
+            <nav className="hidden md:flex gap-6">
+              <Link href="/" className="text-[15px] text-[#bacac5] hover:text-[#57f1db] transition-colors">{ui.home}</Link>
+              <span className="text-[15px] text-[#57f1db] font-semibold border-b-2 border-[#57f1db] pb-1">{ui.policy}</span>
+              <Link href="/privacy" className="text-[15px] text-[#bacac5] hover:text-[#57f1db] transition-colors">{ui.privacy}</Link>
+            </nav>
+          </div>
+          <div className="flex items-center rounded-full border border-white/10 bg-[#060e20]/80 p-1" dir="ltr">
+            {(
+              [
+                { id: "en", label: "EN" },
+                { id: "fr", label: "FR" },
+                { id: "ar", label: "AR" },
+              ] as const
+            ).map((lang) => (
+              <button
+                key={lang.id}
+                onClick={() => setLanguage(lang.id)}
+                className={`relative px-4 py-1.5 text-xs font-bold uppercase tracking-wider transition-all duration-300 ${currentLang === lang.id ? 'text-[#0b1326]' : 'text-[#bacac5] hover:text-[#dae2fd]'}`}
+              >
+                {currentLang === lang.id && <span className="absolute inset-0 rounded-full bg-[#57f1db]" />}
+                <span className="relative z-10">{lang.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </header>
+
+      {/* Body */}
+      <main className="pt-32 pb-24 max-w-[1280px] mx-auto px-5 lg:px-12">
+        <div className="flex flex-col md:flex-row gap-10">
+          {/* Sidebar table of contents */}
+          <aside className="hidden md:block w-64 shrink-0">
+            <div className="sticky top-28 space-y-4">
+              <h3 className="vc-mono text-[12px] uppercase tracking-widest text-[#bacac5]/70">{ui.toc}</h3>
+              <nav className="vc-tocnav flex flex-col gap-3">
+                {content.sections.map((section, i) => (
+                  <a
+                    key={i}
+                    href={`#vc-sec-${i}`}
+                    className={`vc-toc-link text-[15px] ${activeId === `vc-sec-${i}` ? 'active' : ''}`}
+                  >
+                    {section.title}
+                  </a>
+                ))}
+              </nav>
+              <div className="vc-glass rounded-xl p-4 mt-6">
+                <span className="vc-mono text-[10px] uppercase tracking-tight text-[#62fae3] block mb-1">{content.effective.label}</span>
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-[#57f1db] animate-pulse" />
+                  <span className="text-[15px] font-medium text-[#dae2fd]">{content.effective.date}</span>
+                </div>
+              </div>
+            </div>
+          </aside>
+
+          {/* Main content */}
+          <div className="flex-1 max-w-3xl">
+            <div className="mb-16">
+              <div className="flex items-center gap-3 mb-4">
+                <span className="vc-mono bg-[#57f1db]/10 text-[#57f1db] text-[12px] px-3 py-1 rounded-full border border-[#57f1db]/20 uppercase tracking-wider">
+                  {content.header.label}
+                </span>
+              </div>
+              <h1 className="vc-display text-3xl sm:text-[44px] sm:leading-[52px] font-bold tracking-tight text-[#dae2fd] mb-5">
                 {content.header.title}
               </h1>
-              <p className="mt-5 max-w-2xl text-base leading-8 text-slate-300 sm:text-lg">
-                {content.header.desc}
-              </p>
+              <p className="text-[18px] leading-relaxed text-[#bacac5]">{content.header.desc}</p>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
-              <div className="rounded-xl border border-blue-500/20 bg-blue-500/[0.08] p-5">
-                <div className="text-xs uppercase tracking-[0.22em] text-blue-200/70">{content.effective.label}</div>
-                <div className="mt-2 text-xl font-bold text-white">{content.effective.date}</div>
-                <p className="mt-3 text-sm leading-7 text-slate-300">
-                  {content.effective.desc}
-                </p>
+            <div className="vc-policy-content text-[16px]">
+              {content.sections.map((section, i) => (
+                <div key={i}>
+                  {i > 0 && <div className="h-px w-full bg-[#3c4a46]/25 my-8" />}
+                  <section id={`vc-sec-${i}`} data-spy="true">
+                    <h2>{i + 1}. {section.title}</h2>
+                    <p className="text-[#bacac5]">{section.summary}</p>
+                    <ul>
+                      {section.items.map((item, j) => (
+                        <li key={j}>{item}</li>
+                      ))}
+                    </ul>
+                  </section>
+                </div>
+              ))}
+            </div>
+
+            {/* Important note */}
+            <div className="vc-glass rounded-2xl p-6 sm:p-8 mt-12">
+              <span className="vc-mono text-[12px] uppercase tracking-widest text-[#bacac5]/70">{content.footer.label}</span>
+              <h3 className="vc-display text-xl font-semibold text-[#57f1db] mt-3 mb-2">{content.footer.title}</h3>
+              <p className="text-[#bacac5] max-w-2xl leading-relaxed">{content.footer.desc}</p>
+            </div>
+
+            {/* Contact CTA */}
+            <div className="mt-10 p-8 rounded-2xl bg-[#222a3d] border border-[#3c4a46]/30 flex flex-col md:flex-row items-center justify-between gap-6">
+              <div>
+                <h4 className="vc-display text-xl font-semibold text-[#57f1db] mb-2">{ui.ctaTitle}</h4>
+                <p className="text-[#bacac5] max-w-md">{content.support.desc}</p>
               </div>
-              <div className="rounded-xl border border-white/8 bg-white/[0.03] p-5">
-                <div className="text-xs uppercase tracking-[0.22em] text-slate-500">{content.support.label}</div>
-                <div className="mt-2 text-xl font-bold text-white">{content.support.email}</div>
-                <p className="mt-3 text-sm leading-7 text-slate-400">
-                  {content.support.desc}
-                </p>
-              </div>
+              <a
+                href={`mailto:${content.support.email}`}
+                className="whitespace-nowrap border border-[#57f1db] text-[#57f1db] px-8 py-3 rounded-full font-semibold hover:bg-[#57f1db]/10 transition-colors"
+              >
+                {ui.ctaBtn}
+              </a>
             </div>
           </div>
-        </section>
+        </div>
+      </main>
 
-        <section className="grid gap-6 lg:grid-cols-2">
-          {content.sections.map((section) => (
-            <article
-              key={section.title}
-              className="rounded-2xl border border-white/8 bg-[#081121] p-6 shadow-[0_24px_70px_rgba(0,0,0,0.25)] sm:p-7"
-            >
-              <div className="text-xs uppercase tracking-[0.22em] text-slate-500">{section.title}</div>
-              <p className="mt-3 text-sm leading-7 text-slate-400">{section.summary}</p>
-              <ul className="mt-6 space-y-3 text-sm leading-7 text-slate-200">
-                {section.items.map((item, i) => (
-                  <li key={i} className={`border-white/10 ${currentLang === 'ar' ? 'border-r pr-4' : 'border-l pl-4'}`}>
-                    {item}
-                  </li>
-                ))}
-              </ul>
-            </article>
-          ))}
-        </section>
-
-        <section>
-          <div className="rounded-2xl border border-white/8 bg-[#081121] p-6 sm:p-8">
-            <div className="text-xs uppercase tracking-[0.24em] text-slate-500">{content.footer.label}</div>
-            <h2 className="mt-3 text-2xl font-bold text-white">{content.footer.title}</h2>
-            <p className="mt-4 max-w-2xl text-sm leading-8 text-slate-400">
-              {content.footer.desc}
-            </p>
+      {/* Footer */}
+      <footer className="w-full py-8 mt-16 bg-[#060e20] border-t border-[#3c4a46]/20">
+        <div className="max-w-[1280px] mx-auto px-5 lg:px-12 flex flex-col md:flex-row justify-between items-center gap-4">
+          <div className="flex flex-col gap-2 items-center md:items-start">
+            <span className="vc-display text-xl font-bold text-[#57f1db]">Vibecraft</span>
+            <p className="text-[15px] text-[#bacac5]">© 2026 Vibecraft. {ui.rights}</p>
           </div>
-        </section>
-      </div>
-    </main>
+          <div className="flex gap-6">
+            <Link href="/privacy" className="text-[15px] text-[#bacac5] hover:text-[#57f1db] transition-colors">{ui.privacy}</Link>
+            <a href={`mailto:${content.support.email}`} className="text-[15px] text-[#bacac5] hover:text-[#57f1db] transition-colors">{ui.support}</a>
+          </div>
+        </div>
+      </footer>
+    </div>
   );
 }
 

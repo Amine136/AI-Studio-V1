@@ -34,7 +34,7 @@ export function useAdminSession() {
       const message = err instanceof Error ? err.message : "Unable to verify admin access.";
       if (isAuthError(message)) {
         setSession(null);
-        router.replace("/login");
+        router.replace("/admin/login");
         return null;
       }
       setError(message);

@@ -60,7 +60,12 @@ export default function AdminLoginPage() {
         setError("");
         try {
             await api.adminLogin(username, password);
-            router.replace("/admin");
+            // Full-document navigation (not client-side router): the admin
+            // layout's useAdminSession runs only once on mount, so a client-side
+            // router.replace after login reuses the pre-login "no session" result
+            // and shows an infinite loader until a manual refresh. A real navigation
+            // re-mounts the layout and re-checks the now-set admin cookie.
+            window.location.replace("/admin");
         } catch (err) {
             setError(err instanceof Error ? err.message : "Login failed.");
         } finally {
