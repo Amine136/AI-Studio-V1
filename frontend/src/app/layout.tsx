@@ -46,9 +46,15 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
-        <title>Vibecraft</title>
-        <meta name="description" content="Vibecraft is an AI-powered creative studio for generating captions, images, and more." />
+        <title>Vibecraft | Tunisian AI Studio</title>
+        <meta name="description" content="Vibecraft is the premier Tunisian AI studio for generating captions, images, and more. The ultimate AI studio in Tunis for creative workflows." />
+        <meta name="keywords" content="tunisian ai studio, vibecraft ai tunis, ai studio tunis, vibecraft tunisia, ai tunisia, creative studio tunis, ai image generation tunisia" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta property="og:title" content="Vibecraft | Tunisian AI Studio" />
+        <meta property="og:description" content="Vibecraft is the premier Tunisian AI studio for generating captions, images, and more. The ultimate AI studio in Tunis for creative workflows." />
+        <meta property="og:type" content="website" />
+        <meta property="og:url" content="https://vibecraft.ouni.space" />
+        <meta property="og:image" content="https://vibecraft.ouni.space/best-version/logo-192.png?v=20260506-1210" />
         <link rel="icon" href={`/best-version/favicon-32.png?v=${LOGO_VERSION}`} type="image/png" sizes="32x32" />
         <link rel="icon" href={`/best-version/logo-192.png?v=${LOGO_VERSION}`} type="image/png" sizes="192x192" />
         <link rel="apple-touch-icon" href={`/best-version/logo-192.png?v=${LOGO_VERSION}`} />
