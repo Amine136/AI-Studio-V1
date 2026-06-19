@@ -545,6 +545,10 @@ export const translations = {
     "Username is already taken": "Ce nom d’utilisateur est déjà pris",
     "Something went wrong. Please try again.": "Une erreur s’est produite. Veuillez réessayer.",
 
+    // Auth — legal acknowledgement
+    "By continuing, you acknowledge": "En continuant, vous reconnaissez la",
+    "Vibecraft's Privacy Policy": "Politique de confidentialité de Vibecraft",
+
     // Settings Page
     "Not available": "Indisponible",
     "Account": "Compte",
@@ -1199,6 +1203,10 @@ export const translations = {
     "Username is required": "اسم المستخدم مطلوب",
     "Username is already taken": "اسم المستخدم مستخدم بالفعل",
     "Something went wrong. Please try again.": "حدث خطأ ما. يُرجى المحاولة مرة أخرى.",
+
+    // Auth — legal acknowledgement
+    "By continuing, you acknowledge": "بالمتابعة، فإنك تقرّ بـ",
+    "Vibecraft's Privacy Policy": "سياسة خصوصية Vibecraft",
 
     // Settings Page
     "Not available": "غير متوفر",
