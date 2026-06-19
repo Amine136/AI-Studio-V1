@@ -24,7 +24,7 @@ const policyLocales = {
     },
     support: {
       label: "Support",
-      email: "ouni@novanode.tn",
+      email: "contact@ouni.space",
       desc: "Billing disputes, suspension appeals, and policy questions should be sent to the current Vibecraft support contact.",
     },
     footer: {
@@ -97,7 +97,7 @@ const policyLocales = {
           "Prohibited content includes, without limitation: sexual content involving minors, hateful or harassing content, violent or graphic content, self-harm, as well as any attempt to bypass moderation or abuse provider accounts.",
           "Requests that violate this policy are blocked and are not charged.",
           "Violations of this policy may result in temporary or permanent suspension of your account, depending on the nature and severity of the violation.",
-          "Moderation is automated and may occasionally make mistakes; if you believe a request was blocked in error, contact Vibecraft Support at ouni@novanode.tn.",
+          "Moderation is automated and may occasionally make mistakes; if you believe a request was blocked in error, contact Vibecraft Support at contact@ouni.space.",
         ],
       },
       {
@@ -115,7 +115,7 @@ const policyLocales = {
         items: [
           "Generated outputs may be inaccurate, incomplete, biased, or unsuitable for legal, medical, financial, or other high-stakes decisions.",
           "You are responsible for reviewing and validating outputs before publishing, selling, or relying on them.",
-          "If you believe an enforcement action or billing outcome is incorrect, contact Vibecraft Support at ouni@novanode.tn.",
+          "If you believe an enforcement action or billing outcome is incorrect, contact Vibecraft Support at contact@ouni.space.",
         ],
       },
     ],
@@ -133,7 +133,7 @@ const policyLocales = {
     },
     support: {
       label: "Assistance",
-      email: "ouni@novanode.tn",
+      email: "contact@ouni.space",
       desc: "Les litiges de facturation, les appels de suspension et les questions de politique doivent être envoyés au contact d'assistance actuel de Vibecraft.",
     },
     footer: {
@@ -206,7 +206,7 @@ const policyLocales = {
           "Le contenu interdit comprend, sans s'y limiter : le contenu sexuel impliquant des mineurs, le contenu haineux ou de harcèlement, le contenu violent ou explicite, l'automutilation, ainsi que toute tentative de contourner la modération ou d'abuser des comptes des fournisseurs.",
           "Les requêtes qui violent cette politique sont bloquées et ne sont pas facturées.",
           "Toute violation de cette politique peut entraîner une suspension temporaire ou permanente de votre compte, selon la nature et la gravité de la violation.",
-          "La modération est automatisée et peut parfois commettre des erreurs ; si vous pensez qu'une requête a été bloquée par erreur, contactez le support de Vibecraft à ouni@novanode.tn.",
+          "La modération est automatisée et peut parfois commettre des erreurs ; si vous pensez qu'une requête a été bloquée par erreur, contactez le support de Vibecraft à contact@ouni.space.",
         ],
       },
       {
@@ -224,7 +224,7 @@ const policyLocales = {
         items: [
           "Les résultats générés peuvent être inexacts, incomplets, biaisés ou inappropriés pour des décisions juridiques, médicales, financières ou d'autres décisions à enjeux élevés.",
           "Vous êtes responsable de l'examen et de la validation des résultats avant de les publier, de les vendre ou de vous y fier.",
-          "Si vous pensez qu'une mesure d'application ou un résultat de facturation est incorrect, contactez le support de Vibecraft à ouni@novanode.tn.",
+          "Si vous pensez qu'une mesure d'application ou un résultat de facturation est incorrect, contactez le support de Vibecraft à contact@ouni.space.",
         ],
       },
     ],
@@ -242,7 +242,7 @@ const policyLocales = {
     },
     support: {
       label: "الدعم الفني",
-      email: "ouni@novanode.tn",
+      email: "contact@ouni.space",
       desc: "يجب إرسال نزاعات الفوترة، وطعون التعليق، وأسئلة السياسة إلى جهة اتصال الدعم الحالية في Vibecraft.",
     },
     footer: {
@@ -315,7 +315,7 @@ const policyLocales = {
           "يشمل المحتوى المحظور، على سبيل المثال لا الحصر: المحتوى الجنسي المتعلق بالقاصرين، والمحتوى الذي يحضّ على الكراهية أو التحرش، والمحتوى العنيف أو الصادم، وإيذاء النفس، بالإضافة إلى أي محاولة لتجاوز الإشراف أو إساءة استخدام حسابات المزوّدين.",
           "يتم حظر الطلبات التي تخالف هذه السياسة ولا يتم احتساب أي رسوم عليها.",
           "قد تؤدي مخالفة هذه السياسة إلى تعليق حسابك مؤقتًا أو دائمًا، وذلك بحسب طبيعة المخالفة وخطورتها.",
-          "الإشراف تلقائي وقد يرتكب أخطاءً أحيانًا؛ إذا كنت تعتقد أن طلبًا قد حُظر عن طريق الخطأ، فتواصل مع دعم Vibecraft على ouni@novanode.tn.",
+          "الإشراف تلقائي وقد يرتكب أخطاءً أحيانًا؛ إذا كنت تعتقد أن طلبًا قد حُظر عن طريق الخطأ، فتواصل مع دعم Vibecraft على contact@ouni.space.",
         ],
       },
       {
@@ -333,7 +333,7 @@ const policyLocales = {
         items: [
           "قد تكون المخرجات المنشأة غير دقيقة أو غير كاملة أو متحيزة أو غير مناسبة للقرارات القانونية أو الطبية أو المالية أو غيرها من القرارات ذات المخاطر العالية.",
           "أنت مسؤول عن مراجعة المخرجات والتحقق من صحتها قبل نشرها أو بيعها أو الاعتماد عليها.",
-          "إذا كنت تعتقد أن إجراء الإنفاذ أو نتيجة الفوترة غير صحيحة، فاتصل بدعم Vibecraft على ouni@novanode.tn.",
+          "إذا كنت تعتقد أن إجراء الإنفاذ أو نتيجة الفوترة غير صحيحة، فاتصل بدعم Vibecraft على contact@ouni.space.",
         ],
       },
     ],

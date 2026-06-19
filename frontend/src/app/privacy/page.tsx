@@ -25,7 +25,7 @@ const privacyLocales = {
     },
     support: {
       label: "Contact",
-      email: "ouni@novanode.tn",
+      email: "contact@ouni.space",
       desc: "Privacy questions, deletion requests, and data inquiries should be sent to the current Vibecraft support contact."
     },
     sections: [
@@ -105,7 +105,7 @@ const privacyLocales = {
           "We use authentication, session controls, rate limits, access controls, and logging, but no system can guarantee absolute security.",
           "Do not submit highly sensitive personal, financial, medical, or confidential regulated information into Vibecraft.",
           "Vibecraft is not intended for children. You must be at least 13 years old, or older if required by your local law, to use the service.",
-          "For privacy questions, deletion requests, or policy concerns, contact Vibecraft Support at ouni@novanode.tn."
+          "For privacy questions, deletion requests, or policy concerns, contact Vibecraft Support at contact@ouni.space."
         ]
       }
     ]
@@ -124,7 +124,7 @@ const privacyLocales = {
     },
     support: {
       label: "Contact",
-      email: "ouni@novanode.tn",
+      email: "contact@ouni.space",
       desc: "Les questions de confidentialité, les demandes de suppression et les demandes de données doivent être envoyées au contact d'assistance actuel de Vibecraft."
     },
     sections: [
@@ -204,7 +204,7 @@ const privacyLocales = {
           "Nous utilisons l'authentification, les contrôles de session, les limites de débit, les contrôles d'accès et la journalisation, mais aucun système ne peut garantir une sécurité absolue.",
           "Ne soumettez pas d'informations personnelles, financières, médicales ou confidentielles réglementées très sensibles dans Vibecraft.",
           "Vibecraft n'est pas destiné aux enfants. Vous devez avoir au moins 13 ans, ou plus si la loi locale l'exige, pour utiliser le service.",
-          "Pour des questions de confidentialité, des demandes de suppression ou des préoccupations en matière de politique, contactez le support de Vibecraft à ouni@novanode.tn."
+          "Pour des questions de confidentialité, des demandes de suppression ou des préoccupations en matière de politique, contactez le support de Vibecraft à contact@ouni.space."
         ]
       }
     ]
@@ -223,7 +223,7 @@ const privacyLocales = {
     },
     support: {
       label: "اتصل بنا",
-      email: "ouni@novanode.tn",
+      email: "contact@ouni.space",
       desc: "يجب إرسال أسئلة الخصوصية وطلبات الحذف واستفسارات البيانات إلى جهة اتصال دعم Vibecraft الحالية."
     },
     sections: [
@@ -303,7 +303,7 @@ const privacyLocales = {
           "نحن نستخدم المصادقة وضوابط الجلسة وقيود معدل الطلبات وضوابط الوصول والتسجيل، ولكن لا يمكن لأي نظام أن يضمن الأمان المطلق.",
           "لا ترسل معلومات منظمة شخصية أو مالية أو طبية أو سرية حساسة للغاية إلى Vibecraft.",
           "Vibecraft غير مخصص للأطفال. يجب أن يكون عمرك 13 عامًا على الأقل، أو أكبر إذا كان القانون المحلي الخاص بك يتطلب ذلك، لاستخدام الخدمة.",
-          "للأسئلة المتعلقة بالخصوصية أو طلبات الحذف أو مخاوف السياسة، اتصل بدعم Vibecraft على ouni@novanode.tn."
+          "للأسئلة المتعلقة بالخصوصية أو طلبات الحذف أو مخاوف السياسة، اتصل بدعم Vibecraft على contact@ouni.space."
         ]
       }
     ]

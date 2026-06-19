@@ -536,7 +536,7 @@ function AuthContent() {
               {t("Terms")}
             </Link>
             <a
-              href="mailto:ouni@novanode.tn"
+              href="mailto:contact@ouni.space"
               className="font-label text-[10px] uppercase tracking-[0.2em] text-slate-600 transition-colors hover:text-[#adc6ff]"
             >
               {t("Support")}
