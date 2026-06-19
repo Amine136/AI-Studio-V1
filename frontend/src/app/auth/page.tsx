@@ -298,10 +298,10 @@ function AuthContent() {
         ))}
       </div>
       <div className="relative hidden lg:flex w-1/2 items-center justify-center border-r border-[#adc6ff]/10 bg-[#0c1324] rtl:lg:order-2">
-        <img 
-          src="/landing/auth-art.svg" 
-          alt="Vibecraft Art" 
-          className="absolute inset-0 h-full w-full object-cover" 
+        <img
+          src="/landing/auth-art.svg"
+          alt="Vibecraft Art"
+          className="absolute inset-0 h-full w-full object-cover"
         />
         <div className="absolute inset-0 bg-gradient-to-r from-transparent to-[#0c1324]" />
       </div>
@@ -349,20 +349,7 @@ function AuthContent() {
 
         </header>
 
-        <div className="rounded-xl border border-[#adc6ff]/15 bg-[rgba(25,31,49,0.6)] px-5 py-8 sm:p-10 text-center backdrop-blur-[24px]">
-          <div className="mb-8 flex justify-center">
-            <div className="rounded-full border border-[#adc6ff]/15 bg-[#2e3447]/40 p-4">
-              <span className="material-symbols-outlined text-3xl text-[#adc6ff]">fingerprint</span>
-            </div>
-          </div>
-
-          <h2 className="font-headline mb-4 text-2xl font-medium tracking-tight text-slate-100">
-            {t("The Digital Architect.")}
-          </h2>
-          <p className="mx-auto mb-10 max-w-[280px] text-sm leading-relaxed text-[#c2c6d6]">
-            {t("Engineered for creative excellence. Access your private workspace.")}
-          </p>
-
+        <div className="rounded-2xl border border-[#adc6ff]/15 bg-[rgba(25,31,49,0.6)] px-5 py-8 sm:p-10 text-center backdrop-blur-[24px]">
           {error ? (
             <div className="mb-5 rounded-md border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
               {isDynamicSuspension ? (
@@ -518,10 +505,17 @@ function AuthContent() {
           </>
           )}
 
-          <div className="mt-8 flex items-center justify-center gap-2 opacity-40">
-            <span className="material-symbols-outlined text-xs">verified_user</span>
-            <span className="font-label text-[10px] uppercase tracking-widest">{t("End-to-end Encrypted Sessions")}</span>
-          </div>
+          <p className="mt-8 text-center text-[11px] leading-relaxed text-slate-500">
+            {t("By continuing, you acknowledge")}{" "}
+            <a
+              href="/privacy"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[#adc6ff] underline underline-offset-2 transition-colors hover:text-white"
+            >
+              {t("Vibecraft's Privacy Policy")}
+            </a>
+          </p>
         </div>
 
         <footer className="mt-12 text-center">
