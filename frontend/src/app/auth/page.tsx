@@ -152,7 +152,7 @@ function AuthContent() {
 
     void api
       .getProfile()
-      .then(() => {
+      .then((profile) => {
         if (cancelled) return;
         const rawNext = new URLSearchParams(window.location.search).get("next");
         let safeNext = "/dashboard";
@@ -166,6 +166,12 @@ function AuthContent() {
           } catch {
             /* malformed next */
           }
+        }
+        // New accounts (e.g. email-link sign-ups with no name) must pick a
+        // display name + username before entering the app.
+        if (profile?.requiresProfileSetup) {
+          router.replace(`/onboarding?next=${encodeURIComponent(safeNext)}`);
+          return;
         }
         router.replace(safeNext);
       })

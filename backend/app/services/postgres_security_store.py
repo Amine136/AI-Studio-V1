@@ -23,6 +23,7 @@ AUTO_SUSPEND_AUDIT_EMAIL = "policy@vibecraft.local"
 USAGE_CAP_REASONS = ["smart_analysis_charge", "smart_analysis_reserve"]
 PROFILE_USERNAME_ALLOWED_RE = re.compile(r"[^a-z0-9._-]+")
 PROFILE_USERNAME_MAX_LENGTH = 15
+PROFILE_DISPLAY_NAME_MAX_LENGTH = 80
 PROFILE_BIO_MAX_LENGTH = 500
 PROFILE_CHANGE_LIMIT_PER_MONTH = 2
 PROFILE_SAVE_ATTEMPT_LIMIT_PER_DAY = 10
@@ -221,6 +222,43 @@ def update_user_profile(uid: str, *, username: str, bio: str) -> dict[str, Any]:
             }
         )
         return result
+
+
+def complete_user_profile(uid: str, *, full_name: str, username: str) -> dict[str, Any]:
+    """Initial onboarding: set a new user's display name + username.
+
+    Unlike update_user_profile this is not metered by the monthly change limit
+    (it is the first-time setup), but it still enforces username uniqueness/format.
+    """
+    normalized_username = _normalize_profile_username(username)
+    normalized_name = str(full_name or "").strip()[:PROFILE_DISPLAY_NAME_MAX_LENGTH]
+    if not normalized_name:
+        raise ValueError("PROFILE_NAME_REQUIRED")
+    if not normalized_username:
+        raise ValueError("PROFILE_USERNAME_REQUIRED")
+
+    now = int(time.time())
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        user = repo.get_user_for_update(uid)
+        if user is None:
+            user = repo.ensure_user(uid, "", "")
+            session.flush()
+
+        existing_user = repo.get_user_by_username(normalized_username)
+        if existing_user is not None and str(existing_user.uid) != str(uid):
+            raise ValueError("PROFILE_USERNAME_TAKEN")
+
+        try:
+            repo.complete_profile(
+                user,
+                display_name=normalized_name,
+                username=normalized_username,
+                updated_at=now,
+            )
+        except IntegrityError as exc:
+            raise ValueError("PROFILE_USERNAME_TAKEN") from exc
+        return _user_dict_from_model(user)
 
 
 def update_user_notification_preferences(
@@ -2305,12 +2343,27 @@ def _profile_change_status_from_bucket(bucket: Any, now: int, reset_at: int) -> 
     }
 
 
+def _requires_profile_setup(user: Any) -> bool:
+    """A freshly-provisioned user still needs to choose a real name.
+
+    Email-link sign-in has no name claim, so ensure_user seeds display_name with
+    the email address. Treat an empty display_name, or one still equal to the
+    email, as "not onboarded yet".
+    """
+    display_name = str(getattr(user, "display_name", "") or "").strip()
+    email = str(getattr(user, "email", "") or "").strip()
+    if not display_name:
+        return True
+    return display_name.lower() == email.lower()
+
+
 def _user_dict_from_model(user: Any) -> dict[str, Any]:
     return {
         "uid": user.uid,
         "email": user.email,
         "displayName": user.display_name,
         "username": user.username or "",
+        "requiresProfileSetup": _requires_profile_setup(user),
         "bio": user.bio or "",
         "emailGeneralNewsEnabled": bool(user.email_general_news_enabled),
         "emailPlatformUpdatesEnabled": bool(user.email_platform_updates_enabled),

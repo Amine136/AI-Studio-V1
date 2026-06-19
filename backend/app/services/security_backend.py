@@ -54,6 +54,7 @@ from app.services.postgres_security_store import (  # noqa: F401
     unsuspend_user,
     update_dashboard_news_item,
     update_user_profile,
+    complete_user_profile,
     update_user_notification_preferences,
     list_users,
     mark_generation_job_awaiting_review,

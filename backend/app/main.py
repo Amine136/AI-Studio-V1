@@ -20,7 +20,7 @@ from slowapi.errors import RateLimitExceeded
 from sqlalchemy import text
 
 from app.config import settings
-from app.core.schema import AdminAuditLogListResponse, AdminAuthFailureSummaryResponse, AdminCreditCodeBatchListResponse, AdminCreditCodeListResponse, AdminGenerationJobItem, AdminGenerationJobListResponse, AdminLoginRequest, AdminReasonRequest, AdminSessionResponse, AdminUserDetailResponse, AdminUserListResponse, CatalogUpdateNotification, CreditActivityListResponse, CreditLedgerListResponse, DashboardNewsItemResponse, DashboardNewsListResponse, DashboardNewsUpsertRequest, GenerateRequest, GenerationResult, PlainChatConversationCreateRequest, PlainChatConversationItem, PlainChatConversationListResponse, PlainChatConversationMessageCreateRequest, PlainChatConversationMessagesResponse, PlainChatConversationTurnResponse, PlainChatConversationUpdateRequest, PlainChatModelListResponse, SystemConfig, UserNotificationPreferencesUpdateRequest, UserProfileUpdateRequest
+from app.core.schema import AdminAuditLogListResponse, AdminAuthFailureSummaryResponse, AdminCreditCodeBatchListResponse, AdminCreditCodeListResponse, AdminGenerationJobItem, AdminGenerationJobListResponse, AdminLoginRequest, AdminReasonRequest, AdminSessionResponse, AdminUserDetailResponse, AdminUserListResponse, CatalogUpdateNotification, CreditActivityListResponse, CreditLedgerListResponse, DashboardNewsItemResponse, DashboardNewsListResponse, DashboardNewsUpsertRequest, GenerateRequest, GenerationResult, PlainChatConversationCreateRequest, PlainChatConversationItem, PlainChatConversationListResponse, PlainChatConversationMessageCreateRequest, PlainChatConversationMessagesResponse, PlainChatConversationTurnResponse, PlainChatConversationUpdateRequest, PlainChatModelListResponse, SystemConfig, UserNotificationPreferencesUpdateRequest, UserProfileUpdateRequest, ProfileCompletionRequest
 from app.db.session import session_scope
 from app.db.repositories.security import SecurityRepository
 from app.graph.workflow import studio_graph_app
@@ -89,6 +89,7 @@ from app.services.security_backend import (
     unsuspend_user,
     update_dashboard_news_item,
     update_user_profile,
+    complete_user_profile,
     update_user_notification_preferences,
 )
 from app.services.user_files import (
@@ -1261,6 +1262,26 @@ def update_current_user_profile(
         if code == "PROFILE_UPDATE_LIMIT":
             raise HTTPException(status_code=429, detail="Profile changes are limited to 2 per month") from exc
         raise HTTPException(status_code=400, detail="Invalid profile update") from exc
+
+
+@app.post("/me/complete-profile", tags=["Configuration"], summary="Complete New User Profile")
+@limiter.limit("15/minute")
+def complete_current_user_profile(
+    request: Request,
+    payload: ProfileCompletionRequest,
+    user: Dict[str, Any] = Depends(verify_firebase_user),
+):
+    try:
+        return complete_user_profile(user["uid"], full_name=payload.full_name, username=payload.username)
+    except ValueError as exc:
+        code = str(exc)
+        if code == "PROFILE_NAME_REQUIRED":
+            raise HTTPException(status_code=400, detail="Your name is required") from exc
+        if code == "PROFILE_USERNAME_REQUIRED":
+            raise HTTPException(status_code=400, detail="Username is required") from exc
+        if code == "PROFILE_USERNAME_TAKEN":
+            raise HTTPException(status_code=409, detail="Username is already taken") from exc
+        raise HTTPException(status_code=400, detail="Invalid profile") from exc
 
 
 @app.patch("/me/preferences", tags=["Configuration"], summary="Update Current User Notification Preferences")

@@ -243,6 +243,29 @@ class SecurityRepository:
         self.session.delete(item)
         self.session.flush()
 
+    def _username_taken(self, username: str, *, exclude_uid: str | None = None) -> bool:
+        stmt = select(User.uid).where(User.username == username)
+        if exclude_uid is not None:
+            stmt = stmt.where(User.uid != exclude_uid)
+        return self.session.execute(stmt).first() is not None
+
+    def _unique_username(self, base: str, *, exclude_uid: str | None = None) -> str:
+        """Derive a username that does not collide with an existing one.
+
+        The base (email local-part) is not unique across accounts, so on a
+        collision we append a short random suffix until we find a free handle
+        (username column is capped at 15 chars).
+        """
+        candidate = (base or "vibecraft")[:15] or "vibecraft"
+        if not self._username_taken(candidate, exclude_uid=exclude_uid):
+            return candidate
+        root = (base or "user")[:10] or "user"
+        for _ in range(25):
+            candidate = (root + uuid.uuid4().hex[:4])[:15]
+            if not self._username_taken(candidate, exclude_uid=exclude_uid):
+                return candidate
+        return ("u" + uuid.uuid4().hex)[:15]
+
     def ensure_user(self, uid: str, email: str, display_name: str) -> User:
         now = int(time.time())
         user = self.session.get(User, uid)
@@ -251,7 +274,7 @@ class SecurityRepository:
                 uid=uid,
                 email=email,
                 display_name=display_name,
-                username=_default_username(email, display_name, uid),
+                username=self._unique_username(_default_username(email, display_name, uid)),
                 bio="",
                 credits_minor=0,
                 reserved_credits_minor=0,
@@ -262,9 +285,16 @@ class SecurityRepository:
             self.session.add(user)
         else:
             user.email = email
-            user.display_name = display_name
+            # Only sync display_name from the auth provider when it carries a
+            # real name. Email-link sign-in has no name claim (display_name falls
+            # back to the email/uid), so overwriting here would wipe a name the
+            # user set during onboarding on every subsequent login.
+            if display_name and display_name != email and display_name != uid:
+                user.display_name = display_name
             if not str(user.username or "").strip():
-                user.username = _default_username(email, display_name, uid)
+                user.username = self._unique_username(
+                    _default_username(email, display_name, uid), exclude_uid=uid
+                )
             user.updated_at = now
             user.last_seen_at = now
         self.session.flush()
@@ -273,6 +303,14 @@ class SecurityRepository:
     def update_user_profile(self, user: User, *, username: str, bio: str, updated_at: int) -> User:
         user.username = username
         user.bio = bio
+        user.updated_at = updated_at
+        user.last_seen_at = updated_at
+        self.session.flush()
+        return user
+
+    def complete_profile(self, user: User, *, display_name: str, username: str, updated_at: int) -> User:
+        user.display_name = display_name
+        user.username = username
         user.updated_at = updated_at
         user.last_seen_at = updated_at
         self.session.flush()

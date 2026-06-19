@@ -29,6 +29,7 @@ import {
   CreditLedgerListResponse,
   UserNotificationPreferencesUpdateRequest,
   UserProfileUpdateRequest,
+  ProfileCompletionRequest,
   UploadedImageResult,
 } from '../types';
 import { auth } from '../lib/firebase';
@@ -270,6 +271,19 @@ export const api = {
   updateProfile: async (payload: UserProfileUpdateRequest): Promise<CurrentUserProfile> => {
     try {
       const res = await client.patch('/me', payload);
+      return res.data;
+    } catch (error) {
+      const detail = extractErrorMessage(error);
+      if (detail) {
+        throw new Error(detail);
+      }
+      throw error;
+    }
+  },
+
+  completeProfile: async (payload: ProfileCompletionRequest): Promise<CurrentUserProfile> => {
+    try {
+      const res = await client.post('/me/complete-profile', payload);
       return res.data;
     } catch (error) {
       const detail = extractErrorMessage(error);

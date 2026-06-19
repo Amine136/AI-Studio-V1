@@ -214,6 +214,7 @@ export interface CurrentUserProfile {
   email: string;
   displayName: string;
   username?: string;
+  requiresProfileSetup?: boolean;
   bio?: string;
   emailGeneralNewsEnabled?: boolean;
   emailPlatformUpdatesEnabled?: boolean;
@@ -264,6 +265,11 @@ export interface CreditActivityListResponse {
 export interface UserProfileUpdateRequest {
   username: string;
   bio: string;
+}
+
+export interface ProfileCompletionRequest {
+  fullName: string;
+  username: string;
 }
 
 export interface UserNotificationPreferencesUpdateRequest {

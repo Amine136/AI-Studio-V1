@@ -215,6 +215,27 @@ class UserProfileUpdateRequest(BaseModel):
         return str(value or "").strip()[:500]
 
 
+class ProfileCompletionRequest(BaseModel):
+    full_name: str = Field(..., alias="fullName", min_length=1, max_length=80)
+    username: str = Field(..., min_length=1, max_length=15)
+
+    @field_validator("full_name")
+    @classmethod
+    def normalize_full_name(cls, value: str) -> str:
+        normalized = str(value or "").strip()[:80]
+        if not normalized:
+            raise ValueError("Your name is required")
+        return normalized
+
+    @field_validator("username")
+    @classmethod
+    def normalize_username(cls, value: str) -> str:
+        normalized = re.sub(r"[^a-z0-9._-]+", "", str(value or "").strip().lower())
+        if not normalized:
+            raise ValueError("Username is required")
+        return normalized[:15]
+
+
 class UserNotificationPreferencesUpdateRequest(BaseModel):
     email_general_news_enabled: bool = Field(alias="emailGeneralNewsEnabled")
     email_platform_updates_enabled: bool = Field(alias="emailPlatformUpdatesEnabled")
