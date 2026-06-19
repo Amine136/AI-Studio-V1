@@ -1,9 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { signInWithGoogle, signOutUser } from "../../lib/auth";
+import {
+  signInWithGoogle,
+  signOutUser,
+  sendEmailSignInLink,
+  isEmailSignInLink,
+  getStoredSignInEmail,
+  completeEmailLinkSignIn,
+} from "../../lib/auth";
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../services/api";
 
@@ -28,6 +35,21 @@ function mapAuthErrorMessage(error: unknown): string {
   }
   if (normalized.includes("auth/account-exists-with-different-credential")) {
     return "This email is already linked with a different sign-in method.";
+  }
+  if (normalized.includes("auth/invalid-email")) {
+    return "Please enter a valid email address.";
+  }
+  if (
+    normalized.includes("auth/invalid-action-code") ||
+    normalized.includes("auth/expired-action-code")
+  ) {
+    return "This sign-in link has expired or was already used. Please request a new one.";
+  }
+  if (
+    normalized.includes("auth/too-many-requests") ||
+    normalized.includes("auth/quota-exceeded")
+  ) {
+    return "Too many requests. Please try again later.";
   }
   if (normalized.includes("deactivated")) {
     return "Your account has been deactivated. You no longer have access to this account or its data. Review our Privacy Policy and Terms of Service for more information.";
@@ -54,6 +76,13 @@ function AuthContent() {
   const [validatingSession, setValidatingSession] = useState(false);
   const [isInAppBrowser, setIsInAppBrowser] = useState(false);
 
+  // Passwordless email-link state.
+  const [email, setEmail] = useState("");
+  const [sendingLink, setSendingLink] = useState(false);
+  const [linkSentTo, setLinkSentTo] = useState<string | null>(null);
+  const [completingLink, setCompletingLink] = useState(false);
+  const [needsEmailToComplete, setNeedsEmailToComplete] = useState(false);
+
   useEffect(() => {
     if (typeof window !== "undefined") {
       const ua = navigator.userAgent || navigator.vendor || (window as any).opera || "";
@@ -62,6 +91,35 @@ function AuthContent() {
       }
     }
   }, []);
+
+  // Complete a passwordless sign-in when the user lands back here from the
+  // email link. Once signed in, onAuthStateChanged fires and the session-
+  // validation effect below performs the profile check + safe redirect.
+  const finishLinkSignIn = useCallback(async (emailToUse: string) => {
+    setError("");
+    setNeedsEmailToComplete(false);
+    setCompletingLink(true);
+    try {
+      await completeEmailLinkSignIn(emailToUse, window.location.href);
+      // Success: onAuthStateChanged + the redirect effect take over from here.
+    } catch (err: unknown) {
+      setError(mapAuthErrorMessage(err));
+    } finally {
+      setCompletingLink(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!isEmailSignInLink(window.location.href)) return;
+    const stored = getStoredSignInEmail();
+    if (stored) {
+      void finishLinkSignIn(stored);
+    } else {
+      // Link opened on a different device/browser — ask for the email it was sent to.
+      setNeedsEmailToComplete(true);
+    }
+  }, [finishLinkSignIn]);
 
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
@@ -133,7 +191,7 @@ function AuthContent() {
     };
   }, [authLoading, user, router]);
 
-  if (authLoading || (user && validatingSession)) {
+  if (authLoading || completingLink || (user && validatingSession)) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#0c1324]">
         <div className="auth-loader" />
@@ -151,6 +209,44 @@ function AuthContent() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const emailIsValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+
+  const handleSendLink = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!emailIsValid) {
+      setError("Please enter a valid email address.");
+      return;
+    }
+    setError("");
+    setSendingLink(true);
+    try {
+      const next = new URLSearchParams(window.location.search).get("next");
+      const target = email.trim();
+      await sendEmailSignInLink(target, next, language);
+      // If this was the cross-device "confirm your email" step, finish it.
+      if (needsEmailToComplete && isEmailSignInLink(window.location.href)) {
+        await finishLinkSignIn(target);
+        return;
+      }
+      setLinkSentTo(target);
+    } catch (err: unknown) {
+      setError(mapAuthErrorMessage(err));
+    } finally {
+      setSendingLink(false);
+    }
+  };
+
+  // When the link is opened on a new device we already have the oobCode in the
+  // URL; the email input just needs to confirm which address it was sent to.
+  const handleConfirmEmail = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!emailIsValid) {
+      setError("Please enter a valid email address.");
+      return;
+    }
+    await finishLinkSignIn(email.trim());
   };
 
   const isDynamicSuspension = /your account is suspended/i.test(error);
@@ -285,6 +381,50 @@ function AuthContent() {
             </div>
           ) : null}
 
+          {needsEmailToComplete ? (
+            <form onSubmit={handleConfirmEmail} className="text-left rtl:text-right">
+              <p className="mb-3 text-sm text-[#c2c6d6]">{t("Confirm your email to finish signing in")}</p>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder={t("Enter your email")}
+                dir="ltr"
+                autoFocus
+                className="w-full rounded-md border border-[#adc6ff]/15 bg-[#0c1324]/60 px-4 py-3 text-sm text-slate-100 placeholder:text-slate-500 outline-none transition-colors focus:border-[#4d8eff]/50"
+              />
+              <button
+                type="submit"
+                disabled={!emailIsValid}
+                className="font-headline mt-3 flex w-full items-center justify-center gap-3 rounded-md bg-gradient-to-br from-[#adc6ff] to-[#4d8eff] px-6 py-3.5 font-bold text-[#002e6a] transition-all duration-300 hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                <span className="tracking-wide">{t("Finish sign-in")}</span>
+              </button>
+            </form>
+          ) : linkSentTo ? (
+            <div className="rounded-xl border border-[#adc6ff]/15 bg-[#2e3447]/20 px-5 py-7 text-center">
+              <div className="mb-4 flex justify-center">
+                <div className="rounded-full border border-emerald-400/20 bg-emerald-400/10 p-3">
+                  <span className="material-symbols-outlined text-2xl text-emerald-300">mark_email_read</span>
+                </div>
+              </div>
+              <h3 className="font-headline mb-2 text-lg font-medium text-slate-100">{t("Check your inbox")}</h3>
+              <p className="mb-1 text-sm text-[#c2c6d6]">
+                {t("We sent a sign-in link to")} <span className="font-semibold text-[#adc6ff]" dir="ltr">{linkSentTo}</span>
+              </p>
+              <p className="mb-5 text-xs leading-relaxed text-slate-400">
+                {t("Click the link in the email to finish signing in. The link expires in 1 hour.")}
+              </p>
+              <button
+                type="button"
+                onClick={() => { setLinkSentTo(null); setEmail(""); }}
+                className="font-label text-[11px] uppercase tracking-[0.16em] text-[#adc6ff] underline underline-offset-4 hover:text-white"
+              >
+                {t("Use a different email")}
+              </button>
+            </div>
+          ) : (
+          <>
           {isInAppBrowser ? (
             <div className="mb-6 w-full rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 sm:p-5 text-left rtl:text-right shadow-[0_4px_24px_rgba(245,158,11,0.05)] backdrop-blur-md">
               <div className="flex items-start gap-3 sm:gap-4">
@@ -339,6 +479,37 @@ function AuthContent() {
               )}
               <span className="tracking-wide">{loading ? t("Signing in…") : t("Sign in with Google")}</span>
             </button>
+          )}
+
+          <div className="my-6 flex items-center gap-3" aria-hidden="true">
+            <span className="h-px flex-1 bg-[#adc6ff]/15" />
+            <span className="font-label text-[10px] uppercase tracking-widest text-slate-500">{t("or")}</span>
+            <span className="h-px flex-1 bg-[#adc6ff]/15" />
+          </div>
+
+          <form onSubmit={handleSendLink} className="text-left rtl:text-right">
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder={t("Enter your email")}
+              dir="ltr"
+              className="w-full rounded-md border border-[#adc6ff]/15 bg-[#0c1324]/60 px-4 py-3 text-sm text-slate-100 placeholder:text-slate-500 outline-none transition-colors focus:border-[#4d8eff]/50"
+            />
+            <button
+              type="submit"
+              disabled={sendingLink || !emailIsValid}
+              className="font-headline mt-3 flex w-full items-center justify-center gap-3 rounded-md border border-[#adc6ff]/25 bg-[#2e3447]/30 px-6 py-3.5 font-bold text-[#dce1fb] transition-all duration-300 hover:bg-[#2e3447]/60 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {sendingLink ? (
+                <span className="auth-spinner" aria-hidden="true" />
+              ) : (
+                <span className="material-symbols-outlined text-[20px]">mail</span>
+              )}
+              <span className="tracking-wide">{sendingLink ? t("Sending…") : t("Email me a sign-in link")}</span>
+            </button>
+          </form>
+          </>
           )}
 
           <div className="mt-8 flex items-center justify-center gap-2 opacity-40">
