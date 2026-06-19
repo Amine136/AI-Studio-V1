@@ -535,6 +535,16 @@ export const translations = {
     "This sign-in link has expired or was already used. Please request a new one.": "Ce lien de connexion a expiré ou a déjà été utilisé. Veuillez en demander un nouveau.",
     "Too many requests. Please try again later.": "Trop de tentatives. Veuillez réessayer plus tard.",
 
+    // Onboarding — complete profile
+    "Complete your profile": "Complétez votre profil",
+    "Tell us your name to finish setting up your Vibecraft account.": "Indiquez votre nom pour finaliser la configuration de votre compte Vibecraft.",
+    "Enter your name": "Saisissez votre nom",
+    "Finish setup": "Terminer la configuration",
+    "Your name is required": "Votre nom est requis",
+    "Username is required": "Le nom d’utilisateur est requis",
+    "Username is already taken": "Ce nom d’utilisateur est déjà pris",
+    "Something went wrong. Please try again.": "Une erreur s’est produite. Veuillez réessayer.",
+
     // Settings Page
     "Not available": "Indisponible",
     "Account": "Compte",
@@ -1179,6 +1189,16 @@ export const translations = {
     "Please enter a valid email address.": "يُرجى إدخال عنوان بريد إلكتروني صالح.",
     "This sign-in link has expired or was already used. Please request a new one.": "انتهت صلاحية رابط تسجيل الدخول أو سبق استخدامه. يُرجى طلب رابط جديد.",
     "Too many requests. Please try again later.": "عدد كبير جدًا من المحاولات. يُرجى المحاولة لاحقًا.",
+
+    // Onboarding — complete profile
+    "Complete your profile": "أكمل ملفك الشخصي",
+    "Tell us your name to finish setting up your Vibecraft account.": "أخبرنا باسمك لإتمام إعداد حساب Vibecraft الخاص بك.",
+    "Enter your name": "أدخل اسمك",
+    "Finish setup": "إنهاء الإعداد",
+    "Your name is required": "الاسم مطلوب",
+    "Username is required": "اسم المستخدم مطلوب",
+    "Username is already taken": "اسم المستخدم مستخدم بالفعل",
+    "Something went wrong. Please try again.": "حدث خطأ ما. يُرجى المحاولة مرة أخرى.",
 
     // Settings Page
     "Not available": "غير متوفر",
