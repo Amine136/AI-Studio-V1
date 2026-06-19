@@ -521,6 +521,20 @@ export const translations = {
   },
   fr: {
 
+    // Auth — passwordless email link
+    "Enter your email": "Saisissez votre e-mail",
+    "Email me a sign-in link": "Recevoir un lien de connexion",
+    "Sending…": "Envoi…",
+    "Check your inbox": "Vérifiez votre boîte de réception",
+    "We sent a sign-in link to": "Nous avons envoyé un lien de connexion à",
+    "Click the link in the email to finish signing in. The link expires in 1 hour.": "Cliquez sur le lien dans l’e-mail pour terminer la connexion. Le lien expire dans 1 heure.",
+    "Use a different email": "Utiliser une autre adresse e-mail",
+    "Confirm your email to finish signing in": "Confirmez votre e-mail pour terminer la connexion",
+    "Finish sign-in": "Terminer la connexion",
+    "Please enter a valid email address.": "Veuillez saisir une adresse e-mail valide.",
+    "This sign-in link has expired or was already used. Please request a new one.": "Ce lien de connexion a expiré ou a déjà été utilisé. Veuillez en demander un nouveau.",
+    "Too many requests. Please try again later.": "Trop de tentatives. Veuillez réessayer plus tard.",
+
     // Settings Page
     "Not available": "Indisponible",
     "Account": "Compte",
@@ -1151,6 +1165,20 @@ export const translations = {
     "Vibecraft AI Tunis. The premier Tunisian AI studio. All rights reserved.": "Vibecraft AI Tunis. Le premier studio d'IA tunisien. Tous droits réservés."
   },
   ar: {
+
+    // Auth — passwordless email link
+    "Enter your email": "أدخل بريدك الإلكتروني",
+    "Email me a sign-in link": "أرسل لي رابط تسجيل الدخول",
+    "Sending…": "جارٍ الإرسال…",
+    "Check your inbox": "تحقّق من بريدك الإلكتروني",
+    "We sent a sign-in link to": "أرسلنا رابط تسجيل الدخول إلى",
+    "Click the link in the email to finish signing in. The link expires in 1 hour.": "انقر على الرابط في البريد لإكمال تسجيل الدخول. تنتهي صلاحية الرابط خلال ساعة واحدة.",
+    "Use a different email": "استخدام بريد إلكتروني آخر",
+    "Confirm your email to finish signing in": "أكّد بريدك الإلكتروني لإكمال تسجيل الدخول",
+    "Finish sign-in": "إكمال تسجيل الدخول",
+    "Please enter a valid email address.": "يُرجى إدخال عنوان بريد إلكتروني صالح.",
+    "This sign-in link has expired or was already used. Please request a new one.": "انتهت صلاحية رابط تسجيل الدخول أو سبق استخدامه. يُرجى طلب رابط جديد.",
+    "Too many requests. Please try again later.": "عدد كبير جدًا من المحاولات. يُرجى المحاولة لاحقًا.",
 
     // Settings Page
     "Not available": "غير متوفر",
