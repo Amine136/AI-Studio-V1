@@ -80,6 +80,7 @@ const roadmapItems = [
 ];
 
 import { useLanguage } from "../context/LanguageContext";
+import AuthPanel from "../components/auth/AuthPanel";
 
 function LandingContent() {
   const { user, loading } = useAuth();
@@ -188,6 +189,29 @@ function LandingContent() {
           </div>
         </div>
       </section>
+
+      {!user && (
+        <section id="get-started" className="relative overflow-hidden bg-[#0c1324] px-4 py-16 sm:px-6 sm:py-24 lg:px-12 lg:py-28">
+          <div className="absolute inset-0 z-0">
+            <div className="absolute left-[-8%] top-1/2 h-[420px] w-[420px] -translate-y-1/2 rounded-full bg-[#adc6ff]/10 blur-[120px]" />
+          </div>
+          <div className="relative z-10 mx-auto grid max-w-[1600px] grid-cols-1 items-center gap-10 lg:grid-cols-2 lg:gap-16">
+            <div className="order-2 mx-auto w-full max-w-md lg:order-1 lg:mx-0">
+              <AuthPanel className="w-full" />
+            </div>
+            <div className="order-1 text-center lg:order-2 lg:text-left rtl:lg:text-right">
+              <p className="mb-4 text-sm font-bold uppercase tracking-widest text-[#adc6ff]">{t("Get Started")}</p>
+              <h2 className="font-headline text-3xl font-bold tracking-tight sm:text-4xl md:text-5xl">
+                {t("Sign in to start creating")}
+              </h2>
+              <div className="mx-auto mt-4 h-1 w-20 bg-[#adc6ff] lg:mx-0 rtl:lg:ml-auto rtl:lg:mr-0" />
+              <p className="mx-auto mt-6 max-w-md text-base leading-relaxed text-[#c2c6d6] lg:mx-0">
+                {t("No password needed — continue with Google or get a magic link sent to your email.")}
+              </p>
+            </div>
+          </div>
+        </section>
+      )}
 
       <section id="features" className="bg-[#0c1324] px-4 py-16 sm:px-6 sm:py-24 lg:px-12 lg:py-32">
         <div className="mx-auto max-w-[1600px]">

@@ -92,6 +92,8 @@ export const translations = {
     "Launch Studio": "Launch Studio",
     "Open Dashboard": "Open Dashboard",
     "Get Started": "Get Started",
+    "Sign in to start creating": "Sign in to start creating",
+    "No password needed — continue with Google or get a magic link sent to your email.": "No password needed — continue with Google or get a magic link sent to your email.",
     "Log In": "Log In",
 
     // Landing Page Hero
@@ -640,6 +642,8 @@ export const translations = {
     "Launch Studio": "Lancer le Studio",
     "Open Dashboard": "Ouvrir le Tableau de bord",
     "Get Started": "Commencer",
+    "Sign in to start creating": "Connectez-vous pour commencer à créer",
+    "No password needed — continue with Google or get a magic link sent to your email.": "Pas de mot de passe — continuez avec Google ou recevez un lien magique par e-mail.",
     "Log In": "Se Connecter",
 
     // Landing Page Hero
@@ -1299,6 +1303,8 @@ export const translations = {
     "Launch Studio": "تشغيل الاستوديو",
     "Open Dashboard": "فتح لوحة التحكم",
     "Get Started": "البدء",
+    "Sign in to start creating": "سجّل الدخول لتبدأ الإبداع",
+    "No password needed — continue with Google or get a magic link sent to your email.": "لا حاجة لكلمة مرور — تابِع باستخدام Google أو احصل على رابط سحري عبر بريدك الإلكتروني.",
     "Log In": "تسجيل الدخول",
 
     // Landing Page Hero
