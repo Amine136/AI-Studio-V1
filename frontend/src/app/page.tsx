@@ -36,49 +36,6 @@ const showcaseModels = [
   },
 ];
 
-const roadmapItems = [
-  {
-    title: "Video generation",
-    description: "Cinematic 4K motion synthesis.",
-    status: "Status: under development",
-    icon: "movie",
-    accent: "text-primary",
-    dot: "bg-primary shadow-[0_0_20px_rgba(173,198,255,1)]",
-    border: "hover:border-primary/40",
-    side: "left",
-  },
-  {
-    title: "Voice content",
-    description: "Cloning and synthetic narration with emotional depth.",
-    status: "Status: under integration",
-    icon: "mic",
-    accent: "text-secondary",
-    dot: "bg-secondary shadow-[0_0_20px_rgba(208,188,255,1)]",
-    border: "hover:border-secondary/40",
-    side: "right",
-  },
-  {
-    title: "Multiple generations",
-    description: "Parallel workflow processing for large-scale campaigns.",
-    status: "Status: Architecture Design",
-    icon: "layers",
-    accent: "text-tertiary",
-    dot: "bg-tertiary shadow-[0_0_20px_rgba(185,200,222,1)]",
-    border: "hover:border-tertiary/40",
-    side: "left",
-  },
-  {
-    title: "Automatic social posting",
-    description: "Direct integration with social platforms via AI scheduler.",
-    status: "Status: API Integration",
-    icon: "share",
-    accent: "text-on-surface",
-    dot: "bg-outline shadow-[0_0_20px_rgba(140,144,159,1)]",
-    border: "hover:border-white/20",
-    side: "right",
-  },
-];
-
 import { useLanguage } from "../context/LanguageContext";
 import AuthPanel from "../components/auth/AuthPanel";
 
@@ -108,9 +65,6 @@ function LandingContent() {
             </a>
             <a href="#models" className="font-headline text-sm tracking-tight text-slate-400 transition-colors duration-300 hover:text-blue-100">
               {t("Models")}
-            </a>
-            <a href="#horizon" className="font-headline text-sm tracking-tight text-slate-400 transition-colors duration-300 hover:text-blue-100">
-              {t("Coming Soon") || "Coming Soon"}
             </a>
           </div>
 
@@ -397,110 +351,6 @@ function LandingContent() {
           </div>
         </div>
       </section>
-
-      <section id="horizon" className="relative overflow-hidden bg-[#0c1324] px-4 py-16 sm:px-6 sm:py-24 lg:px-12 lg:py-32">
-        <div className="relative z-10 mx-auto max-w-[1600px]">
-          <div className="mb-8 text-center sm:mb-24">
-            <h2 className="font-headline text-3xl font-bold tracking-tight sm:text-5xl">{t("The Horizon")}</h2>
-            <p className="mx-auto mt-4 max-w-xl text-sm text-[#c2c6d6] sm:mt-6 sm:text-base">{t("What we are building next.")}</p>
-          </div>
-
-          <div className="relative md:hidden">
-            <div className="absolute bottom-0 left-3 top-0 w-px bg-gradient-to-b from-[#adc6ff] via-[#424754] to-transparent" />
-            <div className="space-y-4">
-              {roadmapItems.map((item, index) => (
-                <motion.div
-                  key={item.title}
-                  initial={{ opacity: 0, x: -16 }}
-                  whileInView={{ opacity: 1, x: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 0.45, delay: index * 0.06 }}
-                  className="relative pl-9"
-                >
-                  <div className={`absolute left-[7px] top-3 h-3 w-3 rounded-full ${item.dot}`} />
-                  <div className="flex items-center justify-between gap-3 rounded-lg border border-[#424754]/20 bg-[#191f31] px-4 py-3">
-                    <div className="min-w-0">
-                      <h3 className="truncate font-headline text-base font-bold text-[#dce1fb]">{t(item.title)}</h3>
-                      <p className={`mt-1 text-[11px] font-mono uppercase tracking-tight ${item.accent}/60`}>{t(item.status)}</p>
-                    </div>
-                    <span className={`material-symbols-outlined text-xl ${item.accent}`}>{item.icon}</span>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-          </div>
-
-          <div className="relative hidden md:block">
-            <div className="absolute bottom-0 left-1/2 top-0 hidden w-px -translate-x-1/2 bg-gradient-to-b from-[#adc6ff] via-[#424754] to-transparent md:block" />
-            <div className="space-y-24">
-              {roadmapItems.map((item, index) => (
-                <motion.div 
-                  key={item.title} 
-                  initial={{ opacity: 0, x: item.side === 'left' ? -30 : 30 }}
-                  whileInView={{ opacity: 1, x: 0 }}
-                  viewport={{ once: true, margin: "-100px" }}
-                  transition={{ duration: 0.6, delay: index * 0.1 }}
-                  className="grid items-center gap-6 md:grid-cols-2 md:gap-20"
-                >
-                  {item.side === "left" ? (
-                    <>
-                      <div className="hidden text-end md:block">
-                        <h3 className={`font-headline text-2xl font-bold ${item.accent}`}>{t(item.title)}</h3>
-                        <p className="mt-2 text-[#c2c6d6]">{t(item.description)}</p>
-                      </div>
-                      <div className="relative">
-                        <div className={`absolute left-[-10px] top-1/2 z-20 h-4 w-4 -translate-y-1/2 rounded-full md:left-[-60px] ${item.dot}`} />
-                        <div className={`rounded-xl border border-[#424754]/20 bg-[#191f31] p-6 transition-colors sm:p-8 ${item.border}`}>
-                          <span className={`material-symbols-outlined mb-4 text-4xl ${item.accent}`}>{item.icon}</span>
-                          <h4 className="mb-2 font-headline text-xl font-bold md:hidden">{t(item.title)}</h4>
-                          <p className="mb-4 text-[#c2c6d6] md:hidden">{t(item.description)}</p>
-                          <p className={`text-sm font-mono uppercase tracking-tighter ${item.accent}/60`}>{t(item.status)}</p>
-                        </div>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="order-2 relative md:order-1">
-                        <div className={`absolute right-[-10px] top-1/2 z-20 h-4 w-4 -translate-y-1/2 rounded-full md:right-[-60px] ${item.dot}`} />
-                        <div className={`rounded-xl border border-[#424754]/20 bg-[#191f31] p-6 transition-colors sm:p-8 ${item.border}`}>
-                          <span className={`material-symbols-outlined mb-4 text-4xl ${item.accent}`}>{item.icon}</span>
-                          <h4 className="mb-2 font-headline text-xl font-bold md:hidden">{t(item.title)}</h4>
-                          <p className="mb-4 text-[#c2c6d6] md:hidden">{t(item.description)}</p>
-                          <p className={`text-sm font-mono uppercase tracking-tighter ${item.accent}/60`}>{t(item.status)}</p>
-                        </div>
-                      </div>
-                      <div className="order-1 hidden text-start md:order-2 md:block">
-                        <h3 className={`font-headline text-2xl font-bold ${item.accent}`}>{t(item.title)}</h3>
-                        <p className="mt-2 text-[#c2c6d6]">{t(item.description)}</p>
-                      </div>
-                    </>
-                  )}
-                </motion.div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="px-4 py-16 sm:px-6 sm:py-24 lg:px-12 lg:py-32">
-        <div className="mx-auto max-w-6xl">
-          <div className="relative overflow-hidden rounded-[2rem] border border-[#adc6ff]/20 bg-gradient-to-br from-[#4d8eff]/20 to-[#571bc1]/20 p-6 text-center sm:p-10 lg:p-16">
-            <div className="absolute right-0 top-0 p-8 opacity-10">
-              <span className="material-symbols-outlined text-[10rem]">rocket_launch</span>
-            </div>
-            <h2 className="font-headline text-3xl font-bold sm:text-4xl lg:text-5xl">{t("Ready to Build?")}</h2>
-            <p className="mx-auto mb-8 mt-4 max-w-xl text-base leading-relaxed text-[#c2c6d6] sm:mb-10 sm:mt-6 sm:text-lg">
-              {t("Add credits and enjoy state-of-the-art AI models in one place, with top-ups in Tunisian dinar.")}
-            </p>
-            <div className="flex flex-col justify-center gap-6 sm:flex-row">
-              <Link href={primaryHref} className="rounded-md bg-[#adc6ff] px-6 py-4 text-base font-bold text-[#002e6a] shadow-lg shadow-[#adc6ff]/20 transition-all hover:scale-105 active:scale-95 sm:px-12 sm:py-5 sm:text-xl">
-                {user ? t("Open Dashboard") : t("Claim Early Access")}
-              </Link>
-            </div>
-          </div>
-        </div>
-      </section>
-
       {loading ? (
         <div className="pb-8 text-center text-sm text-[#8c909f]">Checking session…</div>
       ) : null}
