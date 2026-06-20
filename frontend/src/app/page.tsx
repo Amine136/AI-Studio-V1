@@ -93,7 +93,7 @@ function LandingContent() {
                 </button>
               ))}
             </div>
-            <Link href={loginHref} className="font-headline text-xs tracking-tight text-slate-400 transition-colors duration-300 hover:text-blue-100 sm:text-sm">
+            <Link href={loginHref} className="font-headline inline-flex items-center rounded-md border border-[#adc6ff]/40 bg-[#adc6ff]/5 px-3.5 py-2 text-xs font-semibold tracking-tight text-[#dce1fb] transition-all duration-200 hover:border-[#adc6ff]/70 hover:bg-[#adc6ff]/15 hover:text-white active:scale-95 sm:px-5 sm:text-sm">
               {t("Log In") || "Log In"}
             </Link>
             <Link href={primaryHref} className="hidden sm:inline-flex rounded-md bg-gradient-to-br from-[#adc6ff] to-[#4d8eff] px-3.5 py-2 text-xs font-medium text-[#002e6a] transition-transform duration-100 active:scale-95 sm:px-5 sm:text-sm lg:px-6">
@@ -108,64 +108,60 @@ function LandingContent() {
           <div className="absolute right-[-10%] top-[-10%] h-[600px] w-[600px] rounded-full bg-[#adc6ff]/10 blur-[120px]" />
           <div className="absolute bottom-[-5%] left-[-5%] h-[400px] w-[400px] rounded-full bg-[#d0bcff]/10 blur-[100px]" />
         </div>
-        <div className="relative z-10 mx-auto max-w-4xl text-center animate-fade-in-up stagger-children">
-          <p className="mb-4 text-sm font-bold tracking-widest text-[#adc6ff] uppercase">{t("The Premier Tunisian AI Studio")}</p>
-          <h1 className="font-headline text-[2.45rem] font-bold leading-[1.04] tracking-tight text-[#dce1fb] sm:text-5xl md:text-7xl lg:text-8xl">
-            {t("Vibe at the speed of")}{" "}
-            <span className="bg-gradient-to-r from-[#adc6ff] to-[#d0bcff] bg-clip-text text-transparent">{t("thought.")}</span>
-          </h1>
-          <p className="mx-auto mb-8 mt-6 max-w-2xl text-base font-light leading-relaxed text-[#c2c6d6] sm:mb-12 sm:mt-8 sm:text-lg md:text-xl">
-            {t("Direct access to premium AI chat, image generation, and smarter creation flows built for fast creative work.")}
-          </p>
-          <div className="flex flex-col justify-center gap-3 sm:flex-row sm:gap-4">
-            <Link href={primaryHref} className="rounded-md bg-gradient-to-br from-[#adc6ff] to-[#4d8eff] px-8 py-3.5 text-base font-semibold text-[#002e6a] transition-all hover:shadow-[0_0_40px_-10px_rgba(173,198,255,0.5)] sm:px-10 sm:py-4 sm:text-lg">
-              {user ? (t("Launch Dashboard") || "Launch Dashboard") : t("Launch Studio")}
-            </Link>
-            <a href="#models" className="rounded-md bg-slate-800/50 px-8 py-3.5 text-base font-medium text-slate-300 backdrop-blur-sm transition-colors hover:bg-slate-700/50 hover:text-white sm:px-10 sm:py-4 sm:text-lg border border-slate-700/50">
-              {t("View Models")}
-            </a>
-          </div>
-          
-          <div className="mt-10 flex flex-col items-center justify-center gap-2 animate-fade-in-up sm:mt-14 sm:flex-row sm:gap-4" style={{ animationDelay: '400ms' }}>
-            <div className="flex -space-x-3">
-              {[1, 2, 3, 4].map((i) => (
-                <div key={i} className="h-10 w-10 rounded-full border-2 border-[#0c1324] bg-gradient-to-br from-indigo-400 to-purple-400" style={{ backgroundImage: `url('https://api.dicebear.com/7.x/avataaars/svg?seed=${i + 10}&backgroundColor=b6e3f4')` }} />
-              ))}
+        {user ? (
+          <div className="relative z-10 mx-auto max-w-4xl text-center animate-fade-in-up stagger-children">
+            <p className="mb-4 text-sm font-bold tracking-widest text-[#adc6ff] uppercase">{t("The Premier Tunisian AI Studio")}</p>
+            <h1 className="font-headline text-[2.45rem] font-bold leading-[1.04] tracking-tight text-[#dce1fb] sm:text-5xl md:text-7xl lg:text-8xl">
+              {t("Vibe at the speed of")}{" "}
+              <span className="bg-gradient-to-r from-[#adc6ff] to-[#d0bcff] bg-clip-text text-transparent">{t("thought.")}</span>
+            </h1>
+            <p className="mx-auto mb-8 mt-6 max-w-2xl text-base font-light leading-relaxed text-[#c2c6d6] sm:mb-12 sm:mt-8 sm:text-lg md:text-xl">
+              {t("Direct access to premium AI chat, image generation, and smarter creation flows built for fast creative work.")}
+            </p>
+            <div className="flex flex-col justify-center gap-3 sm:flex-row sm:gap-4">
+              <Link href={primaryHref} className="rounded-md bg-gradient-to-br from-[#adc6ff] to-[#4d8eff] px-8 py-3.5 text-base font-semibold text-[#002e6a] transition-all hover:shadow-[0_0_40px_-10px_rgba(173,198,255,0.5)] sm:px-10 sm:py-4 sm:text-lg">
+                {t("Launch Dashboard") || "Launch Dashboard"}
+              </Link>
+              <a href="#models" className="rounded-md bg-slate-800/50 px-8 py-3.5 text-base font-medium text-slate-300 backdrop-blur-sm transition-colors hover:bg-slate-700/50 hover:text-white sm:px-10 sm:py-4 sm:text-lg border border-slate-700/50">
+                {t("View Models")}
+              </a>
             </div>
-            <div className="flex flex-col items-center text-center sm:items-start sm:text-left">
-              <div className="flex translate-x-2 text-yellow-400 sm:translate-x-0">
-                {[1, 2, 3, 4, 5].map((i) => (
-                  <span key={i} className="material-symbols-outlined text-sm">star</span>
-                ))}
+          </div>
+        ) : (
+          /* Signed-out hero: sign-in box pulled above the fold (order-1 on mobile)
+             so cold ad traffic can act immediately instead of bouncing on a slogan. */
+          <div className="relative z-10 mx-auto grid w-full max-w-[1600px] grid-cols-1 items-center gap-10 lg:grid-cols-2 lg:gap-16">
+            <div className="order-2 text-center animate-fade-in-up lg:order-1 lg:text-left rtl:lg:text-right">
+              <p className="mb-4 text-sm font-bold tracking-widest text-[#adc6ff] uppercase">{t("The Premier Tunisian AI Studio")}</p>
+              <h1 className="font-headline text-[2.3rem] font-bold leading-[1.05] tracking-tight text-[#dce1fb] sm:text-5xl md:text-6xl">
+                {t("Vibe at the speed of")}{" "}
+                <span className="bg-gradient-to-r from-[#adc6ff] to-[#d0bcff] bg-clip-text text-transparent">{t("thought.")}</span>
+              </h1>
+              <p className="mx-auto mt-5 max-w-xl text-base font-light leading-relaxed text-[#c2c6d6] sm:mt-6 sm:text-lg lg:mx-0">
+                {t("Direct access to premium AI chat, image generation, and smarter creation flows built for fast creative work.")}
+              </p>
+              <div className="mt-8 flex flex-col items-center justify-center gap-2 sm:flex-row sm:gap-4 lg:justify-start">
+                <div className="flex -space-x-3">
+                  {[1, 2, 3, 4].map((i) => (
+                    <div key={i} className="h-10 w-10 rounded-full border-2 border-[#0c1324] bg-gradient-to-br from-indigo-400 to-purple-400" style={{ backgroundImage: `url('https://api.dicebear.com/7.x/avataaars/svg?seed=${i + 10}&backgroundColor=b6e3f4')` }} />
+                  ))}
+                </div>
+                <div className="flex flex-col items-center text-center sm:items-start sm:text-left rtl:sm:items-end rtl:sm:text-right">
+                  <div className="flex text-yellow-400">
+                    {[1, 2, 3, 4, 5].map((i) => (
+                      <span key={i} className="material-symbols-outlined text-sm">star</span>
+                    ))}
+                  </div>
+                  <p className="text-sm font-medium text-[#c2c6d6]">{t("Be one of the first 1,000 creators")}</p>
+                </div>
               </div>
-              <p className="text-sm font-medium text-[#c2c6d6]">{t("Be one of the first 1,000 creators")}</p>
             </div>
-          </div>
-        </div>
-      </section>
-
-      {!user && (
-        <section id="get-started" className="relative overflow-hidden bg-[#0c1324] px-4 py-16 sm:px-6 sm:py-24 lg:px-12 lg:py-28">
-          <div className="absolute inset-0 z-0">
-            <div className="absolute left-[-8%] top-1/2 h-[420px] w-[420px] -translate-y-1/2 rounded-full bg-[#adc6ff]/10 blur-[120px]" />
-          </div>
-          <div className="relative z-10 mx-auto grid max-w-[1600px] grid-cols-1 items-center gap-10 lg:grid-cols-2 lg:gap-16">
-            <div className="order-2 mx-auto w-full max-w-md lg:order-1 lg:mx-0">
+            <div className="order-1 mx-auto w-full max-w-md animate-fade-in-up lg:order-2 lg:mx-0" style={{ animationDelay: "150ms" }}>
               <AuthPanel className="w-full" />
             </div>
-            <div className="order-1 text-center lg:order-2 lg:text-left rtl:lg:text-right">
-              <p className="mb-4 text-sm font-bold uppercase tracking-widest text-[#adc6ff]">{t("Get Started")}</p>
-              <h2 className="font-headline text-3xl font-bold tracking-tight sm:text-4xl md:text-5xl">
-                {t("Sign in to start creating")}
-              </h2>
-              <div className="mx-auto mt-4 h-1 w-20 bg-[#adc6ff] lg:mx-0 rtl:lg:ml-auto rtl:lg:mr-0" />
-              <p className="mx-auto mt-6 max-w-md text-base leading-relaxed text-[#c2c6d6] lg:mx-0">
-                {t("No password needed — continue with Google or get a magic link sent to your email.")}
-              </p>
-            </div>
           </div>
-        </section>
-      )}
+        )}
+      </section>
 
       <section id="features" className="bg-[#0c1324] px-4 py-16 sm:px-6 sm:py-24 lg:px-12 lg:py-32">
         <div className="mx-auto max-w-[1600px]">

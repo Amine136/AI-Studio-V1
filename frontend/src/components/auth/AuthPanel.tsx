@@ -283,7 +283,7 @@ export default function AuthPanel({ className = "w-full max-w-md" }: AuthPanelPr
   }
 
   return (
-    <div className={`rounded-2xl border border-[#adc6ff]/15 bg-[rgba(25,31,49,0.6)] px-5 py-8 sm:p-10 text-center backdrop-blur-[24px] ${className}`}>
+    <div className={`rounded-2xl border border-[#adc6ff]/30 bg-[rgba(25,31,49,0.74)] px-5 py-8 sm:p-10 text-center backdrop-blur-[24px] shadow-[0_0_0_1px_rgba(173,198,255,0.08),0_24px_70px_-18px_rgba(77,142,255,0.45)] ${className}`}>
       {error ? (
         <div className="mb-5 rounded-md border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
           {isDynamicSuspension ? (
@@ -352,42 +352,22 @@ export default function AuthPanel({ className = "w-full max-w-md" }: AuthPanelPr
         </div>
       ) : (
         <>
-          {isInAppBrowser ? (
-            <div className="mb-6 w-full rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 sm:p-5 text-left rtl:text-right shadow-[0_4px_24px_rgba(245,158,11,0.05)] backdrop-blur-md">
-              <div className="flex items-start gap-3 sm:gap-4">
-                <div className="flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-full border border-amber-500/20 bg-amber-500/10 shadow-[inset_0_0_10px_rgba(245,158,11,0.1)]">
-                  <span className="material-symbols-outlined text-[20px] sm:text-[24px] text-amber-400">gpp_maybe</span>
-                </div>
-                <div className="flex flex-col pt-0 sm:pt-0.5">
-                  <h3 className="mb-1 sm:mb-1.5 font-headline text-[11px] sm:text-[12px] font-bold tracking-[0.1em] sm:tracking-[0.15em] text-amber-400 uppercase">
-                    {t("Action Required")}
-                  </h3>
-                  <p className="text-[12px] sm:text-[13px] leading-relaxed text-[#c2c6d6]">
-                    {t("For security reasons, Google Sign-In does not work inside social media browsers.")}
-                  </p>
-                </div>
-              </div>
+          <div className="mb-7 text-center">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/25 bg-emerald-400/10 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-emerald-300">
+              <span className="material-symbols-outlined text-[13px]">bolt</span>
+              {t("Free to start")}
+            </span>
+            <h2 className="font-headline mt-4 text-2xl font-bold leading-tight text-[#eef1ff] sm:text-[28px]">
+              {t("Start creating for free")}
+            </h2>
+            <p className="mt-2 text-sm text-[#c2c6d6]">
+              {t("No password needed — just your email.")}
+            </p>
+          </div>
 
-              <div className="mt-4 sm:mt-5 flex flex-col gap-3 sm:gap-3.5 pl-[3.25rem] sm:pl-[4rem] rtl:pl-0 sm:rtl:pl-0 rtl:pr-[3.25rem] sm:rtl:pr-[4rem]">
-                <div className="flex items-start gap-2 sm:gap-3">
-                  <span className="mt-0.5 flex h-4 w-4 sm:h-5 sm:w-5 shrink-0 items-center justify-center rounded-full bg-amber-500/20 text-[9px] sm:text-[10px] font-bold text-amber-400">
-                    1
-                  </span>
-                  <p className="text-[12px] sm:text-[13px] text-[#c2c6d6]">
-                    {t("Tap the")} <span className="mx-1 inline-block rounded-md bg-[#0c1324] border border-white/10 px-1.5 py-0.5 font-mono text-[9px] sm:text-[10px] font-bold tracking-widest text-white shadow-sm">•••</span> {t("icon in your browser header.")}
-                  </p>
-                </div>
-                <div className="flex items-start gap-2 sm:gap-3">
-                  <span className="mt-0.5 flex h-4 w-4 sm:h-5 sm:w-5 shrink-0 items-center justify-center rounded-full bg-amber-500/20 text-[9px] sm:text-[10px] font-bold text-amber-400">
-                    2
-                  </span>
-                  <p className="text-[12px] sm:text-[13px] text-[#c2c6d6]">
-                    {t("Select")} <span className="font-semibold text-amber-200">{t('"Open in browser"')}</span> {t("to continue securely.")}
-                  </p>
-                </div>
-              </div>
-            </div>
-          ) : (
+          {/* In-app browsers (FB/Instagram/Threads) can't run the Google popup,
+              so we hide it there and let users sign in with the email link below. */}
+          {!isInAppBrowser && (
             <button
               type="button"
               onClick={handleGoogleSignIn}
@@ -408,11 +388,13 @@ export default function AuthPanel({ className = "w-full max-w-md" }: AuthPanelPr
             </button>
           )}
 
-          <div className="my-6 flex items-center gap-3" aria-hidden="true">
-            <span className="h-px flex-1 bg-[#adc6ff]/15" />
-            <span className="font-label text-[10px] uppercase tracking-widest text-slate-500">{t("or")}</span>
-            <span className="h-px flex-1 bg-[#adc6ff]/15" />
-          </div>
+          {!isInAppBrowser && (
+            <div className="my-6 flex items-center gap-3" aria-hidden="true">
+              <span className="h-px flex-1 bg-[#adc6ff]/15" />
+              <span className="font-label text-[10px] uppercase tracking-widest text-slate-500">{t("or")}</span>
+              <span className="h-px flex-1 bg-[#adc6ff]/15" />
+            </div>
+          )}
 
           <form onSubmit={handleSendLink} className="text-left rtl:text-right">
             <input
@@ -426,7 +408,11 @@ export default function AuthPanel({ className = "w-full max-w-md" }: AuthPanelPr
             <button
               type="submit"
               disabled={sendingLink || !emailIsValid}
-              className="font-headline mt-3 flex w-full items-center justify-center gap-3 rounded-md border border-[#adc6ff]/25 bg-[#2e3447]/30 px-6 py-3.5 font-bold text-[#dce1fb] transition-all duration-300 hover:bg-[#2e3447]/60 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+              className={`font-headline mt-3 flex w-full items-center justify-center gap-3 rounded-md px-6 py-3.5 font-bold transition-all duration-300 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 ${
+                isInAppBrowser
+                  ? "bg-gradient-to-br from-[#adc6ff] to-[#4d8eff] text-[#002e6a] hover:brightness-110"
+                  : "border border-[#adc6ff]/25 bg-[#2e3447]/30 text-[#dce1fb] hover:bg-[#2e3447]/60"
+              }`}
             >
               {sendingLink ? (
                 <span className="auth-spinner" aria-hidden="true" />
