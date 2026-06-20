@@ -20,15 +20,16 @@ const LanguageContext = createContext<LanguageContextProps>({
 });
 
 export const LanguageProvider = ({ children }: { children: React.ReactNode }) => {
-  const [language, setLanguageState] = useState<Language>("en");
+  // Arabic is the default language (primary audience). A returning visitor's
+  // saved choice still wins on mount.
+  const [language, setLanguageState] = useState<Language>("ar");
 
   useEffect(() => {
     const saved = localStorage.getItem("vibecraft_lang") as Language;
-    if (saved && ["en", "fr", "ar"].includes(saved)) {
-      setLanguageState(saved);
-      document.documentElement.dir = saved === "ar" ? "rtl" : "ltr";
-      document.documentElement.lang = saved;
-    }
+    const initial = saved && ["en", "fr", "ar"].includes(saved) ? saved : "ar";
+    setLanguageState(initial);
+    document.documentElement.dir = initial === "ar" ? "rtl" : "ltr";
+    document.documentElement.lang = initial;
   }, []);
 
   const setLanguage = (lang: Language) => {
