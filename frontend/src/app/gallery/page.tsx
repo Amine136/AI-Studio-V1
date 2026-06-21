@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
 import { useLanguage } from "../../context/LanguageContext";
 import AuthenticatedImage from "../../components/AuthenticatedImage";
+import InteractiveAuthenticatedImage from "../../components/InteractiveAuthenticatedImage";
 import { getHistoryPage, type HistoryEntry } from "../../lib/history";
 import { api } from "../../services/api";
 import type { SystemConfig, PlainChatModelItem } from "../../types";
@@ -347,7 +348,12 @@ export default function GalleryPage() {
             <div className="grid lg:grid-cols-[1.05fr_0.95fr] lg:max-h-[85vh]">
                 <div className="flex min-h-[220px] max-h-[42vh] items-center justify-center overflow-hidden bg-[#070d1f] sm:min-h-[320px] sm:max-h-[56vh] lg:max-h-[85vh] lg:h-[85vh]">
                   {isRenderableImageUrl(selectedEntry.imageUrl) ? (
-                  <AuthenticatedImage src={selectedEntry.imageUrl || ""} alt={selectedEntry.prompt} className="h-full w-full object-contain" />
+                  <InteractiveAuthenticatedImage
+                    src={selectedEntry.imageUrl || ""}
+                    alt={selectedEntry.prompt}
+                    wrapperClassName="h-full w-full"
+                    imageClassName="h-full w-full object-contain"
+                  />
                 ) : (
                   <div className="flex min-h-[320px] items-center justify-center text-white/20">
                     <span className="material-symbols-outlined text-[96px]">description</span>
