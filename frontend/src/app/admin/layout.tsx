@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAdminSession } from "./_components/useAdminSession";
 import { api } from "../../services/api";
@@ -10,6 +11,26 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     const pathname = usePathname();
     const router = useRouter();
     const { session, loading, error } = useAdminSession();
+
+    // Deter casual inspection of the admin panel: block the common devtools /
+    // view-source keyboard shortcuts. Only fires while an admin route is
+    // mounted (listener cleaned up on unmount). Not a security control -- it
+    // cannot stop a determined user -- just a deterrent.
+    useEffect(() => {
+        const onKeyDown = (e: KeyboardEvent) => {
+            const k = e.key.toLowerCase();
+            const blocked =
+                e.key === "F12" ||
+                ((e.ctrlKey || e.metaKey) && e.shiftKey && (k === "i" || k === "j" || k === "c")) ||
+                ((e.ctrlKey || e.metaKey) && k === "u");
+            if (blocked) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+        };
+        window.addEventListener("keydown", onKeyDown, true);
+        return () => window.removeEventListener("keydown", onKeyDown, true);
+    }, []);
 
     let content: React.ReactNode;
 
@@ -140,7 +161,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     // LanguageProvider). Forcing dir/lang on this wrapper overrides the
     // inherited RTL direction for the entire admin subtree.
     return (
-        <div dir="ltr" lang="en" className="admin-root">
+        <div dir="ltr" lang="en" className="admin-root" onContextMenu={(e) => e.preventDefault()}>
             {content}
         </div>
     );
