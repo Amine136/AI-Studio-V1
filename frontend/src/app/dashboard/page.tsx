@@ -7,6 +7,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useLanguage } from "../../context/LanguageContext";
 import AuthenticatedImage from "../../components/AuthenticatedImage";
 import { getHistory, type HistoryEntry } from "../../lib/history";
+import { SAMPLE_HISTORY, isSampleEntry } from "../../lib/sampleHistory";
 import { getProfile } from "../../lib/credits";
 import { api } from "../../services/api";
 import type { DashboardNewsItem, PlainChatModelItem } from "../../types";
@@ -310,7 +311,7 @@ export default function DashboardPage() {
     return () => window.clearInterval(intervalId);
   }, [newsItems]);
 
-  const latestItems = history.slice(0, 4);
+  const latestItems = [...history, ...SAMPLE_HISTORY].slice(0, 4);
 
   const playgroundModelMap = useMemo(() => {
     const map = new Map<string, PlainChatModelItem>();
@@ -555,6 +556,11 @@ export default function DashboardPage() {
             : latestItems.map((entry) => (
                 <div key={entry.id} className="group w-[58vw] max-w-[220px] shrink-0 snap-start cursor-pointer md:w-auto md:max-w-none">
                   <div className="relative mb-3 aspect-[4/5] overflow-hidden rounded-xl border border-white/5 bg-[#151b2d]">
+                    {isSampleEntry(entry.id) ? (
+                      <div className="absolute left-2 top-2 z-10 rounded bg-[#0c1324]/85 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#adc6ff] backdrop-blur-md rtl:left-auto rtl:right-2">
+                        {t("Example")}
+                      </div>
+                    ) : null}
                     {isRenderableImageUrl(entry.imageUrl) ? (
                       <AuthenticatedImage src={entry.imageUrl || ""} alt={entry.prompt} className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110" />
                     ) : (

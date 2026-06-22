@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
 import { useLanguage } from "../../context/LanguageContext";
 import AuthenticatedImage from "../../components/AuthenticatedImage";
+import InteractiveAuthenticatedImage from "../../components/InteractiveAuthenticatedImage";
+import { SAMPLE_HISTORY, isSampleEntry } from "../../lib/sampleHistory";
 import { getHistoryPage, type HistoryEntry } from "../../lib/history";
 import { api } from "../../services/api";
 import type { SystemConfig, PlainChatModelItem } from "../../types";
@@ -133,11 +135,16 @@ export default function GalleryPage() {
     return modelId;
   }, [config, plainChatModels]);
 
+  // Real history (newest first) always leads; the standard samples are
+  // appended as the "earliest" generations so every account -- not just
+  // brand-new ones -- has a populated gallery, while a user's own latest
+  // generation stays at the top.
   const filteredEntries = useMemo(() => {
-    if (filter === "all_images") return history.filter((entry) => isRenderableImageUrl(entry.imageUrl));
-    if (filter === "smart") return history.filter((entry) => isRenderableImageUrl(entry.imageUrl) && !entry.model?.startsWith("chat:"));
-    if (filter === "chat") return history.filter((entry) => isRenderableImageUrl(entry.imageUrl) && entry.model?.startsWith("chat:"));
-    return history;
+    const source = [...history, ...SAMPLE_HISTORY];
+    if (filter === "all_images") return source.filter((entry) => isRenderableImageUrl(entry.imageUrl));
+    if (filter === "smart") return source.filter((entry) => isRenderableImageUrl(entry.imageUrl) && !entry.model?.startsWith("chat:"));
+    if (filter === "chat") return source.filter((entry) => isRenderableImageUrl(entry.imageUrl) && entry.model?.startsWith("chat:"));
+    return source;
   }, [filter, history]);
 
   const displayedEntries = useMemo(
@@ -259,6 +266,11 @@ export default function GalleryPage() {
                 <div className="absolute left-5 top-5 rounded-sm bg-[#0c1324]/80 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-[#adc6ff] rtl:left-auto rtl:right-5">
                   {t("Featured")}
                 </div>
+                {isSampleEntry(featuredEntry.id) ? (
+                  <div className="absolute right-5 top-5 rounded-sm bg-[#0c1324]/80 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-[#adc6ff] rtl:right-auto rtl:left-5">
+                    {t("Example")}
+                  </div>
+                ) : null}
               </div>
 
               <div className="flex flex-col justify-between p-5 sm:p-8 overflow-y-auto">
@@ -310,6 +322,11 @@ export default function GalleryPage() {
                   <div className="absolute left-4 top-4 rounded-sm bg-[#0c1324]/80 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-[#adc6ff] rtl:left-auto rtl:right-4">
                     {resolveModelName(entry.model)}
                   </div>
+                  {isSampleEntry(entry.id) ? (
+                    <div className="absolute right-4 top-4 rounded-sm bg-[#0c1324]/80 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-[#adc6ff] rtl:right-auto rtl:left-4">
+                      {t("Example")}
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="p-4 sm:p-5">
@@ -347,7 +364,12 @@ export default function GalleryPage() {
             <div className="grid lg:grid-cols-[1.05fr_0.95fr] lg:max-h-[85vh]">
                 <div className="flex min-h-[220px] max-h-[42vh] items-center justify-center overflow-hidden bg-[#070d1f] sm:min-h-[320px] sm:max-h-[56vh] lg:max-h-[85vh] lg:h-[85vh]">
                   {isRenderableImageUrl(selectedEntry.imageUrl) ? (
-                  <AuthenticatedImage src={selectedEntry.imageUrl || ""} alt={selectedEntry.prompt} className="h-full w-full object-contain" />
+                  <InteractiveAuthenticatedImage
+                    src={selectedEntry.imageUrl || ""}
+                    alt={selectedEntry.prompt}
+                    wrapperClassName="h-full w-full"
+                    imageClassName="h-full w-full object-contain"
+                  />
                 ) : (
                   <div className="flex min-h-[320px] items-center justify-center text-white/20">
                     <span className="material-symbols-outlined text-[96px]">description</span>
@@ -359,6 +381,11 @@ export default function GalleryPage() {
                   <span className="rounded-sm bg-[#2e3447] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-[#b9c8de]">
                     {resolveModelName(selectedEntry.model)}
                   </span>
+                  {isSampleEntry(selectedEntry.id) ? (
+                    <span className="rounded-sm bg-[#adc6ff]/15 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-[#adc6ff]">
+                      {t("Example")}
+                    </span>
+                  ) : null}
                   <span className="rounded-sm bg-[#2e3447] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.22em] text-[#b9c8de]">
                     {formatDate(selectedEntry.createdAt)}
                   </span>
