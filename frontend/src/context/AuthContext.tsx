@@ -21,6 +21,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
             setUser(firebaseUser);
+            
+            if (firebaseUser && typeof window !== 'undefined' && window.fbq) {
+                const isNewUser = firebaseUser.metadata.creationTime === firebaseUser.metadata.lastSignInTime;
+                if (isNewUser && !window.localStorage.getItem("fb_pixel_registered")) {
+                    window.fbq('track', 'CompleteRegistration');
+                    window.localStorage.setItem("fb_pixel_registered", "true");
+                }
+            }
+            
             setLoading(false);
         });
         return () => unsubscribe();
