@@ -8,7 +8,7 @@ import MetaPixel from "../components/MetaPixel";
 import GoogleAnalytics from "../components/GoogleAnalytics";
 import { LanguageProvider } from "../context/LanguageContext";
 
-const LOGO_VERSION = "20260506-1210";
+const LOGO_VERSION = "20260622-1940";
 const MATERIAL_SYMBOLS_STYLESHEET =
   "https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200";
 
@@ -54,7 +54,14 @@ export default function RootLayout({
         <meta property="og:description" content="Vibecraft is the premier Tunisian AI studio for generating captions, images, and more. The ultimate AI studio in Tunis for creative workflows." />
         <meta property="og:type" content="website" />
         <meta property="og:url" content="https://vibecraft.ouni.space" />
-        <meta property="og:image" content="https://vibecraft.ouni.space/best-version/logo-192.png?v=20260506-1210" />
+        <meta property="og:image" content={`https://vibecraft.ouni.space/best-version/og-card.png?v=${LOGO_VERSION}`} />
+        <meta property="og:image:width" content="1200" />
+        <meta property="og:image:height" content="630" />
+        <meta property="og:image:alt" content="Vibecraft — Tunisian AI Studio" />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content="Vibecraft | Tunisian AI Studio" />
+        <meta name="twitter:description" content="Vibecraft is the premier Tunisian AI studio for generating captions, images, and more." />
+        <meta name="twitter:image" content={`https://vibecraft.ouni.space/best-version/og-card.png?v=${LOGO_VERSION}`} />
         <link rel="icon" href={`/best-version/favicon-32.png?v=${LOGO_VERSION}`} type="image/png" sizes="32x32" />
         <link rel="icon" href={`/best-version/logo-192.png?v=${LOGO_VERSION}`} type="image/png" sizes="192x192" />
         <link rel="apple-touch-icon" href={`/best-version/logo-192.png?v=${LOGO_VERSION}`} />
