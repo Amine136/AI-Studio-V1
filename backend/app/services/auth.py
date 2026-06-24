@@ -45,6 +45,7 @@ async def verify_api_key(api_key: str = Security(API_KEY_HEADER)):
 
 
 async def verify_firebase_user(
+    request: Request,
     credentials: HTTPAuthorizationCredentials = Security(BEARER_AUTH),
 ) -> Dict[str, Any]:
     if not credentials or credentials.scheme.lower() != "bearer":
@@ -81,6 +82,8 @@ async def verify_firebase_user(
             detail = reason
         raise HTTPException(status_code=403, detail=detail)
     profile = ensure_user(uid, email, display_name)
+    # Pop the transient one-shot marker so it never leaks into API responses.
+    newly_created = bool((profile or {}).pop("_isNewlyCreated", False))
     if bool((profile or {}).get("isDeactivated")):
         detail = "This account has been deactivated. You no longer have access to this account or its data."
         reason = str((profile or {}).get("deactivationReason") or "").strip()
@@ -94,6 +97,17 @@ async def verify_firebase_user(
             status_code=403,
             detail=format_suspension_detail(reason, suspension.get("until")),
         )
+
+    # Brand-new user who cleared every gate: fire a server-side
+    # CompleteRegistration (deduped against the browser Pixel via reg_<uid>).
+    # Fully fail-safe — never blocks or breaks auth on a tracking error.
+    if newly_created:
+        try:
+            from app.services.meta_capi import send_complete_registration
+
+            send_complete_registration(request=request, uid=uid, email=email)
+        except Exception:
+            pass
 
     return {
         "uid": uid,

@@ -60,6 +60,18 @@ class Config:
         self.firestore_project_id = os.getenv("FIRESTORE_PROJECT_ID", self.firebase_project_id).strip()
         self.firestore_database = os.getenv("FIRESTORE_DATABASE", "(default)").strip()
         self.firebase_credentials_path = os.getenv("FIREBASE_CREDENTIALS_PATH", "").strip()
+        # Meta Conversions API (server-side CompleteRegistration). Server-to-server
+        # event that can't be blocked by ad blockers/ITP/cross-browser hops; it is
+        # deduplicated against the browser Pixel via a shared event_id (reg_<uid>).
+        # No token configured => CAPI is a safe no-op. test_event_code (optional)
+        # routes events to the Events Manager "Test Events" tab without affecting
+        # real metrics (used for staging validation).
+        self.meta_capi_pixel_id = os.getenv("META_CAPI_PIXEL_ID", "1370764631891853").strip()
+        self.meta_capi_access_token = os.getenv("META_CAPI_ACCESS_TOKEN", "").strip()
+        self.meta_capi_test_event_code = os.getenv("META_CAPI_TEST_EVENT_CODE", "").strip()
+        # Staging-only test hook: when truthy, Pack GENERATIONS route through the
+        # $0 fake provider (estimates stay real). Never enable in production.
+        self.packs_test_fake_provider = os.getenv("PACKS_TEST_FAKE_PROVIDER", "").strip().lower() in {"1", "true", "yes", "on"}
         self.admin_session_secret = os.getenv("ADMIN_SESSION_SECRET", "").strip()
         self.admin_session_cookie_name = os.getenv("ADMIN_SESSION_COOKIE_NAME", "vibecraft_admin_session").strip() or "vibecraft_admin_session"
         self.admin_csrf_cookie_name = os.getenv("ADMIN_CSRF_COOKIE_NAME", "vibecraft_admin_csrf").strip() or "vibecraft_admin_csrf"

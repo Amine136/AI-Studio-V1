@@ -269,6 +269,7 @@ class SecurityRepository:
     def ensure_user(self, uid: str, email: str, display_name: str) -> User:
         now = int(time.time())
         user = self.session.get(User, uid)
+        was_created = user is None
         if user is None:
             user = User(
                 uid=uid,
@@ -298,6 +299,9 @@ class SecurityRepository:
             user.updated_at = now
             user.last_seen_at = now
         self.session.flush()
+        # Transient (non-persisted) marker so callers can fire a one-time
+        # server-side CompleteRegistration only for genuinely new users.
+        user._is_newly_created = was_created
         return user
 
     def update_user_profile(self, user: User, *, username: str, bio: str, updated_at: int) -> User:

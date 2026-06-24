@@ -39,7 +39,11 @@ def ensure_user(uid: str, email: str, display_name: str) -> dict[str, Any]:
     with session_scope() as session:
         repo = SecurityRepository(session)
         user = repo.ensure_user(uid, email, display_name)
-        return _user_dict_from_model(user)
+        data = _user_dict_from_model(user)
+        # Surface the one-shot "brand-new user" signal (see repo.ensure_user) so
+        # the auth dependency can fire a server-side CompleteRegistration once.
+        data["_isNewlyCreated"] = bool(getattr(user, "_is_newly_created", False))
+        return data
 
 
 def is_email_deactivated(email: str) -> dict[str, Any] | None:
