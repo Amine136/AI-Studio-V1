@@ -69,6 +69,12 @@ class Config:
         self.meta_capi_pixel_id = os.getenv("META_CAPI_PIXEL_ID", "1370764631891853").strip()
         self.meta_capi_access_token = os.getenv("META_CAPI_ACCESS_TOKEN", "").strip()
         self.meta_capi_test_event_code = os.getenv("META_CAPI_TEST_EVENT_CODE", "").strip()
+        # Predicted/nominal value for a CompleteRegistration (Meta requires value > 0
+        # so it can value-optimize). No real purchase price exists at signup; tune via env.
+        try:
+            self.meta_capi_registration_value = float(os.getenv("META_CAPI_REGISTRATION_VALUE", "1.0"))
+        except ValueError:
+            self.meta_capi_registration_value = 1.0
         # Staging-only test hook: when truthy, Pack GENERATIONS route through the
         # $0 fake provider (estimates stay real). Never enable in production.
         self.packs_test_fake_provider = os.getenv("PACKS_TEST_FAKE_PROVIDER", "").strip().lower() in {"1", "true", "yes", "on"}

@@ -46,6 +46,14 @@ def ensure_user(uid: str, email: str, display_name: str) -> dict[str, Any]:
         return data
 
 
+def claim_capi_registration(uid: str) -> bool:
+    """Atomic one-shot claim for the server-side CompleteRegistration (see
+    SecurityRepository.claim_capi_registration). True only for the first caller."""
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        return repo.claim_capi_registration(uid)
+
+
 def is_email_deactivated(email: str) -> dict[str, Any] | None:
     normalized = str(email or "").strip().lower()
     if not normalized:

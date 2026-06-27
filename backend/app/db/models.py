@@ -34,6 +34,9 @@ class User(Base):
     suspended_until: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     moderation_ban_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     last_moderation_ban_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    # One-shot stamp for the server-side Meta CompleteRegistration (CAPI). NULL =
+    # not yet sent; set exactly once via an atomic claim (see claim_capi_registration).
+    capi_registration_sent_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
 
     created_codes: Mapped[list["CreditCode"]] = relationship(
         back_populates="created_by_user",

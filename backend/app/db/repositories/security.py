@@ -6,7 +6,7 @@ import time
 import uuid
 from typing import Any
 
-from sqlalchemy import case, delete, func, select
+from sqlalchemy import case, delete, func, select, update
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
@@ -303,6 +303,24 @@ class SecurityRepository:
         # server-side CompleteRegistration only for genuinely new users.
         user._is_newly_created = was_created
         return user
+
+    def claim_capi_registration(self, uid: str) -> bool:
+        """Atomically claim the one-shot server-side CompleteRegistration for ``uid``.
+
+        Returns True for exactly the FIRST caller (and stamps
+        ``capi_registration_sent_at``); every later call -- and every user that
+        already existed when the column was backfilled -- returns False. This
+        decouples CAPI firing from the row-creation race: any of the many
+        endpoints that call ``ensure_user`` may create the row first, so we must
+        not rely on who won. The single UPDATE..WHERE..IS NULL is atomic in PG.
+        """
+        now = int(time.time())
+        result = self.session.execute(
+            update(User)
+            .where(User.uid == uid, User.capi_registration_sent_at.is_(None))
+            .values(capi_registration_sent_at=now)
+        )
+        return bool(result.rowcount == 1)
 
     def update_user_profile(self, user: User, *, username: str, bio: str, updated_at: int) -> User:
         user.username = username

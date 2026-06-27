@@ -82,6 +82,10 @@ def send_complete_registration(*, request: Any, uid: str, email: str) -> None:
             "event_id": f"reg_{uid}",  # shared with the browser Pixel -> Meta dedup
             "action_source": "website",
             "user_data": user_data,
+            "custom_data": {
+                "value": settings.meta_capi_registration_value,
+                "currency": "USD",
+            },
         }
         source_url = request.headers.get("referer") or request.headers.get("origin")
         if source_url:

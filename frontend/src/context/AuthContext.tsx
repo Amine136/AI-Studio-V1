@@ -58,7 +58,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     if (isNewUser && !window.localStorage.getItem("fb_pixel_registered")) {
                         // Shared event_id with the server-side CAPI event so Meta
                         // dedupes the two channels into one registration.
-                        fbq('track', 'CompleteRegistration', {}, { eventID: `reg_${firebaseUser.uid}` });
+                        fbq('track', 'CompleteRegistration', { value: 1.00, currency: 'USD' }, { eventID: `reg_${firebaseUser.uid}` });
                         window.localStorage.setItem("fb_pixel_registered", "true");
                     }
                 });
