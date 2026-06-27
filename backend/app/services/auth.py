@@ -83,7 +83,7 @@ async def verify_firebase_user(
         raise HTTPException(status_code=403, detail=detail)
     profile = ensure_user(uid, email, display_name)
     # Pop the transient one-shot marker so it never leaks into API responses.
-    newly_created = bool((profile or {}).pop("_isNewlyCreated", False))
+    (profile or {}).pop("_isNewlyCreated", None)
     if bool((profile or {}).get("isDeactivated")):
         detail = "This account has been deactivated. You no longer have access to this account or its data."
         reason = str((profile or {}).get("deactivationReason") or "").strip()
@@ -98,16 +98,20 @@ async def verify_firebase_user(
             detail=format_suspension_detail(reason, suspension.get("until")),
         )
 
-    # Brand-new user who cleared every gate: fire a server-side
-    # CompleteRegistration (deduped against the browser Pixel via reg_<uid>).
+    # Fire a server-side CompleteRegistration exactly once per user, deduped with
+    # the browser Pixel via reg_<uid>. We CLAIM it atomically on the users row
+    # (capi_registration_sent_at) instead of trusting who won the row-creation
+    # race: many endpoints call ensure_user, so the auth path is not guaranteed
+    # to be the creator. Runs only after the user cleared every gate above.
     # Fully fail-safe — never blocks or breaks auth on a tracking error.
-    if newly_created:
-        try:
-            from app.services.meta_capi import send_complete_registration
+    try:
+        from app.services.postgres_security_store import claim_capi_registration
+        from app.services.meta_capi import send_complete_registration
 
+        if claim_capi_registration(uid):
             send_complete_registration(request=request, uid=uid, email=email)
-        except Exception:
-            pass
+    except Exception:
+        pass
 
     return {
         "uid": uid,
