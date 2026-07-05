@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 from app.config import settings
 from app.core.schema import ChatMessage, ChatMessagePart, PlainChatOptions, PlainChatRequest
 from app.services.apikeymanager_client import generate_chat_via_proxy, generate_image_payload_via_proxy
+from app.services.image_downscale import downscale_image_for_provider, per_image_output_cap
 from app.services.model_visibility import is_model_enabled
 from app.services.user_files import load_private_user_file, private_file_id_from_url, private_file_url_prefix
 
@@ -526,7 +527,16 @@ def _load_private_uploaded_image_data(file_id: str, *, user_uid: str) -> tuple[s
     except Exception as exc:
         raise ValueError("CHAT_IMAGE_URL_INVALID") from exc
     image_bytes = storage_path.read_bytes()
-    return str(file_record["mime_type"]), base64.b64encode(image_bytes).decode("ascii")
+    # Server-side backstop: shrink oversized uploads so the base64 body stays
+    # under the AKM gateway's 1 MiB limit even if the browser-side resize was
+    # skipped (e.g. a non-browser client). Budget for a full image set so several
+    # references still fit. In-spec images (already small from the client) pass
+    # through unchanged.
+    mime_type = str(file_record["mime_type"] or "")
+    image_bytes, mime_type = downscale_image_for_provider(
+        image_bytes, mime_type, output_cap=per_image_output_cap(MAX_CHAT_INPUT_IMAGES)
+    )
+    return mime_type, base64.b64encode(image_bytes).decode("ascii")
 
 
 def _supports_image_input(model_entry: dict[str, Any]) -> bool:

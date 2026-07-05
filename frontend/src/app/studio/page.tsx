@@ -170,19 +170,23 @@ export default function StudioHomePage() {
               </div>
             </Link>
 
-            {/* 2. Coming Soon (e.g., Storyboard Generator) */}
-            <div className="flex cursor-not-allowed flex-col rounded-2xl border border-white/5 bg-white/5 p-6 opacity-60 grayscale transition-all hover:opacity-80">
-              <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-[#23293c] text-slate-400">
-                <span className="material-symbols-outlined text-2xl">view_timeline</span>
+            {/* 2. Packs */}
+            <Link
+              href="/studio/packs"
+              className="group flex flex-col rounded-2xl border border-[#adc6ff]/20 bg-[linear-gradient(135deg,rgba(21,27,45,0.96),rgba(12,19,36,0.94))] p-6 shadow-lg transition-all hover:-translate-y-1 hover:border-[#adc6ff]/40"
+            >
+              <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-[#2e3447] text-[#adc6ff] transition-colors group-hover:bg-[#adc6ff] group-hover:text-[#00285d]">
+                <span className="material-symbols-outlined text-2xl" style={{ fontVariationSettings: "'FILL' 1" }}>grid_view</span>
               </div>
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <h3 className="font-headline text-lg font-bold text-white truncate">{t("Storyboard Studio")}</h3>
-                <span className="shrink-0 rounded bg-white/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-white/70">{t("Coming Soon")}</span>
-              </div>
-              <p className="mt-2 flex-grow text-sm leading-6 text-slate-400">
-                {t("A sequential engine that breaks scripts into scenes and generates stylistically consistent visual frames.")}
+              <h3 className="font-headline text-lg font-bold text-white">{t("Packs")}</h3>
+              <p className="mt-2 flex-grow text-sm leading-6 text-[#c2c6d6]">
+                {t("Ready-made creative packs that combine models, prompts, and settings for specific use cases — launch in one click.")}
               </p>
-            </div>
+              <div className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-[#adc6ff] transition-all group-hover:gap-3">
+                {t("Browse Packs")}
+                <span className="material-symbols-outlined text-base">arrow_forward</span>
+              </div>
+            </Link>
 
             {/* 3. Coming Soon (e.g., Video Generation) */}
             <div className="flex cursor-not-allowed flex-col rounded-2xl border border-white/5 bg-white/5 p-6 opacity-60 grayscale transition-all hover:opacity-80">

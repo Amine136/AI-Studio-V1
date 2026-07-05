@@ -1,5 +1,7 @@
 import base64
 import json
+import logging
+import re
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -8,12 +10,44 @@ import httpx
 from app.config import settings
 from app.services.user_files import privatize_generated_image_url, save_generated_output_base64_for_owner
 
+logger = logging.getLogger(__name__)
+
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 IMAGES_DIR = BASE_DIR / "generated_images"
 IMAGES_DIR.mkdir(exist_ok=True)
 
 IMAGEN_VALID_RATIOS = {"1:1", "3:4", "4:3", "9:16", "16:9"}
 RETRYABLE_APIKEYMANAGER_ERROR_TYPES = {"timeout", "network_error", "provider_internal_error"}
+_BASE64_CHARS_RE = re.compile(r"^[A-Za-z0-9+/\s]+={0,2}$")
+
+
+def _resolve_generated_image_output(owner_uid: str, response_data: Dict[str, Any]) -> str:
+    """Extract the generated image from an AKM proxy response.
+
+    Some models occasionally reply with plain text (e.g. a refusal or a
+    clarifying question) instead of image data when there's no dedicated
+    imageUrl/imageBase64 field. Blindly base64-decoding that text fails deep
+    inside base64.b64decode with an opaque UnicodeEncodeError and no hint of
+    what the model actually said - so validate it looks like base64 first and
+    raise a clear, diagnosable error (with the actual text) otherwise.
+    """
+    outputs = response_data.get("outputs") or {}
+    image_url = outputs.get("imageUrl")
+    if isinstance(image_url, str) and image_url.strip():
+        return privatize_generated_image_url(owner_uid, image_url)
+
+    image_base64 = outputs.get("imageBase64")
+    if not image_base64:
+        text_fallback = response_data.get("response")
+        if not text_fallback:
+            raise RuntimeError("ApiKeyManager did not return image data")
+        if not _BASE64_CHARS_RE.match(text_fallback.strip()):
+            snippet = text_fallback.strip()[:300]
+            logger.warning("Model returned text instead of an image: %r", snippet)
+            raise RuntimeError(f"Model returned text instead of an image: {snippet!r}")
+        image_base64 = text_fallback
+
+    return save_generated_output_base64_for_owner(owner_uid, image_base64)
 
 
 class ApiKeyManagerProxyError(RuntimeError):
@@ -325,16 +359,7 @@ def generate_image_via_proxy(
     }
     data = _post_proxy(payload)
     response_data = data.get("data", {}) or {}
-    outputs = response_data.get("outputs") or {}
-    image_url = outputs.get("imageUrl")
-    if isinstance(image_url, str) and image_url.strip():
-        return privatize_generated_image_url(owner_uid, image_url)
-
-    image_base64 = outputs.get("imageBase64") or response_data.get("response")
-    if not image_base64:
-        raise RuntimeError("ApiKeyManager did not return image data")
-
-    return save_generated_output_base64_for_owner(owner_uid, image_base64)
+    return _resolve_generated_image_output(owner_uid, response_data)
 
 
 def generate_image_payload_via_proxy(
@@ -389,14 +414,7 @@ def generate_image_payload_via_proxy(
     data = _post_proxy(payload)
     response_data = data.get("data", {}) or {}
     outputs = response_data.get("outputs") or {}
-    image_url = outputs.get("imageUrl")
-    if isinstance(image_url, str) and image_url.strip():
-        resolved_image = privatize_generated_image_url(owner_uid, image_url)
-    else:
-        image_base64 = outputs.get("imageBase64") or response_data.get("response")
-        if not image_base64:
-            raise RuntimeError("ApiKeyManager did not return image data")
-        resolved_image = save_generated_output_base64_for_owner(owner_uid, image_base64)
+    resolved_image = _resolve_generated_image_output(owner_uid, response_data)
 
     return {
         "image": resolved_image,
@@ -444,14 +462,7 @@ def generate_text_and_image_via_proxy(
     data = _post_proxy(payload)
     response_data = data.get("data", {}) or {}
     outputs = response_data.get("outputs") or {}
-    image_url = outputs.get("imageUrl")
-    if isinstance(image_url, str) and image_url.strip():
-        resolved_image = privatize_generated_image_url(owner_uid, image_url)
-    else:
-        image_base64 = outputs.get("imageBase64") or response_data.get("response")
-        if not image_base64:
-            raise RuntimeError("ApiKeyManager did not return image data")
-        resolved_image = save_generated_output_base64_for_owner(owner_uid, image_base64)
+    resolved_image = _resolve_generated_image_output(owner_uid, response_data)
     text_output = outputs.get("text") or ""
 
     return {
@@ -493,14 +504,7 @@ def generate_text_and_image_payload_via_proxy(
     data = _post_proxy(payload)
     response_data = data.get("data", {}) or {}
     outputs = response_data.get("outputs") or {}
-    image_url = outputs.get("imageUrl")
-    if isinstance(image_url, str) and image_url.strip():
-        resolved_image = privatize_generated_image_url(owner_uid, image_url)
-    else:
-        image_base64 = outputs.get("imageBase64") or response_data.get("response")
-        if not image_base64:
-            raise RuntimeError("ApiKeyManager did not return image data")
-        resolved_image = save_generated_output_base64_for_owner(owner_uid, image_base64)
+    resolved_image = _resolve_generated_image_output(owner_uid, response_data)
 
     return {
         "image": resolved_image,

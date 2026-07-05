@@ -180,13 +180,45 @@ def assign_models(state: StudioState) -> StudioState:
     return {"assigned_models": assignments}
 
 
+def _content_blocked_result(exc: "ApiKeyManagerProxyError") -> Dict[str, Any]:
+    return {
+        "status": "error",
+        "failure_reason": "content_blocked",
+        "error_message": "CONTENT_BLOCKED",
+        "final_response": {
+            "status": "error",
+            "meta": {
+                "failure_reason": "content_blocked",
+                "error_message": "CONTENT_BLOCKED",
+                "provider_error": exc.to_metadata(),
+            },
+        },
+    }
+
+
+def _moderation_unavailable_result(exc: "ApiKeyManagerProxyError") -> Dict[str, Any]:
+    return {
+        "status": "error",
+        "failure_reason": "moderation_unavailable",
+        "error_message": "MODERATION_UNAVAILABLE",
+        "final_response": {
+            "status": "error",
+            "meta": {
+                "failure_reason": "moderation_unavailable",
+                "error_message": "MODERATION_UNAVAILABLE",
+                "provider_error": exc.to_metadata(),
+            },
+        },
+    }
+
+
 def analyze_intent(state: StudioState) -> StudioState:
     if state.get("status") == "generating":
         logger.info("🧠 [Step 3/6] ANALYZE INTENT: Skipped (already approved)")
-        return {} 
+        return {}
 
     logger.info("🧠 [Step 3/6] ANALYZE INTENT: Understanding user request...")
-    
+
     user_text = state["user_text"]
     input_images = state.get("input_images") or []
     system_llm_models = list(getattr(settings, "system_llm_models", None) or [])
@@ -194,17 +226,48 @@ def analyze_intent(state: StudioState) -> StudioState:
         system_llm_models = [settings.system_llm_model]
         if settings.fallback_llm_model and settings.fallback_llm_model not in system_llm_models:
             system_llm_models.append(settings.fallback_llm_model)
-    
+
+    # Screen the RAW user text before it gets embedded in the analysis
+    # template below: a large template (persona + instructions + vocab JSON)
+    # can dilute AKM's moderation score for a short explicit phrase enough
+    # that it no longer trips, even though the same raw phrase sent alone
+    # (as chat does) would be blocked. This is a cheap, near-zero-token call
+    # purely to get the raw text in front of AKM's input moderation; the
+    # existing check below on the designed prompt still runs unchanged.
+    if user_text and user_text.strip():
+        try:
+            generate_text(
+                settings.system_llm_provider,
+                system_llm_models[0],
+                user_text,
+                options={"maxTokens": 10},
+            )
+        except ApiKeyManagerProxyError as exc:
+            if exc.error_type == "content_blocked":
+                logger.error("   └─ ❌ Moderation rejected raw prompt before analyze intent")
+                owner_uid = str(state.get("owner_uid") or "")
+                if owner_uid:
+                    from app.services.security_backend import record_moderation_rejection
+                    record_moderation_rejection(owner_uid, system_llm_models[0], exc.code, moderation=getattr(exc, "moderation", None))
+                return _content_blocked_result(exc)
+            if exc.error_type == "moderation_unavailable":
+                logger.error("   └─ ⚠️ Moderation unavailable for raw prompt pre-check (not a violation)")
+                return _moderation_unavailable_result(exc)
+            # Any other error (timeout, provider hiccup) on this cheap pre-check:
+            # don't hard-fail the request over infra noise unrelated to moderation.
+            # The real analyze call below will surface/retry on its own.
+            logger.warning(f"   ├─ ⚠️ Raw prompt pre-check errored (non-moderation): {exc}")
+
     # We still pass the options so Gemini knows *what* values to pick
     vocab_str = json.dumps(settings.field_options, indent=2)
-    
+
     # Load prompt
     raw_template = settings.prompts.get("analyze_intent", "")
     if raw_template:
         prompt = raw_template.format(user_text=user_text, vocab_options=vocab_str)
     else:
         prompt = f"Analyze: {user_text}. Options: {vocab_str}."
-    
+
     extracted_data: dict[str, Any] | None = None
     last_error: Exception | None = None
     for index, system_llm_model in enumerate(system_llm_models):
@@ -233,36 +296,12 @@ def analyze_intent(state: StudioState) -> StudioState:
                 if owner_uid:
                     from app.services.security_backend import record_moderation_rejection
                     record_moderation_rejection(owner_uid, system_llm_model, exc.code, moderation=getattr(exc, "moderation", None))
-                return {
-                    "status": "error",
-                    "failure_reason": "content_blocked",
-                    "error_message": "CONTENT_BLOCKED",
-                    "final_response": {
-                        "status": "error",
-                        "meta": {
-                            "failure_reason": "content_blocked",
-                            "error_message": "CONTENT_BLOCKED",
-                            "provider_error": exc.to_metadata(),
-                        },
-                    },
-                }
+                return _content_blocked_result(exc)
             if isinstance(exc, ApiKeyManagerProxyError) and exc.error_type == "moderation_unavailable":
                 # Moderation backend unreachable → blocked defensively (fail-closed),
                 # NOT a user violation: no ban is recorded and the message is neutral.
                 logger.error("   └─ ⚠️ Moderation unavailable for analyze intent (not a violation)")
-                return {
-                    "status": "error",
-                    "failure_reason": "moderation_unavailable",
-                    "error_message": "MODERATION_UNAVAILABLE",
-                    "final_response": {
-                        "status": "error",
-                        "meta": {
-                            "failure_reason": "moderation_unavailable",
-                            "error_message": "MODERATION_UNAVAILABLE",
-                            "provider_error": exc.to_metadata(),
-                        },
-                    },
-                }
+                return _moderation_unavailable_result(exc)
 
     if extracted_data is None:
         logger.error("   └─ ❌ All analyze models failed")

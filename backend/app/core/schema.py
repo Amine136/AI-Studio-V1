@@ -689,3 +689,55 @@ class IntentAnalysis(BaseModel):
     obligatory: ObligatorySettings
     ai_suggestion: AISuggestions
     hidden_params: HiddenParams
+
+
+class PackEstimateRequest(BaseModel):
+    """Body for POST /packs/{id}/estimate (pure read, no provider call)."""
+    slot_values: Optional[Dict[str, Any]] = Field(default=None, description="Filled-in slot values (not required for cost)")
+    n: Optional[int] = Field(default=None, ge=1, le=8, description="Number of images")
+    aspect_ratio: Optional[str] = Field(default=None, max_length=20, description="Must be one of the pack aspect_ratios")
+    has_image: Optional[bool] = Field(default=False, description="Whether a reference/design image is attached (affects model + price)")
+    model: Optional[str] = Field(default=None, max_length=80, description="Optional user-selected image model id")
+    quality: Optional[str] = Field(default=None, max_length=40, description="Optional quality/resolution tier (affects the price tier)")
+
+
+class PackGenerateRequest(BaseModel):
+    """Body for POST /packs/{id}/generate."""
+    slot_values: Optional[Dict[str, Any]] = Field(default=None, description="Filled-in slot values for the pack template")
+    n: Optional[int] = Field(default=None, ge=1, le=8, description="Number of images (clamped to the pack/global max)")
+    aspect_ratio: Optional[str] = Field(default=None, max_length=20, description="Must be one of the pack aspect_ratios")
+    image_refs: Optional[List[InputImage]] = Field(default=None, description="Reference images (for image-input packs), max 4")
+    model: Optional[str] = Field(default=None, max_length=80, description="Optional user-selected image model id")
+    quality: Optional[str] = Field(default=None, max_length=40, description="Optional quality/resolution tier for the chosen model (e.g. low|medium|1k|2k)")
+    prompt_override: Optional[str] = Field(default=None, max_length=4000, description="The planning agent's final prompt; used verbatim instead of the pack template when present")
+
+
+class PackChatTurn(BaseModel):
+    """One prior conversation turn passed to the planning agent for continuity."""
+    role: str = Field(max_length=16, description="'user' or 'assistant'")
+    text: str = Field(default="", max_length=4000, description="The turn's text (user request, or the agent's prior prompt/summary)")
+
+
+class PackPlanRequest(BaseModel):
+    """Body for POST /packs/{id}/plan (the free planning agent step)."""
+    text: Optional[str] = Field(default=None, max_length=4000, description="The user's free-text request")
+    image_refs: Optional[List[InputImage]] = Field(default=None, description="Attached reference images (0..N)")
+    lang: str = Field(default="ar", max_length=8, description="UI language for the clarification/summary (ar|en|fr)")
+    variant_id: Optional[str] = Field(default=None, max_length=80, description="Selected mockup variant whose scene the agent must honor")
+    round: int = Field(default=1, ge=1, le=2, description="Clarification round (1-based); on the last round the agent must return a plan")
+    mockup_first: bool = Field(default=False, description="True when the first image_ref is the mockup template (the rest are the user's design)")
+    history: Optional[List[PackChatTurn]] = Field(default=None, description="Recent conversation turns (most recent last, up to ~5) for continuity")
+
+
+class PackSessionCreate(BaseModel):
+    """Body for POST /packs/sessions (saved studio session)."""
+    pack_id: str = Field(max_length=80, description="The pack this session belongs to")
+    variant_id: Optional[str] = Field(default=None, max_length=80)
+    title: Optional[str] = Field(default=None, max_length=120)
+    data: Optional[Dict[str, Any]] = Field(default=None, description="Session payload (gallery results + agent memory + mockup ref)")
+
+
+class PackSessionUpdate(BaseModel):
+    """Body for PATCH /packs/sessions/{id} (rename and/or autosave)."""
+    title: Optional[str] = Field(default=None, max_length=120)
+    data: Optional[Dict[str, Any]] = Field(default=None)

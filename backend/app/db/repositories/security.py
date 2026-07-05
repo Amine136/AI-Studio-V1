@@ -6,11 +6,11 @@ import time
 import uuid
 from typing import Any
 
-from sqlalchemy import case, delete, func, select
+from sqlalchemy import case, delete, func, select, update
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from app.db.models import AdminAccount, AdminAuditLog, AdminSession, AnalyzeSession, ChatConversation, ChatMessage, CreditCode, CreditCodeClaim, CreditLedgerEntry, CreditLot, CreditLotAllocation, DashboardNewsItem, DeactivatedEmail, GenerationJob, HistoryEntry, ModerationRejection, RateLimitBucket, User, UserFile
+from app.db.models import AdminAccount, AdminAuditLog, AdminSession, AnalyzeSession, ChatConversation, ChatMessage, CreditCode, CreditCodeClaim, CreditLedgerEntry, CreditLot, CreditLotAllocation, DashboardNewsItem, DeactivatedEmail, GenerationJob, HistoryEntry, ModerationRejection, PackSession, RateLimitBucket, User, UserFile
 
 USERNAME_ALLOWED_RE = re.compile(r"[^a-z0-9._-]+")
 
@@ -269,6 +269,7 @@ class SecurityRepository:
     def ensure_user(self, uid: str, email: str, display_name: str) -> User:
         now = int(time.time())
         user = self.session.get(User, uid)
+        was_created = user is None
         if user is None:
             user = User(
                 uid=uid,
@@ -298,7 +299,28 @@ class SecurityRepository:
             user.updated_at = now
             user.last_seen_at = now
         self.session.flush()
+        # Transient (non-persisted) marker so callers can fire a one-time
+        # server-side CompleteRegistration only for genuinely new users.
+        user._is_newly_created = was_created
         return user
+
+    def claim_capi_registration(self, uid: str) -> bool:
+        """Atomically claim the one-shot server-side CompleteRegistration for ``uid``.
+
+        Returns True for exactly the FIRST caller (and stamps
+        ``capi_registration_sent_at``); every later call -- and every user that
+        already existed when the column was backfilled -- returns False. This
+        decouples CAPI firing from the row-creation race: any of the many
+        endpoints that call ``ensure_user`` may create the row first, so we must
+        not rely on who won. The single UPDATE..WHERE..IS NULL is atomic in PG.
+        """
+        now = int(time.time())
+        result = self.session.execute(
+            update(User)
+            .where(User.uid == uid, User.capi_registration_sent_at.is_(None))
+            .values(capi_registration_sent_at=now)
+        )
+        return bool(result.rowcount == 1)
 
     def update_user_profile(self, user: User, *, username: str, bio: str, updated_at: int) -> User:
         user.username = username
@@ -1008,6 +1030,53 @@ class SecurityRepository:
 
     def delete_chat_conversation(self, conversation: ChatConversation) -> None:
         self.session.delete(conversation)
+        self.session.flush()
+
+    # ------------------------------ pack sessions ------------------------------
+    def create_pack_session(self, uid: str, pack_id: str, variant_id: str | None, title: str, data: dict[str, Any]) -> PackSession:
+        now = int(time.time())
+        entry = PackSession(
+            id=str(uuid.uuid4()),
+            uid=uid,
+            pack_id=pack_id,
+            variant_id=variant_id,
+            title=title,
+            data_json=data or {},
+            created_at=now,
+            updated_at=now,
+        )
+        self.session.add(entry)
+        self.session.flush()
+        return entry
+
+    def list_pack_sessions(self, uid: str, pack_id: str | None, limit: int) -> list[PackSession]:
+        stmt = select(PackSession).where(PackSession.uid == uid)
+        if pack_id:
+            stmt = stmt.where(PackSession.pack_id == pack_id)
+        stmt = stmt.order_by(PackSession.updated_at.desc(), PackSession.created_at.desc()).limit(limit)
+        return list(self.session.execute(stmt).scalars())
+
+    def get_pack_session(self, uid: str, session_id: str) -> PackSession | None:
+        return self.session.execute(
+            select(PackSession).where(PackSession.id == session_id, PackSession.uid == uid)
+        ).scalar_one_or_none()
+
+    def get_pack_session_for_update(self, uid: str, session_id: str) -> PackSession | None:
+        return self.session.execute(
+            select(PackSession).where(PackSession.id == session_id, PackSession.uid == uid).with_for_update()
+        ).scalar_one_or_none()
+
+    def update_pack_session(self, session: PackSession, *, title: str | None = None, data: dict[str, Any] | None = None) -> PackSession:
+        if title is not None:
+            session.title = title
+        if data is not None:
+            session.data_json = data
+        session.updated_at = int(time.time())
+        self.session.flush()
+        return session
+
+    def delete_pack_session(self, session: PackSession) -> None:
+        self.session.delete(session)
         self.session.flush()
 
     def add_chat_message(

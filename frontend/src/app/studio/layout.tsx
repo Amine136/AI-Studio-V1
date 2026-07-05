@@ -63,8 +63,8 @@ export default function StudioLayout({ children }: { children: React.ReactNode }
     };
   }, [user]);
 
-  const hideSharedHeader = pathname === "/studio/chat";
-  const hideSidebar = pathname === "/studio/create";
+  const hideSharedHeader = pathname === "/studio/chat" || pathname.startsWith("/studio/packs");
+  const hideSidebar = pathname === "/studio/create" || pathname.startsWith("/studio/packs");
   const showMobileNav = pathname === "/studio";
 
   return (

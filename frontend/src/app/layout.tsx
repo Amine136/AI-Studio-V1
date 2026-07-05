@@ -68,6 +68,8 @@ export default function RootLayout({
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+        {/* Packs "Crafts Index" redesign: Bricolage Grotesque (Latin display) + Tajawal (Arabic) */}
+        <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet" />
         <link rel="preload" as="style" href={MATERIAL_SYMBOLS_STYLESHEET} />
         <link
           rel="stylesheet"

@@ -1,0 +1,29 @@
+{
+  "_comment": "Curated qualitative traits per image model, keyed by AKM model id. The capability registry merges this with AUTO-derived fields from the live AKM catalog (image_input from input_modalities, cost from billing, size/aspect from the param schema) - do NOT duplicate those here. Owner-maintained: edit values freely; a model with no entry falls back to safe defaults so newly-enabled AKM models still work. Scales used: fidelity/photoreal = low|medium|high|highest (reference preservation / realism), text = weak|ok|strong|strongest (typography), output = raster|vector|transparent, multi_image = can meaningfully combine 2+ refs.",
+
+  "gpt-image-1-mini": {"fidelity": "high",    "text": "strong",    "output": "raster",      "photoreal": "medium",  "multi_image": true,  "notes": "cheap, strong instruction-follower; good text & compositing"},
+  "gpt-image-1.5":    {"fidelity": "high",    "text": "strong",    "output": "raster",      "photoreal": "high",    "multi_image": true,  "notes": "mid-tier OpenAI; better realism than mini"},
+  "gpt-image-2":      {"fidelity": "highest", "text": "strong",    "output": "raster",      "photoreal": "high",    "multi_image": true,  "notes": "best OpenAI editor/compositor; top reference fidelity"},
+
+  "grok-imagine-image":                  {"fidelity": "medium",  "text": "weak",   "output": "raster", "photoreal": "medium", "multi_image": true,  "notes": "cheapest edit (edits when image attached, ≤3 refs); drifts on precise placement"},
+  "grok-imagine-image-quality":          {"fidelity": null,      "text": "weak",   "output": "raster", "photoreal": "high",   "multi_image": false, "notes": "generation only (text-input); no image editing"},
+  "grok-imagine-image-quality-editing":  {"fidelity": "highest",  "text": "weak",   "output": "raster", "photoreal": "high",   "multi_image": true,  "notes": "higher-quality grok edit, ≤3 refs"},
+
+  "gemini-2.5-flash-image":         {"fidelity": "high",    "text": "ok",     "output": "raster", "photoreal": "high", "multi_image": true, "notes": "Nano Banana - excellent editor/compositor, strong character/identity consistency"},
+  "gemini-3.1-flash-image-preview": {"fidelity": "highest",    "text": "strong", "output": "raster", "photoreal": "high", "multi_image": true, "notes": "Nano Banana 2 - hi-res tiers, better text"},
+  "gemini-3-pro-image-preview":     {"fidelity": "highest", "text": "strong", "output": "raster", "photoreal": "high", "multi_image": true, "notes": "Nano Banana Pro - premium edit/combine, top fidelity"},
+
+  "ideogram-v3-generate":             {"fidelity": null,   "text": "strongest", "output": "raster",      "photoreal": "medium", "multi_image": false, "notes": "best in-image typography/posters (generation only)"},
+  "ideogram-v3-generate-transparent": {"fidelity": null,   "text": "strong",    "output": "transparent", "photoreal": "low",    "multi_image": false, "notes": "transparent PNG output - logos, stickers, cutouts"},
+  "ideogram-v3-replace-background":    {"fidelity": "high", "text": "ok",        "output": "raster",      "photoreal": "high",   "multi_image": false, "notes": "dedicated background replacement - preserves the subject, swaps bg"},
+
+  "imagen-4.0-fast-generate-001":  {"fidelity": null, "text": "ok", "output": "raster", "photoreal": "high",    "multi_image": false, "notes": "fast photoreal generation (no image input)"},
+  "imagen-4.0-generate-001":       {"fidelity": null, "text": "ok", "output": "raster", "photoreal": "high",    "multi_image": false, "notes": "standard photoreal generation"},
+  "imagen-4.0-ultra-generate-001": {"fidelity": null, "text": "ok", "output": "raster", "photoreal": "highest", "multi_image": false, "notes": "highest-realism generation"},
+
+  "recraftv3_vector":   {"fidelity": "medium", "text": "strong", "output": "vector", "photoreal": "low", "multi_image": false, "notes": "vector/SVG output; can vectorize an input image"},
+  "recraftv4_1":        {"fidelity": null,     "text": "strong", "output": "raster", "photoreal": "medium", "multi_image": false, "notes": "brand/design raster (generation)"},
+  "recraftv4_1_vector": {"fidelity": null,     "text": "strong", "output": "vector", "photoreal": "low", "multi_image": false, "notes": "vector/SVG logos & icons (generation)"},
+
+  "fake-image-out": {"fidelity": null, "text": "weak", "output": "raster", "photoreal": "low", "multi_image": false, "notes": "$0 moderation-test model - excluded from recommendations"}
+}

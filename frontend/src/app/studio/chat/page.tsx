@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Fragment, useEffect, useMemo, useRef, useState, type ChangeEvent, type ClipboardEvent, type ReactNode } from "react";
+import { motion, AnimatePresence, MotionConfig, useReducedMotion, type Variants, type Transition } from "framer-motion";
 import { useAuth } from "../../../context/AuthContext";
 import { useLanguage } from "../../../context/LanguageContext";
 import InteractiveAuthenticatedImage from "../../../components/InteractiveAuthenticatedImage";
@@ -12,6 +13,7 @@ import { api, CONTENT_BLOCKED_MESSAGE, MODERATION_UNAVAILABLE_MESSAGE } from "..
 import { addHistoryEntry } from "../../../lib/history";
 import { getModelDescription } from "../../../lib/modelDescriptions";
 import { getUploadConstraints, maxInputImagesForModelId, preferredOutputType, providerLabelForModelId, readImageDimensions, type UploadImageConstraints } from "../../../lib/imageInputConstraints";
+import { LATENCY_FALLBACK_SECONDS, latencyBudgetForModel } from "../../../lib/modelLatency";
 import type { BillingBreakdown, BillingUsage, ModelPricingSummary, PlainChatModelItem, PlainChatParameterSchemaEntry, PlainChatPart, PlainChatTurnMeta, UploadedImageResult } from "../../../types";
 
 type ChatRole = "user" | "assistant";
@@ -301,10 +303,10 @@ function AssistantMessageContent({ message }: { message: ChatMessage }) {
               key={`${message.id}-image-${index}`}
               src={part.url!}
               alt={`Assistant image ${index + 1}`}
-              wrapperClassName="rounded-xl border border-white/10"
-              imageClassName="max-h-64 w-auto object-cover shadow-[0_12px_30px_rgba(0,0,0,0.28)]"
-              loadingClassName="flex min-h-40 min-w-40 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 py-6 text-xs text-white/60"
-              errorClassName="flex min-h-40 min-w-40 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 py-6 text-xs text-white/60"
+              wrapperClassName="chat-gen-image rounded-2xl"
+              imageClassName="max-h-80 w-auto max-w-full object-cover"
+              loadingClassName="h-56 w-56 max-w-full rounded-2xl border border-white/10 bg-white/5"
+              errorClassName="flex h-40 w-56 max-w-full flex-col items-center justify-center gap-1.5 rounded-2xl border border-white/10 bg-white/5 text-xs text-white/50"
             />
           ))}
         </div>
@@ -335,18 +337,141 @@ function UserMessageContent({ message }: { message: ChatMessage }) {
               key={`${message.id}-image-${index}`}
               src={part.url!}
               alt={`User upload ${index + 1}`}
-              wrapperClassName="rounded-xl border border-black/10"
-              imageClassName="h-20 w-20 object-cover shadow-[0_8px_18px_rgba(0,0,0,0.16)]"
-              loadingClassName="flex h-20 w-20 items-center justify-center rounded-xl border border-black/10 bg-black/5 text-xs text-black/60"
-              errorClassName="flex h-20 w-20 items-center justify-center rounded-xl border border-black/10 bg-black/5 text-xs text-black/60"
-              controls="open"
-              controlButtonClassName="h-6 w-6"
-              controlIconClassName="text-[13px]"
+              wrapperClassName="chat-user-image rounded-xl"
+              imageClassName="max-h-56 w-auto max-w-full object-contain"
+              loadingClassName="h-40 w-40 rounded-xl border border-white/10 bg-white/5"
+              errorClassName="flex h-40 w-40 flex-col items-center justify-center gap-1 rounded-xl border border-white/10 bg-white/5 text-[10px] text-white/50"
+              controlButtonClassName="h-8 w-8"
+              controlIconClassName="text-[15px]"
             />
           ))}
         </div>
       ) : null}
     </div>
+  );
+}
+
+// Time-aware waiting indicator. We can't always know whether a multimodal model
+// (e.g. Nano Banana) will answer with text, an image, or both — but elapsed time
+// is a strong signal: text comes back fast, so anything still pending after a few
+// seconds is almost certainly rendering an image. For image-only models we know
+// up front, so the skeleton appears almost immediately.
+function ChatThinkingIndicator({
+  expectsImage,
+  imageOnly,
+  expectedSeconds,
+  reducedMotion,
+  t,
+}: {
+  expectsImage: boolean;
+  imageOnly: boolean;
+  expectedSeconds: number;
+  reducedMotion: boolean;
+  t: (key: string) => string;
+}) {
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    const started = Date.now();
+    const id = window.setInterval(() => {
+      setElapsed((Date.now() - started) / 1000);
+    }, 500);
+    return () => window.clearInterval(id);
+  }, []);
+
+  // When the image skeleton takes over from the dots.
+  const skeletonAt = imageOnly ? 2 : 6;
+  const showSkeleton = expectsImage && elapsed >= skeletonAt;
+
+  // A soft "expected time" budget so the wait feels bounded. The bar fills
+  // toward this; past it we switch to an indeterminate, reassuring "overtime"
+  // state instead of pretending it's done.
+  const EXPECTED_SECONDS = expectedSeconds > 0 ? expectedSeconds : LATENCY_FALLBACK_SECONDS;
+  const overtime = elapsed >= EXPECTED_SECONDS;
+  const remaining = Math.max(1, Math.ceil(EXPECTED_SECONDS - elapsed));
+  const progressPct = Math.min(elapsed / EXPECTED_SECONDS, 0.95) * 100;
+  const timeLabel = overtime ? `${Math.floor(elapsed)}s` : `~${remaining}s`;
+
+  let caption: string;
+  if (showSkeleton) {
+    if (elapsed >= 60) caption = t("Almost there — detailed images can take a moment.");
+    else if (elapsed >= 35) caption = t("This is taking a little longer than usual…");
+    else if (elapsed >= 18) caption = t("Rendering the details…");
+    else caption = t("Creating your image…");
+  } else if (elapsed >= 30) {
+    caption = t("Still working on it…");
+  } else if (elapsed >= 12) {
+    caption = t("Working through it…");
+  } else {
+    caption = t("Thinking…");
+  }
+
+  const dots = (
+    <div className="chat-thinking-row">
+      <div className="chat-typing-dot" />
+      <div className="chat-typing-dot" />
+      <div className="chat-typing-dot" />
+      <span className="chat-thinking-shimmer" />
+    </div>
+  );
+
+  if (!showSkeleton) {
+    return (
+      <div className="chat-msg-assistant chat-msg-thinking">
+        <div className="flex flex-col gap-2">
+          {dots}
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.span
+              key={caption}
+              className="chat-thinking-caption"
+              initial={reducedMotion ? false : { opacity: 0, y: 3 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: -3 }}
+              transition={{ duration: 0.35 }}
+            >
+              {caption}
+            </motion.span>
+          </AnimatePresence>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <motion.div
+      className="chat-thinking-frame"
+      layout
+      initial={reducedMotion ? false : { opacity: 0, scale: 0.97 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+    >
+      <span className="img-skeleton" aria-hidden="true" />
+      <span className="material-symbols-outlined chat-thinking-frame__icon">image</span>
+      <div className="chat-thinking-frame__caption">
+        <div className="chat-thinking-frame__statusrow">
+          <span className="chat-thinking-frame__pulse" aria-hidden="true" />
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.span
+              key={caption}
+              className="chat-thinking-frame__label"
+              initial={reducedMotion ? false : { opacity: 0, y: 3 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: -3 }}
+              transition={{ duration: 0.35 }}
+            >
+              {caption}
+            </motion.span>
+          </AnimatePresence>
+          <span className="chat-thinking-frame__time">
+            <span className="material-symbols-outlined chat-thinking-frame__time-icon">schedule</span>
+            {timeLabel}
+          </span>
+        </div>
+        <div className={`chat-thinking-frame__bar${overtime ? " is-overtime" : ""}`}>
+          <div className="chat-thinking-frame__bar-fill" style={overtime ? undefined : { width: `${progressPct}%` }} />
+        </div>
+      </div>
+    </motion.div>
   );
 }
 
@@ -392,6 +517,13 @@ function isOneShotImageModel(model: ChatModelOption | null): boolean {
 // above Gemini 2.5 Flash), text-only models fall to the bottom.
 function outputsImage(model: ChatModelOption): boolean {
   return model.outputModalities.some((value) => value.toUpperCase() === "IMAGE");
+}
+
+// Latency budgets live in the shared lib so pricing + chat stay in sync.
+function getModelLatencyBudget(model: ChatModelOption | null, values: ParameterState): number {
+  if (!model) return LATENCY_FALLBACK_SECONDS;
+  const qualityRaw = values.quality ?? values.imageSize ?? values.resolution ?? values.sampleImageSize;
+  return latencyBudgetForModel(model.id, qualityRaw as string | number | null | undefined);
 }
 
 function maxInputImagesForModel(model: ChatModelOption | null): number {
@@ -755,6 +887,71 @@ async function normalizeUploadImage(file: File, constraints: UploadImageConstrai
     URL.revokeObjectURL(objectUrl);
   }
 }
+
+// --- Motion design tokens (framer-motion) ---------------------------------
+// A single spring shared across the chat so every element moves with the same
+// rhythm. Reduced-motion is handled globally by <MotionConfig reducedMotion="user">.
+const CHAT_SPRING: Transition = { type: "spring", stiffness: 420, damping: 34, mass: 0.85 };
+
+// Messages enter with spatial meaning: user bubbles drift in from the right,
+// assistant bubbles from the left — reinforcing who is speaking. They lift and
+// fade a touch faster on exit (exit ~60% of enter) to feel responsive.
+const messageVariants: Variants = {
+  initial: (role: ChatRole) => ({ opacity: 0, y: 16, x: role === "user" ? 26 : -26, scale: 0.96 }),
+  animate: { opacity: 1, y: 0, x: 0, scale: 1, transition: CHAT_SPRING },
+  exit: { opacity: 0, y: -8, scale: 0.97, transition: { duration: 0.16, ease: "easeIn" } },
+};
+
+// Typing indicator bubble springs in from below and shrinks out.
+const typingVariants: Variants = {
+  initial: { opacity: 0, y: 12, scale: 0.9 },
+  animate: { opacity: 1, y: 0, scale: 1, transition: CHAT_SPRING },
+  exit: { opacity: 0, scale: 0.9, transition: { duration: 0.14, ease: "easeIn" } },
+};
+
+// Concrete creation prompts the empty state cycles through, so the blank canvas
+// makes a suggestion instead of just waiting. Drawn from the studio's own world —
+// posters, product shots, logos, ad frames — and phrased so they work as either a
+// chat starter or a direct image prompt. Clicking one drops it into the composer.
+const STARTER_IDEAS = [
+  "a neon poster for a late-night coffee brand",
+  "product photos of a watch on wet stone",
+  "a logo that feels like citrus and static",
+  "a storyboard frame for a 15-second ad",
+  "a dreamy hero image for a travel blog",
+];
+
+// Ambient background motes — soft glowing sparks that drift up and twinkle.
+// Positions/sizes/timings are hand-scattered (not random) so the field feels
+// composed rather than noisy, and staggered delays keep motion continuous.
+const CHAT_MOTES = [
+  { left: "12%", top: "70%", size: 3, color: "#22d3ee", dur: 19, delay: -2, drift: "a" },
+  { left: "26%", top: "55%", size: 4, color: "#8b5cf6", dur: 24, delay: -13, drift: "c" },
+  { left: "39%", top: "84%", size: 3, color: "#c4b5fd", dur: 23, delay: -17, drift: "b" },
+  { left: "48%", top: "62%", size: 2, color: "#67e8f9", dur: 26, delay: -3, drift: "a" },
+  { left: "60%", top: "78%", size: 3, color: "#adc6ff", dur: 20, delay: -11, drift: "b" },
+  { left: "71%", top: "58%", size: 2, color: "#8b5cf6", dur: 22, delay: -6, drift: "c" },
+  { left: "82%", top: "74%", size: 4, color: "#22d3ee", dur: 27, delay: -15, drift: "a" },
+  { left: "44%", top: "46%", size: 3, color: "#8b5cf6", dur: 30, delay: -8, drift: "c" },
+];
+
+// Empty state: icon → heading → subtitle reveal in sequence for an inviting entrance.
+const emptyContainerVariants: Variants = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.09, delayChildren: 0.04 } },
+};
+const emptyItemVariants: Variants = {
+  hidden: { opacity: 0, y: 14 },
+  show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 26 } },
+};
+
+// Model Controls panel slides in from the right and, thanks to AnimatePresence,
+// now slides back out instead of snapping shut.
+const panelVariants: Variants = {
+  initial: { x: "100%", opacity: 0 },
+  animate: { x: 0, opacity: 1, transition: { type: "spring", stiffness: 360, damping: 38 } },
+  exit: { x: "100%", opacity: 0, transition: { duration: 0.22, ease: "easeInOut" } },
+};
 
 export default function StudioChatPage() {
   const { user, loading: authLoading } = useAuth();
@@ -1248,6 +1445,59 @@ export default function StudioChatPage() {
 
   const lockedModelIsOneShotImage = isOneShotImageModel(lockedModel);
   const maxInputImages = maxInputImagesForModel(lockedModel);
+
+  // Rotating starter idea for the empty state. Pauses entirely for reduced-motion
+  // users (a static suggestion, no crossfade churn).
+  const prefersReducedMotion = useReducedMotion();
+  const [ideaIndex, setIdeaIndex] = useState(0);
+  useEffect(() => {
+    if (prefersReducedMotion || messages.length > 0) return;
+    const id = setInterval(() => setIdeaIndex((i) => (i + 1) % STARTER_IDEAS.length), 3600);
+    return () => clearInterval(id);
+  }, [prefersReducedMotion, messages.length]);
+
+  // Composer "charge" burst — a bright light sweeps the border for a few laps then
+  // settles to the calm idle ring. Plays once on open and again on every send.
+  // chargeKey bumps so the overlay remounts and the CSS animation restarts cleanly.
+  const [composerCharging, setComposerCharging] = useState(false);
+  const [chargeKey, setChargeKey] = useState(0);
+  const chargeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const runComposerCharge = () => {
+    if (prefersReducedMotion) return;
+    setChargeKey((k) => k + 1);
+    setComposerCharging(true);
+    if (chargeTimerRef.current) clearTimeout(chargeTimerRef.current);
+    chargeTimerRef.current = setTimeout(() => setComposerCharging(false), 2600);
+  };
+  useEffect(() => {
+    runComposerCharge();
+    return () => {
+      if (chargeTimerRef.current) clearTimeout(chargeTimerRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Pause the animated background while the thread is actively scrolling. The
+  // heavy blurred/blend background is paint-bound, so re-rasterizing it every
+  // scroll frame causes touch/trackpad jank; freezing it lets the browser cache
+  // the blurred result and scroll as cheap GPU compositing. We toggle a class via
+  // direct DOM (no setState) so the scroll handler itself never triggers a render.
+  const chatCanvasRef = useRef<HTMLDivElement>(null);
+  const scrollIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleMessagesScroll = () => {
+    const el = chatCanvasRef.current;
+    if (!el) return;
+    if (!el.classList.contains("is-scrolling")) el.classList.add("is-scrolling");
+    if (scrollIdleTimerRef.current) clearTimeout(scrollIdleTimerRef.current);
+    scrollIdleTimerRef.current = setTimeout(() => {
+      chatCanvasRef.current?.classList.remove("is-scrolling");
+    }, 160);
+  };
+  useEffect(() => {
+    return () => {
+      if (scrollIdleTimerRef.current) clearTimeout(scrollIdleTimerRef.current);
+    };
+  }, []);
 
   const insufficientSelectedModelCredits = currentCredits !== null && currentCredits < selectedModelMinimumCost;
   const insufficientLockedModelMinimumCredits = currentCredits !== null && currentCredits < lockedModelMinimumCost;
@@ -2094,7 +2344,35 @@ export default function StudioChatPage() {
           </footer>
         </div>
       ) : (
-        <div className="chat-canvas flex h-full flex-col overflow-hidden">
+        <MotionConfig reducedMotion="user">
+        <div ref={chatCanvasRef} className="chat-canvas flex h-full flex-col overflow-hidden">
+          <div className="chat-sea" aria-hidden="true">
+            <div className="chat-sea__tide" />
+            <div className="chat-sea__blob chat-sea__blob--a" />
+            <div className="chat-sea__blob chat-sea__blob--b" />
+            <div className="chat-sea__blob chat-sea__blob--c" />
+            <div className="chat-sea__blob chat-sea__blob--d" />
+            {/* Floating luminous motes — soft glowing sparks that drift slowly
+                upward and twinkle, like creative energy gathering toward the vortex.
+                Nested inside chat-sea (absolute, full-canvas) so they can never touch
+                layout; each fades to 0 opacity at both ends so the loop is seamless. */}
+            {CHAT_MOTES.map((mote, i) => (
+              <span
+                key={i}
+                className={`chat-mote chat-mote--${mote.drift}`}
+                style={{
+                  left: mote.left,
+                  top: mote.top,
+                  width: mote.size,
+                  height: mote.size,
+                  background: `radial-gradient(circle, ${mote.color} 0%, transparent 70%)`,
+                  boxShadow: `0 0 ${mote.size * 2}px ${mote.color}`,
+                  animationDuration: `${mote.dur}s`,
+                  animationDelay: `${mote.delay}s`,
+                }}
+              />
+            ))}
+          </div>
           <header className="relative z-30 flex h-12 shrink-0 items-center justify-between border-b border-white/[0.06] bg-[#0a0f1e]/80 px-2.5 backdrop-blur-xl sm:px-5">
             <div className="flex min-w-0 items-center gap-2.5">
               {editingConversationTitle ? (
@@ -2191,7 +2469,7 @@ export default function StudioChatPage() {
 
           <div className="relative z-10 flex flex-1 overflow-hidden">
             <div className="flex flex-1 flex-col overflow-hidden">
-              <div className="chat-messages-scroll flex-1 overflow-y-auto">
+              <div className="chat-messages-scroll flex-1 overflow-y-auto" onScroll={handleMessagesScroll}>
                 <div className="mx-auto max-w-4xl px-3 py-6 sm:px-6 sm:py-8 lg:px-8">
                   {loadingConversation || isBootstrappingRequestedConversation ? (
                     <div className="flex min-h-[50vh] items-center justify-center">
@@ -2202,51 +2480,125 @@ export default function StudioChatPage() {
                       </div>
                     </div>
                   ) : messages.length === 0 ? (
-                    <div className="flex min-h-[55vh] flex-col items-center justify-center">
-                      <div className="chat-empty-icon relative flex h-20 w-20 items-center justify-center rounded-3xl border border-white/[0.06] bg-white/[0.025]">
-                        <span className="material-symbols-outlined text-4xl text-[#adc6ff]/40" style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
-                        <div className="chat-empty-icon-glow" />
-                      </div>
-                      <h2 className="mt-6 text-xl font-semibold tracking-[-0.01em] text-white/90">
+                    <motion.div
+                      className="flex min-h-[55vh] flex-col items-center justify-center"
+                      variants={emptyContainerVariants}
+                      initial="hidden"
+                      animate="show"
+                    >
+                      <motion.div variants={emptyItemVariants} className="chat-empty-orb" aria-hidden="true">
+                        <span className="chat-empty-orb__ring" />
+                        <span className="chat-empty-orb__core">
+                          <motion.span
+                            className="chat-vortex-wrap"
+                            animate={{ scale: [1, 1.06, 1], opacity: [0.85, 1, 0.85] }}
+                            transition={{ duration: 4.5, ease: "easeInOut", repeat: Infinity }}
+                          >
+                            {/* Spiral vortex inspired by the Vibecraft logo — swirling
+                                blades curling into a hollow core, slowly counter-rotating
+                                against the aurora ring for a sense of depth. */}
+                            <svg className="chat-vortex" viewBox="0 0 100 100" fill="none">
+                              <defs>
+                                <linearGradient id="chatVortexGrad" x1="0" y1="0" x2="1" y2="1">
+                                  <stop offset="0%" stopColor="#dcd4ff" />
+                                  <stop offset="45%" stopColor="#8b5cf6" />
+                                  <stop offset="100%" stopColor="#22d3ee" />
+                                </linearGradient>
+                              </defs>
+                              <g className="chat-vortex__spin" stroke="url(#chatVortexGrad)" strokeWidth="4.4" strokeLinecap="round">
+                                {[0, 60, 120, 180, 240, 300].map((deg) => (
+                                  <path key={deg} d="M50 40 C66 39 74 55 62 68" transform={`rotate(${deg} 50 50)`} />
+                                ))}
+                              </g>
+                              <circle cx="50" cy="50" r="3.2" fill="#ede9fe" />
+                            </svg>
+                          </motion.span>
+                        </span>
+                      </motion.div>
+                      <motion.h2 variants={emptyItemVariants} className="mt-7 text-[22px] font-semibold tracking-[-0.015em] text-white/90">
                         {lockedModelIsOneShotImage ? t("One-shot image generation") : t("What will you create?")}
-                      </h2>
-                      <p className="mt-2.5 max-w-[360px] text-center text-[13px] leading-relaxed text-[#5a6580]">
+                      </motion.h2>
+                      <motion.p variants={emptyItemVariants} className="mt-2.5 max-w-[360px] text-center text-[13px] leading-relaxed text-[#5a6580]">
                         {lockedModelIsOneShotImage
                           ? `${lockedModel?.displayName || t("This model")} ${t("generates an image directly from your prompt. It does not use chat memory, so write the full image request in one message.")}`
                           : `${t("Ask a question, describe an image, or start a brainstorming session with")} ${lockedModel?.displayName || t("your model")}.`}
-                      </p>
-                    </div>
+                      </motion.p>
+
+                      <motion.div variants={emptyItemVariants} className="mt-6 flex min-h-[42px] flex-col items-center gap-2">
+                        <span className="chat-idea-eyebrow">{t("Try")}</span>
+                        <AnimatePresence mode="wait">
+                          <motion.button
+                            key={ideaIndex}
+                            type="button"
+                            onClick={() => {
+                              setInput(t(STARTER_IDEAS[ideaIndex]));
+                              requestAnimationFrame(() => textareaRef.current?.focus());
+                            }}
+                            initial={{ opacity: 0, y: 8 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -8 }}
+                            transition={{ duration: 0.36, ease: [0.16, 1, 0.3, 1] }}
+                            className="chat-idea-pill"
+                          >
+                            <span>“{t(STARTER_IDEAS[ideaIndex])}”</span>
+                            <span className="material-symbols-outlined">north_east</span>
+                          </motion.button>
+                        </AnimatePresence>
+                      </motion.div>
+                    </motion.div>
                   ) : (
                     <div className="flex flex-col gap-6 pb-4">
-                      {messages.map((message, idx) => (
-                        <div
-                          key={message.id}
-                          className={`chat-message-in flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
-                          style={{ animationDelay: `${Math.min(idx * 40, 250)}ms` }}
-                        >
-                          <div className={`group relative max-w-[88%] sm:max-w-[78%] ${message.role === "user" ? "chat-msg-user" : "chat-msg-assistant"}`}>
-                            <div className={`chat-msg-label flex items-center gap-2 ${message.role === "user" ? "justify-end text-[#adc6ff]/45" : "text-white/25"}`}>
-                              {message.role === "user" ? displayName : lockedModel?.displayName || t("Assistant")}
+                      <AnimatePresence initial={false} mode="popLayout">
+                        {messages.map((message) => (
+                          <motion.div
+                            key={message.id}
+                            layout
+                            custom={message.role}
+                            variants={messageVariants}
+                            initial="initial"
+                            animate="animate"
+                            exit="exit"
+                            className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
+                          >
+                            <div className={`flex max-w-[88%] flex-col gap-1.5 sm:max-w-[78%] ${message.role === "user" ? "items-end" : "items-start"}`}>
+                              <div className={`chat-msg-label flex items-center gap-1.5 px-1.5 ${message.role === "user" ? "text-[#adc6ff]/50" : "text-white/35"}`}>
+                                {message.role !== "user" ? <span className="chat-msg-dot chat-msg-dot--assistant" /> : null}
+                                {message.role === "user" ? displayName : lockedModel?.displayName || t("Assistant")}
+                                {message.role === "user" ? <span className="chat-msg-dot chat-msg-dot--user" /> : null}
+                              </div>
+                              <div className={`group relative ${message.role === "user" ? "chat-msg-user" : "chat-msg-assistant"}`}>
+                                {message.role === "user" ? <UserMessageContent message={message} /> : <AssistantMessageContent message={message} />}
+                              </div>
                             </div>
-                            {message.role === "user" ? <UserMessageContent message={message} /> : <AssistantMessageContent message={message} />}
-                          </div>
-                        </div>
-                      ))}
+                          </motion.div>
+                        ))}
 
-                      {loadingReply ? (
-                        <div className="chat-message-in flex justify-start">
-                          <div className="chat-msg-assistant">
-                            <div className="chat-msg-label text-white/25">
-                              {lockedModel?.displayName || t("Assistant")}
+                        {loadingReply ? (
+                          <motion.div
+                            key="typing-indicator"
+                            layout
+                            variants={typingVariants}
+                            initial="initial"
+                            animate="animate"
+                            exit="exit"
+                            className="flex justify-start"
+                          >
+                            <div className="flex max-w-[78%] flex-col items-start gap-1.5">
+                              <div className="chat-msg-label flex items-center gap-1.5 px-1.5 text-white/35">
+                                <span className="chat-msg-dot chat-msg-dot--assistant" />
+                                {lockedModel?.displayName || t("Assistant")}
+                              </div>
+                              <ChatThinkingIndicator
+                                expectsImage={Boolean(lockedModel && outputsImage(lockedModel))}
+                                imageOnly={lockedModelIsOneShotImage}
+                                expectedSeconds={getModelLatencyBudget(lockedModel, parameterValues)}
+                                reducedMotion={Boolean(prefersReducedMotion)}
+                                t={t}
+                              />
                             </div>
-                            <div className="flex items-center gap-2 py-1">
-                              <div className="chat-typing-dot" />
-                              <div className="chat-typing-dot" />
-                              <div className="chat-typing-dot" />
-                            </div>
-                          </div>
-                        </div>
-                      ) : null}
+                          </motion.div>
+                        ) : null}
+                      </AnimatePresence>
                     </div>
                   )}
                   <div ref={messagesEndRef} />
@@ -2254,7 +2606,7 @@ export default function StudioChatPage() {
               </div>
 
               <div className="shrink-0 px-2.5 pb-3 pt-2 sm:px-5 sm:pb-5">
-                <div className="mx-auto max-w-4xl">
+                <div className="mx-auto max-w-2xl">
                   {error ? (
                     error === CONTENT_BLOCKED_MESSAGE ? (
                       <div className="mb-3 rounded-xl border border-amber-500/30 bg-amber-500/[0.08] px-4 py-2.5 text-[13px] text-amber-200/90">
@@ -2274,22 +2626,26 @@ export default function StudioChatPage() {
 
                   {lockedModel?.supportsImageInput && inputImages.length > 0 ? (
                     <div className="chat-image-preview mb-3 flex items-center gap-3 px-4 py-2.5">
-                      <div className="flex shrink-0 flex-nowrap items-center gap-1.5">
+                      <div className="flex shrink-0 flex-nowrap items-center gap-2">
                         {inputImages.map((image) => (
-                          <div key={image.localId} className="relative h-8 w-8 shrink-0 overflow-hidden rounded-lg ring-1 ring-white/10">
+                          <div
+                            key={image.localId}
+                            className="relative h-11 w-11 shrink-0 overflow-hidden rounded-xl ring-1 ring-white/12 shadow-[0_4px_14px_rgba(0,0,0,0.3)] transition-transform duration-200 hover:scale-[1.06]"
+                          >
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img src={image.previewUrl} alt={image.name} className="h-full w-full object-cover" />
                             {image.uploading ? (
-                              <div className="absolute inset-0 flex items-center justify-center bg-black/55">
-                                <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                              <div className="absolute inset-0 flex items-center justify-center bg-black/55 backdrop-blur-[1px]">
+                                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
                               </div>
                             ) : null}
                             <button
                               type="button"
                               onClick={() => removeAttachedImage(image.localId)}
-                              className="absolute right-0.5 top-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-black/70 text-[9px] text-white"
+                              className="absolute right-0.5 top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-black/75 text-white ring-1 ring-white/20 transition-colors hover:bg-red-500/80"
+                              aria-label={t("Remove image")}
                             >
-                              ×
+                              <span className="material-symbols-outlined text-[11px]">close</span>
                             </button>
                           </div>
                         ))}
@@ -2310,6 +2666,7 @@ export default function StudioChatPage() {
                   ) : null}
 
                   <div className="chat-composer px-4 py-3 sm:px-5 sm:py-3.5">
+                    {composerCharging ? <span key={chargeKey} className="chat-composer__charge" aria-hidden="true" /> : null}
                     <textarea
                       ref={textareaRef}
                       value={input}
@@ -2324,6 +2681,7 @@ export default function StudioChatPage() {
                       onKeyDown={(event) => {
                         if (event.key === "Enter" && !event.shiftKey) {
                           event.preventDefault();
+                          if (input.trim() || inputImages.length > 0) runComposerCharge();
                           void handleSend();
                         }
                       }}
@@ -2350,9 +2708,12 @@ export default function StudioChatPage() {
                         </span>
                       </div>
 
-                      <button
+                      <motion.button
                         type="button"
-                        onClick={() => void handleSend()}
+                        onClick={() => {
+                          runComposerCharge();
+                          void handleSend();
+                        }}
                         disabled={
                           (!input.trim() && inputImages.length === 0) ||
                           input.trim().length > MAX_CHAT_TEXT_CHARS ||
@@ -2361,21 +2722,45 @@ export default function StudioChatPage() {
                           uploadingImage ||
                           loadingConversation
                         }
+                        variants={{ hover: { scale: 1.03, y: -1 }, tap: { scale: 0.95, y: 0 } }}
+                        whileHover="hover"
+                        whileTap="tap"
+                        transition={CHAT_SPRING}
                         className="chat-send-btn"
                       >
                         <span>{uploadingImage ? t("Uploading...") : t("Send")}</span>
-                        <span className="material-symbols-outlined text-[15px]">arrow_upward</span>
-                      </button>
+                        <motion.span
+                          className="material-symbols-outlined text-[15px]"
+                          variants={{ hover: { y: -2, x: 1 }, tap: { y: 0 } }}
+                          transition={CHAT_SPRING}
+                        >
+                          arrow_upward
+                        </motion.span>
+                      </motion.button>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
 
+            <AnimatePresence>
             {settingsPanelOpen ? (
-              <>
-                <div className="chat-panel-backdrop fixed inset-0 z-40 bg-black/20 backdrop-blur-[1px] lg:hidden" onClick={() => setSettingsPanelOpen(false)} />
-                <aside className="chat-panel-slide fixed bottom-0 right-0 top-0 z-50 flex w-[56vw] min-w-[210px] max-w-[280px] flex-col border-l border-white/[0.05] bg-[#080c1a]/95 backdrop-blur-2xl sm:w-72 lg:relative lg:bottom-auto lg:top-auto lg:z-auto lg:w-[280px]">
+              <Fragment key="model-controls-panel">
+                <motion.div
+                  className="fixed inset-0 z-40 bg-black/20 backdrop-blur-[1px] lg:hidden"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  onClick={() => setSettingsPanelOpen(false)}
+                />
+                <motion.aside
+                  variants={panelVariants}
+                  initial="initial"
+                  animate="animate"
+                  exit="exit"
+                  className="fixed bottom-0 right-0 top-0 z-50 flex w-[56vw] min-w-[210px] max-w-[280px] flex-col border-l border-white/[0.05] bg-[#080c1a]/95 backdrop-blur-2xl sm:w-72 lg:relative lg:bottom-auto lg:top-auto lg:z-auto lg:w-[280px]"
+                >
                   <div className="flex h-12 shrink-0 items-center justify-between border-b border-white/[0.06] px-4">
                     <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/35">{t("Model Controls")}</span>
                     <div className="flex items-center gap-1">
@@ -2427,11 +2812,13 @@ export default function StudioChatPage() {
                       </div>
                     )}
                   </div>
-                </aside>
-              </>
+                </motion.aside>
+              </Fragment>
             ) : null}
+            </AnimatePresence>
           </div>
         </div>
+        </MotionConfig>
       )}
     </section>
   );

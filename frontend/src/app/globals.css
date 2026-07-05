@@ -1545,7 +1545,7 @@ body {
   position: absolute;
   border-radius: 50%;
   pointer-events: none;
-  filter: blur(120px);
+  filter: blur(70px);
   animation: ambientDrift 18s ease-in-out infinite;
   z-index: 0;
 }
@@ -1566,6 +1566,253 @@ body {
   background: radial-gradient(circle, rgba(139, 92, 246, 0.04) 0%, transparent 70%);
   animation-delay: -8s;
   animation-duration: 22s;
+}
+
+/* =============================================================
+   LIVING "SEA" AMBIENT BACKGROUND
+   Slow-drifting aurora blobs in sea tones (teal / cyan / blue /
+   violet) on independent cycles, plus a gentle horizontal swell.
+   Sits behind the chat content (z-0); text bubbles read over it.
+   ============================================================= */
+.chat-sea {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  /* Own compositing layer so the background rasterizes independently of the
+     scrolling foreground above it. */
+  isolation: isolate;
+}
+
+/* While the thread is actively scrolling, freeze every background animation so
+   the browser can cache the blurred background and scroll as cheap compositing
+   instead of re-rasterizing blur every frame. Resumes ~160ms after scroll stops,
+   so it only ever pauses mid-swipe — invisible at rest. */
+.chat-canvas.is-scrolling::before,
+.chat-canvas.is-scrolling::after,
+.chat-canvas.is-scrolling .chat-sea__blob,
+.chat-canvas.is-scrolling .chat-sea__tide,
+.chat-canvas.is-scrolling .chat-mote {
+  animation-play-state: paused;
+}
+
+.chat-sea__blob {
+  position: absolute;
+  border-radius: 50%;
+  /* Lower blur radius + no mix-blend-mode: both are heavy paint ops. On the dark
+     navy canvas, these translucent light gradients read almost identically with
+     normal compositing, at a fraction of the rasterization cost. */
+  filter: blur(60px);
+  will-change: transform, opacity;
+}
+
+/* Teal swell — top left */
+.chat-sea__blob--a {
+  width: 46vw;
+  height: 46vw;
+  max-width: 620px;
+  max-height: 620px;
+  top: -14%;
+  left: -8%;
+  background: radial-gradient(circle, rgba(34, 211, 238, 0.12) 0%, rgba(6, 182, 212, 0.05) 45%, transparent 70%);
+  animation: seaFlowA 26s ease-in-out infinite;
+}
+
+/* Deep blue current — center right, drifting */
+.chat-sea__blob--b {
+  width: 52vw;
+  height: 52vw;
+  max-width: 700px;
+  max-height: 700px;
+  top: 18%;
+  right: -14%;
+  background: radial-gradient(circle, rgba(77, 142, 255, 0.11) 0%, rgba(59, 130, 246, 0.04) 45%, transparent 70%);
+  animation: seaFlowB 34s ease-in-out infinite;
+  animation-delay: -6s;
+}
+
+/* Violet undertow — bottom center */
+.chat-sea__blob--c {
+  width: 44vw;
+  height: 44vw;
+  max-width: 600px;
+  max-height: 600px;
+  bottom: -18%;
+  left: 22%;
+  background: radial-gradient(circle, rgba(139, 92, 246, 0.1) 0%, rgba(124, 58, 237, 0.04) 45%, transparent 70%);
+  animation: seaFlowC 30s ease-in-out infinite;
+  animation-delay: -12s;
+}
+
+/* Aqua glint — small, faster, upper center for life */
+.chat-sea__blob--d {
+  width: 26vw;
+  height: 26vw;
+  max-width: 360px;
+  max-height: 360px;
+  top: 8%;
+  left: 38%;
+  background: radial-gradient(circle, rgba(45, 212, 191, 0.09) 0%, transparent 68%);
+  animation: seaFlowA 22s ease-in-out infinite reverse;
+  animation-delay: -4s;
+}
+
+/* Horizontal tide: a wide, faint band that slides back and forth like a swell */
+.chat-sea__tide {
+  position: absolute;
+  left: -30%;
+  right: -30%;
+  top: 30%;
+  height: 40%;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(34, 211, 238, 0.05) 30%,
+    rgba(139, 92, 246, 0.06) 55%,
+    transparent 100%
+  );
+  filter: blur(50px);
+  animation: seaTide 40s ease-in-out infinite alternate;
+}
+
+@keyframes seaFlowA {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+    opacity: 0.85;
+  }
+  50% {
+    transform: translate(7%, -5%) scale(1.16);
+    opacity: 1;
+  }
+}
+
+@keyframes seaFlowB {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1.05);
+    opacity: 0.75;
+  }
+  50% {
+    transform: translate(-6%, 6%) scale(0.9);
+    opacity: 1;
+  }
+}
+
+@keyframes seaFlowC {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+    opacity: 0.8;
+  }
+  33% {
+    transform: translate(5%, 4%) scale(1.1);
+    opacity: 1;
+  }
+  66% {
+    transform: translate(-4%, -3%) scale(0.94);
+    opacity: 0.7;
+  }
+}
+
+@keyframes seaTide {
+  0% {
+    transform: translateX(-16%);
+  }
+  100% {
+    transform: translateX(16%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-sea__blob,
+  .chat-sea__tide {
+    animation: none;
+  }
+}
+
+/* =============================================================
+   FLOATING MOTES — soft glowing sparks drifting up and twinkling.
+   Each fades to 0 at both ends of its cycle so the upward reset is
+   invisible; three drift variants add subtle variety.
+   ============================================================= */
+.chat-mote {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(0.4px);
+  opacity: 0;
+  will-change: transform, opacity;
+  animation-iteration-count: infinite;
+  animation-timing-function: ease-in-out;
+}
+
+.chat-mote--a {
+  animation-name: moteFloatA;
+}
+.chat-mote--b {
+  animation-name: moteFloatB;
+}
+.chat-mote--c {
+  animation-name: moteFloatC;
+}
+
+@keyframes moteFloatA {
+  0% {
+    transform: translate(0, 0) scale(0.85);
+    opacity: 0;
+  }
+  18% {
+    opacity: 0.75;
+  }
+  82% {
+    opacity: 0.5;
+  }
+  100% {
+    transform: translate(12px, -150px) scale(1.05);
+    opacity: 0;
+  }
+}
+
+@keyframes moteFloatB {
+  0% {
+    transform: translate(0, 0) scale(1);
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.6;
+  }
+  80% {
+    opacity: 0.45;
+  }
+  100% {
+    transform: translate(-16px, -120px) scale(0.85);
+    opacity: 0;
+  }
+}
+
+@keyframes moteFloatC {
+  0% {
+    transform: translate(0, 0) scale(0.9);
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.85;
+  }
+  85% {
+    opacity: 0.55;
+  }
+  100% {
+    transform: translate(5px, -175px) scale(1.1);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-mote {
+    animation: none;
+    opacity: 0.35;
+  }
 }
 
 .chat-topbar-btn {
@@ -1640,31 +1887,50 @@ body {
 }
 
 .chat-msg-user {
+  position: relative;
   border-radius: 20px 20px 6px 20px;
-  background: rgba(173, 198, 255, 0.07);
-  border: 1px solid rgba(173, 198, 255, 0.1);
+  background: linear-gradient(135deg, rgba(77, 142, 255, 0.16) 0%, rgba(139, 92, 246, 0.12) 100%);
+  border: 1px solid rgba(173, 198, 255, 0.14);
   padding: 14px 18px;
-  transition: border-color 200ms ease, box-shadow 200ms ease;
+  transition: border-color 220ms ease, box-shadow 220ms ease, transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .chat-msg-user:hover {
-  border-color: rgba(173, 198, 255, 0.16);
-  box-shadow: 0 4px 24px rgba(77, 142, 255, 0.04);
+  border-color: rgba(173, 198, 255, 0.24);
+  box-shadow: 0 6px 28px rgba(77, 142, 255, 0.1);
+  transform: translateY(-1px);
 }
 
 .chat-msg-assistant {
+  position: relative;
   border-radius: 20px 20px 20px 6px;
-  background: rgba(255, 255, 255, 0.025);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  /* Slightly more opaque fill (no backdrop-filter): blurring the backdrop under
+     every bubble made trackpad/touch scrolling janky — each moving bubble forced
+     a re-blur every frame. A near-solid tint reads the same but scrolls smooth. */
+  background: rgba(20, 26, 44, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.055);
   padding: 16px 20px;
-  transition: border-color 200ms ease, box-shadow 200ms ease;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  transition: border-color 220ms ease, box-shadow 220ms ease, transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Subtle aurora accent on the assistant's speaking edge — ties replies to the
+   brand and marks the speaker. Uses inset-inline-start so it flips under RTL. */
+.chat-msg-assistant::before {
+  content: "";
+  position: absolute;
+  inset-inline-start: 0;
+  top: 14px;
+  bottom: 14px;
+  width: 2.5px;
+  border-radius: 3px;
+  background: linear-gradient(180deg, #8b5cf6, #22d3ee);
+  opacity: 0.55;
 }
 
 .chat-msg-assistant:hover {
-  border-color: rgba(255, 255, 255, 0.08);
-  box-shadow: 0 4px 32px rgba(0, 0, 0, 0.12);
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 6px 34px rgba(0, 0, 0, 0.16);
+  transform: translateY(-1px);
 }
 
 .chat-msg-label {
@@ -1672,65 +1938,439 @@ body {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.13em;
-  margin-bottom: 8px;
+  opacity: 0.9;
 }
 
-@keyframes typingBounce {
+/* Small glowing identity dot next to the speaker label. */
+.chat-msg-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.chat-msg-dot--assistant {
+  background: linear-gradient(135deg, #8b5cf6, #22d3ee);
+  box-shadow: 0 0 6px rgba(139, 92, 246, 0.6);
+}
+.chat-msg-dot--user {
+  background: #adc6ff;
+  box-shadow: 0 0 6px rgba(173, 198, 255, 0.5);
+}
+
+/* =============================================================
+   WAITING STATE — reads as the model actively composing: glowing
+   aurora dots wave, a shimmer skeleton hints the reply is forming,
+   and the bubble border breathes with a soft aurora glow.
+   ============================================================= */
+@keyframes typingWave {
   0%,
-  60%,
+  70%,
   100% {
-    opacity: 0.2;
-    transform: translateY(0);
+    transform: translateY(0) scale(0.85);
+    opacity: 0.35;
   }
-  30% {
-    opacity: 0.85;
-    transform: translateY(-5px);
+  35% {
+    transform: translateY(-6px) scale(1.1);
+    opacity: 1;
   }
 }
 
 .chat-typing-dot {
-  width: 5px;
-  height: 5px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
-  background: #adc6ff;
-  animation: typingBounce 1.4s ease-in-out infinite;
+  background: linear-gradient(135deg, #adc6ff, #8b5cf6);
+  box-shadow: 0 0 8px rgba(139, 92, 246, 0.5);
+  animation: typingWave 1.3s ease-in-out infinite;
 }
 
 .chat-typing-dot:nth-child(2) {
-  animation-delay: 0.15s;
+  animation-delay: 0.18s;
 }
 
 .chat-typing-dot:nth-child(3) {
-  animation-delay: 0.3s;
+  animation-delay: 0.36s;
+}
+
+.chat-thinking-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 0;
+}
+
+.chat-thinking-shimmer {
+  height: 8px;
+  width: 128px;
+  border-radius: 6px;
+  background: linear-gradient(
+    100deg,
+    rgba(255, 255, 255, 0.05) 20%,
+    rgba(139, 92, 246, 0.3) 40%,
+    rgba(34, 211, 238, 0.3) 55%,
+    rgba(255, 255, 255, 0.05) 75%
+  );
+  background-size: 220% 100%;
+  animation: thinkingShimmer 1.6s linear infinite;
+}
+
+@keyframes thinkingShimmer {
+  0% {
+    background-position: 120% 0;
+  }
+  100% {
+    background-position: -120% 0;
+  }
+}
+
+.chat-msg-thinking {
+  animation: thinkingGlow 2.2s ease-in-out infinite;
+}
+
+@keyframes thinkingGlow {
+  0%,
+  100% {
+    border-color: rgba(255, 255, 255, 0.055);
+    box-shadow: 0 0 0 rgba(139, 92, 246, 0);
+  }
+  50% {
+    border-color: rgba(139, 92, 246, 0.22);
+    box-shadow: 0 4px 30px rgba(139, 92, 246, 0.08);
+  }
+}
+
+/* Escalating status line shown under the dots (text path) or under the
+   image skeleton — cycles through reassuring phrases as time passes. */
+.chat-thinking-caption {
+  display: block;
+  padding-left: 2px;
+  font-size: 12px;
+  line-height: 1.3;
+  letter-spacing: 0.01em;
+  color: rgba(214, 228, 250, 0.55);
+}
+
+/* Image skeleton that takes over from the dots once we're confident an
+   image is being generated. A shimmering framed placeholder with a faint
+   image glyph and the escalating caption underneath. */
+.chat-thinking-frame {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-start;
+  width: 256px;
+  max-width: 62vw;
+  aspect-ratio: 1 / 1;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.045);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.35), inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+  animation: thinkingGlow 2.6s ease-in-out infinite;
+}
+
+.chat-thinking-frame__icon {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: fit-content;
+  height: fit-content;
+  font-size: 40px;
+  color: rgba(214, 228, 250, 0.55);
+  animation: thinkingFrameIcon 2.6s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes thinkingFrameIcon {
+  0%,
+  100% {
+    opacity: 0.4;
+    transform: scale(0.96);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.05);
+  }
+}
+
+/* A more pronounced sweep than the shared image-load skeleton, so the
+   placeholder clearly reads as "working" against the dark canvas. */
+.chat-thinking-frame .img-skeleton {
+  background: linear-gradient(
+    100deg,
+    rgba(255, 255, 255, 0.04) 20%,
+    rgba(139, 92, 246, 0.22) 42%,
+    rgba(34, 211, 238, 0.22) 58%,
+    rgba(255, 255, 255, 0.04) 80%
+  );
+  background-size: 220% 100%;
+}
+
+.chat-thinking-frame__caption {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  width: 100%;
+  padding: 10px 12px 11px;
+  font-size: 11.5px;
+  line-height: 1.3;
+  color: rgba(230, 238, 252, 0.82);
+  background: linear-gradient(to top, rgba(6, 10, 22, 0.82) 0%, rgba(6, 10, 22, 0.4) 65%, transparent 100%);
+}
+
+.chat-thinking-frame__statusrow {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.chat-thinking-frame__label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The expected-time chip. Counts down toward the budget, then counts up. */
+.chat-thinking-frame__time {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 8px 2px 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 10.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: rgba(230, 238, 252, 0.85);
+}
+
+.chat-thinking-frame__time-icon {
+  font-size: 12px;
+  color: rgba(196, 181, 253, 0.85);
+}
+
+/* Determinate progress toward the expected time; goes indeterminate past it. */
+.chat-thinking-frame__bar {
+  position: relative;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.chat-thinking-frame__bar-fill {
+  height: 100%;
+  width: 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #8b5cf6, #22d3ee);
+  box-shadow: 0 0 10px rgba(34, 211, 238, 0.4);
+  transition: width 0.5s linear;
+}
+
+.chat-thinking-frame__bar.is-overtime .chat-thinking-frame__bar-fill {
+  width: 34%;
+  transition: none;
+  animation: thinkingBarSlide 1.35s ease-in-out infinite;
+}
+
+@keyframes thinkingBarSlide {
+  0% {
+    transform: translateX(-110%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
+}
+
+.chat-thinking-frame__pulse {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #c4b5fd;
+  box-shadow: 0 0 8px rgba(196, 181, 253, 0.8);
+  animation: thinkingFramePulse 1.4s ease-in-out infinite;
+}
+
+@keyframes thinkingFramePulse {
+  0%,
+  100% {
+    opacity: 0.4;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-typing-dot,
+  .chat-thinking-shimmer,
+  .chat-msg-thinking,
+  .chat-thinking-frame,
+  .chat-thinking-frame__icon,
+  .chat-thinking-frame__pulse,
+  .chat-thinking-frame__bar.is-overtime .chat-thinking-frame__bar-fill {
+    animation: none;
+  }
+}
+
+/* Animated aurora border for the composer. A rotating conic gradient painted
+   only on the 1.5px ring via a mask, so the fill stays dark. Brightens on focus. */
+@property --chat-aurora-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes chatAuroraSpin {
+  to {
+    --chat-aurora-angle: 360deg;
+  }
 }
 
 .chat-composer {
   position: relative;
-  background: rgba(12, 18, 36, 0.75);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 22px;
+  background: rgba(10, 14, 30, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 26px;
   backdrop-filter: blur(40px) saturate(1.3);
   -webkit-backdrop-filter: blur(40px) saturate(1.3);
   transition: all 280ms cubic-bezier(0.16, 1, 0.3, 1);
   box-shadow:
-    0 -2px 20px rgba(0, 0, 0, 0.15),
-    0 0 0 1px rgba(255, 255, 255, 0.03) inset,
+    0 -2px 20px rgba(0, 0, 0, 0.18),
+    0 0 0 1px rgba(255, 255, 255, 0.02) inset,
     0 1px 0 rgba(255, 255, 255, 0.04) inset;
 }
 
+/* The rotating gradient ring. */
+.chat-composer::before {
+  content: "";
+  position: absolute;
+  inset: -1.5px;
+  border-radius: inherit;
+  padding: 1.5px;
+  background: conic-gradient(
+    from var(--chat-aurora-angle),
+    #8b5cf6,
+    #22d3ee,
+    #ec4899,
+    #8b5cf6
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: chatAuroraSpin 7s linear infinite;
+  opacity: 0.45;
+  transition: opacity 320ms ease;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Soft matching glow behind the composer, stronger on focus. */
+.chat-composer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: 0 0 40px rgba(139, 92, 246, 0.05), 0 0 90px rgba(34, 211, 238, 0.03);
+  opacity: 0;
+  transition: opacity 320ms ease;
+  pointer-events: none;
+  z-index: -1;
+}
+
 .chat-composer:focus-within {
-  border-color: rgba(173, 198, 255, 0.2);
-  box-shadow:
-    0 -4px 30px rgba(0, 0, 0, 0.18),
-    0 0 0 1px rgba(173, 198, 255, 0.06) inset,
-    0 1px 0 rgba(173, 198, 255, 0.08) inset,
-    0 0 40px rgba(77, 142, 255, 0.05),
-    0 0 80px rgba(77, 142, 255, 0.025);
   transform: translateY(-1px);
 }
 
+.chat-composer:focus-within::before {
+  opacity: 1;
+}
+
+.chat-composer:focus-within::after {
+  opacity: 1;
+}
+
+/* Keep the real inputs above the ring pseudo-elements. */
+.chat-composer > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* =============================================================
+   COMPOSER "CHARGE" BURST — a bright comet of light sweeps the
+   border a few laps on open and on every send, then fades out to
+   leave the calm idle ring. The higher-specificity selector below
+   is deliberate: it must beat `.chat-composer > *` above, which
+   would otherwise force this overlay into normal flow.
+   ============================================================= */
+@property --chat-charge-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+.chat-composer > .chat-composer__charge {
+  position: absolute;
+  inset: -1.5px;
+  z-index: 2;
+  border-radius: inherit;
+  padding: 1.5px;
+  pointer-events: none;
+  /* A mostly-transparent conic ring with one bright ~110° comet arc. */
+  background: conic-gradient(
+    from var(--chat-charge-angle),
+    transparent 0deg,
+    transparent 250deg,
+    rgba(34, 211, 238, 0.9) 300deg,
+    rgba(196, 181, 253, 1) 328deg,
+    rgba(236, 72, 153, 0.9) 350deg,
+    transparent 360deg
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  filter: drop-shadow(0 0 5px rgba(139, 92, 246, 0.55)) drop-shadow(0 0 9px rgba(34, 211, 238, 0.3));
+  animation:
+    chatChargeSpin 0.85s linear 3,
+    chatChargeFade 2.55s ease forwards;
+}
+
+@keyframes chatChargeSpin {
+  to {
+    --chat-charge-angle: 360deg;
+  }
+}
+
+@keyframes chatChargeFade {
+  0% {
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  72% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
 .chat-composer textarea {
-  caret-color: #adc6ff;
+  caret-color: #c4b5fd;
 }
 
 .chat-composer textarea::placeholder {
@@ -1738,7 +2378,14 @@ body {
 }
 
 .chat-composer:focus-within textarea::placeholder {
-  color: rgba(173, 198, 255, 0.3);
+  color: rgba(196, 181, 253, 0.35);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-composer::before {
+    animation: none;
+    opacity: 0.6;
+  }
 }
 
 .chat-send-btn {
@@ -1807,6 +2454,141 @@ body {
   cursor: not-allowed;
 }
 
+/* =============================================================
+   PACK COMPOSER — same rotating aurora ring + "charge" burst as
+   .chat-composer above, but keyed off the pack's own --accent
+   theme color (set inline per pack) instead of a fixed gradient.
+   ============================================================= */
+@property --pack-aurora-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes packAuroraSpin {
+  to {
+    --pack-aurora-angle: 360deg;
+  }
+}
+
+.pack-composer {
+  position: relative;
+}
+
+.pack-composer::before {
+  content: "";
+  position: absolute;
+  inset: -1.5px;
+  border-radius: inherit;
+  padding: 1.5px;
+  background: conic-gradient(
+    from var(--pack-aurora-angle),
+    var(--accent),
+    color-mix(in srgb, var(--accent) 45%, #22d3ee),
+    color-mix(in srgb, var(--accent) 45%, #ec4899),
+    var(--accent)
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: packAuroraSpin 7s linear infinite;
+  opacity: 0.4;
+  transition: opacity 320ms ease;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.pack-composer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: 0 0 40px var(--accent-15), 0 0 90px var(--accent-10);
+  opacity: 0;
+  transition: opacity 320ms ease;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.pack-composer:focus-within::before {
+  opacity: 1;
+}
+
+.pack-composer:focus-within::after {
+  opacity: 1;
+}
+
+.pack-composer > * {
+  position: relative;
+  z-index: 1;
+}
+
+@property --pack-charge-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+.pack-composer > .pack-composer__charge {
+  position: absolute;
+  inset: -1.5px;
+  z-index: 2;
+  border-radius: inherit;
+  padding: 1.5px;
+  pointer-events: none;
+  background: conic-gradient(
+    from var(--pack-charge-angle),
+    transparent 0deg,
+    transparent 250deg,
+    color-mix(in srgb, var(--accent) 30%, #22d3ee) 300deg,
+    var(--accent) 328deg,
+    color-mix(in srgb, var(--accent) 30%, #ec4899) 350deg,
+    transparent 360deg
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  filter: drop-shadow(0 0 5px var(--accent-40)) drop-shadow(0 0 9px var(--accent-30));
+  animation:
+    packChargeSpin 0.85s linear 3,
+    packChargeFade 2.55s ease forwards;
+}
+
+@keyframes packChargeSpin {
+  to {
+    --pack-charge-angle: 360deg;
+  }
+}
+
+@keyframes packChargeFade {
+  0% {
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  72% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pack-composer::before {
+    animation: none;
+    opacity: 0.55;
+  }
+  .pack-composer > .pack-composer__charge {
+    display: none;
+  }
+}
+
 @keyframes panelSlideIn {
   from {
     transform: translateX(100%);
@@ -1833,27 +2615,158 @@ body {
   background: rgba(255, 255, 255, 0.015);
 }
 
-@keyframes emptyPulse {
+/* =============================================================
+   EMPTY-STATE "LIVING SPARK" — an aurora orb whose halo is the
+   same rotating gradient as the composer ring, so the two focal
+   points of the screen share one language. The glow breathes.
+   ============================================================= */
+.chat-empty-orb {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
+}
+
+/* Rotating aurora halo — reuses the composer's --chat-aurora-angle + spin. */
+.chat-empty-orb__ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  padding: 1.5px;
+  background: conic-gradient(
+    from var(--chat-aurora-angle),
+    #8b5cf6,
+    #22d3ee,
+    #ec4899,
+    #8b5cf6
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: chatAuroraSpin 8s linear infinite;
+  opacity: 0.7;
+}
+
+/* Soft outer glow that breathes in and out. */
+.chat-empty-orb::after {
+  content: "";
+  position: absolute;
+  inset: -24px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(139, 92, 246, 0.16) 0%, rgba(34, 211, 238, 0.06) 45%, transparent 70%);
+  animation: emptyBreathe 4.5s ease-in-out infinite;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.chat-empty-orb__core {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 74px;
+  height: 74px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 32% 26%, rgba(255, 255, 255, 0.07), rgba(10, 14, 30, 0.72) 70%);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 8px 30px rgba(0, 0, 0, 0.35);
+}
+
+@keyframes emptyBreathe {
   0%,
   100% {
-    box-shadow: 0 0 30px rgba(173, 198, 255, 0.06), 0 0 60px rgba(77, 142, 255, 0.03);
+    transform: scale(1);
+    opacity: 0.7;
   }
   50% {
-    box-shadow: 0 0 40px rgba(173, 198, 255, 0.1), 0 0 80px rgba(77, 142, 255, 0.05);
+    transform: scale(1.14);
+    opacity: 1;
   }
 }
 
-.chat-empty-icon {
-  position: relative;
-  animation: emptyPulse 4s ease-in-out infinite;
+/* Vibecraft-inspired spiral vortex inside the orb core. */
+.chat-vortex-wrap {
+  display: grid;
+  place-items: center;
 }
 
-.chat-empty-icon-glow {
-  position: absolute;
-  inset: -20px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(173, 198, 255, 0.1) 0%, rgba(99, 102, 241, 0.04) 40%, transparent 70%);
-  pointer-events: none;
+.chat-vortex {
+  width: 52px;
+  height: 52px;
+  filter: drop-shadow(0 0 6px rgba(139, 92, 246, 0.45));
+}
+
+.chat-vortex__spin {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: vortexSpin 22s linear infinite;
+}
+
+@keyframes vortexSpin {
+  to {
+    transform: rotate(-360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-vortex__spin {
+    animation: none;
+  }
+}
+
+/* The cycling, clickable creation suggestion. */
+.chat-idea-eyebrow {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgba(173, 198, 255, 0.38);
+}
+
+.chat-idea-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.025);
+  color: rgba(214, 228, 250, 0.82);
+  font-size: 13.5px;
+  font-style: italic;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: border-color 200ms ease, background 200ms ease, color 200ms ease,
+    transform 200ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 200ms ease;
+}
+
+.chat-idea-pill:hover {
+  border-color: rgba(139, 92, 246, 0.35);
+  background: rgba(139, 92, 246, 0.08);
+  color: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 24px rgba(139, 92, 246, 0.15);
+}
+
+.chat-idea-pill .material-symbols-outlined {
+  font-size: 15px;
+  color: rgba(173, 198, 255, 0.5);
+  transition: transform 200ms ease, color 200ms ease;
+}
+
+.chat-idea-pill:hover .material-symbols-outlined {
+  color: #c4b5fd;
+  transform: translate(2px, -2px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-empty-orb__ring,
+  .chat-empty-orb::after {
+    animation: none;
+  }
 }
 
 .chat-range-slider {
@@ -1909,6 +2822,128 @@ body {
 
 .chat-image-preview:hover {
   border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* =============================================================
+   IMAGE PRESENTATION — generated & uploaded images in the thread
+   and the shared interactive viewer. Controls reveal on hover for
+   pointer devices and stay visible on touch (no hover) so they're
+   always reachable. Loading uses the same aurora shimmer as the
+   waiting state for a coherent feel.
+   ============================================================= */
+
+/* Frame for generated (assistant) images. */
+.chat-gen-image {
+  border: 1px solid rgba(139, 92, 246, 0.18);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.35), inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+  transition: transform 300ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 300ms ease, border-color 300ms ease;
+}
+.chat-gen-image:hover {
+  transform: translateY(-2px);
+  border-color: rgba(34, 211, 238, 0.35);
+  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.45), 0 0 26px rgba(139, 92, 246, 0.12);
+}
+
+/* Frame for uploaded (user) images. */
+.chat-user-image {
+  border: 1px solid rgba(173, 198, 255, 0.18);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+  transition: transform 260ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 260ms ease, border-color 260ms ease;
+}
+.chat-user-image:hover {
+  transform: translateY(-1px);
+  border-color: rgba(173, 198, 255, 0.34);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.36);
+}
+
+/* Subtle zoom of the picture inside its frame on hover (frame clips it). */
+.img-zoom {
+  transition: transform 450ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.group:hover .img-zoom {
+  transform: scale(1.045);
+}
+
+/* Hover scrim + control cluster: hidden at rest on hover-capable devices,
+   always shown on touch so controls stay reachable. */
+.img-scrim {
+  opacity: 0;
+  transition: opacity 220ms ease;
+}
+.img-controls {
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 220ms ease, transform 220ms ease;
+}
+.group:hover .img-scrim,
+.group:focus-within .img-scrim {
+  opacity: 1;
+}
+.group:hover .img-controls,
+.group:focus-within .img-controls {
+  opacity: 1;
+  transform: translateY(0);
+}
+@media (hover: none) {
+  .img-scrim,
+  .img-controls {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Shimmering skeleton while an image resolves (reuses thinkingShimmer keyframe). */
+.img-skeleton {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    100deg,
+    rgba(255, 255, 255, 0.03) 20%,
+    rgba(139, 92, 246, 0.14) 42%,
+    rgba(34, 211, 238, 0.14) 58%,
+    rgba(255, 255, 255, 0.03) 80%
+  );
+  background-size: 220% 100%;
+  animation: thinkingShimmer 1.6s linear infinite;
+}
+
+/* Lightbox entrance. */
+.img-lightbox {
+  animation: imgLightboxFade 200ms ease both;
+}
+.img-lightbox__panel {
+  animation: imgLightboxZoom 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes imgLightboxFade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes imgLightboxZoom {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .img-zoom,
+  .img-skeleton,
+  .img-lightbox,
+  .img-lightbox__panel {
+    animation: none;
+    transition: none;
+  }
+  .group:hover .img-zoom {
+    transform: none;
+  }
 }
 
 .chat-credits-badge {

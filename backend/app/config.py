@@ -60,6 +60,24 @@ class Config:
         self.firestore_project_id = os.getenv("FIRESTORE_PROJECT_ID", self.firebase_project_id).strip()
         self.firestore_database = os.getenv("FIRESTORE_DATABASE", "(default)").strip()
         self.firebase_credentials_path = os.getenv("FIREBASE_CREDENTIALS_PATH", "").strip()
+        # Meta Conversions API (server-side CompleteRegistration). Server-to-server
+        # event that can't be blocked by ad blockers/ITP/cross-browser hops; it is
+        # deduplicated against the browser Pixel via a shared event_id (reg_<uid>).
+        # No token configured => CAPI is a safe no-op. test_event_code (optional)
+        # routes events to the Events Manager "Test Events" tab without affecting
+        # real metrics (used for staging validation).
+        self.meta_capi_pixel_id = os.getenv("META_CAPI_PIXEL_ID", "1370764631891853").strip()
+        self.meta_capi_access_token = os.getenv("META_CAPI_ACCESS_TOKEN", "").strip()
+        self.meta_capi_test_event_code = os.getenv("META_CAPI_TEST_EVENT_CODE", "").strip()
+        # Predicted/nominal value for a CompleteRegistration (Meta requires value > 0
+        # so it can value-optimize). No real purchase price exists at signup; tune via env.
+        try:
+            self.meta_capi_registration_value = float(os.getenv("META_CAPI_REGISTRATION_VALUE", "1.0"))
+        except ValueError:
+            self.meta_capi_registration_value = 1.0
+        # Staging-only test hook: when truthy, Pack GENERATIONS route through the
+        # $0 fake provider (estimates stay real). Never enable in production.
+        self.packs_test_fake_provider = os.getenv("PACKS_TEST_FAKE_PROVIDER", "").strip().lower() in {"1", "true", "yes", "on"}
         self.admin_session_secret = os.getenv("ADMIN_SESSION_SECRET", "").strip()
         self.admin_session_cookie_name = os.getenv("ADMIN_SESSION_COOKIE_NAME", "vibecraft_admin_session").strip() or "vibecraft_admin_session"
         self.admin_csrf_cookie_name = os.getenv("ADMIN_CSRF_COOKIE_NAME", "vibecraft_admin_csrf").strip() or "vibecraft_admin_csrf"
@@ -101,7 +119,7 @@ class Config:
         self.plain_chat_burst_window_seconds = int(os.getenv("PLAIN_CHAT_BURST_WINDOW_SECONDS", "60"))
         self.plain_chat_context_message_limit = int(os.getenv("PLAIN_CHAT_CONTEXT_MESSAGE_LIMIT", "20"))
         self.plain_chat_context_char_limit = int(os.getenv("PLAIN_CHAT_CONTEXT_CHAR_LIMIT", "24000"))
-        self.plain_chat_max_request_bytes = int(os.getenv("PLAIN_CHAT_MAX_REQUEST_BYTES", str(64 * 1024)))
+        self.plain_chat_max_request_bytes = int(os.getenv("PLAIN_CHAT_MAX_REQUEST_BYTES", str(96 * 1024)))
         self.plain_chat_max_text_chars_per_part = int(os.getenv("PLAIN_CHAT_MAX_TEXT_CHARS_PER_PART", "4000"))
         self.plain_chat_max_message_chars = int(os.getenv("PLAIN_CHAT_MAX_MESSAGE_CHARS", "12000"))
         self.plain_chat_max_system_chars = int(os.getenv("PLAIN_CHAT_MAX_SYSTEM_CHARS", "4000"))

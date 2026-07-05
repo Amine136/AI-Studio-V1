@@ -34,6 +34,9 @@ class User(Base):
     suspended_until: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     moderation_ban_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     last_moderation_ban_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    # One-shot stamp for the server-side Meta CompleteRegistration (CAPI). NULL =
+    # not yet sent; set exactly once via an atomic claim (see claim_capi_registration).
+    capi_registration_sent_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
 
     created_codes: Mapped[list["CreditCode"]] = relationship(
         back_populates="created_by_user",
@@ -426,6 +429,26 @@ class ChatMessage(Base):
         CheckConstraint("role IN ('user', 'assistant')", name="ck_chat_messages_role_valid"),
         Index("ix_chat_messages_conversation_id_created_at", "conversation_id", "created_at"),
         Index("ix_chat_messages_uid_created_at", "uid", "created_at"),
+    )
+
+
+class PackSession(Base):
+    """A saved pack-studio session: a named gallery of generations plus the agent
+    memory, so a user can reopen and continue it later. The whole session lives in
+    one JSON ``data`` blob (results + history + mockup ref) - no per-image rows."""
+    __tablename__ = "pack_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    uid: Mapped[str] = mapped_column(ForeignKey("users.uid", ondelete="CASCADE"), nullable=False)
+    pack_id: Mapped[str] = mapped_column(String(80), nullable=False)
+    variant_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    title: Mapped[str] = mapped_column(String(120), default="New session", nullable=False)
+    data_json: Mapped[dict[str, Any]] = mapped_column("data", JSON, default=dict, nullable=False)
+    created_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    updated_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+    __table_args__ = (
+        Index("ix_pack_sessions_uid_pack_updated", "uid", "pack_id", "updated_at"),
     )
 
 
