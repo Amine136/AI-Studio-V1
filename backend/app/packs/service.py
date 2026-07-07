@@ -92,6 +92,8 @@ def detail_view(pack: Pack, lang: str) -> Dict[str, Any]:
         "default_n": pack.default_n,
         "models": resolver_selectable_models(),
         "mockup_models": resolver_selectable_models_for_mockup(),
+        # Editable example that pre-fills the studio composer (pack-level default).
+        "example": pick(pack.example_i18n, lang),
         "variants": [
             {
                 "id": v.id,
@@ -99,6 +101,8 @@ def detail_view(pack: Pack, lang: str) -> Dict[str, Any]:
                 "scene": v.scene,
                 "thumbnail_url": v.thumbnail_url,
                 "hero_example_url": v.hero_example_url,
+                # Per-mockup editable example (overrides the pack default when set).
+                "example": pick(v.example_i18n, lang),
             }
             for v in pack.variants
         ],

@@ -624,6 +624,8 @@ export interface PackVariant {
   scene: string;
   thumbnail_url: string;
   hero_example_url: string;
+  // Editable example text that pre-fills the studio composer for this mockup.
+  example?: string;
 }
 
 export interface PackModelOption {
@@ -644,6 +646,8 @@ export interface PackDetail extends PackCard {
   models?: PackModelOption[];
   mockup_models?: PackModelOption[];
   variants?: PackVariant[];
+  // Pack-level example that pre-fills the studio composer (variant example wins).
+  example?: string;
 }
 
 export interface PackEstimate {

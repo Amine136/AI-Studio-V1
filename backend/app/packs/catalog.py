@@ -53,6 +53,9 @@ class Variant:
     scene: str                     # base prompt text seeded into the studio
     thumbnail_url: str = ""
     hero_example_url: str = ""
+    # Editable example that pre-fills the studio composer for THIS mockup (falls
+    # back to the pack-level example when not set). User-facing text, not the scene.
+    example_i18n: Optional[I18n] = None
 
 
 @dataclass(frozen=True)
@@ -80,6 +83,9 @@ class Pack:
     tags: List[str] = field(default_factory=list)
     thumbnail_url: str = ""
     hero_example_url: str = ""
+    # Editable example that pre-fills the studio composer (pack-level default; a
+    # variant's own example_i18n overrides it). User-facing text, not the scene.
+    example_i18n: Optional[I18n] = None
 
 
 # --------------------------------------------------------------------------
@@ -397,6 +403,103 @@ _HELD_VARIANTS: List[Variant] = [
 # ===========================================================================
 # CATALOG
 # ===========================================================================
+# Social-media mockups: fully-composed profile/post templates the user's photo and
+# details are dropped into. The mockup is sent to the model as reference #1 and
+# reproduced EXACTLY; the scene text (seeded into the editable prompt) tells the model
+# to swap in the uploaded photo + the user's name/handle/stats and NOT keep the
+# template's original identity. Verified on staging (grok edit reproduces + replaces).
+def _social(slug: str, en: str, fr: str, ar: str, scene: str, fname: str, ex: I18n) -> Variant:
+    url = f"/mockups/social/{fname}"
+    return Variant(slug, i18n(en, fr, ar), scene, url, url, ex)
+
+
+_REPLACE = ("Replace the avatar with the uploaded photo, and set the name, @handle, "
+            "role and stats (posts, followers, following) exactly as described below. "
+            "Do not keep the reference's original name, handle or face.")
+_QUALITY = "Photorealistic, crisp legible text, high detail."
+
+_SOCIAL_VARIANTS: List[Variant] = [
+    _social("neon-profile-held", "Neon profile (in hand)", "Profil neon (en main)", "بروفايل نيون (في اليد)",
+            f"Recreate this exact glowing orange neon Instagram profile card held in a hand against a dark bokeh background - same neon outline, glass panel, layout and typography. {_REPLACE} {_QUALITY}",
+            "neon-profile-held.jpg",
+            i18n("Amine Ouni, @amine.ouni, AI Creator, 128 posts, 42k followers, 12 following",
+                 "Amine Ouni, @amine.ouni, Créateur IA, 128 posts, 42k abonnés, 12 abonnements",
+                 "أمين، @amine.ouni، صانع محتوى، ١٢٨ منشور، ٤٢ ألف متابع، ١٢ متابَع")),
+    _social("neon-desk-sign", "Neon desk sign", "Enseigne neon de bureau", "لوحة نيون على المكتب",
+            f"Recreate this exact glowing translucent acrylic profile sign hanging from a desk lamp on a wooden desk beside a laptop, purple-blue ambient light - same neon-edged card, layout and typography. Replace the avatar with the uploaded photo and set the name, @handle, role and message previews exactly as described below. Do not keep the reference's original name or face. {_QUALITY}",
+            "neon-desk-sign.jpg",
+            i18n("Valeria, @lumina.creates, AI Creator",
+                 "Valeria, @lumina.creates, Créatrice IA",
+                 "فاليريا، @lumina.creates، صانعة محتوى")),
+    _social("glass-profile-card", "Glass profile card", "Carte de profil en verre", "بطاقة بروفايل زجاجية",
+            f"Recreate this exact frosted glassmorphism social profile card held between two fingers against a dark background - same translucent glass panel, Follow / Message / Contact buttons, layout and typography. {_REPLACE} {_QUALITY}",
+            "glass-profile-card.jpg",
+            i18n("Sami Ben Ali, @sami.designs, Blogger - I turn ideas into visuals & websites, 26 posts, 1,565 followers",
+                 "Sami Ben Ali, @sami.designs, Blogueur - je transforme les idées en visuels et sites, 26 posts, 1 565 abonnés",
+                 "سامي بن علي، @sami.designs، مدوّن - أحوّل الأفكار إلى تصاميم ومواقع، ٢٦ منشور، ١٬٥٦٥ متابع")),
+    _social("profile-on-palm", "Floating profile card", "Carte de profil flottante", "بطاقة بروفايل عائمة",
+            f"Recreate this exact glossy dark 3D profile card floating above an open palm, warm orange background with a softly blurred person behind - same floating card, layout and typography. {_REPLACE} {_QUALITY}",
+            "profile-on-palm.jpg",
+            i18n("Dona, @dona.edits, Editor & Graphic Designer, 14 posts, 186 followers, 103 following",
+                 "Dona, @dona.edits, Monteuse & Graphiste, 14 posts, 186 abonnés, 103 abonnements",
+                 "دُنى، @dona.edits، محرِّرة ومصمّمة جرافيك، ١٤ منشور، ١٨٦ متابع، ١٠٣ متابَع")),
+    _social("post-frame-3d", "3D post frame", "Cadre de post 3D", "إطار منشور ثلاثي الأبعاد",
+            f"Recreate this exact white 3D social-media post frame floating in a futuristic blue tech environment, with a circular avatar and glossy 3D like / comment / share buttons - same 3D frame, layout and typography. Put the uploaded photo inside the post, set the @handle and comment count exactly as described below, and do not keep the reference's original face. {_QUALITY}",
+            "post-frame-3d.jpg",
+            i18n("@lihathilitans, 2,470 comments",
+                 "@lihathilitans, 2 470 commentaires",
+                 "@lihathilitans، ٢٬٤٧٠ تعليق")),
+    _social("break-the-screen", "Out of the screen", "Hors de l'ecran", "خارج الشاشة",
+            f"Recreate this exact creative 3D social profile where the person bursts out through a torn hole in the profile screen - same profile interface, Follow button, avatar, bio and torn-paper effect. Replace the bursting person and the avatar with the uploaded photo and set the name, bio and stats exactly as described below. Do not keep the reference's original name or face. {_QUALITY}",
+            "break-the-screen.jpg",
+            i18n("Noor, 231 posts, bio: designer & content creator",
+                 "Noor, 231 posts, bio : designer & créatrice de contenu",
+                 "نور، ٢٣١ منشور، نبذة: مصمّمة وصانعة محتوى")),
+    _social("logo-seat-screen", "On the Instagram logo (feed)", "Sur le logo Instagram (feed)", "على شعار إنستغرام (المنشورات)",
+            f"Recreate this exact hyper-realistic 3D scene of a person sitting on a giant Instagram logo in front of their giant profile screen showing their feed grid - same composition, logo and profile layout. Replace the seated person, the avatar and the feed photos with the uploaded photo and set the name, @handle, bio and stats exactly as described below. Do not keep the reference's original name or face. {_QUALITY}",
+            "logo-seat-screen.jpg",
+            i18n("Gulnaz, @gulnaz.21, 36 posts, 663 followers, 269 following, all I have is a dream",
+                 "Gulnaz, @gulnaz.21, 36 posts, 663 abonnés, 269 abonnements, je n'ai qu'un rêve",
+                 "غولناز، @gulnaz.21، ٣٦ منشور، ٦٦٣ متابع، ٢٦٩ متابَع، كل ما أملكه حلم")),
+    _social("logo-seat-man", "On the Instagram logo", "Sur le logo Instagram", "على شعار إنستغرام",
+            f"Recreate this exact hyper-realistic 3D scene of a person sitting on a giant colorful Instagram logo in a clean studio, with a floating profile card beside them - same composition and layout. Replace the seated person and the avatar with the uploaded photo and set the name, @handle, bio and stats exactly as described below. Do not keep the reference's original name or face. {_QUALITY}",
+            "logo-seat-man.jpg",
+            i18n("Liam Wedding Videos, @liamweddingvids, 15.2k followers, 340 following, Capturing love stories - DM for bookings",
+                 "Liam Wedding Videos, @liamweddingvids, 15,2k abonnés, 340 abonnements, Je filme vos histoires d'amour - DM pour réserver",
+                 "Liam Wedding Videos، @liamweddingvids، ١٥٫٢ ألف متابع، ٣٤٠ متابَع، نوثّق قصص الحب - راسلنا للحجز")),
+    _social("logo-seat-woman", "On the Instagram logo (studio)", "Sur le logo Instagram (studio)", "على شعار إنستغرام (استوديو)",
+            f"Recreate this exact hyper-realistic 3D scene of a person sitting on a giant colorful Instagram logo against a soft studio backdrop, with their profile card floating behind - same composition and layout. Replace the seated person and the avatar with the uploaded photo and set the name, @handle, bio and stats exactly as described below. Do not keep the reference's original name or face. {_QUALITY}",
+            "logo-seat-woman.jpg",
+            i18n("Maria, @mari.creates, 998 posts, 998 followers, Instagram blogger",
+                 "Maria, @mari.creates, 998 posts, 998 abonnés, blogueuse Instagram",
+                 "ماريا، @mari.creates، ٩٩٨ منشور، ٩٩٨ متابع، مدوّنة إنستغرام")),
+    _social("logo-seat-header", "On the Instagram logo (portrait)", "Sur le logo Instagram (portrait)", "على شعار إنستغرام (عمودي)",
+            f"Recreate this exact tall hyper-realistic 3D scene of a person sitting on a giant Instagram logo with their profile header shown across the top - same vertical composition and layout. Replace the seated person and the avatar with the uploaded photo and set the name, @handle, bio and stats exactly as described below. Do not keep the reference's original name or face. {_QUALITY}",
+            "logo-seat-header.jpg",
+            i18n("a_k_gothwal, @a_k_gothwal143, 270 posts, 919 followers, 213 following, welcome to my profile",
+                 "a_k_gothwal, @a_k_gothwal143, 270 posts, 919 abonnés, 213 abonnements, bienvenue sur mon profil",
+                 "a_k_gothwal، @a_k_gothwal143، ٢٧٠ منشور، ٩١٩ متابع، ٢١٣ متابَع، مرحبًا بك في حسابي")),
+    _social("quote-post", "Quote post", "Post citation", "منشور اقتباس",
+            f"Recreate this exact frosted-glass Instagram quote post on a soft 3D background - same glass card, 'Quote' badge, big bold quote typography and like / comment / share row. Set the quote text and the author name exactly as described below, and the small profile name and avatar at the top (use the uploaded photo if provided). Keep the elegant layout and make the text crisp and legible. {_QUALITY}",
+            "quote-post.jpg",
+            i18n("Work hard in silence, let your success make the noise. - Frank Ocean",
+                 "Travaille dur en silence, laisse ton succès faire le bruit. - Frank Ocean",
+                 "اعمل بصمت، ودع نجاحك يصنع الضجيج. - فرانك أوشن")),
+    _social("promo-service-post", "Service promo post", "Post promo service", "منشور ترويجي للخدمة",
+            f"Recreate this exact bold purple social-media service / promo post - same energetic layout, headline block, service list with icons, CTA pill and bottom contact bar. Place the uploaded photo as the featured person and set the brand name, headline, services and contact details exactly as described below. Keep it vibrant with crisp legible text. {_QUALITY}",
+            "promo-service-post.jpg",
+            i18n("iLmixo - Need premium designs? Social media design, branding & identity, creative content. Call 0332-6035819",
+                 "iLmixo - Besoin de designs premium ? Design réseaux sociaux, branding & identité, contenu créatif. Appelez le 0332-6035819",
+                 "iLmixo - تحتاج تصاميم احترافية؟ تصميم سوشيال ميديا، هوية وبراندينغ، محتوى إبداعي. اتصل: 0332-6035819")),
+    _social("phone-collage", "Phone collage", "Collage de telephones", "كولاج الهواتف",
+            f"Recreate this exact creative flat-lay of several phones on a clean white surface, each screen showing a different close-up section (hair, eye, nose, lips) of one face so together they form a single fragmented portrait. Use the uploaded photo as the face. Keep the clean minimal composition. {_QUALITY}",
+            "phone-collage.jpg",
+            i18n("my portrait split across the phone screens, warm natural tones",
+                 "mon portrait réparti sur les écrans des téléphones, tons chauds et naturels",
+                 "صورتي موزّعة على شاشات الهواتف، بألوان دافئة وطبيعية")),
+]
+
+
 PACKS: List[Pack] = [
     # ----------------------- 1.1  E-commerce -----------------------
     # Every e-commerce category is its own freeform "studio" (mirrors tshirt-studio):
@@ -412,6 +515,7 @@ PACKS: List[Pack] = [
         requires_image_input=True,
         prompt_template="{{prompt}}",
         default_prompt="remove the existing background of the uploaded product and place it on a clean seamless studio background, keep the product unchanged, soft reflection beneath, even lighting, high detail",
+        example_i18n=i18n("a brown leather wallet", "un portefeuille en cuir marron", "محفظة جلد بني"),
         title_i18n=i18n("Product on solid color", "Produit sur fond uni", "المنتج على خلفية لون موحّد"),
         description_i18n=i18n(
             "Upload a product and swap its background to a clean color.",
@@ -457,6 +561,7 @@ PACKS: List[Pack] = [
         kind="freeform",
         prompt_template="{{prompt}}",
         default_prompt="a lifestyle photo of the uploaded product in use, natural light, candid, aspirational",
+        example_i18n=i18n("a ceramic coffee mug", "un mug en céramique", "كوب قهوة خزفي"),
         title_i18n=i18n("Product in scene / lifestyle", "Produit en situation / lifestyle", "المنتج في مشهد / لايف ستايل"),
         description_i18n=i18n(
             "Drop your product into a real contextual background scene.",
@@ -484,6 +589,7 @@ PACKS: List[Pack] = [
         requires_image_input=True,
         prompt_template="{{prompt}}",
         default_prompt="the uploaded label or design applied to a realistic product package, accurate perspective and lighting, high detail",
+        example_i18n=i18n("a skincare serum bottle", "un flacon de sérum pour la peau", "زجاجة سيروم للعناية بالبشرة"),
         title_i18n=i18n("Packaging / label", "Emballage / étiquette", "التغليف / الملصق"),
         description_i18n=i18n(
             "Render your label or box design on realistic packaging.",
@@ -510,6 +616,7 @@ PACKS: List[Pack] = [
         kind="freeform",
         prompt_template="{{prompt}}",
         default_prompt="an eye-catching sale graphic of the uploaded product with a bold headline and discount badge",
+        example_i18n=i18n("wireless earbuds, Mega Sale, -30%", "écouteurs sans fil, Méga Soldes, -30%", "سماعات لاسلكية، تخفيضات كبرى، -٣٠٪"),
         title_i18n=i18n("Sale / promo badge", "Visuel promo", "إعلان تخفيضات"),
         description_i18n=i18n(
             "Pick a badge style, then describe your product and offer.",
@@ -536,6 +643,7 @@ PACKS: List[Pack] = [
         kind="freeform",
         prompt_template="{{prompt}}",
         default_prompt="a festive seasonal-themed product photo of the uploaded product, decorative props, warm lighting",
+        example_i18n=i18n("a box of dates", "une boîte de dattes", "علبة تمر"),
         title_i18n=i18n("Seasonal campaign", "Campagne saisonnière", "حملة موسمية"),
         description_i18n=i18n(
             "Pick an occasion, then describe or upload your product.",
@@ -562,6 +670,7 @@ PACKS: List[Pack] = [
         kind="freeform",
         prompt_template="{{prompt}}",
         default_prompt="the uploaded product held or being used in a natural human moment, candid, soft light, scale reference, high detail",
+        example_i18n=i18n("a glass perfume bottle", "un flacon de parfum en verre", "زجاجة عطر زجاجية"),
         title_i18n=i18n("Held / in-use", "En main / en usage", "ممسوك / أثناء الاستخدام"),
         description_i18n=i18n(
             "Show your product held, worn, or being poured.",
@@ -896,115 +1005,40 @@ PACKS: List[Pack] = [
     ),
 
     # ----------------------- 1.5  Social creators -----------------------
+    # One freeform "studio" whose variants ARE the mockups. The Social sector in the
+    # gallery renders these mockups directly (no category cards); picking one opens the
+    # agent studio with the mockup uploaded as reference #1 (reproduced exactly) and its
+    # scene text seeded into the editable prompt.
     Pack(
-        id="cohesive-grid-set",
+        id="social-profile-studio",
         sector="social",
         order=1,
-        capability="photoreal",
-        prompt_template=(
-            "instagram-ready image of {{subject}}, {{aesthetic}} aesthetic, cohesive color "
-            "grading"
-        ),
-        title_i18n=i18n("Cohesive grid set", "Grille cohérente", "شبكة منسجمة"),
+        capability="edit-from-reference",
+        kind="freeform",
+        prompt_template="{{prompt}}",
+        default_prompt="recreate the reference social-media mockup exactly, replacing the placeholder photo and text with the user's photo and details, crisp legible text, high detail",
+        title_i18n=i18n("Social studio", "Studio réseaux", "استوديو المحتوى"),
         description_i18n=i18n(
-            "A set of images that share one aesthetic for your feed.",
-            "Un ensemble d'images au style cohérent pour votre feed.",
-            "مجموعة صور بأسلوب واحد منسجم لحسابك.",
+            "Pick a mockup, add your photo and details - we recreate it as yours.",
+            "Choisissez un mockup, ajoutez votre photo et vos infos - recréé à votre nom.",
+            "اختر مشهدًا، أضف صورتك وبياناتك - نعيد إنشاءه باسمك.",
         ),
         slots=[
-            text_slot("subject", i18n("Subject", "Sujet", "الموضوع"), required=True,
-                      placeholder=i18n("e.g. morning coffee scenes", "ex. scènes de café matinal", "مثال: مشاهد قهوة الصباح")),
-            select_slot("aesthetic", i18n("Aesthetic", "Esthétique", "الأسلوب"), [
-                opt("clean minimal", "clean minimal", "minimal épuré", "بسيط نظيف"),
-                opt("warm film", "warm film", "film chaleureux", "فيلم دافئ"),
-                opt("bold vibrant", "bold vibrant", "vif et audacieux", "زاهٍ وجريء"),
-                opt("dark moody", "dark moody", "sombre et intense", "داكن وعميق"),
-            ], required=True),
+            prompt_slot(
+                i18n("Your name, handle & details", "Votre nom, @handle & infos", "اسمك و@المعرّف والتفاصيل"),
+                placeholder=i18n(
+                    "e.g. Amine Ouni, @amine.ouni, AI Creator, 128 posts, 42k followers",
+                    "ex. Amine Ouni, @amine.ouni, AI Creator, 128 posts, 42k abonnés",
+                    "مثال: أمين، @amine.ouni، صانع محتوى، ١٢٨ منشور، ٤٢ ألف متابع",
+                ),
+                required=False,
+            ),
         ],
-        aspect_ratios=["4:5", "1:1"],
-        default_n=6,
-        tags=["social", "grid", "aesthetic"],
-    ),
-    Pack(
-        id="highlight-covers-set",
-        sector="social",
-        order=2,
-        capability="vector-graphic",
-        prompt_template=(
-            "minimal icon for an instagram highlight cover representing {{topic}}, "
-            "{{aesthetic}} style, simple, centered"
-        ),
-        title_i18n=i18n("Highlight covers set", "Couvertures stories", "أغلفة الستوري"),
-        description_i18n=i18n(
-            "A matching set of minimal icons for your story highlights.",
-            "Un jeu d'icônes minimalistes assorties pour vos stories.",
-            "مجموعة أيقونات بسيطة منسّقة لأبرز ستورياتك.",
-        ),
-        slots=[
-            text_slot("topic", i18n("Topic", "Thème", "الموضوع"), required=True,
-                      placeholder=i18n("e.g. travel, food, tips", "ex. voyage, food, astuces", "مثال: سفر، طعام، نصائح")),
-            select_slot("aesthetic", i18n("Style", "Style", "النمط"), [
-                opt("clean minimal", "clean minimal", "minimal épuré", "بسيط نظيف"),
-                opt("line art", "line art", "ligne", "خطّي"),
-                opt("gold luxe", "gold luxe", "or luxueux", "ذهبي فاخر"),
-            ], required=True),
-        ],
-        aspect_ratios=["1:1"],
-        default_n=4,
-        tags=["social", "highlights", "icons", "vector"],
-    ),
-    Pack(
-        id="quote-card",
-        sector="social",
-        order=3,
-        capability="text-in-image",
-        prompt_template=(
-            "aesthetic quote card with the text \"{{quote}}\", {{mood}} background, elegant "
-            "typography"
-        ),
-        title_i18n=i18n("Quote card", "Carte citation", "بطاقة اقتباس"),
-        description_i18n=i18n(
-            "A shareable quote card with your words set beautifully.",
-            "Une carte de citation partageable, vos mots joliment mis en page.",
-            "بطاقة اقتباس قابلة للمشاركة بكلماتك بأناقة.",
-        ),
-        slots=[
-            text_slot("quote", i18n("Quote", "Citation", "الاقتباس"), required=True,
-                      placeholder=i18n("e.g. Start where you are", "ex. Commencez là où vous êtes", "مثال: ابدأ من حيث أنت")),
-            select_slot("mood", i18n("Mood", "Ambiance", "الأجواء"), [
-                opt("calm pastel", "calm pastel", "pastel calme", "باستيل هادئ"),
-                opt("dark gold", "dark gold", "or sombre", "ذهبي داكن"),
-                opt("nature", "nature", "nature", "طبيعة"),
-                opt("oriental", "oriental", "oriental", "شرقي"),
-            ]),
-        ],
-        aspect_ratios=["1:1", "4:5"],
-        default_n=2,
-        tags=["social", "quote", "text"],
-    ),
-    Pack(
-        id="thumbnail-cover",
-        sector="social",
-        order=4,
-        capability="text-in-image",
-        prompt_template=(
-            "bold video thumbnail, large \"{{title}}\" text, {{subject}}, high contrast, "
-            "expressive"
-        ),
-        title_i18n=i18n("Thumbnail / cover", "Miniature vidéo", "صورة مصغّرة"),
-        description_i18n=i18n(
-            "A bold YouTube/Reels thumbnail that earns the click.",
-            "Une miniature YouTube/Reels percutante qui donne le clic.",
-            "صورة مصغّرة جريئة ليوتيوب/ريلز تجذب النقرة.",
-        ),
-        slots=[
-            text_slot("title", i18n("Title text", "Texte du titre", "نص العنوان"), required=True),
-            text_slot("subject", i18n("Subject", "Sujet", "الموضوع"), required=True,
-                      placeholder=i18n("e.g. a surprised person", "ex. une personne surprise", "مثال: شخص مندهش")),
-        ],
-        aspect_ratios=["16:9", "9:16"],
-        default_n=2,
-        tags=["social", "thumbnail", "text"],
+        variants=_SOCIAL_VARIANTS,
+        aspect_ratios=["9:16", "4:5", "1:1"],
+        default_n=1,
+        requires_image_input=False,
+        tags=["social", "profile", "mockup", "studio", "freeform", "new"],
     ),
 
     # ----------------------- 1.6  Events / Weddings -----------------------
@@ -1408,108 +1442,6 @@ PACKS: List[Pack] = [
         aspect_ratios=["1:1", "4:5"],
         default_n=2,
         tags=["arabic", "greeting", "calligraphy", "rtl"],
-    ),
-
-    # ----------------------- Input-model demos (freeform + structured card) -----------------------
-    # FREEFORM: the user just writes what they want (and optionally adds an image).
-    Pack(
-        id="free-create",
-        sector="social",
-        order=10,
-        capability="photoreal",
-        kind="freeform",
-        prompt_template="{{prompt}}",
-        title_i18n=i18n("Free create", "Création libre", "إنشاء حر"),
-        description_i18n=i18n(
-            "Just describe the image you want — add a reference if you like.",
-            "Décrivez simplement l'image voulue — ajoutez une référence si besoin.",
-            "صف الصورة التي تريدها — وأضف صورة مرجعية إن رغبت.",
-        ),
-        slots=[
-            prompt_slot(
-                i18n("Describe what you want", "Décrivez ce que vous voulez", "صِف ما تريد"),
-                placeholder=i18n(
-                    "e.g. a cozy bookstore café at golden hour, warm tones",
-                    "ex. un café-librairie chaleureux à l'heure dorée",
-                    "مثال: مقهى ومكتبة دافئ عند الغروب بألوان دافئة",
-                ),
-            ),
-        ],
-        aspect_ratios=["1:1", "4:5", "16:9", "9:16"],
-        default_n=2,
-        tags=["freeform", "create", "open"],
-    ),
-    # FREEFORM + image: edit / restyle a supplied photo with a free instruction.
-    Pack(
-        id="free-edit",
-        sector="social",
-        order=11,
-        capability="edit-from-reference",
-        kind="freeform",
-        prompt_template="{{prompt}}",
-        default_prompt="enhance this image, professional quality, clean",
-        title_i18n=i18n("Free edit a photo", "Retoucher librement", "تعديل حر لصورة"),
-        description_i18n=i18n(
-            "Upload a photo and say how to change it.",
-            "Importez une photo et dites comment la modifier.",
-            "ارفع صورة وقل كيف تريد تعديلها.",
-        ),
-        slots=[
-            prompt_slot(
-                i18n("How should we change it?", "Comment la modifier ?", "كيف نعدّلها؟"),
-                placeholder=i18n(
-                    "e.g. make the background a clean studio white",
-                    "ex. mettre un fond studio blanc et net",
-                    "مثال: اجعل الخلفية بيضاء استوديو نظيفة",
-                ),
-                required=False,  # image is required; prompt optional (falls back to default_prompt)
-            ),
-        ],
-        aspect_ratios=["1:1", "4:5", "16:9"],
-        default_n=1,
-        requires_image_input=True,
-        tags=["freeform", "edit", "image"],
-    ),
-    # STRUCTURED card: specific optional fields (name, tagline, stats) -> a designed
-    # profile card, like the reference mockup. Everything is optional.
-    Pack(
-        id="profile-card",
-        sector="social",
-        order=12,
-        capability="text-in-image",
-        kind="structured",
-        prompt_template=(
-            "modern glassmorphism profile card UI, frosted glass panel on a soft "
-            "{{palette}} gradient, name \"{{name}}\", tagline \"{{tagline}}\", stat tiles "
-            "{{stats}}, rounded buttons, clean elegant typography, high detail"
-        ),
-        title_i18n=i18n("Profile card", "Carte de profil", "بطاقة تعريف"),
-        description_i18n=i18n(
-            "A polished glassmorphism profile card — fill only what you want.",
-            "Une carte de profil glassmorphism soignée — remplissez ce que vous voulez.",
-            "بطاقة تعريف أنيقة بأسلوب الزجاج — املأ ما تريد فقط.",
-        ),
-        slots=[
-            text_slot("name", i18n("Name", "Nom", "الاسم"),
-                      placeholder=i18n("e.g. Kasun Dilanka", "ex. Kasun Dilanka", "مثال: كاسون ديلانكا")),
-            text_slot("tagline", i18n("Tagline", "Slogan", "الوصف"),
-                      placeholder=i18n("e.g. Designer who creates delightful experiences",
-                                       "ex. Designer d'expériences délicieuses",
-                                       "مثال: مصمّم يصنع تجارب ممتعة")),
-            text_slot("stats", i18n("Stats (optional)", "Statistiques (optionnel)", "إحصاءات (اختياري)"),
-                      placeholder=i18n("e.g. 144 Projects, 604 Likes, 44 Comments",
-                                       "ex. 144 Projets, 604 J'aime, 44 Commentaires",
-                                       "مثال: ١٤٤ مشروع، ٦٠٤ إعجاب، ٤٤ تعليق")),
-            select_slot("palette", i18n("Palette", "Palette", "الألوان"), [
-                opt("blue", "blue", "bleu", "أزرق"),
-                opt("violet", "violet", "violet", "بنفسجي"),
-                opt("sunset orange", "sunset orange", "orange coucher de soleil", "برتقالي غروب"),
-                opt("emerald", "emerald", "émeraude", "زمردي"),
-            ]),
-        ],
-        aspect_ratios=["4:5", "1:1", "9:16"],
-        default_n=2,
-        tags=["social", "card", "profile", "structured"],
     ),
 
     # ----------------------- Variant/studio demo: T-shirt mockups -----------------------

@@ -188,6 +188,17 @@ export default function PackDetailPage() {
     };
   }, [packId, language]);
 
+  // Deep-link: /studio/packs/<id>?variant=<vid> pre-selects a mockup and jumps
+  // straight into the studio (used by the Social gallery, which lists mockups
+  // directly instead of category cards). Applied once, after the pack loads.
+  const deepLinkedRef = useRef(false);
+  useEffect(() => {
+    if (deepLinkedRef.current || !pack?.variants?.length) return;
+    deepLinkedRef.current = true;
+    const vid = new URLSearchParams(window.location.search).get("variant");
+    if (vid && pack.variants.some((v) => v.id === vid)) setVariantId(vid);
+  }, [pack]);
+
   const refreshCredits = useCallback(() => {
     api
       .getProfile()
@@ -612,13 +623,13 @@ export default function PackDetailPage() {
             <h2 className={`text-xl font-bold text-[#eaedf6] ${displayClass}`}>{pt(language, "pickMockup")}</h2>
             {/* Masonry gallery: each mockup at its natural aspect ratio (no square
                 crop), flowing into as many columns as fit — not forced 4-up. */}
-            <div className="mt-5 gap-3 [column-fill:_balance] columns-2 sm:columns-3 lg:columns-4">
+            <div className="mt-5 gap-1.5 [column-fill:_balance] columns-2 sm:columns-3 xl:columns-4">
               {variants.map((v) => (
                 <button
                   key={v.id}
                   type="button"
                   onClick={() => setVariantId(v.id)}
-                  className="group relative mb-3 block w-full break-inside-avoid overflow-hidden rounded-xl border border-white/[.08] bg-[#141b2b] text-start transition hover:border-white/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+                  className="group relative mb-1.5 block w-full break-inside-avoid overflow-hidden rounded-md border border-white/[.08] bg-[#141b2b] text-start animate-fade-in-up transition hover:border-white/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
                 >
                   {v.thumbnail_url ? (
                     <AuthenticatedImage
@@ -631,8 +642,8 @@ export default function PackDetailPage() {
                       <span className="material-symbols-outlined text-2xl text-white/40">image</span>
                     </div>
                   )}
-                  {/* caption overlay — no dead space; title always legible */}
-                  <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/35 to-transparent p-3 pt-9">
+                  {/* caption overlay — hidden until hover/focus (always shown on touch) */}
+                  <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent p-3 pt-9 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-100">
                     <span className="text-[13px] font-semibold text-white drop-shadow-sm">{v.title}</span>
                   </div>
                 </button>

@@ -128,7 +128,10 @@ export default function PackChat({
   const displayClass = isRtl ? "" : "font-['Bricolage_Grotesque']";
 
   const [results, setResults] = useState<ResultTile[]>([]);
-  const [composer, setComposer] = useState("");
+  // Pre-fill the composer with an editable example: the chosen mockup's own example
+  // first, else the pack default. PackChat is keyed per-variant upstream, so this
+  // lazy init re-seeds each time a different mockup is opened. The user can edit it.
+  const [composer, setComposer] = useState(() => variant?.example || pack.example || "");
   const [pendingRefs, setPendingRefs] = useState<InputImagePayload[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
   const dragDepthRef = useRef(0);
@@ -848,9 +851,9 @@ export default function PackChat({
             </div>
           </div>
         ) : (
-          <div className="gap-3 [column-fill:_balance] columns-2 sm:columns-3 xl:columns-4">
+          <div className="gap-1.5 [column-fill:_balance] columns-2 sm:columns-3 xl:columns-4">
             {results.map((t) => (
-              <div key={t.id} className="group relative mb-3 block break-inside-avoid overflow-hidden rounded-2xl border border-white/[.08] bg-[#141b2b]">
+              <div key={t.id} className="group relative mb-1.5 block break-inside-avoid overflow-hidden rounded-sm border border-white/[.08] bg-[#141b2b] animate-fade-in-up">
                 {t.status === "generating" ? (
                   <div className="flex aspect-square w-full items-center justify-center">
                     <div className="h-9 w-9 animate-spin rounded-full border-2 border-[color:var(--accent-30)] border-t-[color:var(--accent)]" />
@@ -860,6 +863,7 @@ export default function PackChat({
                     <InteractiveAuthenticatedImage
                       src={t.image}
                       alt={pack.title}
+                      zoomOnClick
                       wrapperClassName="w-full"
                       imageClassName="block h-auto w-full max-h-[55vh] object-cover"
                       loadingClassName="flex aspect-square w-full items-center justify-center text-xs text-[#606d8a]"

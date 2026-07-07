@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { api } from "../../../services/api";
 import { useLanguage } from "../../../context/LanguageContext";
-import type { PackCapability, PackCard } from "../../../types";
+import type { PackCapability, PackCard, PackVariant } from "../../../types";
 import Specimen from "./Specimen";
 import {
   CRAFT_HEX,
@@ -16,6 +16,13 @@ import {
   sectorDesc,
   sectorLabel,
 } from "./packsShared";
+
+// The Social sector is special: instead of category cards, it shows the mockups
+// (variants) of a single freeform "studio" pack directly, each linking straight into
+// the agent studio via ?variant=. Mirrors e-commerce's mockup-picker, one level up.
+const SOCIAL_SECTOR = "social";
+const SOCIAL_PACK_ID = "social-profile-studio";
+const MOCKUPS_WORD: Record<string, string> = { en: "mockups", fr: "mockups", ar: "مشاهد" };
 
 // Small "what you bring" glyph: a photo (needs an upload) vs. text lines (describe).
 function NeedIcon({ img }: { img: boolean }) {
@@ -40,6 +47,8 @@ export default function PacksGalleryPage() {
   const [activeSector, setActiveSector] = useState<string | null>(null);
   const [craft, setCraft] = useState<PackCapability | "all">("all");
   const [query, setQuery] = useState("");
+  // Mockups of the Social studio pack, rendered directly as the Social sector grid.
+  const [socialVariants, setSocialVariants] = useState<PackVariant[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -56,6 +65,22 @@ export default function PacksGalleryPage() {
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [language]);
+
+  // Social shows mockups directly: fetch the studio pack's variants for the grid.
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .getPack(SOCIAL_PACK_ID, language)
+      .then((d) => {
+        if (!cancelled) setSocialVariants(d.variants ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setSocialVariants([]);
       });
     return () => {
       cancelled = true;
@@ -82,7 +107,17 @@ export default function PacksGalleryPage() {
     }
   }, [allSectors, activeSector]);
 
-  const countFor = (sector: string) => packs.filter((p) => p.sector === sector).length;
+  const countFor = (sector: string) =>
+    sector === SOCIAL_SECTOR ? socialVariants.length : packs.filter((p) => p.sector === sector).length;
+
+  const isSocial = activeSector === SOCIAL_SECTOR;
+
+  // Social grid = the studio pack's mockups, filtered by the search box (by title).
+  const socialTiles = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return socialVariants;
+    return socialVariants.filter((v) => v.title.toLowerCase().includes(q));
+  }, [socialVariants, query]);
 
   // Packs in the active sector (before the craft filter) — drives the filter counts.
   const sectorPacks = useMemo(
@@ -112,11 +147,11 @@ export default function PacksGalleryPage() {
 
   const displayClass = isRtl ? "" : "font-['Bricolage_Grotesque']";
 
-  const UNLOCKED_SECTOR = "ecommerce";
+  const UNLOCKED_SECTORS = ["ecommerce", "social"];
 
   const sectorButton = (s: string, marker: ReactNode) => {
     const active = s === activeSector;
-    const locked = s !== UNLOCKED_SECTOR;
+    const locked = !UNLOCKED_SECTORS.includes(s);
 
     if (locked) {
       return (
@@ -192,7 +227,8 @@ export default function PacksGalleryPage() {
               </p>
             )}
             <p className="mt-3.5 font-mono text-xs tracking-wide text-[#606d8a]">
-              {(query ? visible.length : sectorPacks.length)} {pt(language, "packsCount")}
+              {isSocial ? socialTiles.length : query ? visible.length : sectorPacks.length}{" "}
+              {isSocial ? MOCKUPS_WORD[language] ?? MOCKUPS_WORD.en : pt(language, "packsCount")}
             </p>
           </div>
           <div className="relative mt-1.5">
@@ -209,7 +245,7 @@ export default function PacksGalleryPage() {
         </div>
 
         {/* Craft filter strip */}
-        {!query && craftsPresent.length > 0 && (
+        {!query && !isSocial && craftsPresent.length > 0 && (
           <div className="mt-6 flex flex-wrap gap-2 border-t border-white/[.08] pt-5">
             <CraftChip
               active={craft === "all"}
@@ -241,12 +277,31 @@ export default function PacksGalleryPage() {
         {/* States */}
         {loading && <p className="mt-8 text-sm text-[#93a0bd]">{pt(language, "loading")}</p>}
         {error && !loading && <p className="mt-8 text-sm text-rose-300">{error}</p>}
-        {!loading && !error && visible.length === 0 && (
+        {!loading && !error && (isSocial ? socialTiles.length === 0 : visible.length === 0) && (
           <p className="mt-8 text-sm text-[#93a0bd]">{pt(language, "emptySector")}</p>
         )}
 
-        {/* Grid */}
-        <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {/* Social grid: mockups directly (each opens the studio via ?variant=).
+            Masonry — natural aspect ratios, tight gutters, caption on hover. */}
+        {isSocial ? (
+          <div className="mt-5 gap-1.5 [column-fill:_balance] columns-2 sm:columns-3 xl:columns-4">
+            {socialTiles.map((v) => (
+              <Link
+                key={v.id}
+                href={`/studio/packs/${SOCIAL_PACK_ID}?variant=${v.id}`}
+                className="group relative mb-1.5 block w-full break-inside-avoid overflow-hidden rounded-md border animate-fade-in-up border-white/[.08] bg-[#141b2b] transition duration-200 hover:border-white/[.13] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={v.thumbnail_url} alt={v.title} className="block h-auto w-full transition duration-300 group-hover:scale-[1.03]" />
+                {/* caption overlay — hidden until hover/focus (always shown on touch) */}
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent p-3 pt-9 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-100">
+                  <span className={`text-[13px] font-semibold text-white drop-shadow-sm ${displayClass}`}>{v.title}</span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        ) : (
+        <div className="mt-5 gap-1.5 [column-fill:_balance] columns-2 sm:columns-3 xl:columns-4">
           {visible.map((p) => {
             const color = CRAFT_HEX[p.capability] ?? "#8fa0c4";
             const isNew = p.tags.includes("new");
@@ -254,27 +309,27 @@ export default function PacksGalleryPage() {
               <Link
                 key={p.id}
                 href={`/studio/packs/${p.id}`}
-                className="group flex flex-col overflow-hidden rounded-2xl border border-white/[.08] bg-[#141b2b] transition duration-200 [transition-timing-function:cubic-bezier(.2,.7,.3,1)] hover:-translate-y-[3px] hover:border-white/[.13] hover:bg-[#1a2233] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 motion-reduce:transition-none motion-reduce:hover:translate-y-0"
+                className="group relative mb-1.5 block w-full break-inside-avoid overflow-hidden rounded-md border animate-fade-in-up border-white/[.08] bg-[#141b2b] transition duration-200 hover:border-white/[.13] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
               >
-                <div className="relative aspect-[4/3] overflow-hidden border-b border-white/[.08]">
-                  {p.thumbnail_url ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={p.thumbnail_url} alt={p.title} className="h-full w-full object-cover" />
-                  ) : (
+                {p.thumbnail_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={p.thumbnail_url} alt={p.title} className="block h-auto w-full transition duration-300 group-hover:scale-[1.03]" />
+                ) : (
+                  <div className="relative aspect-[4/3] w-full">
                     <Specimen capability={p.capability} id={p.id} isRtl={isRtl} />
-                  )}
-                  {isNew && (
-                    <span className="absolute top-3 z-[2] rounded-md border border-white/[.13] bg-[#0d1320]/70 px-2 py-[3px] font-mono text-[9.5px] font-bold uppercase tracking-[0.12em] text-[#eaedf6] backdrop-blur-sm start-3">
-                      {pt(language, "new")}
-                    </span>
-                  )}
-                </div>
-                <div className="flex flex-1 flex-col p-4">
-                  <h3 className={`text-[16.5px] font-bold leading-tight tracking-tight text-[#eaedf6] ${displayClass}`}>
+                  </div>
+                )}
+                {isNew && (
+                  <span className="absolute top-3 z-[2] rounded-md border border-white/[.13] bg-[#0d1320]/70 px-2 py-[3px] font-mono text-[9.5px] font-bold uppercase tracking-[0.12em] text-[#eaedf6] backdrop-blur-sm start-3">
+                    {pt(language, "new")}
+                  </span>
+                )}
+                {/* caption overlay — hidden until hover/focus (always shown on touch) */}
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/45 to-transparent p-3.5 pt-10 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-100">
+                  <h3 className={`text-[15px] font-bold leading-tight tracking-tight text-white drop-shadow-sm ${displayClass}`}>
                     {p.title}
                   </h3>
-                  <p className="mt-1.5 line-clamp-2 flex-1 text-[13px] leading-snug text-[#93a0bd]">{p.promise}</p>
-                  <div className="mt-3.5 flex items-center justify-between gap-2.5">
+                  <div className="mt-2 flex items-center justify-between gap-2.5">
                     <span
                       className="inline-flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-[0.08em]"
                       style={{ color }}
@@ -282,7 +337,7 @@ export default function PacksGalleryPage() {
                       <span className="h-[7px] w-[7px] rounded-sm" style={{ background: color }} />
                       {capabilityLabel(language, p.capability)}
                     </span>
-                    <span className="inline-flex items-center gap-1.5 text-[11px] text-[#606d8a]">
+                    <span className="inline-flex items-center gap-1.5 text-[11px] text-white/70">
                       <NeedIcon img={p.requires_image_input} />
                       {p.requires_image_input ? pt(language, "needsPhoto") : pt(language, "justDescribe")}
                     </span>
@@ -292,6 +347,7 @@ export default function PacksGalleryPage() {
             );
           })}
         </div>
+        )}
       </section>
     </div>
   );
