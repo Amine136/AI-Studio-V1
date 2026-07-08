@@ -200,6 +200,18 @@ _LIFESTYLE_VARIANTS: List[Variant] = [
     _scene("moody-blue", "Moody blue", "Bleu feutré", "أزرق هادئ", "a moody blue-grey scene with a dramatic directional shadow, low-key light", "scene-61.jpg"),
     _scene("white-florals", "White florals", "Blanc fleuri", "أبيض مُزهر", "a white surface styled with yellow flowers in fresh bright light", "scene-62.jpg"),
     _scene("teal-pedestal", "Teal pedestal", "Socle canard", "منصة فيروزية", "a teal backdrop with a raised pedestal under clean studio light", "scene-63.jpg"),
+    # --- Podiums & pedestals (added 2026-07) ---
+    _scene("copper-hands", "Copper hands", "Mains en cuivre", "أيادٍ نحاسية", "the cupped palms of two glossy copper metallic sculpture hands on a dark charcoal background, dramatic studio light", "scene-64.jpg"),
+    _scene("green-spotlight-podium", "Green podium", "Podium vert", "منصة خضراء", "the center of a green cylindrical podium beneath a round hanging spotlight, deep green backdrop with soft drapery, moody editorial light", "scene-65.jpg"),
+    _scene("beige-slab-pedestal", "Beige slab", "Socle beige", "منصة بيج", "the center of a floating beige rectangular slab pedestal against a warm beige background, soft minimal shadow", "scene-66.jpg"),
+    _scene("black-copper-podium", "Black & copper", "Noir et cuivre", "أسود ونحاسي", "the center of a glossy black round podium with a copper rim in a two-tone grey corner, decorative copper and black spheres nearby, soft studio light", "scene-67.jpg"),
+    _scene("blue-glass-podium", "Blue glass podium", "Podium verre bleu", "منصة زجاج زرقاء", "the center of a translucent blue glass disc podium against a soft pale blue-grey background, clean glossy reflection", "scene-68.jpg"),
+    _scene("wood-botanical-podium", "Botanical podium", "Podium botanique", "منصة نباتية", "the center of a round wooden podium surrounded by pebbles, smooth stones and fresh green leaves, warm beige stone wall backdrop, natural spa mood", "scene-69.jpg"),
+    _scene("tropical-beach-table", "Tropical beach", "Plage tropicale", "شاطئ استوائي", "the foreground of a stone tabletop with a blurred tropical palm beach and golden-hour sunset ocean behind, warm summer light", "scene-70.jpg"),
+    _scene("warm-lamp-podium", "Warm lamp podium", "Podium lampe chaude", "منصة بإضاءة دافئة", "the center of a glowing cream cylindrical podium in a warm terracotta-brown niche lit by a hanging pendant lamp, cozy warm ambiance", "scene-71.jpg"),
+    _scene("backlit-navy-podium", "Backlit navy", "Bleu rétroéclairé", "كحلي مضيء", "the center of a dark navy round podium with a warm orange backlight glowing underneath, moody deep-blue room, cinematic light", "scene-72.jpg"),
+    _scene("smoke-podium", "Smoke podium", "Podium fumée", "منصة دخانية", "the center of a round podium with a white top surrounded by swirling white smoke on a black background, dramatic mysterious mood", "scene-73.jpg"),
+    _scene("draped-wood-podium", "Draped wood", "Bois drapé", "خشب بقماش", "the center of a round wooden podium draped with flowing white fabric, warm beige wall with soft leaf shadows and green plants, bright airy daylight", "scene-74.jpg"),
 ]
 
 
@@ -497,6 +509,198 @@ _SOCIAL_VARIANTS: List[Variant] = [
             i18n("my portrait split across the phone screens, warm natural tones",
                  "mon portrait réparti sur les écrans des téléphones, tons chauds et naturels",
                  "صورتي موزّعة على شاشات الهواتف، بألوان دافئة وطبيعية")),
+]
+
+
+# ===========================================================================
+# Quote-card mockups: fully-composed "hand holding a card" scenes the user's own
+# quote is dropped into. Like Social, the mockup is sent as reference #1 and
+# reproduced EXACTLY; the scene text tells the model to swap ONLY the quote text
+# (no face/identity to replace) and keep the card, frame, glow and typography.
+def _quote(slug: str, en: str, fr: str, ar: str, scene: str, fname: str, ex: I18n) -> Variant:
+    url = f"/mockups/quote/{fname}"
+    return Variant(slug, i18n(en, fr, ar), scene, url, url, ex)
+
+
+_QREPLACE = ("Replace ONLY the quote text with the user's words below; keep the exact "
+             "same scene, hand, card, frame, colors, glow and typographic style. "
+             "Do not keep the reference's original words.")
+_QQUALITY = "Photorealistic, crisp legible text (supports Arabic), high detail."
+
+_QUOTE_VARIANTS: List[Variant] = [
+    _quote("ember-glass-portrait", "Ember glass card", "Carte de verre incandescente", "بطاقة زجاج متوهّجة",
+           f"Recreate this exact cinematic scene of a woman's face beside a glowing ember-lit glass card with molten fiery edges, dark background with drifting sparks and smoke - same face, glass card, fire glow and elegant serif layout. {_QREPLACE} {_QQUALITY}",
+           "ember-glass-portrait.jpg",
+           i18n("I am the storm that is approaching",
+                "Je suis la tempête qui approche",
+                "أنا العاصفة القادمة")),
+    _quote("fire-card", "Card on fire", "Carte en feu", "بطاقة مشتعلة",
+           f"Recreate this exact transparent card held in a hand, engulfed in real flames with the words themselves made of fire, dark smoky background with glowing embers - same burning card, fiery letterforms, hand and embers. Replace ONLY the words with the user's short quote below, keeping the flaming fire-text style, glow and composition. Do not keep the reference's original words. {_QQUALITY}",
+           "fire-card.jpg",
+           i18n("Rise from the ashes",
+                "Renais de tes cendres",
+                "انهض من الرماد")),
+    _quote("neon-card", "Neon glass card", "Carte néon", "بطاقة نيون",
+           f"Recreate this exact frosted translucent card held in a hand with a glowing cyan-and-pink neon border, dark background with a soft light beam - same neon-edged glass card, hand and glow. {_QREPLACE} Keep the neon typographic style (bright uppercase sans + pink script). {_QQUALITY}",
+           "neon-card.jpg",
+           i18n("Shine brighter than your doubts",
+                "Brille plus fort que tes doutes",
+                "تألّق أكثر من شكوكك")),
+    _quote("neon-card-tall", "Neon card (portrait)", "Carte néon (vertical)", "بطاقة نيون (عمودية)",
+           f"Recreate this exact tall frosted glass card held in a hand with a glowing cyan-and-pink neon border, dark cinematic background with bokeh - same vertical neon glass card, hand and glow. {_QREPLACE} Keep the soft neon glow and centered layout. {_QQUALITY}",
+           "neon-card-tall.jpg",
+           i18n("And with hardship comes ease",
+                "À côté de la difficulté est une facilité",
+                "إنَّ مع العُسر يُسرًا")),
+    _quote("gold-luxury-card", "Gold luxury card", "Carte dorée de luxe", "بطاقة ذهبية فاخرة",
+           f"Recreate this exact premium matte navy-black card held in a hand with a thin gold Art-Deco border, a warm spotlight from above on a dark background - same luxury card, gold-foil border, hand and lighting. {_QREPLACE} Keep the elegant centered gold-foil typography and premium mood. {_QQUALITY}",
+           "gold-luxury-card.jpg",
+           i18n("Luxury lives in simplicity",
+                "Le luxe est dans la simplicité",
+                "الفخامة في البساطة")),
+    _quote("gold-script-card", "Gold script card", "Carte script doré", "بطاقة بخط ذهبي",
+           f"Recreate this exact black card held in a hand with a thin ornate gold frame, dark smoky background with a warm glow - same card, gold border, hand and lighting. Replace ONLY the centered gold script quote with the user's words below, keeping the elegant gold-foil calligraphic script, centered layout and refined mood. Do not keep the reference's original words. {_QQUALITY}",
+           "gold-script-card.jpg",
+           i18n("Simplicity is the ultimate sophistication",
+                "La simplicité est la sophistication suprême",
+                "البساطة قمّة الرُّقيّ")),
+    _quote("ornate-gold-frame", "Ornate gold frame", "Cadre doré ornemental", "إطار ذهبي مزخرف",
+           f"Recreate this exact black card held in a hand with a richly ornate vintage gold-foil frame, a warm lamp and marble softly blurred in the background - same card, ornamental gold border, hand and cozy lighting. Replace ONLY the gold quote near the bottom with the user's words below, keeping the classic gold-foil serif typography and luxurious mood. Do not keep the reference's original words. {_QQUALITY}",
+           "ornate-gold-frame.jpg",
+           i18n("Luxury is in each detail",
+                "Le luxe est dans chaque détail",
+                "الفخامة في كل تفصيل")),
+    _quote("gold-corner-card", "Gold-corner card", "Carte à coins dorés", "بطاقة بزوايا ذهبية",
+           f"Recreate this exact black card held in a hand with ornate gold-foil corner flourishes and a thin gold frame, moody dark background with a warm glow - same card, gold cornerwork, hand and lighting. Replace ONLY the small gold caption near the bottom with the user's words below, keeping the delicate gold-foil typography and premium mood. Do not keep the reference's original words. {_QQUALITY}",
+           "gold-corner-card.jpg",
+           i18n("Beauty is in the details",
+                "La beauté est dans les détails",
+                "الجمال في التفاصيل")),
+]
+
+
+# ===========================================================================
+# Digital-product promo posters: ready-made marketing posters for reselling
+# subscriptions, streaming accounts, game top-ups and gift cards. Like Social/
+# Quote, the poster is sent as reference #1 and reproduced EXACTLY; the scene text
+# tells the model to swap ONLY the product name, prices, features and contact for
+# the user's, keeping the layout, logos and style. (Verified: grok holds a dense
+# Arabic/French promo and rewrites the offer legibly.)
+def _digital(slug: str, en: str, fr: str, ar: str, subject: str, fname: str, ex: I18n) -> Variant:
+    url = f"/mockups/digital/{fname}"
+    scene = (
+        f"Recreate this exact promotional poster for {subject} - same layout, background, "
+        f"colours, icons and brand logos, badges and typography. Replace the product name, "
+        f"prices, feature lines and contact details with the user's details below; keep every "
+        f"graphic element and the layout identical, vibrant with crisp legible text (Arabic and "
+        f"Latin). Do not keep the reference's original brand names or prices. Photorealistic, high detail."
+    )
+    return Variant(slug, i18n(en, fr, ar), scene, url, url, ex)
+
+
+_DIGITAL_VARIANTS: List[Variant] = [
+    _digital("summer-ai-promo", "Summer AI promo", "Promo IA été", "عرض صيفي للذكاء", "a summer sale of AI & software subscriptions", "dp-01.jpg",
+             i18n("Summer Sale — Gemini Pro 40DT, ChatGPT 60DT, Canva Pro 15DT · DM to order", "Soldes d'été — Gemini Pro 40DT, ChatGPT 60DT, Canva Pro 15DT · MP pour commander", "تخفيضات الصيف — Gemini Pro 40 دت، ChatGPT 60 دت، Canva Pro 15 دت · راسلنا للطلب")),
+    _digital("ramadan-netflix", "Ramadan streaming", "Streaming Ramadan", "بث رمضان", "a Ramadan streaming-account promo (Netflix style)", "dp-02.jpg",
+             i18n("Ramadan Offer — Netflix 1 month, full account, only 10DT", "Offre Ramadan — Netflix 1 mois, compte complet, 10DT", "عرض رمضان — نتفليكس شهر كامل بحساب شخصي بـ10 دت")),
+    _digital("steam-game-account", "Game account promo", "Promo compte jeu", "عرض حساب لعبة", "a Steam / game account promo (football game)", "dp-03.jpg",
+             i18n("FC26 Steam account — full access, fresh 0 hour, 35DT", "Compte Steam FC26 — accès complet, 0 heure, 35DT", "حساب ستيم FC26 — وصول كامل، جديد، 35 دت")),
+    _digital("worldcup-promo", "World-Cup promo", "Promo Coupe du Monde", "عرض كأس العالم", "a football World-Cup themed subscription promo with three activation codes", "dp-04.jpg",
+             i18n("ChatGPT Plus — 12 months 40DT · 6 months 25DT · free Notion Pro", "ChatGPT Plus — 12 mois 40DT · 6 mois 25DT · Notion Pro offert", "ChatGPT Plus — 12 شهر 40 دت · 6 أشهر 25 دت · Notion Pro مجانًا")),
+    _digital("chatgpt-assistant-pink", "ChatGPT assistant", "Assistant ChatGPT", "مساعد ChatGPT", "a pink ChatGPT AI-assistant subscription promo with a robot mascot", "dp-05.jpg",
+             i18n("ChatGPT — smart answers in seconds, 1 month 20DT", "ChatGPT — réponses intelligentes, 1 mois 20DT", "ChatGPT — إجابات ذكية سريعة، شهر بـ20 دت")),
+    _digital("google-ai-pro-devices", "Google AI Pro", "Google AI Pro", "Google AI Pro", "a Google AI Pro / Gemini subscription promo with a laptop and phone", "dp-06.jpg",
+             i18n("Google AI Pro — all AI tools in one, 45DT/year", "Google AI Pro — tous les outils IA, 45DT/an", "Google AI Pro — كل أدوات الذكاء بـ45 دت/سنة")),
+    _digital("claude-agents-course", "AI agents course", "Formation agents IA", "دورة وكلاء الذكاء", "an AI-agents training course promo (Claude + AI agents)", "dp-07.jpg",
+             i18n("Claude + AI Agents training — 600DT (was 850DT)", "Formation Claude + Agents IA — 600DT (au lieu de 850DT)", "دورة Claude ووكلاء الذكاء — 600 دت بدل 850")),
+    _digital("ai-bundle-light", "AI bundle", "Pack IA", "باقة الذكاء", "a premium AI-subscriptions bundle with many tool logos", "dp-08.jpg",
+             i18n("Premium AI bundle — ChatGPT, Gemini, Canva, CapCut · verified accounts", "Pack IA premium — ChatGPT, Gemini, Canva, CapCut · comptes vérifiés", "باقة الذكاء المميزة — ChatGPT وGemini وCanva وCapCut · حسابات موثوقة")),
+    _digital("ai-digital-premium", "AI & digital premium", "IA & digital premium", "اشتراكات مميزة", "a premium AI & digital subscriptions catalogue with tool logos", "dp-09.jpg",
+             i18n("AI & digital subscriptions — CapCut Pro, Google AI, SuperGrok", "Abonnements IA & digitaux — CapCut Pro, Google AI, SuperGrok", "اشتراكات الذكاء والرقمية — CapCut Pro وGoogle AI وSuperGrok")),
+    _digital("google-ai-ultra", "Google AI Ultra", "Google AI Ultra", "Google AI Ultra", "a Google AI Ultra credits promo on a tech circuit background", "dp-10.jpg",
+             i18n("Google AI Ultra — 45,000 credits, Veo 3.1, 2TB storage", "Google AI Ultra — 45 000 crédits, Veo 3.1, 2To", "Google AI Ultra — 45,000 رصيد، Veo 3.1، 2TB")),
+    _digital("coc-topup", "Clash of Clans top-up", "Recharge Clash of Clans", "شحن كلاش أوف كلانس", "a Clash of Clans gems top-up price list", "dp-11.jpg",
+             i18n("Clash of Clans top-up — fast & safe, no ban risk", "Recharge Clash of Clans — rapide & sûr, sans risque de ban", "شحن كلاش أوف كلانس — سريع وآمن بدون خطر حظر")),
+    _digital("supergrok-pro", "SuperGrok Pro", "SuperGrok Pro", "SuperGrok Pro", "a SuperGrok Pro AI subscription promo, gold on black", "dp-12.jpg",
+             i18n("SuperGrok Pro — smart, fast, powerful · from 35DT/month", "SuperGrok Pro — intelligent, rapide · à partir de 35DT/mois", "SuperGrok Pro — ذكي وسريع · من 35 دت/شهر")),
+    _digital("capcut-pro-purple", "CapCut Pro", "CapCut Pro", "CapCut Pro", "a CapCut Pro video-editing subscription promo, neon purple", "dp-13.jpg",
+             i18n("CapCut Pro — pro video editing, from 20DT/month", "CapCut Pro — montage pro, à partir de 20DT/mois", "CapCut Pro — مونتاج احترافي، من 20 دت/شهر")),
+    _digital("digital-services-grid", "Digital services", "Services digitaux", "خدمات رقمية", "an all-in-one digital-services promo with many app logos", "dp-14.jpg",
+             i18n("All digital services in one place — accounts, top-ups, subs", "Tous vos services digitaux — comptes, recharges, abonnements", "كل الخدمات الرقمية في مكان واحد — حسابات وشحن واشتراكات")),
+    _digital("gemini-pro-box", "Gemini Pro (boxed)", "Gemini Pro (coffret)", "Gemini Pro (علبة)", "a boxed Gemini Pro 18-month subscription product shot", "dp-15.jpg",
+             i18n("Gemini Pro — 18-month subscription, personal account, 45DT", "Gemini Pro — abonnement 18 mois, compte perso, 45DT", "Gemini Pro — اشتراك 18 شهر بحساب شخصي، 45 دت")),
+    _digital("clash-royale-topup", "Clash Royale top-up", "Recharge Clash Royale", "شحن كلاش رويال", "a Clash Royale gems top-up price list", "dp-16.jpg",
+             i18n("Clash Royale top-up — fast, 100% safe, no ban", "Recharge Clash Royale — rapide, 100% sûr", "شحن كلاش رويال — سريع وآمن 100%")),
+    _digital("streaming-price-list", "Streaming price list", "Tarifs streaming", "أسعار البث", "a streaming-subscriptions gift-card price list (Netflix, Spotify, Disney+)", "dp-17.jpg",
+             i18n("Streaming price list — Netflix, Spotify, Disney+, YouTube Premium", "Tarifs streaming — Netflix, Spotify, Disney+, YouTube", "أسعار البث — Netflix وSpotify وDisney+ وYouTube")),
+    _digital("gemini-advanced-offer", "Gemini Advanced", "Gemini Advanced", "Gemini Advanced", "a Gemini Advanced 18-month subscription promo with a happy couple", "dp-18.jpg",
+             i18n("Gemini Advanced — 18 months, activate before paying, 20DT", "Gemini Advanced — 18 mois, activation avant paiement, 20DT", "Gemini Advanced — 18 شهر، تفعيل قبل الدفع، 20 دت")),
+    _digital("coursera-plus", "Coursera Plus", "Coursera Plus", "Coursera Plus", "a Coursera Plus annual learning-subscription promo", "dp-19.jpg",
+             i18n("Coursera Plus — 7,000+ courses, 1 full year, 55DT", "Coursera Plus — 7 000+ cours, 1 an, 55DT", "Coursera Plus — أكثر من 7000 دورة، سنة كاملة، 55 دت")),
+    _digital("pc-games-bundle", "PC games bundle", "Pack jeux PC", "باقة ألعاب PC", "a PC games bundle promo (FC26, GTA 5, ARC Raiders)", "dp-20.jpg",
+             i18n("Top PC games — FC26 65DT, ARC Raiders 105DT, GTA 5 45DT", "Top jeux PC — FC26 65DT, ARC Raiders 105DT, GTA 5 45DT", "أفضل ألعاب PC — FC26 65 دت، ARC 105 دت، GTA 5 45 دت")),
+    _digital("claude-ai-pro", "Claude AI Pro", "Claude AI Pro", "Claude AI Pro", "a Claude AI Pro subscription promo, orange on black", "dp-21.jpg",
+             i18n("Claude AI Pro — smart, creative, 49DT/month", "Claude AI Pro — intelligent, créatif, 49DT/mois", "Claude AI Pro — ذكي ومبدع، 49 دت/شهر")),
+    _digital("google-ai-pro-year", "Google AI Pro (yearly)", "Google AI Pro (annuel)", "Google AI Pro (سنوي)", "a Google AI Pro yearly subscription promo with Nano Banana", "dp-22.jpg",
+             i18n("Google AI Pro — 1 dinar/year offer, Nano Banana, Veo 3.1", "Google AI Pro — offre 1 dinar/an, Nano Banana, Veo 3.1", "Google AI Pro — عرض دينار/السنة، Nano Banana، Veo 3.1")),
+    _digital("mobile-legends-pricelist", "Mobile Legends prices", "Tarifs Mobile Legends", "أسعار موبايل ليجندز", "a Mobile Legends diamonds price list", "dp-23.jpg",
+             i18n("Mobile Legends — diamonds price list, best prices", "Mobile Legends — tarifs diamants, meilleurs prix", "موبايل ليجندز — قائمة أسعار الجواهر بأفضل سعر")),
+    _digital("nexar-ai-universe", "Nexar AI Universe", "Nexar AI Universe", "Nexar AI Universe", "a Nexar AI Universe creative-AI workspace subscription promo", "dp-24.jpg",
+             i18n("Nexar AI Universe — creative AI workspace, from 25DT", "Nexar AI Universe — espace créatif IA, dès 25DT", "Nexar AI Universe — مساحة إبداعية، من 25 دت")),
+    _digital("canva-pro-tiers", "Canva Pro tiers", "Canva Pro paliers", "Canva Pro باقات", "a Canva Pro subscription promo with three price tiers", "dp-25.jpg",
+             i18n("Canva Pro — 12 months 12DT · 24 months 20DT · 36 months 28DT", "Canva Pro — 12 mois 12DT · 24 mois 20DT · 36 mois 28DT", "Canva Pro — 12 شهر 12 دت · 24 شهر 20 دت · 36 شهر 28 دت")),
+    _digital("chatgpt-plus-gold", "ChatGPT Plus (gold)", "ChatGPT Plus (or)", "ChatGPT Plus (ذهبي)", "a ChatGPT Plus subscription promo, gold on black", "dp-26.jpg",
+             i18n("ChatGPT Plus — the world's #1 AI, from 26DT/month", "ChatGPT Plus — l'IA n°1, à partir de 26DT/mois", "ChatGPT Plus — الأشهر عالميًا، من 26 دت/شهر")),
+    _digital("claude-pro-box", "Claude Pro (boxed)", "Claude Pro (coffret)", "Claude Pro (علبة)", "a boxed Claude Pro by Anthropic product shot", "dp-27.jpg",
+             i18n("Claude Pro by Anthropic — official account, Claude Code included", "Claude Pro by Anthropic — compte officiel, Claude Code inclus", "Claude Pro من Anthropic — حساب رسمي مع Claude Code")),
+    _digital("ai-tools-basket", "AI tools basket", "Panier d'outils IA", "سلة أدوات الذكاء", "a best-AI-tools promo with subscription cards in a basket", "dp-28.jpg",
+             i18n("Best AI tools — ChatGPT Plus + Claude AI Pro, study & work", "Meilleurs outils IA — ChatGPT Plus + Claude AI Pro", "أفضل أدوات الذكاء — ChatGPT Plus وClaude AI Pro")),
+    _digital("claude-official-sub", "Claude official", "Claude officiel", "Claude الرسمي", "an official Claude subscription promo with a laptop", "dp-29.jpg",
+             i18n("Official Claude subscription — premium account, 85DT", "Abonnement Claude officiel — compte premium, 85DT", "اشتراك Claude رسمي — حساب مميز، 85 دت")),
+    _digital("gemini-pro-banner", "Gemini Pro banner", "Bannière Gemini Pro", "بانر Gemini Pro", "a horizontal Google Gemini Pro subscription banner", "dp-30.jpg",
+             i18n("Gemini Pro — 18-month premium access, 5TB, only 45 dinars", "Gemini Pro — accès 18 mois, 5To, 45 dinars", "Gemini Pro — وصول 18 شهر، 5TB، 45 دينار فقط")),
+    _digital("mobile-legends-topup", "Mobile Legends top-up", "Recharge Mobile Legends", "شحن موبايل ليجندز", "a Mobile Legends diamonds top-up price list", "dp-31.jpg",
+             i18n("Mobile Legends top-up — diamonds, fast & 100% safe", "Recharge Mobile Legends — diamants, rapide & sûr", "شحن موبايل ليجندز — جواهر، سريع وآمن 100%")),
+    _digital("ps5-gta-accounts", "PS5 game accounts", "Comptes jeux PS5", "حسابات ألعاب PS5", "a PS5 / GTA V game-account promo", "dp-32.jpg",
+             i18n("GTA V PS5 — full account 290DT, shared 190DT", "GTA V PS5 — compte complet 290DT, partagé 190DT", "GTA V PS5 — حساب كامل 290 دت، مشترك 190 دت")),
+    _digital("streaming-anything-disney", "Streaming offer", "Offre streaming", "عرض البث", "a streaming-subscriptions promo (Disney+ and more), gold on black", "dp-33.jpg",
+             i18n("Anything you want online — Disney+ and more, we deliver", "Tout ce que vous voulez en ligne — Disney+ et plus", "أي حاجة تحب تاخوها من الإنترنت — Disney+ وأكثر")),
+    _digital("gift-card-pricelist", "Gift-card prices", "Tarifs cartes cadeaux", "أسعار البطاقات", "a streaming gift-card price list", "dp-34.jpg",
+             i18n("Gift-card prices — Netflix, Spotify, Disney+, Claude Pro", "Tarifs cartes cadeaux — Netflix, Spotify, Disney+, Claude", "أسعار البطاقات — Netflix وSpotify وDisney+ وClaude")),
+    _digital("mobile-legends-gold", "Mobile Legends diamonds", "Diamants Mobile Legends", "جواهر موبايل ليجندز", "a Mobile Legends diamonds promo with gold warrior art", "dp-35.jpg",
+             i18n("Mobile Legends — 5000 diamonds, instant top-up", "Mobile Legends — 5000 diamants, recharge instantanée", "موبايل ليجندز — 5000 جوهرة، شحن فوري")),
+    _digital("n8n-agents-course", "n8n & AI agents course", "Formation n8n & IA", "دورة n8n والوكلاء", "an n8n & AI-agents mastery course promo (NVIDIA-certified)", "dp-36.jpg",
+             i18n("Master n8n & AI Agents — 60h course, 600DT, NVIDIA certified", "Maîtrisez n8n & Agents IA — 60h, 600DT", "احترف n8n ووكلاء الذكاء — 60 ساعة، 600 دت")),
+    _digital("gift-cards-grid", "Gift cards", "Cartes cadeaux", "بطاقات هدايا", "a gaming gift-cards promo (PlayStation, Steam, Xbox, Roblox, Apple)", "dp-37.jpg",
+             i18n("Gaming gift cards — PlayStation, Steam, Xbox, Roblox, Apple", "Cartes cadeaux gaming — PlayStation, Steam, Xbox, Roblox", "بطاقات هدايا — PlayStation وSteam وXbox وRoblox")),
+    _digital("manus-ai-pro", "Manus AI Pro", "Manus AI Pro", "Manus AI Pro", "a Manus AI Pro subscription promo with monthly tokens", "dp-38.jpg",
+             i18n("Manus AI Pro — 2,500 tokens/month, from 50DT/month", "Manus AI Pro — 2 500 tokens/mois, dès 50DT/mois", "Manus AI Pro — 2500 توكن شهريًا، من 50 دت/شهر")),
+    _digital("ai-video-ultra", "AI video (Ultra)", "Vidéo IA (Ultra)", "فيديو الذكاء", "an AI-video generation promo (Google AI Ultra, Veo, Flow)", "dp-39.jpg",
+             i18n("Create pro AI videos in seconds — Google AI Ultra, 50DT/month", "Vidéos IA pro en secondes — Google AI Ultra, 50DT/mois", "فيديوهات ذكاء احترافية — Google AI Ultra، 50 دت/شهر")),
+    _digital("canva-pro-year", "Canva Pro (1 year)", "Canva Pro (1 an)", "Canva Pro (سنة)", "a Canva Pro one-year subscription promo, yellow on black", "dp-40.jpg",
+             i18n("Canva Pro — full access, 1 year for 15DT", "Canva Pro — accès complet, 1 an pour 15DT", "Canva Pro — وصول كامل، سنة بـ15 دت")),
+    _digital("ai-llm-course", "AI & LLM course", "Formation IA & LLM", "دورة الذكاء وLLM", "an AI agents & LLM training course promo (NVIDIA-certified)", "dp-41.jpg",
+             i18n("AI Agents & LLM training — 60h, NVIDIA certified, 600DT", "Formation Agents IA & LLM — 60h, certifié NVIDIA, 600DT", "دورة وكلاء الذكاء وLLM — 60 ساعة، 600 دت")),
+    _digital("ramadan-gemini", "Ramadan Gemini", "Gemini Ramadan", "جيميني رمضان", "a Ramadan-themed Gemini Pro subscription promo", "dp-42.jpg",
+             i18n("Ramadan Kareem — Gemini Pro 12 months, 40 TND", "Ramadan Kareem — Gemini Pro 12 mois, 40 TND", "رمضان كريم — Gemini Pro 12 شهر، 40 دينار")),
+    _digital("premium-digital-hub", "Premium digital hub", "Hub digital premium", "منصة رقمية مميزة", "an all-in-one premium digital-tools hub promo with many logos", "dp-43.jpg",
+             i18n("Your premium digital hub — best tools, one price", "Votre hub digital premium — les meilleurs outils, un prix", "منصتك الرقمية المميزة — أفضل الأدوات بسعر واحد")),
+    _digital("gemini-pro-box-year", "Gemini Pro (1-year box)", "Gemini Pro (coffret 1 an)", "Gemini Pro (علبة سنة)", "a boxed Gemini Pro one-year product shot", "dp-44.jpg",
+             i18n("Gemini Pro — Google's most advanced AI, 1 year 25DT", "Gemini Pro — l'IA la plus avancée, 1 an 25DT", "Gemini Pro — أقوى ذكاء من جوجل، سنة 25 دت")),
+    _digital("ramadan-mega-sale", "Ramadan mega sale", "Méga soldes Ramadan", "تخفيضات رمضان", "a Ramadan mega-sale game top-up price list", "dp-45.jpg",
+             i18n("Ramadan Mega Sale — top-ups from 20 TND, limited time", "Méga soldes Ramadan — recharges dès 20 TND", "تخفيضات رمضان الكبرى — شحن من 20 دينار")),
+    _digital("chatgpt-student", "ChatGPT student offer", "Offre étudiant ChatGPT", "عرض الطلبة ChatGPT", "a ChatGPT Plus student-exam promo with students studying", "dp-46.jpg",
+             i18n("ChatGPT Plus — student offer for exams, 18DT/month", "ChatGPT Plus — offre étudiant examens, 18DT/mois", "ChatGPT Plus — عرض الطلبة للامتحانات، 18 دت/شهر")),
+    _digital("gemini-2tb", "Gemini + 2TB Drive", "Gemini + 2To Drive", "Gemini + 2TB", "a Gemini AI Pro + 2TB Google Drive subscription promo", "dp-47.jpg",
+             i18n("Gemini AI Pro + 2TB Google Drive — 40 TND", "Gemini AI Pro + 2To Google Drive — 40 TND", "Gemini AI Pro + 2TB درايف — 40 دينار")),
+    _digital("gemini-mascot", "Gemini (mascot)", "Gemini (mascotte)", "Gemini (روبوت)", "a Gemini AI-assistant subscription promo with a robot mascot", "dp-48.jpg",
+             i18n("Gemini — Google's smart assistant, 3 months from 59DT", "Gemini — l'assistant de Google, 3 mois dès 59DT", "Gemini — مساعد جوجل الذكي، 3 أشهر من 59 دت")),
+    _digital("google-ai-pro-phone", "Google AI Pro (phone)", "Google AI Pro (mobile)", "Google AI Pro (هاتف)", "a Google AI Pro subscription promo with a smartphone", "dp-49.jpg",
+             i18n("Google AI Pro — monthly or yearly, activate on your account", "Google AI Pro — mensuel ou annuel, sur votre compte", "Google AI Pro — شهري أو سنوي، على حسابك الشخصي")),
+    _digital("virtual-visa-card", "Virtual Visa card", "Carte Visa virtuelle", "بطاقة فيزا افتراضية", "a virtual Visa prepaid card promo (dollars / euro)", "dp-50.jpg",
+             i18n("Virtual Visa card — pay in dollars/euro, lowest price in Tunisia", "Carte Visa virtuelle — payez en dollars/euro", "بطاقة فيزا افتراضية — ادفع بالدولار/اليورو، أرخص سعر")),
+    _digital("ai-catalogue-light", "AI subscriptions", "Abonnements IA", "اشتراكات الذكاء", "a premium AI & software subscriptions catalogue (light theme)", "dp-51.jpg",
+             i18n("Premium AI & software subscriptions — verified, fast activation", "Abonnements IA & logiciels premium — vérifiés, activation rapide", "اشتراكات الذكاء والبرامج المميزة — موثوقة وتفعيل سريع")),
 ]
 
 
@@ -1041,6 +1245,79 @@ PACKS: List[Pack] = [
         tags=["social", "profile", "mockup", "studio", "freeform", "new"],
     ),
 
+    # ----------------------- 1.5b  Quote studio -----------------------
+    # Like Social: one freeform "studio" whose variants ARE the quote-card mockups.
+    # Mockup images are pending — variants stay empty for now, so the Quote sector
+    # shows as "Soon" in the gallery (frontend UNLOCKED_SECTORS gate) until they land.
+    Pack(
+        id="quote-studio",
+        sector="quote",
+        order=1,
+        capability="edit-from-reference",
+        kind="freeform",
+        prompt_template="{{prompt}}",
+        default_prompt="recreate the reference quote-card mockup exactly, replacing the placeholder text with the user's words, crisp legible typography, high detail",
+        title_i18n=i18n("Quote studio", "Studio citations", "استوديو الاقتباسات"),
+        description_i18n=i18n(
+            "Pick a quote card, add your words - we recreate it as yours.",
+            "Choisissez une carte de citation, ajoutez vos mots - recréée à votre nom.",
+            "اختر بطاقة اقتباس، أضف كلماتك - نعيد إنشاءها باسمك.",
+        ),
+        slots=[
+            prompt_slot(
+                i18n("Your quote & author", "Votre citation & auteur", "اقتباسك واسم الكاتب"),
+                placeholder=i18n(
+                    "e.g. Work hard in silence, let your success make the noise. - Frank Ocean",
+                    "ex. Travaillez dur en silence, laissez votre succès faire le bruit. - Frank Ocean",
+                    "مثال: اعمل بصمت، ودع نجاحك يتكلّم. - فرانك أوشن",
+                ),
+                required=False,
+            ),
+        ],
+        variants=_QUOTE_VARIANTS,
+        aspect_ratios=["9:16", "4:5", "1:1"],
+        default_n=1,
+        requires_image_input=False,
+        tags=["quote", "typography", "mockup", "studio", "freeform", "new"],
+    ),
+
+    # ----------------------- 1.5c  Digital products -----------------------
+    # Like Social/Quote: one freeform "studio" whose variants ARE the promo-poster
+    # mockups (subscription/streaming/game-topup/gift-card resale posters). The gallery
+    # renders them directly; picking one opens the agent studio with the poster attached,
+    # reproduced exactly with the user's product, prices and contact swapped in.
+    Pack(
+        id="digital-products-studio",
+        sector="digital",
+        order=1,
+        capability="edit-from-reference",
+        kind="freeform",
+        prompt_template="{{prompt}}",
+        default_prompt="recreate the reference promotional poster exactly, replacing the product name, prices, features and contact with the user's details, crisp legible text, high detail",
+        title_i18n=i18n("Digital products studio", "Studio produits digitaux", "استوديو المنتجات الرقمية"),
+        description_i18n=i18n(
+            "Pick a promo poster, add your product, price and contact - we recreate it as yours.",
+            "Choisissez une affiche promo, ajoutez votre produit, prix et contact - recréée à votre nom.",
+            "اختر ملصقًا ترويجيًا، أضف منتجك وسعرك وتواصلك - نعيد إنشاءه باسمك.",
+        ),
+        slots=[
+            prompt_slot(
+                i18n("Your product, price & contact", "Votre produit, prix & contact", "منتجك وسعرك وتواصلك"),
+                placeholder=i18n(
+                    "e.g. ChatGPT Plus, 12 months 40DT, DM to order",
+                    "ex. ChatGPT Plus, 12 mois 40DT, MP pour commander",
+                    "مثال: ChatGPT Plus، 12 شهر 40 دت، راسلنا للطلب",
+                ),
+                required=False,
+            ),
+        ],
+        variants=_DIGITAL_VARIANTS,
+        aspect_ratios=["4:5", "1:1", "9:16"],
+        default_n=1,
+        requires_image_input=False,
+        tags=["digital", "subscription", "promo", "poster", "mockup", "studio", "freeform", "new"],
+    ),
+
     # ----------------------- 1.6  Events / Weddings -----------------------
     Pack(
         id="invitation-card",
@@ -1517,7 +1794,7 @@ def get_pack(pack_id: str) -> Optional[Pack]:
 
 
 # Gallery sector ordering (market priority); sectors not listed sort after.
-SECTOR_ORDER = ["ecommerce", "food", "fashion", "realestate", "social", "events", "beauty", "arabic"]
+SECTOR_ORDER = ["ecommerce", "social", "quote", "digital", "food", "fashion", "realestate", "events", "beauty", "arabic"]
 
 
 def list_packs(sector: Optional[str] = None) -> List[Pack]:

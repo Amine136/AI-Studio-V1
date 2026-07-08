@@ -8,9 +8,11 @@ import InteractiveAuthenticatedImage from "../../../../components/InteractiveAut
 import { api, isContentBlockedError } from "../../../../services/api";
 import { useAuth } from "../../../../context/AuthContext";
 import { useLanguage } from "../../../../context/LanguageContext";
-import type { InputImagePayload, PackDetail, PackEstimate, PackPlan, PackTile } from "../../../../types";
+import type { InputImagePayload, PackDetail, PackEstimate, PackPlan, PackTile, PackVariant } from "../../../../types";
 import { addHistoryEntry } from "../../../../lib/history";
-import { CAPABILITY_GLYPH, CRAFT_HEX, capabilityLabel, fmtNum, pt, qualityLabel } from "../packsShared";
+import { CAPABILITY_GLYPH, CRAFT_HEX, aspectFieldKey, capabilityLabel, fmtNum, pt, qualityLabel } from "../packsShared";
+import AspectShapePicker from "../AspectShapePicker";
+import ModelPicker from "../ModelPicker";
 import { getUploadConstraints, preferredOutputType, readImageDimensions, type UploadImageConstraints } from "../../../../lib/imageInputConstraints";
 import PackChat from "./PackChat";
 
@@ -157,6 +159,8 @@ export default function PackDetailPage() {
   // ---- confirm pop-up (the only place params surface) ----
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [popModel, setPopModel] = useState<string | undefined>(undefined);
+  // The agent's recommended model — collapsed model list leads with it, shown gold.
+  const [popRecommendedModel, setPopRecommendedModel] = useState<string | null>(null);
   const [popAspect, setPopAspect] = useState<string>("");
   const [popQuality, setPopQuality] = useState<string | null>(null);
   const [popEstimate, setPopEstimate] = useState<PackEstimate | null>(null);
@@ -394,6 +398,7 @@ export default function PackDetailPage() {
               : qOpts[0] ?? null;
 
         setPopModel(initModel);
+        setPopRecommendedModel(validModel(p.model) ?? initModel ?? null);
         setPopAspect(initAspect);
         setPopQuality(initQuality);
         setPopEstimate(res.estimate ?? null);
@@ -625,28 +630,7 @@ export default function PackDetailPage() {
                 crop), flowing into as many columns as fit — not forced 4-up. */}
             <div className="mt-5 gap-1.5 [column-fill:_balance] columns-2 sm:columns-3 xl:columns-4">
               {variants.map((v) => (
-                <button
-                  key={v.id}
-                  type="button"
-                  onClick={() => setVariantId(v.id)}
-                  className="group relative mb-1.5 block w-full break-inside-avoid overflow-hidden rounded-md border border-white/[.08] bg-[#141b2b] text-start animate-fade-in-up transition hover:border-white/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
-                >
-                  {v.thumbnail_url ? (
-                    <AuthenticatedImage
-                      src={v.thumbnail_url}
-                      alt={v.title}
-                      className="block h-auto w-full transition duration-300 group-hover:scale-[1.04]"
-                    />
-                  ) : (
-                    <div className="flex aspect-square w-full items-center justify-center bg-gradient-to-br from-[#1b2540] to-[#11192c]">
-                      <span className="material-symbols-outlined text-2xl text-white/40">image</span>
-                    </div>
-                  )}
-                  {/* caption overlay — hidden until hover/focus (always shown on touch) */}
-                  <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent p-3 pt-9 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-100">
-                    <span className="text-[13px] font-semibold text-white drop-shadow-sm">{v.title}</span>
-                  </div>
-                </button>
+                <MockupPickerTile key={v.id} v={v} onPick={() => setVariantId(v.id)} />
               ))}
             </div>
           </div>
@@ -866,10 +850,10 @@ export default function PackDetailPage() {
       {/* confirm pop-up — agent summary + cost + editable model / ratio / quality */}
       {confirmOpen && plan && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-white/10 bg-[#141b2d] p-5">
+          <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-white/10 bg-[#141b2d] p-4">
             <p className="text-base font-semibold text-white">{pt(language, "reviewPlan")}</p>
 
-            <div className="mt-3 rounded-xl bg-[#111826] p-3">
+            <div className="mt-2.5 rounded-xl bg-[#111826] p-2.5">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-[#606d8a]">
                 {pt(language, "planSummaryLabel")}
               </p>
@@ -877,62 +861,46 @@ export default function PackDetailPage() {
             </div>
 
             {models.length > 1 && (
-              <div className="mt-4">
-                <label className="mb-1.5 block text-sm font-medium text-[#cdd6f4]">{pt(language, "model")}</label>
-                <div className="flex flex-wrap gap-2">
-                  {models.map((m) => (
-                    <button
-                      key={m.id}
-                      type="button"
-                      onClick={() => {
-                        setPopModel(m.id);
-                        const q = m.quality_options ?? [];
-                        setPopQuality((prev) => (prev && q.includes(prev) ? prev : q[0] ?? null));
-                        // Ratio options differ per model; keep the current value
-                        // only if the new model accepts it, else use its default.
-                        const a = aspectOptionsFor(pack, m.id);
-                        setPopAspect((prev) => (prev && a.includes(prev) ? prev : a[0] ?? ""));
-                      }}
-                      className={`rounded-xl border px-3 py-2 text-sm transition ${
-                        popModel === m.id
-                          ? "border-[color:var(--accent)] bg-[color:var(--accent-15)] font-semibold text-[color:var(--accent)]"
-                          : "border-white/10 bg-[#111826] text-[#aebbe0] hover:border-white/20"
-                      }`}
-                    >
-                      {m.label}
-                    </button>
-                  ))}
-                </div>
+              <div className="mt-3">
+                <ModelPicker
+                  models={models}
+                  value={popModel ?? ""}
+                  recommended={popRecommendedModel}
+                  language={language}
+                  onSelect={(id) => {
+                    setPopModel(id);
+                    const q = models.find((m) => m.id === id)?.quality_options ?? [];
+                    setPopQuality((prev) => (prev && q.includes(prev) ? prev : q[0] ?? null));
+                    // Ratio options differ per model; keep the current value only
+                    // if the new model accepts it, else use its default.
+                    const a = aspectOptionsFor(pack, id);
+                    setPopAspect((prev) => (prev && a.includes(prev) ? prev : a[0] ?? ""));
+                  }}
+                />
               </div>
             )}
 
-            <div className="mt-4">
-              <label className="mb-1.5 block text-sm font-medium text-[#cdd6f4]">{pt(language, "aspectRatio")}</label>
-              <select
-                value={popAspect}
-                onChange={(e) => setPopAspect(e.target.value)}
-                className="w-full rounded-xl border border-white/10 bg-[#111826] px-3 py-2.5 text-sm text-white focus:border-[color:var(--accent-60)] focus:outline-none"
-              >
-                {aspectOptions.map((r) => (
-                  <option key={r} value={r}>
-                    {r}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {aspectOptions.length > 0 && (
+              <div className="mt-3">
+                <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-[#606d8a]">
+                  {pt(language, aspectFieldKey(aspectOptions))}
+                </label>
+                <AspectShapePicker options={aspectOptions} value={popAspect} onChange={setPopAspect} />
+              </div>
+            )}
 
             {qualityOptions.length > 0 && (
-              <div className="mt-4">
-                <label className="mb-1.5 block text-sm font-medium text-[#cdd6f4]">{pt(language, "quality")}</label>
+              <div className="mt-3">
+                <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-[#606d8a]">{pt(language, "quality")}</label>
                 <div className="flex flex-wrap gap-2">
                   {qualityOptions.map((q) => (
                     <button
                       key={q}
                       type="button"
                       onClick={() => setPopQuality(q)}
-                      className={`rounded-xl border px-3 py-2 text-sm transition ${
+                      className={`cursor-pointer rounded-xl border px-3 py-1.5 text-sm transition ${
                         popQuality === q
-                          ? "border-[color:var(--accent)] bg-[color:var(--accent-15)] font-semibold text-[color:var(--accent)]"
+                          ? "border-[#e7ad4d] bg-[#e7ad4d]/15 font-semibold text-[#e7ad4d]"
                           : "border-white/10 bg-[#111826] text-[#aebbe0] hover:border-white/20"
                       }`}
                     >
@@ -943,7 +911,7 @@ export default function PackDetailPage() {
               </div>
             )}
 
-            <div className="mt-4 flex items-center justify-between rounded-xl border border-[color:var(--accent-30)] bg-[#141b2b] p-3">
+            <div className="mt-3 flex items-center justify-between rounded-xl border border-[color:var(--accent-30)] bg-[#141b2b] p-2.5">
               <div>
                 <p className="text-sm text-[#aebbe0]">{pt(language, "willCost")}</p>
                 {popBalanceAfter !== null && (
@@ -952,12 +920,12 @@ export default function PackDetailPage() {
                   </p>
                 )}
               </div>
-              <p className="text-2xl font-extrabold text-[color:var(--accent)]">
+              <p className="text-xl font-extrabold text-[color:var(--accent)]">
                 {popEstimating ? "…" : fmtNum(language, popTotal)}
               </p>
             </div>
 
-            <div className="mt-4 flex justify-end gap-2">
+            <div className="mt-3 flex justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setConfirmOpen(false)}
@@ -1133,5 +1101,56 @@ function ResultsView({
 
       <p className="mt-5 text-xs text-[#606d8a]">{pt(language, "ctaNote")}</p>
     </div>
+  );
+}
+
+// One mockup in the "pick a mockup" grid. Mockup thumbnails are public assets, so a
+// plain <img> is used (mirrors the gallery): a pulsing 4:5 skeleton reserves space
+// until the image loads, then the natural-ratio image fades in. The mount-time
+// `complete` check rescues cache hits (Back / re-open) from a stuck skeleton.
+function MockupPickerTile({ v, onPick }: { v: PackVariant; onPick: () => void }) {
+  const [loaded, setLoaded] = useState(false);
+  const imgRef = useRef<HTMLImageElement>(null);
+  useEffect(() => {
+    const img = imgRef.current;
+    if (img?.complete && img.naturalWidth > 0) setLoaded(true);
+  }, []);
+  return (
+    <button
+      type="button"
+      onClick={onPick}
+      className="group relative mb-1.5 block w-full break-inside-avoid overflow-hidden rounded-md border border-white/[.08] bg-[#141b2b] text-start animate-fade-in-up transition hover:border-white/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+    >
+      {v.thumbnail_url ? (
+        <>
+          {!loaded && (
+            <div
+              className="w-full animate-pulse bg-gradient-to-br from-white/[.07] to-white/[.02]"
+              style={{ aspectRatio: "4 / 5" }}
+            />
+          )}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            ref={imgRef}
+            src={v.thumbnail_url}
+            alt={v.title}
+            loading="lazy"
+            onLoad={() => setLoaded(true)}
+            onError={() => setLoaded(true)}
+            className={`w-full transition duration-300 group-hover:scale-[1.04] ${
+              loaded ? "block h-auto opacity-100" : "absolute inset-0 h-full object-cover opacity-0"
+            }`}
+          />
+        </>
+      ) : (
+        <div className="flex aspect-square w-full items-center justify-center bg-gradient-to-br from-[#1b2540] to-[#11192c]">
+          <span className="material-symbols-outlined text-2xl text-white/40">image</span>
+        </div>
+      )}
+      {/* caption overlay — hidden until hover/focus (always shown on touch) */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent p-3 pt-9 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-100">
+        <span className="text-[13px] font-semibold text-white drop-shadow-sm">{v.title}</span>
+      </div>
+    </button>
   );
 }

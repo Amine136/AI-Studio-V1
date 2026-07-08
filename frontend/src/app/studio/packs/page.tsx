@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { api } from "../../../services/api";
 import { useLanguage } from "../../../context/LanguageContext";
@@ -17,11 +17,14 @@ import {
   sectorLabel,
 } from "./packsShared";
 
-// The Social sector is special: instead of category cards, it shows the mockups
-// (variants) of a single freeform "studio" pack directly, each linking straight into
-// the agent studio via ?variant=. Mirrors e-commerce's mockup-picker, one level up.
-const SOCIAL_SECTOR = "social";
-const SOCIAL_PACK_ID = "social-profile-studio";
+// "Mockup sectors" don't show category cards — they show the mockups (variants) of a
+// single freeform "studio" pack directly, each linking straight into the agent studio
+// via ?variant=. Mirrors e-commerce's mockup-picker, one level up. sector -> pack id.
+const MOCKUP_SECTORS: Record<string, string> = {
+  social: "social-profile-studio",
+  quote: "quote-studio",
+  digital: "digital-products-studio",
+};
 const MOCKUPS_WORD: Record<string, string> = { en: "mockups", fr: "mockups", ar: "مشاهد" };
 
 // Small "what you bring" glyph: a photo (needs an upload) vs. text lines (describe).
@@ -47,8 +50,11 @@ export default function PacksGalleryPage() {
   const [activeSector, setActiveSector] = useState<string | null>(null);
   const [craft, setCraft] = useState<PackCapability | "all">("all");
   const [query, setQuery] = useState("");
-  // Mockups of the Social studio pack, rendered directly as the Social sector grid.
-  const [socialVariants, setSocialVariants] = useState<PackVariant[]>([]);
+  // Variants of each mockup sector's studio pack (social, quote), keyed by sector —
+  // rendered directly as that sector's grid instead of pack cards.
+  const [mockupVariants, setMockupVariants] = useState<Record<string, PackVariant[]>>({});
+  // True until the mockup studio packs have been fetched — drives the skeleton grid.
+  const [mockupLoading, setMockupLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -71,16 +77,23 @@ export default function PacksGalleryPage() {
     };
   }, [language]);
 
-  // Social shows mockups directly: fetch the studio pack's variants for the grid.
+  // Mockup sectors show mockups directly: fetch each studio pack's variants for its grid.
   useEffect(() => {
     let cancelled = false;
-    api
-      .getPack(SOCIAL_PACK_ID, language)
-      .then((d) => {
-        if (!cancelled) setSocialVariants(d.variants ?? []);
+    setMockupLoading(true);
+    Promise.all(
+      Object.entries(MOCKUP_SECTORS).map(([sector, packId]) =>
+        api
+          .getPack(packId, language)
+          .then((d) => [sector, d.variants ?? []] as const)
+          .catch(() => [sector, [] as PackVariant[]] as const),
+      ),
+    )
+      .then((entries) => {
+        if (!cancelled) setMockupVariants(Object.fromEntries(entries));
       })
-      .catch(() => {
-        if (!cancelled) setSocialVariants([]);
+      .finally(() => {
+        if (!cancelled) setMockupLoading(false);
       });
     return () => {
       cancelled = true;
@@ -108,16 +121,17 @@ export default function PacksGalleryPage() {
   }, [allSectors, activeSector]);
 
   const countFor = (sector: string) =>
-    sector === SOCIAL_SECTOR ? socialVariants.length : packs.filter((p) => p.sector === sector).length;
+    MOCKUP_SECTORS[sector] ? (mockupVariants[sector]?.length ?? 0) : packs.filter((p) => p.sector === sector).length;
 
-  const isSocial = activeSector === SOCIAL_SECTOR;
+  const activeMockupPack = activeSector ? MOCKUP_SECTORS[activeSector] : undefined;
+  const isMockup = !!activeMockupPack;
 
-  // Social grid = the studio pack's mockups, filtered by the search box (by title).
-  const socialTiles = useMemo(() => {
+  // A mockup sector's grid = its studio pack's mockups, filtered by the search box (by title).
+  const mockupTiles = useMemo(() => {
+    const vs = activeSector ? mockupVariants[activeSector] ?? [] : [];
     const q = query.trim().toLowerCase();
-    if (!q) return socialVariants;
-    return socialVariants.filter((v) => v.title.toLowerCase().includes(q));
-  }, [socialVariants, query]);
+    return q ? vs.filter((v) => v.title.toLowerCase().includes(q)) : vs;
+  }, [mockupVariants, activeSector, query]);
 
   // Packs in the active sector (before the craft filter) — drives the filter counts.
   const sectorPacks = useMemo(
@@ -147,7 +161,7 @@ export default function PacksGalleryPage() {
 
   const displayClass = isRtl ? "" : "font-['Bricolage_Grotesque']";
 
-  const UNLOCKED_SECTORS = ["ecommerce", "social"];
+  const UNLOCKED_SECTORS = ["ecommerce", "social", "quote", "digital"];
 
   const sectorButton = (s: string, marker: ReactNode) => {
     const active = s === activeSector;
@@ -227,8 +241,8 @@ export default function PacksGalleryPage() {
               </p>
             )}
             <p className="mt-3.5 font-mono text-xs tracking-wide text-[#606d8a]">
-              {isSocial ? socialTiles.length : query ? visible.length : sectorPacks.length}{" "}
-              {isSocial ? MOCKUPS_WORD[language] ?? MOCKUPS_WORD.en : pt(language, "packsCount")}
+              {isMockup ? mockupTiles.length : query ? visible.length : sectorPacks.length}{" "}
+              {isMockup ? MOCKUPS_WORD[language] ?? MOCKUPS_WORD.en : pt(language, "packsCount")}
             </p>
           </div>
           <div className="relative mt-1.5">
@@ -245,7 +259,7 @@ export default function PacksGalleryPage() {
         </div>
 
         {/* Craft filter strip */}
-        {!query && !isSocial && craftsPresent.length > 0 && (
+        {!query && !isMockup && craftsPresent.length > 0 && (
           <div className="mt-6 flex flex-wrap gap-2 border-t border-white/[.08] pt-5">
             <CraftChip
               active={craft === "all"}
@@ -275,31 +289,32 @@ export default function PacksGalleryPage() {
         )}
 
         {/* States */}
-        {loading && <p className="mt-8 text-sm text-[#93a0bd]">{pt(language, "loading")}</p>}
+        {loading && !isMockup && <p className="mt-8 text-sm text-[#93a0bd]">{pt(language, "loading")}</p>}
         {error && !loading && <p className="mt-8 text-sm text-rose-300">{error}</p>}
-        {!loading && !error && (isSocial ? socialTiles.length === 0 : visible.length === 0) && (
-          <p className="mt-8 text-sm text-[#93a0bd]">{pt(language, "emptySector")}</p>
-        )}
+        {/* Mockup sectors show skeleton tiles while their variants are still loading. */}
+        {!error && isMockup && (loading || mockupLoading) && <MockupSkeletonGrid />}
+        {!loading && !error && !(isMockup && mockupLoading) &&
+          (isMockup ? mockupTiles.length === 0 : visible.length === 0) && (
+            <p className="mt-8 text-sm text-[#93a0bd]">{pt(language, "emptySector")}</p>
+          )}
 
-        {/* Social grid: mockups directly (each opens the studio via ?variant=).
-            Masonry — natural aspect ratios, tight gutters, caption on hover. */}
-        {isSocial ? (
-          <div className="mt-5 gap-1.5 [column-fill:_balance] columns-2 sm:columns-3 xl:columns-4">
-            {socialTiles.map((v) => (
-              <Link
-                key={v.id}
-                href={`/studio/packs/${SOCIAL_PACK_ID}?variant=${v.id}`}
-                className="group relative mb-1.5 block w-full break-inside-avoid overflow-hidden rounded-md border animate-fade-in-up border-white/[.08] bg-[#141b2b] transition duration-200 hover:border-white/[.13] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={v.thumbnail_url} alt={v.title} className="block h-auto w-full transition duration-300 group-hover:scale-[1.03]" />
-                {/* caption overlay — hidden until hover/focus (always shown on touch) */}
-                <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent p-3 pt-9 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-100">
-                  <span className={`text-[13px] font-semibold text-white drop-shadow-sm ${displayClass}`}>{v.title}</span>
-                </div>
-              </Link>
-            ))}
-          </div>
+        {/* Mockup-sector grid: mockups directly (each opens the studio via ?variant=).
+            Masonry — natural aspect ratios, tight gutters, caption on hover. Each tile
+            shows a skeleton until its image has loaded. */}
+        {isMockup ? (
+          mockupLoading ? null : (
+            <div className="mt-5 gap-1.5 [column-fill:_balance] columns-2 sm:columns-3 xl:columns-4">
+              {mockupTiles.map((v) => (
+                <MockupTile
+                  key={v.id}
+                  href={`/studio/packs/${activeMockupPack}?variant=${v.id}`}
+                  title={v.title}
+                  src={v.thumbnail_url}
+                  displayClass={displayClass}
+                />
+              ))}
+            </div>
+          )
         ) : (
         <div className="mt-5 gap-1.5 [column-fill:_balance] columns-2 sm:columns-3 xl:columns-4">
           {visible.map((p) => {
@@ -349,6 +364,80 @@ export default function PacksGalleryPage() {
         </div>
         )}
       </section>
+    </div>
+  );
+}
+
+// A single mockup tile. Reserves space with a pulsing skeleton (portrait 4:5) until
+// its image has loaded, then fades the natural-ratio image in over it. With lazy
+// loading, off-screen tiles keep their skeleton until scrolled into view.
+function MockupTile({
+  href,
+  title,
+  src,
+  displayClass,
+}: {
+  href: string;
+  title: string;
+  src: string;
+  displayClass: string;
+}) {
+  const [loaded, setLoaded] = useState(false);
+  const imgRef = useRef<HTMLImageElement>(null);
+  // Cache hits can finish before React attaches onLoad (e.g. browser Back, sector
+  // remounts) — without this the skeleton would stay stuck over an already-loaded image.
+  useEffect(() => {
+    const img = imgRef.current;
+    if (img?.complete && img.naturalWidth > 0) setLoaded(true);
+  }, []);
+  return (
+    <Link
+      href={href}
+      className="group relative mb-1.5 block w-full break-inside-avoid overflow-hidden rounded-md border animate-fade-in-up border-white/[.08] bg-[#141b2b] transition duration-200 hover:border-white/[.13] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+    >
+      {!loaded && (
+        <div
+          className="w-full animate-pulse bg-gradient-to-br from-white/[.07] to-white/[.02]"
+          style={{ aspectRatio: "4 / 5" }}
+        />
+      )}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        ref={imgRef}
+        src={src}
+        alt={title}
+        loading="lazy"
+        onLoad={() => setLoaded(true)}
+        onError={() => setLoaded(true)}
+        className={`w-full transition duration-300 group-hover:scale-[1.03] ${
+          loaded ? "block h-auto opacity-100" : "absolute inset-0 h-full object-cover opacity-0"
+        }`}
+      />
+      {/* caption overlay — hidden until hover/focus (always shown on touch) */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent p-3 pt-9 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-100">
+        <span className={`text-[13px] font-semibold text-white drop-shadow-sm ${displayClass}`}>{title}</span>
+      </div>
+    </Link>
+  );
+}
+
+// Placeholder grid shown while a mockup sector's variants are still being fetched.
+// Varied heights mimic the masonry layout of real mockups.
+function MockupSkeletonGrid() {
+  const heights = [232, 300, 260, 340, 244, 288, 320, 252, 300, 228, 292, 272];
+  return (
+    <div className="mt-5 gap-1.5 [column-fill:_balance] columns-2 sm:columns-3 xl:columns-4">
+      {heights.map((h, i) => (
+        <div
+          key={i}
+          className="mb-1.5 w-full break-inside-avoid overflow-hidden rounded-md border border-white/[.08] bg-[#141b2b]"
+        >
+          <div
+            className="w-full animate-pulse bg-gradient-to-br from-white/[.07] to-white/[.02]"
+            style={{ height: h }}
+          />
+        </div>
+      ))}
     </div>
   );
 }

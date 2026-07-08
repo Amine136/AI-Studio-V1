@@ -14,7 +14,9 @@ import {
 } from "../../../../lib/imageInputConstraints";
 import type { InputImagePayload, PackChatTurn, PackDetail, PackEstimate, PackPlan, PackSessionData, PackSessionMeta, PackVariant } from "../../../../types";
 import type { Language } from "../../../../context/LanguageContext";
-import { CRAFT_HEX, fmtNum, pt, qualityLabel } from "../packsShared";
+import { CRAFT_HEX, aspectFieldKey, fmtNum, pt, qualityLabel } from "../packsShared";
+import AspectShapePicker from "../AspectShapePicker";
+import ModelPicker from "../ModelPicker";
 import type { CSSProperties, ClipboardEvent, DragEvent } from "react";
 
 // Editing/image-input models accept at most 3 source images.
@@ -175,6 +177,8 @@ export default function PackChat({
   const [planRefs, setPlanRefs] = useState<InputImagePayload[]>([]);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [popModel, setPopModel] = useState<string | undefined>(undefined);
+  // The agent's recommended model — collapsed model list leads with it, shown gold.
+  const [popRecommendedModel, setPopRecommendedModel] = useState<string | null>(null);
   const [popAspect, setPopAspect] = useState<string>("");
   const [popQuality, setPopQuality] = useState<string | null>(null);
   const [popEstimate, setPopEstimate] = useState<PackEstimate | null>(null);
@@ -419,6 +423,7 @@ export default function PackChat({
       const initQuality =
         sticky?.quality && qOpts.includes(sticky.quality) ? sticky.quality : p.quality && qOpts.includes(p.quality) ? p.quality : qOpts[0] ?? null;
       setPopModel(initModel);
+      setPopRecommendedModel(validModel(p.model) ?? initModel ?? null);
       setPopAspect(initAspect);
       setPopQuality(initQuality);
       setPopEstimate(res.estimate ?? null);
@@ -895,61 +900,49 @@ export default function PackChat({
       {/* confirm pop-up — agent summary + editable params + cost */}
       {confirmOpen && plan && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-white/10 bg-[#141b2d] p-5">
+          <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-white/10 bg-[#141b2d] p-4">
             <p className="text-base font-semibold text-white">{pt(language, "reviewPlan")}</p>
-            <div className="mt-3 rounded-xl bg-[#111826] p-3">
+            <div className="mt-2.5 rounded-xl bg-[#111826] p-2.5">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-[#606d8a]">{pt(language, "planSummaryLabel")}</p>
               <p className="mt-1 text-sm text-[#cdd6f4]">{plan.summary || plan.final_prompt}</p>
             </div>
             {models.length > 1 && (
-              <div className="mt-4">
-                <label className="mb-1.5 block text-sm font-medium text-[#cdd6f4]">{pt(language, "model")}</label>
-                <div className="flex flex-wrap gap-2">
-                  {models.map((m) => (
-                    <button
-                      key={m.id}
-                      type="button"
-                      onClick={() => {
-                        setPopModel(m.id);
-                        const q = m.quality_options ?? [];
-                        setPopQuality((prev) => (prev && q.includes(prev) ? prev : q[0] ?? null));
-                        // Ratio options differ per model; keep the current value
-                        // only if the new model accepts it, else use its default.
-                        const a = aspectOptionsFor(pack, m.id);
-                        setPopAspect((prev) => (prev && a.includes(prev) ? prev : a[0] ?? ""));
-                      }}
-                      className={`rounded-xl border px-3 py-2 text-sm transition ${popModel === m.id ? "border-[color:var(--accent)] bg-[color:var(--accent-15)] font-semibold text-[color:var(--accent)]" : "border-white/10 bg-[#111826] text-[#aebbe0] hover:border-white/20"}`}
-                    >
-                      {m.label}
-                    </button>
-                  ))}
-                </div>
+              <div className="mt-3">
+                <ModelPicker
+                  models={models}
+                  value={popModel ?? ""}
+                  recommended={popRecommendedModel}
+                  language={language}
+                  onSelect={(id) => {
+                    setPopModel(id);
+                    const q = models.find((m) => m.id === id)?.quality_options ?? [];
+                    setPopQuality((prev) => (prev && q.includes(prev) ? prev : q[0] ?? null));
+                    // Ratio options differ per model; keep the current value only
+                    // if the new model accepts it, else use its default.
+                    const a = aspectOptionsFor(pack, id);
+                    setPopAspect((prev) => (prev && a.includes(prev) ? prev : a[0] ?? ""));
+                  }}
+                />
               </div>
             )}
-            <div className="mt-4">
-              <label className="mb-1.5 block text-sm font-medium text-[#cdd6f4]">{pt(language, "aspectRatio")}</label>
-              <select
-                value={popAspect}
-                onChange={(e) => setPopAspect(e.target.value)}
-                className="w-full rounded-xl border border-white/10 bg-[#111826] px-3 py-2.5 text-sm text-white focus:border-[color:var(--accent-60)] focus:outline-none"
-              >
-                {aspectOptions.map((r) => (
-                  <option key={r} value={r}>
-                    {r}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {aspectOptions.length > 0 && (
+              <div className="mt-3">
+                <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-[#606d8a]">
+                  {pt(language, aspectFieldKey(aspectOptions))}
+                </label>
+                <AspectShapePicker options={aspectOptions} value={popAspect} onChange={setPopAspect} />
+              </div>
+            )}
             {qualityOptions.length > 0 && (
-              <div className="mt-4">
-                <label className="mb-1.5 block text-sm font-medium text-[#cdd6f4]">{pt(language, "quality")}</label>
+              <div className="mt-3">
+                <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-[#606d8a]">{pt(language, "quality")}</label>
                 <div className="flex flex-wrap gap-2">
                   {qualityOptions.map((q) => (
                     <button
                       key={q}
                       type="button"
                       onClick={() => setPopQuality(q)}
-                      className={`rounded-xl border px-3 py-2 text-sm transition ${popQuality === q ? "border-[color:var(--accent)] bg-[color:var(--accent-15)] font-semibold text-[color:var(--accent)]" : "border-white/10 bg-[#111826] text-[#aebbe0] hover:border-white/20"}`}
+                      className={`cursor-pointer rounded-xl border px-3 py-1.5 text-sm transition ${popQuality === q ? "border-[#e7ad4d] bg-[#e7ad4d]/15 font-semibold text-[#e7ad4d]" : "border-white/10 bg-[#111826] text-[#aebbe0] hover:border-white/20"}`}
                     >
                       {qualityLabel(language, q)}
                     </button>
@@ -957,7 +950,7 @@ export default function PackChat({
                 </div>
               </div>
             )}
-            <div className="mt-4 flex items-center justify-between rounded-xl border border-[color:var(--accent-30)] bg-[#141b2b] p-3">
+            <div className="mt-3 flex items-center justify-between rounded-xl border border-[color:var(--accent-30)] bg-[#141b2b] p-2.5">
               <div>
                 <p className="text-sm text-[#aebbe0]">{pt(language, "willCost")}</p>
                 {popBalanceAfter !== null && (
@@ -966,9 +959,9 @@ export default function PackChat({
                   </p>
                 )}
               </div>
-              <p className="text-2xl font-extrabold text-[color:var(--accent)]">{popEstimating ? "…" : fmtNum(language, popTotal)}</p>
+              <p className="text-xl font-extrabold text-[color:var(--accent)]">{popEstimating ? "…" : fmtNum(language, popTotal)}</p>
             </div>
-            <div className="mt-4 flex justify-end gap-2">
+            <div className="mt-3 flex justify-end gap-2">
               <button type="button" onClick={() => setConfirmOpen(false)} className="rounded-lg px-4 py-2 text-sm text-[#aebbe0] hover:bg-white/5">
                 {pt(language, "cancel")}
               </button>

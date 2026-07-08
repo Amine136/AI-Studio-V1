@@ -7,10 +7,12 @@ import type { PackCapability } from "../../../types";
 // Display order of sectors in the gallery rail (Arabic-first market priority).
 export const SECTOR_ORDER = [
   "ecommerce",
+  "social",
+  "quote",
+  "digital",
   "food",
   "fashion",
   "realestate",
-  "social",
   "events",
   "beauty",
   "arabic",
@@ -59,6 +61,8 @@ const SECTOR_LABELS: Record<Language, Dict> = {
     fashion: "Fashion",
     realestate: "Real estate",
     social: "Social",
+    quote: "Quote",
+    digital: "Digital products",
     events: "Events",
     beauty: "Beauty",
     arabic: "Arabic & local",
@@ -69,6 +73,8 @@ const SECTOR_LABELS: Record<Language, Dict> = {
     fashion: "Mode",
     realestate: "Immobilier",
     social: "Réseaux",
+    quote: "Citations",
+    digital: "Produits digitaux",
     events: "Événements",
     beauty: "Beauté",
     arabic: "Arabe & local",
@@ -79,6 +85,8 @@ const SECTOR_LABELS: Record<Language, Dict> = {
     fashion: "الأزياء",
     realestate: "العقارات",
     social: "المحتوى",
+    quote: "اقتباسات",
+    digital: "منتجات رقمية",
     events: "المناسبات",
     beauty: "التجميل",
     arabic: "عربي ومحلّي",
@@ -94,6 +102,8 @@ const SECTOR_DESC: Record<Language, Dict> = {
     fashion: "Designs, mockups, and flat-lays for what you make and sell.",
     realestate: "Stage, relight, and brand your listings.",
     social: "Profile cards, posts and 3D mockups — drop in your photo and details.",
+    quote: "Quote cards and typographic posts — add your words, pick a style.",
+    digital: "Promo posters for subscriptions, top-ups and gift cards — swap in your product, price and contact.",
     events: "Invitations, stories, and thank-yous for the big day.",
     beauty: "Menus, promos, and hero shots for your salon or clinic.",
     arabic: "Calligraphy, patterns, and campaigns rooted in the local market.",
@@ -104,6 +114,8 @@ const SECTOR_DESC: Record<Language, Dict> = {
     fashion: "Designs, mockups et flat-lays pour ce que vous créez.",
     realestate: "Home-staging, ambiance et habillage de vos annonces.",
     social: "Cartes de profil, posts et mockups 3D — ajoutez votre photo et vos infos.",
+    quote: "Cartes de citation et posts typographiques — ajoutez vos mots, choisissez un style.",
+    digital: "Affiches promo d'abonnements, recharges et cartes cadeaux — mettez votre produit, prix et contact.",
     events: "Invitations, stories et remerciements pour le grand jour.",
     beauty: "Menus, promos et visuels d’accroche pour votre salon.",
     arabic: "Calligraphie, motifs et campagnes ancrés dans le marché local.",
@@ -114,6 +126,8 @@ const SECTOR_DESC: Record<Language, Dict> = {
     fashion: "تصاميم وموكاب وصور مسطّحة لما تصنعه وتبيعه.",
     realestate: "تأثيث وإضاءة وهوية لإعلاناتك العقارية.",
     social: "بطاقات تعريف ومنشورات وموكاب ثلاثي الأبعاد — أضف صورتك وبياناتك.",
+    quote: "بطاقات اقتباس ومنشورات نصية — أضف كلماتك واختر التصميم.",
+    digital: "ملصقات ترويجية للاشتراكات والشحن والبطاقات — ضع منتجك وسعرك وتواصلك.",
     events: "دعوات وقصص وبطاقات شكر ليومك المميّز.",
     beauty: "قوائم وعروض وصور رئيسية لصالونك أو عيادتك.",
     arabic: "خط عربي وزخارف وحملات نابعة من السوق المحلّي.",
@@ -167,6 +181,10 @@ export const PACK_STRINGS: Record<Language, Dict> = {
     orSkip: "or skip",
     howMany: "How many",
     aspectRatio: "Aspect ratio",
+    size: "Size",
+    recommended: "Recommended",
+    otherModels: "Other models",
+    fewerModels: "Show fewer",
     willCost: "This will cost",
     credits: "credits",
     images: "images",
@@ -268,6 +286,10 @@ export const PACK_STRINGS: Record<Language, Dict> = {
     orSkip: "ou ignorer",
     howMany: "Combien",
     aspectRatio: "Format",
+    size: "Taille",
+    recommended: "Recommandé",
+    otherModels: "Autres modèles",
+    fewerModels: "Réduire",
     willCost: "Cela coûtera",
     credits: "crédits",
     images: "images",
@@ -369,6 +391,10 @@ export const PACK_STRINGS: Record<Language, Dict> = {
     orSkip: "أو تخطَّ",
     howMany: "العدد",
     aspectRatio: "الأبعاد",
+    size: "المقاس",
+    recommended: "موصى به",
+    otherModels: "نماذج أخرى",
+    fewerModels: "إخفاء",
     willCost: "ستكلّف",
     credits: "رصيد",
     images: "صور",
@@ -488,4 +514,42 @@ export function fmtNum(language: Language, value: number, maxFractionDigits = 2)
     : String(Number(value.toFixed(maxFractionDigits)));
   if (language !== "ar") return rounded;
   return rounded.replace(/[0-9]/g, (d) => AR_DIGITS[Number(d)]);
+}
+
+// --- Output-shape helpers (shared by the confirm-modal aspect/size pickers) ---
+// A model's output-shape control carries EITHER ratio strings ("16:9", "16x9")
+// OR pixel sizes ("1024x1024"), plus the odd non-shape token ("auto"). Parse a
+// value into a width/height proportion; null when it isn't a shape. Mirrors the
+// backend `_ratio_to_float` so the picker draws exactly what the model accepts.
+export function parseShapeRatio(value: string): number | null {
+  const v = (value || "").trim().toLowerCase();
+  for (const sep of [":", "x"]) {
+    if (v.includes(sep)) {
+      const parts = v.split(sep);
+      if (parts.length === 2) {
+        const w = Number(parts[0]);
+        const h = Number(parts[1]);
+        if (Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0) return w / h;
+      }
+    }
+  }
+  return null;
+}
+
+// The section label follows what the values look like: pixel dimensions
+// (e.g. "1024x1024") read as a "Size" control, ratio strings as "Aspect ratio".
+// Returns a `pt` key so callers stay i18n-consistent.
+export function aspectFieldKey(options: string[]): "size" | "aspectRatio" {
+  const looksPixel = options.some((o) => {
+    const parts = (o || "").toLowerCase().split(/[:x]/);
+    return parts.length === 2 && Number(parts[0]) >= 100 && Number(parts[1]) >= 100;
+  });
+  return looksPixel ? "size" : "aspectRatio";
+}
+
+// Display form for a shape value: "1024x1024" → "1024×1024", "auto" → "Auto".
+export function prettyShape(value: string): string {
+  if (!value) return value;
+  if (value.trim().toLowerCase() === "auto") return "Auto";
+  return value.replace(/x/gi, "×");
 }
