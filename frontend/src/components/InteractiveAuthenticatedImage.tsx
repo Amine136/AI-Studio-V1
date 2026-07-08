@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { useAuth } from "../context/AuthContext";
@@ -27,6 +27,7 @@ export default function InteractiveAuthenticatedImage({
   imageClassName,
   wrapperClassName,
   loadingClassName,
+  loadingNode,
   errorClassName,
   controls = "all",
   controlButtonClassName = "h-9 w-9",
@@ -38,6 +39,9 @@ export default function InteractiveAuthenticatedImage({
   imageClassName: string;
   wrapperClassName: string;
   loadingClassName?: string;
+  // Optional custom placeholder shown while the image loads (e.g. a shimmer
+  // skeleton). Falls back to the plain "Loading image..." text when omitted.
+  loadingNode?: ReactNode;
   errorClassName?: string;
   controls?: "all" | "open";
   controlButtonClassName?: string;
@@ -134,7 +138,7 @@ export default function InteractiveAuthenticatedImage({
   if (status === "loading") {
     return (
       <div className={loadingClassName || "flex min-h-40 min-w-40 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 py-6 text-xs text-white/60"}>
-        Loading image...
+        {loadingNode ?? "Loading image..."}
       </div>
     );
   }

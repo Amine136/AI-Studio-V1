@@ -18,6 +18,21 @@ import PackChat from "./PackChat";
 
 type UITile = Omit<PackTile, "status"> & { status: PackTile["status"] | "generating" };
 
+// The confirm modal uses the packs-studio accent (periwinkle #a5b4fc) instead of
+// the per-pack craft hue, so its buttons/selectors/cost match the composer's send
+// button and focus states right below it. Overriding --accent* on the modal card
+// re-tints all var(--accent) usages inside (ModelPicker, AspectShapePicker,
+// quality, cost) in one place.
+const BRAND = "#a5b4fc";
+const MODAL_ACCENT = {
+  "--accent": BRAND,
+  "--accent-10": `color-mix(in srgb, ${BRAND} 10%, transparent)`,
+  "--accent-15": `color-mix(in srgb, ${BRAND} 15%, transparent)`,
+  "--accent-30": `color-mix(in srgb, ${BRAND} 30%, transparent)`,
+  "--accent-40": `color-mix(in srgb, ${BRAND} 40%, transparent)`,
+  "--accent-60": `color-mix(in srgb, ${BRAND} 60%, transparent)`,
+} as CSSProperties;
+
 // Editing/image-input models accept at most 3 source images (mirrors the backend
 // MAX_EDITING_INPUT_IMAGES). The studio caps uploads there so a multi-reference
 // request never 400s.
@@ -850,7 +865,7 @@ export default function PackDetailPage() {
       {/* confirm pop-up — agent summary + cost + editable model / ratio / quality */}
       {confirmOpen && plan && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-white/10 bg-[#141b2d] p-4">
+          <div style={MODAL_ACCENT} className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-white/10 bg-[#141b2d] p-4">
             <p className="text-base font-semibold text-white">{pt(language, "reviewPlan")}</p>
 
             <div className="mt-2.5 rounded-xl bg-[#111826] p-2.5">
@@ -900,7 +915,7 @@ export default function PackDetailPage() {
                       onClick={() => setPopQuality(q)}
                       className={`cursor-pointer rounded-xl border px-3 py-1.5 text-sm transition ${
                         popQuality === q
-                          ? "border-[#e7ad4d] bg-[#e7ad4d]/15 font-semibold text-[#e7ad4d]"
+                          ? "border-[color:var(--accent)] bg-[color:var(--accent-15)] font-semibold text-[color:var(--accent)]"
                           : "border-white/10 bg-[#111826] text-[#aebbe0] hover:border-white/20"
                       }`}
                     >
@@ -937,7 +952,7 @@ export default function PackDetailPage() {
                 type="button"
                 disabled={busy || popEstimating || popInsufficient}
                 onClick={confirmGenerate}
-                className="rounded-lg bg-[color:var(--accent)] px-4 py-2 text-sm font-bold text-[#0d1320] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-lg bg-[color:var(--accent)] px-4 py-2 text-sm font-bold text-[#1b2250] shadow-[0_4px_14px_-2px_rgba(165,180,252,.6)] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
               >
                 {popInsufficient ? pt(language, "notEnough") : `${pt(language, "confirm")} →`}
               </button>

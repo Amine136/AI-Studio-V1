@@ -3,7 +3,8 @@
 // Confirm-modal model selector: collapsed to just the currently-chosen model
 // (the agent's recommendation by default) with a toggle to reveal the rest, so
 // the modal leads with the suggestion but still lets the user pick any model.
-// Selected/recommended state is gold (#e7ad4d) to read as "recommended".
+// Selected/recommended state uses the per-pack craft accent (var(--accent)) so
+// the whole confirm modal reads as a single hue, matching the pack it belongs to.
 // Shared by the freeform (PackChat) and non-freeform ([id]) confirm modals.
 import { useState } from "react";
 import type { Language } from "../../../context/LanguageContext";
@@ -33,7 +34,7 @@ export default function ModelPicker({
           {pt(language, "model")}
         </label>
         {!showAll && value === recommended && (
-          <span className="rounded-full border border-[#e7ad4d]/40 bg-[#e7ad4d]/10 px-2 py-[1px] text-[9.5px] font-semibold uppercase tracking-wide text-[#e7ad4d]">
+          <span className="rounded-full border border-[color:var(--accent-40)] bg-[color:var(--accent-10)] px-2 py-[1px] text-[9.5px] font-semibold uppercase tracking-wide text-[color:var(--accent)]">
             {pt(language, "recommended")}
           </span>
         )}
@@ -47,9 +48,9 @@ export default function ModelPicker({
               key={m.id}
               type="button"
               onClick={() => onSelect(m.id)}
-              className={`cursor-pointer rounded-xl border px-3 py-1.5 text-sm transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#e7ad4d]/60 motion-reduce:transition-none ${
+              className={`cursor-pointer rounded-xl border px-3 py-1.5 text-sm transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent-60)] motion-reduce:transition-none ${
                 selected
-                  ? "border-[#e7ad4d] bg-[#e7ad4d]/15 font-semibold text-[#e7ad4d]"
+                  ? "border-[color:var(--accent)] bg-[color:var(--accent-15)] font-semibold text-[color:var(--accent)]"
                   : "border-white/10 bg-[#111826] text-[#aebbe0] hover:border-white/20"
               }`}
             >

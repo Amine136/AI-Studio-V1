@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, isContentBlockedError, isNetworkError } from "../../../../services/api";
 import { useAuth } from "../../../../context/AuthContext";
 import { addHistoryEntry } from "../../../../lib/history";
+import { LATENCY_FALLBACK_SECONDS, latencyBudgetForModel } from "../../../../lib/modelLatency";
 import InteractiveAuthenticatedImage from "../../../../components/InteractiveAuthenticatedImage";
 import AuthenticatedImage from "../../../../components/AuthenticatedImage";
 import {
@@ -14,10 +15,103 @@ import {
 } from "../../../../lib/imageInputConstraints";
 import type { InputImagePayload, PackChatTurn, PackDetail, PackEstimate, PackPlan, PackSessionData, PackSessionMeta, PackVariant } from "../../../../types";
 import type { Language } from "../../../../context/LanguageContext";
-import { CRAFT_HEX, aspectFieldKey, fmtNum, pt, qualityLabel } from "../packsShared";
+import { aspectFieldKey, fmtNum, pt, qualityLabel } from "../packsShared";
 import AspectShapePicker from "../AspectShapePicker";
 import ModelPicker from "../ModelPicker";
 import type { CSSProperties, ClipboardEvent, DragEvent } from "react";
+
+// The packs STUDIO (chrome + confirm modal) uses ONE accent: the periwinkle
+// packs-studio color #a5b4fc — the composer send-button hue — instead of the
+// per-pack craft accent, so the whole studio reads as one unit. It's exposed as
+// --accent* on the studio root below (accentVars), which every var(--accent)
+// usage — including the modal — inherits. The packs GALLERY still uses the
+// per-pack craft colors (CRAFT_HEX) for card/specimen identity.
+const BRAND = "#a5b4fc";
+
+// Generating-tile ETA counter. Reuses the shared per-model latency budget
+// (lib/modelLatency, the same source the plain-chat waiter uses) but presents it
+// DIFFERENTLY: a circular periwinkle ring that fills toward the expected time —
+// smooth via SVG stroke-dashoffset, not the chat's linear purple→cyan bar — with
+// the "~Ns" ticking in the middle, then spins indeterminately if it runs over.
+function PackGeneratingTile({ expectedSeconds }: { expectedSeconds: number }) {
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    const started = Date.now();
+    const id = window.setInterval(() => setElapsed((Date.now() - started) / 1000), 500);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const expected = expectedSeconds > 0 ? expectedSeconds : LATENCY_FALLBACK_SECONDS;
+  const overtime = elapsed >= expected;
+  const remaining = Math.max(1, Math.ceil(expected - elapsed));
+  const pct = Math.min(elapsed / expected, 1);
+  const label = overtime ? `${Math.floor(elapsed)}s` : `~${remaining}s`;
+
+  const R = 20;
+  const CIRC = 2 * Math.PI * R;
+  // Filling: arc grows empty→full as time nears the budget. Overtime: a fixed
+  // ~30% arc that spins, reading as "still working" rather than a false 100%.
+  const dashoffset = overtime ? CIRC * 0.7 : CIRC * (1 - pct);
+
+  return (
+    <div className="relative flex aspect-square w-full items-center justify-center overflow-hidden">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 animate-pulse motion-reduce:animate-none"
+        style={{ background: "radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 68%)" }}
+      />
+      <div className="relative flex h-[60px] w-[60px] items-center justify-center">
+        <svg
+          viewBox="0 0 48 48"
+          className={`absolute inset-0 h-full w-full ${overtime ? "animate-spin [animation-duration:0.9s] motion-reduce:animate-none" : "-rotate-90"}`}
+        >
+          <circle cx="24" cy="24" r={R} fill="none" stroke="rgba(255,255,255,0.09)" strokeWidth="3.5" />
+          <circle
+            cx="24"
+            cy="24"
+            r={R}
+            fill="none"
+            stroke="var(--accent)"
+            strokeWidth="3.5"
+            strokeLinecap="round"
+            strokeDasharray={CIRC}
+            strokeDashoffset={dashoffset}
+            style={{ transition: "stroke-dashoffset 0.5s linear" }}
+            className="motion-reduce:transition-none"
+          />
+        </svg>
+        <span className="relative z-10 text-[13px] font-bold tabular-nums text-[color:var(--accent)]">{label}</span>
+      </div>
+    </div>
+  );
+}
+
+// "Thinking" with growing dots (. .. ...) shown inside the composer while the
+// planning agent runs — the in-box counterpart to the composer's lit ring.
+function ThinkingLabel({ text }: { text: string }) {
+  const [n, setN] = useState(1);
+  useEffect(() => {
+    const id = window.setInterval(() => setN((v) => (v % 3) + 1), 420);
+    return () => window.clearInterval(id);
+  }, []);
+  return (
+    <span className="flex flex-1 items-center self-end px-1.5 py-2 text-sm font-medium text-[color:var(--accent)]">
+      {text}
+      <span className="ms-0.5 inline-block w-3 text-start tabular-nums">{".".repeat(n)}</span>
+    </span>
+  );
+}
+
+// Flowing shimmer + soft image glyph shown in a result tile's spot while the
+// finished image decodes — replaces the plain "Loading image..." text.
+function PackImageSkeleton() {
+  return (
+    <>
+      <span className="pack-img-skeleton" aria-hidden />
+      <span className="material-symbols-outlined relative animate-pulse text-3xl text-[color:var(--accent-60)] motion-reduce:animate-none">image</span>
+    </>
+  );
+}
 
 // Editing/image-input models accept at most 3 source images.
 const MAX_REFS = 3;
@@ -109,7 +203,7 @@ async function normalizeUploadImage(file: File, constraints: UploadImageConstrai
 }
 
 // A generation result shown in the gallery (no chat text is rendered).
-type ResultTile = { id: string; status: "generating" | "success" | "error"; image?: string; prompt?: string };
+type ResultTile = { id: string; status: "generating" | "success" | "error"; image?: string; prompt?: string; expectedSeconds?: number };
 
 let _tid = 0;
 const nextId = () => `t${Date.now()}_${_tid++}`;
@@ -139,6 +233,20 @@ export default function PackChat({
   const dragDepthRef = useRef(0);
   const [credits, setCredits] = useState<number | null>(null);
   const [planning, setPlanning] = useState(false);
+  // One-shot "charge" comet that sweeps the composer border on send (mirrors the
+  // plain-chat composer). chargeKey remounts the overlay so the CSS restarts;
+  // prefers-reduced-motion is handled in CSS. The lit ring during planning is the
+  // `.is-thinking` class on the composer wrapper.
+  const [charging, setCharging] = useState(false);
+  const [chargeKey, setChargeKey] = useState(0);
+  const chargeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const runComposerCharge = useCallback(() => {
+    setChargeKey((k) => k + 1);
+    setCharging(true);
+    if (chargeTimerRef.current) clearTimeout(chargeTimerRef.current);
+    chargeTimerRef.current = setTimeout(() => setCharging(false), 2600);
+  }, []);
+  useEffect(() => () => { if (chargeTimerRef.current) clearTimeout(chargeTimerRef.current); }, []);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [clarify, setClarify] = useState<string | null>(null);
@@ -370,6 +478,7 @@ export default function PackChat({
     setClarify(null);
     setPlanning(true);
     setToast(null);
+    runComposerCharge();
 
     const planBody = {
       text,
@@ -438,7 +547,7 @@ export default function PackChat({
     } finally {
       setPlanning(false);
     }
-  }, [composer, pendingRefs, clarify, awaitingClarify, mockupRef, pack, language, variant]);
+  }, [composer, pendingRefs, clarify, awaitingClarify, mockupRef, pack, language, variant, runComposerCharge]);
 
   // live re-estimate while the pop-up is open
   useEffect(() => {
@@ -461,7 +570,7 @@ export default function PackChat({
     setConfirmOpen(false);
     const tileId = nextId();
     // Newest first: prepend the generating tile so the latest result is on top.
-    setResults((prev) => [{ id: tileId, status: "generating", prompt: plan.final_prompt }, ...prev]);
+    setResults((prev) => [{ id: tileId, status: "generating", prompt: plan.final_prompt, expectedSeconds: latencyBudgetForModel(popModel, popQuality) }, ...prev]);
     galleryRef.current?.scrollTo({ top: 0, behavior: "smooth" });
     setBusy(true);
     setToast(null);
@@ -598,9 +707,10 @@ export default function PackChat({
   const canSend = !planning && !busy && !mockupLoading && (composer.trim().length > 0 || pendingRefs.length > 0);
   const heroExample = variant?.hero_example_url || pack.hero_example_url || "";
 
-  // Per-pack craft accent (replaces the old global amber) exposed as CSS vars so
-  // the studio's highlights match the pack's color across the whole ecosystem.
-  const accent = CRAFT_HEX[pack.capability] ?? "#8fa0c4";
+  // Studio accent = the periwinkle packs-studio color (see BRAND), not the
+  // per-pack craft hue, so chrome (change-mockup link, sessions, help, spinner,
+  // image ring) and the confirm modal all match the composer's send button.
+  const accent = BRAND;
   const mix = (pct: number) => `color-mix(in srgb, ${accent} ${pct}%, transparent)`;
   const accentVars = {
     "--accent": accent,
@@ -734,12 +844,13 @@ export default function PackChat({
             </div>
           )}
           <div
-            className="pointer-events-auto relative w-full max-w-xl rounded-2xl border border-[#a5b4fc]/25 bg-[#151f38]/70 p-2 shadow-[0_1px_0_0_rgba(255,255,255,.06)_inset,0_20px_60px_-14px_rgba(0,0,0,.85)] backdrop-blur-xl transition focus-within:border-[#a5b4fc]/60 focus-within:bg-[#151f38]/85 focus-within:shadow-[0_1px_0_0_rgba(255,255,255,.06)_inset,0_0_0_3px_rgba(165,180,252,.18),0_20px_60px_-14px_rgba(0,0,0,.85)]"
+            className={`pack-composer ${planning ? "is-thinking" : ""} pointer-events-auto relative w-full max-w-xl rounded-2xl bg-[#151f38]/70 p-2 shadow-[0_1px_0_0_rgba(255,255,255,.06)_inset,0_20px_60px_-14px_rgba(0,0,0,.85)] backdrop-blur-xl transition focus-within:bg-[#151f38]/85`}
             onDragEnter={handleDragEnter}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
           >
+            {charging && <span key={chargeKey} className="pack-composer__charge" aria-hidden="true" />}
             {isDragOver && (
               <div className="pointer-events-none absolute inset-0 z-30 flex flex-col items-center justify-center gap-1.5 rounded-2xl border-2 border-dashed border-[#a5b4fc]/70 bg-[#0c1324]/90">
                 <span className="material-symbols-outlined text-2xl text-[#a5b4fc]">add_photo_alternate</span>
@@ -796,22 +907,26 @@ export default function PackChat({
                   <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => void addFiles(e.target.files)} />
                 </label>
               )}
-              <textarea
-                ref={textareaRef}
-                value={composer}
-                onChange={(e) => setComposer(e.target.value.slice(0, MAX_COMPOSER_CHARS))}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    if (canSend) void send();
-                  }
-                }}
-                onPaste={handlePaste}
-                rows={1}
-                maxLength={MAX_COMPOSER_CHARS}
-                placeholder={pt(language, "chatPlaceholder")}
-                className="flex-1 resize-none self-end bg-transparent px-1.5 py-2 text-sm text-white placeholder:text-[#606d8a] focus:outline-none"
-              />
+              {planning ? (
+                <ThinkingLabel text={pt(language, "thinking")} />
+              ) : (
+                <textarea
+                  ref={textareaRef}
+                  value={composer}
+                  onChange={(e) => setComposer(e.target.value.slice(0, MAX_COMPOSER_CHARS))}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      if (canSend) void send();
+                    }
+                  }}
+                  onPaste={handlePaste}
+                  rows={1}
+                  maxLength={MAX_COMPOSER_CHARS}
+                  placeholder={pt(language, "chatPlaceholder")}
+                  className="flex-1 resize-none self-end bg-transparent px-1.5 py-2 text-sm text-white placeholder:text-[#606d8a] focus:outline-none"
+                />
+              )}
               <button
                 type="button"
                 disabled={!canSend}
@@ -860,9 +975,7 @@ export default function PackChat({
             {results.map((t) => (
               <div key={t.id} className="group relative mb-1.5 block break-inside-avoid overflow-hidden rounded-sm border border-white/[.08] bg-[#141b2b] animate-fade-in-up">
                 {t.status === "generating" ? (
-                  <div className="flex aspect-square w-full items-center justify-center">
-                    <div className="h-9 w-9 animate-spin rounded-full border-2 border-[color:var(--accent-30)] border-t-[color:var(--accent)]" />
-                  </div>
+                  <PackGeneratingTile expectedSeconds={t.expectedSeconds ?? LATENCY_FALLBACK_SECONDS} />
                 ) : t.status === "success" && t.image ? (
                   <>
                     <InteractiveAuthenticatedImage
@@ -871,7 +984,8 @@ export default function PackChat({
                       zoomOnClick
                       wrapperClassName="w-full"
                       imageClassName="block h-auto w-full max-h-[55vh] object-cover"
-                      loadingClassName="flex aspect-square w-full items-center justify-center text-xs text-[#606d8a]"
+                      loadingClassName="relative flex aspect-square w-full items-center justify-center overflow-hidden bg-[#0f1626]"
+                      loadingNode={<PackImageSkeleton />}
                       errorClassName="flex aspect-square w-full items-center justify-center text-xs text-[#8a96b8]"
                     />
                     <button
@@ -942,7 +1056,7 @@ export default function PackChat({
                       key={q}
                       type="button"
                       onClick={() => setPopQuality(q)}
-                      className={`cursor-pointer rounded-xl border px-3 py-1.5 text-sm transition ${popQuality === q ? "border-[#e7ad4d] bg-[#e7ad4d]/15 font-semibold text-[#e7ad4d]" : "border-white/10 bg-[#111826] text-[#aebbe0] hover:border-white/20"}`}
+                      className={`cursor-pointer rounded-xl border px-3 py-1.5 text-sm transition ${popQuality === q ? "border-[color:var(--accent)] bg-[color:var(--accent-15)] font-semibold text-[color:var(--accent)]" : "border-white/10 bg-[#111826] text-[#aebbe0] hover:border-white/20"}`}
                     >
                       {qualityLabel(language, q)}
                     </button>
@@ -969,7 +1083,7 @@ export default function PackChat({
                 type="button"
                 disabled={busy || popEstimating || popInsufficient}
                 onClick={() => void confirmGenerate()}
-                className="rounded-lg bg-[color:var(--accent)] px-4 py-2 text-sm font-bold text-[#0d1320] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-lg bg-[color:var(--accent)] px-4 py-2 text-sm font-bold text-[#1b2250] shadow-[0_4px_14px_-2px_rgba(165,180,252,.6)] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
               >
                 {popInsufficient ? pt(language, "notEnough") : `${pt(language, "confirm")} →`}
               </button>

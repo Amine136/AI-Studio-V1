@@ -3061,3 +3061,146 @@ body {
   --text-code-sm--line-height: 18px;
   --text-code-sm--font-weight: 400;
 }
+
+/* =============================================================
+   PACKS COMPOSER — animated ring while typing + charge burst on
+   send, mirroring the plain-chat composer effects but in the
+   periwinkle packs-studio family (#a5b4fc / indigo / violet) so it
+   stays on-brand. `.is-thinking` keeps the ring lit while the
+   planning agent runs.
+   ============================================================= */
+@property --pack-aurora-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+@property --pack-charge-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+.pack-composer::before {
+  content: "";
+  position: absolute;
+  inset: -1.5px;
+  border-radius: inherit;
+  padding: 1.5px;
+  background: conic-gradient(from var(--pack-aurora-angle), #a5b4fc, #818cf8, #c4b5fd, #a5b4fc);
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: packAuroraSpin 7s linear infinite;
+  opacity: 0.35;
+  transition: opacity 320ms ease;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.pack-composer:focus-within::before,
+.pack-composer.is-thinking::before {
+  opacity: 1;
+}
+
+.pack-composer.is-thinking::before {
+  animation-duration: 2.8s;
+}
+
+.pack-composer:focus-within {
+  transform: translateY(-1px);
+}
+
+/* Keep the real inputs above the ring pseudo-elements. */
+.pack-composer > * {
+  position: relative;
+  z-index: 1;
+}
+
+@keyframes packAuroraSpin {
+  to {
+    --pack-aurora-angle: 360deg;
+  }
+}
+
+/* One bright comet arc sweeps the border a few laps on send, then fades. */
+.pack-composer > .pack-composer__charge {
+  position: absolute;
+  inset: -1.5px;
+  z-index: 2;
+  border-radius: inherit;
+  padding: 1.5px;
+  pointer-events: none;
+  background: conic-gradient(
+    from var(--pack-charge-angle),
+    transparent 0deg,
+    transparent 250deg,
+    rgba(165, 180, 252, 0.95) 305deg,
+    rgba(196, 181, 253, 1) 330deg,
+    rgba(129, 140, 248, 0.9) 350deg,
+    transparent 360deg
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  filter: drop-shadow(0 0 5px rgba(165, 180, 252, 0.6)) drop-shadow(0 0 9px rgba(129, 140, 248, 0.3));
+  animation:
+    packChargeSpin 0.85s linear 3,
+    packChargeFade 2.55s ease forwards;
+}
+
+@keyframes packChargeSpin {
+  to {
+    --pack-charge-angle: 360deg;
+  }
+}
+
+@keyframes packChargeFade {
+  0% {
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  72% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pack-composer::before {
+    animation: none;
+  }
+  .pack-composer > .pack-composer__charge {
+    display: none;
+  }
+}
+
+/* Flowing periwinkle shimmer shown in a result tile's spot while the finished
+   image decodes (replaces the old "Loading image..." text). Reuses the shared
+   thinkingShimmer keyframe; on-brand periwinkle/violet instead of purple/cyan. */
+.pack-img-skeleton {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    100deg,
+    rgba(165, 180, 252, 0.05) 20%,
+    rgba(165, 180, 252, 0.22) 42%,
+    rgba(196, 181, 253, 0.22) 58%,
+    rgba(165, 180, 252, 0.05) 80%
+  );
+  background-size: 220% 100%;
+  animation: thinkingShimmer 1.6s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pack-img-skeleton {
+    animation: none;
+  }
+}
