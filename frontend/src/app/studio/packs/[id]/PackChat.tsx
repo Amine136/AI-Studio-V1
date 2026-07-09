@@ -6,7 +6,8 @@ import { useAuth } from "../../../../context/AuthContext";
 import { addHistoryEntry } from "../../../../lib/history";
 import { LATENCY_FALLBACK_SECONDS, latencyBudgetForModel } from "../../../../lib/modelLatency";
 import InteractiveAuthenticatedImage from "../../../../components/InteractiveAuthenticatedImage";
-import AuthenticatedImage from "../../../../components/AuthenticatedImage";
+import AuthenticatedImage, { fetchAuthenticatedAsset } from "../../../../components/AuthenticatedImage";
+import RefPicker, { REF_DND_TYPE } from "./RefPicker";
 import {
   getUploadConstraints,
   preferredOutputType,
@@ -14,6 +15,14 @@ import {
   type UploadImageConstraints,
 } from "../../../../lib/imageInputConstraints";
 import type { InputImagePayload, PackChatTurn, PackDetail, PackEstimate, PackPlan, PackSessionData, PackSessionMeta, PackVariant } from "../../../../types";
+import { recordRecentUpload, type RecentUpload } from "../../../../lib/recentUploads";
+import {
+  dropMockupRef,
+  mockupCacheKey,
+  mockupRefStillExists,
+  readMockupRef,
+  writeMockupRef,
+} from "../../../../lib/mockupRefCache";
 import type { Language } from "../../../../context/LanguageContext";
 import { aspectFieldKey, fmtNum, pt, qualityLabel } from "../packsShared";
 import AspectShapePicker from "../AspectShapePicker";
@@ -220,6 +229,7 @@ export default function PackChat({
   onChangeMockup?: () => void;
 }) {
   const { user } = useAuth();
+  const uid = user?.uid ?? null;
   const isRtl = language === "ar";
   const displayClass = isRtl ? "" : "font-['Bricolage_Grotesque']";
 
@@ -229,6 +239,10 @@ export default function PackChat({
   // lazy init re-seeds each time a different mockup is opened. The user can edit it.
   const [composer, setComposer] = useState(() => variant?.example || pack.example || "");
   const [pendingRefs, setPendingRefs] = useState<InputImagePayload[]>([]);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  // URL of the gallery tile currently being fetched + re-uploaded, so the
+  // picker can spin that one tile and block a second concurrent pick.
+  const [pickerBusyUrl, setPickerBusyUrl] = useState<string | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const dragDepthRef = useRef(0);
   const [credits, setCredits] = useState<number | null>(null);
@@ -344,13 +358,31 @@ export default function PackChat({
     setMockupLoading(true);
     setMockupRef(null);
     void (async () => {
+      // This scene was very likely uploaded already on a previous visit. Reuse
+      // that file_id instead of uploading identical bytes again.
+      const key = uid ? mockupCacheKey(uid, variant?.id ?? "scene", url) : null;
       try {
+        if (key) {
+          const cached = readMockupRef(key);
+          if (cached) {
+            if (await mockupRefStillExists(user, cached.url)) {
+              if (!cancelled) {
+                setMockupRef({ file_id: cached.file_id, name: cached.name, mime_type: cached.mime_type, url: cached.url });
+                setUseMockup(true);
+              }
+              return;
+            }
+            // Server swept it (or it never existed) — fall through and re-upload.
+            dropMockupRef(key);
+          }
+        }
         const resp = await fetch(url);
         if (!resp.ok) throw new Error("mockup fetch failed");
         const blob = await resp.blob();
         const raw = new File([blob], `mockup-${variant?.id ?? "scene"}.png`, { type: blob.type || "image/png" });
         const file = await normalizeUploadImage(raw, UNIVERSAL_INPUT_CONSTRAINTS);
         const up = await api.uploadInputImage(file);
+        if (key) writeMockupRef(key, { file_id: up.id, name: up.name, mime_type: up.mime_type, url: up.url });
         if (!cancelled) {
           setMockupRef({ file_id: up.id, name: up.name, mime_type: up.mime_type, url: up.url });
           setUseMockup(true);
@@ -364,7 +396,7 @@ export default function PackChat({
     return () => {
       cancelled = true;
     };
-  }, [variant?.id, variant?.thumbnail_url, variant?.hero_example_url]);
+  }, [variant?.id, variant?.thumbnail_url, variant?.hero_example_url, uid, user]);
 
   const mockupActive = Boolean(mockupRef) && useMockup;
   const designSlots = MAX_REFS - (mockupActive ? 1 : 0);
@@ -387,30 +419,49 @@ export default function PackChat({
           if (Math.min(width, height) < validate.minDim) throw new Error(`Image too small — at least ${validate.minDim}px on the shortest side.`);
           const file = await normalizeUploadImage(original, UNIVERSAL_INPUT_CONSTRAINTS);
           const res = await api.uploadInputImage(file);
+          // Only files a person actually chose land in the Uploaded tab — this is
+          // the one call site that means "the user picked this from their machine".
+          recordRecentUpload(uid, { file_id: res.id, mime_type: res.mime_type, url: res.url });
           setPendingRefs((prev) => [...prev, { file_id: res.id, name: res.name, mime_type: res.mime_type, url: res.url }]);
         } catch (e) {
           setToast(e instanceof Error ? e.message : "Upload failed");
         }
       }
     },
-    [designSlots, pendingRefs.length, language],
+    [designSlots, pendingRefs.length, language, uid],
   );
 
-  // Drag-and-drop anywhere on the canvas. dragDepthRef counts enter/leave across
+  const useFromThread = useCallback(
+    (ref: InputImagePayload) => {
+      setPendingRefs((prev) => {
+        if (prev.length >= designSlots) {
+          setToast(pt(language, "refsFull"));
+          return prev;
+        }
+        if (prev.some((r) => (r.url && r.url === ref.url) || (r.file_id && r.file_id === ref.file_id))) return prev;
+        return [...prev, ref];
+      });
+    },
+    [designSlots, language],
+  );
+
+  // Drag-and-drop anywhere on the canvas. Accepts both a real file drag and an
+  // internal result drag: not every browser exposes "Files" for a dragged <img>,
+  // so gating on "Files" alone would refuse the drop outright. dragDepthRef counts enter/leave across
   // nested children so the overlay doesn't flicker as the pointer crosses child
   // element boundaries (dragenter/dragleave fire per-element, not once per region).
   const handleDragEnter = useCallback((e: DragEvent) => {
-    if (!e.dataTransfer.types.includes("Files")) return;
+    if (!e.dataTransfer.types.includes("Files") && !e.dataTransfer.types.includes(REF_DND_TYPE)) return;
     e.preventDefault();
     dragDepthRef.current += 1;
     setIsDragOver(true);
   }, []);
   const handleDragOver = useCallback((e: DragEvent) => {
-    if (!e.dataTransfer.types.includes("Files")) return;
+    if (!e.dataTransfer.types.includes("Files") && !e.dataTransfer.types.includes(REF_DND_TYPE)) return;
     e.preventDefault();
   }, []);
   const handleDragLeave = useCallback((e: DragEvent) => {
-    if (!e.dataTransfer.types.includes("Files")) return;
+    if (!e.dataTransfer.types.includes("Files") && !e.dataTransfer.types.includes(REF_DND_TYPE)) return;
     e.preventDefault();
     dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
     if (dragDepthRef.current === 0) setIsDragOver(false);
@@ -420,9 +471,17 @@ export default function PackChat({
       e.preventDefault();
       dragDepthRef.current = 0;
       setIsDragOver(false);
+      // A result dragged from the grid is already a private file on the server.
+      // Reference it like the "use in next" button does: no fetch, no upload, and
+      // nothing lands in the Uploaded tab, which is only for files off the disk.
+      const refUrl = e.dataTransfer.getData(REF_DND_TYPE);
+      if (refUrl) {
+        useFromThread({ url: refUrl, name: "previous result" });
+        return;
+      }
       void addFiles(e.dataTransfer.files);
     },
-    [addFiles],
+    [addFiles, useFromThread],
   );
 
   // Paste an image straight from the clipboard (e.g. a screenshot). Falls back
@@ -440,18 +499,38 @@ export default function PackChat({
     [addFiles],
   );
 
-  const useFromThread = useCallback(
-    (ref: InputImagePayload) => {
-      setPendingRefs((prev) => {
-        if (prev.length >= designSlots) {
-          setToast(pt(language, "refsFull"));
-          return prev;
-        }
-        if (prev.some((r) => (r.url && r.url === ref.url) || (r.file_id && r.file_id === ref.file_id))) return prev;
-        return [...prev, ref];
-      });
+
+  // A gallery result is a generated output, not a file this user owns as an
+  // *input* — so it takes the same route the mockup template does: fetch the
+  // bytes (authenticated), normalize, and re-upload to mint a private file_id.
+  // A recent upload already has one, so it skips all of this.
+  const pickFromGallery = useCallback(
+    async (url: string) => {
+      if (pendingRefs.length >= designSlots) {
+        setToast(pt(language, "refsFull"));
+        return;
+      }
+      setPickerBusyUrl(url);
+      try {
+        const blob = await fetchAuthenticatedAsset(user, url);
+        const raw = new File([blob], "gallery-image.png", { type: blob.type || "image/png" });
+        const file = await normalizeUploadImage(raw, UNIVERSAL_INPUT_CONSTRAINTS);
+        const up = await api.uploadInputImage(file);
+        useFromThread({ file_id: up.id, name: up.name, mime_type: up.mime_type, url: up.url });
+      } catch (e) {
+        setToast(e instanceof Error ? e.message : "Upload failed");
+      } finally {
+        setPickerBusyUrl(null);
+      }
     },
-    [designSlots, language],
+    [pendingRefs.length, designSlots, language, user, useFromThread],
+  );
+
+  const pickFromUploads = useCallback(
+    (item: RecentUpload) => {
+      useFromThread({ file_id: item.file_id, mime_type: item.mime_type, url: item.url });
+    },
+    [useFromThread],
   );
 
   const send = useCallback(async () => {
@@ -902,10 +981,31 @@ export default function PackChat({
             )}
             <div className="flex items-end gap-1.5">
               {pendingRefs.length < designSlots && (
-                <label className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-[10px] text-[#93a0bd] transition hover:bg-white/5 hover:text-white">
-                  <span className="material-symbols-outlined text-[22px]">add</span>
-                  <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => void addFiles(e.target.files)} />
-                </label>
+                <div className="relative">
+                  <button
+                    type="button"
+                    aria-expanded={pickerOpen}
+                    onClick={() => setPickerOpen((o) => !o)}
+                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] transition hover:bg-white/5 hover:text-white ${
+                      pickerOpen ? "bg-white/10 text-white" : "text-[#93a0bd]"
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-[22px]">add</span>
+                  </button>
+                  <RefPicker
+                    open={pickerOpen}
+                    onClose={() => setPickerOpen(false)}
+                    language={language}
+                    isRtl={isRtl}
+                    uid={uid}
+                    room={designSlots - pendingRefs.length}
+                    busyUrl={pickerBusyUrl}
+                    onPickGallery={(url) => void pickFromGallery(url)}
+                    onPickUpload={pickFromUploads}
+                    onFiles={(files) => void addFiles(files)}
+                    onDropRefUrl={(url) => useFromThread({ url, name: "previous result" })}
+                  />
+                </div>
               )}
               {planning ? (
                 <ThinkingLabel text={pt(language, "thinking")} />
@@ -973,7 +1073,13 @@ export default function PackChat({
         ) : (
           <div className="gap-1.5 [column-fill:_balance] columns-2 sm:columns-3 xl:columns-4">
             {results.map((t) => (
-              <div key={t.id} className="group relative mb-1.5 block break-inside-avoid overflow-hidden rounded-sm border border-white/[.08] bg-[#141b2b] animate-fade-in-up">
+              <div
+                key={t.id}
+                onDragStart={(e) => {
+                  if (t.status === "success" && t.image) e.dataTransfer.setData(REF_DND_TYPE, t.image);
+                }}
+                className="group relative mb-1.5 block break-inside-avoid overflow-hidden rounded-sm border border-white/[.08] bg-[#141b2b] animate-fade-in-up"
+              >
                 {t.status === "generating" ? (
                   <PackGeneratingTile expectedSeconds={t.expectedSeconds ?? LATENCY_FALLBACK_SECONDS} />
                 ) : t.status === "success" && t.image ? (

@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import AuthenticatedImage, { fetchAuthenticatedAsset } from "../../../../../components/AuthenticatedImage";
 import { api, isContentBlockedError } from "../../../../../services/api";
 import { useAuth } from "../../../../../context/AuthContext";
+import { recordRecentUpload } from "../../../../../lib/recentUploads";
 import { useLanguage } from "../../../../../context/LanguageContext";
 import type { InputImagePayload, PackDetail, PackSlot } from "../../../../../types";
 import { addHistoryEntry } from "../../../../../lib/history";
@@ -125,6 +126,7 @@ export default function PackBatchPage() {
       setRows((prev) => [...prev, { id, label: file.name, valid: false, status: "idle" }]);
       try {
         const res = await api.uploadInputImage(file);
+        recordRecentUpload(user?.uid, { file_id: res.id, mime_type: res.mime_type, url: res.url });
         setRows((prev) =>
           prev.map((r) =>
             r.id === id

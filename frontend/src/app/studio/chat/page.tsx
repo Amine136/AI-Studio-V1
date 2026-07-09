@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Fragment, useEffect, useMemo, useRef, useState, type ChangeEvent, type ClipboardEvent, type ReactNode } from "react";
 import { motion, AnimatePresence, MotionConfig, useReducedMotion, type Variants, type Transition } from "framer-motion";
 import { useAuth } from "../../../context/AuthContext";
+import { recordRecentUpload } from "../../../lib/recentUploads";
 import { useLanguage } from "../../../context/LanguageContext";
 import InteractiveAuthenticatedImage from "../../../components/InteractiveAuthenticatedImage";
 import { isRenderableImageUrl } from "../../../components/AuthenticatedImage";
@@ -1614,6 +1615,7 @@ export default function StudioChatPage() {
       for (const originalFile of filesToUpload) {
         const file = await normalizeUploadImage(originalFile, constraints);
         const uploaded: UploadedImageResult = await api.uploadInputImage(file);
+        recordRecentUpload(user?.uid, { file_id: uploaded.id, mime_type: uploaded.mime_type, url: uploaded.url });
         const pendingImage = pendingImages[nextImages.length];
         URL.revokeObjectURL(pendingImage.previewUrl);
         nextImages.push({

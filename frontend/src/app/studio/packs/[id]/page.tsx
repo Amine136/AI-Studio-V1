@@ -15,6 +15,14 @@ import AspectShapePicker from "../AspectShapePicker";
 import ModelPicker from "../ModelPicker";
 import { getUploadConstraints, preferredOutputType, readImageDimensions, type UploadImageConstraints } from "../../../../lib/imageInputConstraints";
 import PackChat from "./PackChat";
+import { recordRecentUpload } from "../../../../lib/recentUploads";
+import {
+  dropMockupRef,
+  mockupCacheKey,
+  mockupRefStillExists,
+  readMockupRef,
+  writeMockupRef,
+} from "../../../../lib/mockupRefCache";
 
 type UITile = Omit<PackTile, "status"> & { status: PackTile["status"] | "generating" };
 
@@ -242,6 +250,15 @@ export default function PackDetailPage() {
   // be sent to the model as image 1 (the exact scene to reproduce). Re-runs on
   // variant change; cleared when no variant is selected.
   useEffect(() => {
+    // Freeform packs hand the whole composer to PackChat, which owns its own
+    // mockup ref — this file's copy feeds only the card UI's generate path below.
+    // Hooks run before that early return, so without this guard we upload the
+    // scene template a second time and then never read it.
+    if (pack?.kind === "freeform") {
+      setMockupRef(null);
+      setMockupLoading(false);
+      return;
+    }
     const mockupUrl = selectedVariant?.thumbnail_url || selectedVariant?.hero_example_url || "";
     if (!mockupUrl) {
       setMockupRef(null);
@@ -251,13 +268,30 @@ export default function PackDetailPage() {
     setMockupLoading(true);
     setMockupRef(null);
     void (async () => {
+      // Shares PackChat's scene cache: for freeform packs BOTH effects run (hooks
+      // fire before this file's early return), so without this the same template
+      // is uploaded twice on every mount.
+      const cacheKey = user?.uid ? mockupCacheKey(user.uid, selectedVariant?.id ?? "scene", mockupUrl) : null;
       try {
+        if (cacheKey) {
+          const cached = readMockupRef(cacheKey);
+          if (cached) {
+            if (await mockupRefStillExists(user, cached.url)) {
+              if (!cancelled) {
+                setMockupRef({ file_id: cached.file_id, name: cached.name, mime_type: cached.mime_type, url: cached.url });
+              }
+              return;
+            }
+            dropMockupRef(cacheKey);
+          }
+        }
         const resp = await fetch(mockupUrl);
         if (!resp.ok) throw new Error("mockup fetch failed");
         const blob = await resp.blob();
         const raw = new File([blob], `mockup-${selectedVariant?.id ?? "scene"}.png`, { type: blob.type || "image/png" });
         const file = await normalizeUploadImage(raw, UNIVERSAL_INPUT_CONSTRAINTS);
         const up = await api.uploadInputImage(file);
+        if (cacheKey) writeMockupRef(cacheKey, { file_id: up.id, name: up.name, mime_type: up.mime_type, url: up.url });
         if (!cancelled) {
           setMockupRef({ file_id: up.id, name: up.name, mime_type: up.mime_type, url: up.url });
         }
@@ -271,7 +305,7 @@ export default function PackDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [selectedVariant?.id, selectedVariant?.thumbnail_url, selectedVariant?.hero_example_url]);
+  }, [selectedVariant?.id, selectedVariant?.thumbnail_url, selectedVariant?.hero_example_url, user, pack?.kind]);
 
   // Combined refs sent to the agent + model: mockup template first, then designs.
   const buildSendRefs = useCallback(
@@ -328,6 +362,7 @@ export default function PackDetailPage() {
         // Shrink in the browser before upload so payloads stay small.
         const file = await normalizeUploadImage(original, UNIVERSAL_INPUT_CONSTRAINTS);
         const res = await api.uploadInputImage(file);
+        recordRecentUpload(user?.uid, { file_id: res.id, mime_type: res.mime_type, url: res.url });
         setImageRefs((prev) => [
           ...prev,
           { file_id: res.id, name: res.name, mime_type: res.mime_type, url: res.url },

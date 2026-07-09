@@ -27,6 +27,10 @@ const MOCKUP_SECTORS: Record<string, string> = {
 };
 const MOCKUPS_WORD: Record<string, string> = { en: "mockups", fr: "mockups", ar: "مشاهد" };
 
+// Sectors that are actually open. Everything else renders as a disabled "soon" row
+// in the sidebar and must stay out of the grid — including search results.
+const UNLOCKED_SECTORS = ["ecommerce", "social", "quote", "digital"];
+
 // Small "what you bring" glyph: a photo (needs an upload) vs. text lines (describe).
 function NeedIcon({ img }: { img: boolean }) {
   return img ? (
@@ -153,15 +157,17 @@ export default function PacksGalleryPage() {
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (q) {
-      // Search spans all sectors.
-      return packs.filter((p) => `${p.title} ${p.promise} ${p.tags.join(" ")}`.toLowerCase().includes(q));
+      // Search spans every unlocked sector.
+      return packs.filter(
+        (p) =>
+          UNLOCKED_SECTORS.includes(p.sector) &&
+          `${p.title} ${p.promise} ${p.tags.join(" ")}`.toLowerCase().includes(q),
+      );
     }
     return sectorPacks.filter((p) => craft === "all" || p.capability === craft);
   }, [packs, sectorPacks, craft, query]);
 
   const displayClass = isRtl ? "" : "font-['Bricolage_Grotesque']";
-
-  const UNLOCKED_SECTORS = ["ecommerce", "social", "quote", "digital"];
 
   const sectorButton = (s: string, marker: ReactNode) => {
     const active = s === activeSector;

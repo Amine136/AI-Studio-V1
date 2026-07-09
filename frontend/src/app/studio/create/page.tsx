@@ -8,6 +8,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { api, isContentBlockedError } from "../../../services/api";
 import { GenerateRequest, GenerationMeta, UISchemaItem, OutputType, ModelCatalogEntry, PlainChatParameterSchemaEntry, SystemConfig } from "../../../types";
 import { useAuth } from "../../../context/AuthContext";
+import { recordRecentUpload } from "../../../lib/recentUploads";
 import { useLanguage } from "../../../context/LanguageContext";
 
 import StepIndicator from "../../../components/StepIndicator";
@@ -1060,6 +1061,7 @@ export default function Home() {
       for (const originalFile of filesToUpload) {
         const file = await normalizeUploadImage(originalFile, UNIVERSAL_INPUT_CONSTRAINTS);
         const uploaded = await api.uploadInputImage(file);
+        recordRecentUpload(user?.uid, { file_id: uploaded.id, mime_type: uploaded.mime_type, url: uploaded.url });
         const pendingImage = pendingImages[nextImages.length];
         URL.revokeObjectURL(pendingImage.previewUrl);
         nextImages.push({
