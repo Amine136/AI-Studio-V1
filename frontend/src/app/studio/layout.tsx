@@ -63,18 +63,17 @@ export default function StudioLayout({ children }: { children: React.ReactNode }
     };
   }, [user]);
 
-  // The Playground moved out to /playground (which carries its own rail), so the
-  // only surfaces left under /studio are Packs and Smart Studio. Both keep their
-  // bespoke full-bleed chrome for now; the rail arrives here in a follow-up.
+  // The Playground moved out to /playground, but Packs and Smart Studio now carry
+  // the same app rail so navigation is reachable everywhere. Packs brings its own
+  // brand header, so only that surface hides the shared "Studio" header.
   const hideSharedHeader = pathname.startsWith("/studio/packs");
-  const hideSidebar = pathname === "/studio/create" || pathname.startsWith("/studio/packs");
 
   return (
     <RequireActiveUser>
       <div className="flex min-h-screen overflow-x-hidden bg-[#0c1324] text-[#dce1fb] selection:bg-[#4d8eff] selection:text-[#00285d]">
-        {!hideSharedHeader && !hideSidebar && <AppSidebar activePath={pathname} />}
+        <AppSidebar activePath={pathname} />
 
-        <main className={`flex min-w-0 flex-1 flex-col ${hideSharedHeader || hideSidebar ? "" : "lg:ml-48"}`}>
+        <main className="flex min-w-0 flex-1 flex-col lg:ml-48">
           {hideSharedHeader ? null : (
             <header dir="ltr" className="sticky top-0 z-40 flex h-16 items-center justify-between border-b border-white/10 bg-[#0c1324]/80 px-4 font-headline shadow-[0_16px_40px_rgba(0,0,0,0.2)] backdrop-blur-xl sm:px-8">
               <div className="flex items-center gap-4">

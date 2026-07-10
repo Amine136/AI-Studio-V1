@@ -1768,7 +1768,7 @@ export default function Home() {
         />
       </div>
 
-      <div className={`mx-auto flex max-w-[1520px] flex-col px-4 py-5 sm:px-8 sm:py-6 2xl:px-12 ${step === "INPUT" ? "min-h-full justify-start" : "min-h-full justify-start"}`}>
+      <div className={`mx-auto flex max-w-[1520px] flex-col px-4 pt-5 pb-24 sm:px-8 sm:pt-6 2xl:px-12 lg:pb-6 ${step === "INPUT" ? "min-h-full justify-start" : "min-h-full justify-start"}`}>
         {step !== "INPUT" && step !== "REVIEW" && step !== "RESULT" && (
           <div className="mx-auto mb-8 max-w-3xl">
             <StepIndicator currentStep={step} />

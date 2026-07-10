@@ -234,7 +234,7 @@ export default function PacksGalleryPage() {
       </aside>
 
       {/* Content */}
-      <section className="min-w-0 flex-1 px-5 py-7 sm:px-8 lg:px-9">
+      <section className="min-w-0 flex-1 px-5 pt-7 pb-24 sm:px-8 lg:px-9 lg:pb-7">
         {/* Mobile sector switcher — the catalog rail above is hidden below sm,
             so this is the only way to change sectors on a phone. */}
         <div className="mb-4 sm:hidden">
