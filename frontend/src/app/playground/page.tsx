@@ -528,6 +528,23 @@ function isOneShotImageModel(model: ChatModelOption | null): boolean {
   return outputModalities.includes("IMAGE") && !outputModalities.includes("TEXT");
 }
 
+// Which flavour of "Try" suggestions fits a model's expected output.
+//  - text:    chat/copy models (no image output) → writing & brainstorming
+//  - vector:  Recraft-style vector/transparent art → logos, icons, cutouts
+//  - image:   conversational image models (Nano Banana, GPT-image) → rich scenes
+//  - oneshot: pure text-to-image (Imagen, Ideogram, Grok) → single-shot prompts
+type ModelIdeaCategory = "text" | "vector" | "image" | "oneshot";
+
+function modelIdeaCategory(model: ChatModelOption | null): ModelIdeaCategory {
+  if (!model) return "image";
+  if (!outputsImage(model)) return "text";
+  const haystack = `${model.id} ${model.displayName} ${model.provider}`.toLowerCase();
+  // Recraft vector + Ideogram transparent-background share the "design asset" set.
+  if (/vector|\bsvg\b|transparent/.test(haystack)) return "vector";
+  if (isOneShotImageModel(model)) return "oneshot";
+  return "image";
+}
+
 // Image-output models are surfaced first within a provider (e.g. Nano Banana Pro
 // above Gemini 2.5 Flash), text-only models fall to the bottom.
 function outputsImage(model: ChatModelOption): boolean {
@@ -925,16 +942,31 @@ const typingVariants: Variants = {
 };
 
 // Concrete creation prompts the empty state cycles through, so the blank canvas
-// makes a suggestion instead of just waiting. Drawn from the studio's own world —
-// posters, product shots, logos, ad frames — and phrased so they work as either a
-// chat starter or a direct image prompt. Clicking one drops it into the composer.
-const STARTER_IDEAS = [
-  "a neon poster for a late-night coffee brand",
-  "product photos of a watch on wet stone",
-  "a logo that feels like citrus and static",
-  "a storyboard frame for a 15-second ad",
-  "a dreamy hero image for a travel blog",
-];
+// makes a suggestion instead of just waiting. Tuned per model category (see
+// modelIdeaCategory) so the example always matches what the selected model can
+// actually produce. Three per category; phrased as ready-to-send prompts.
+const STARTER_IDEAS_BY_CATEGORY: Record<ModelIdeaCategory, string[]> = {
+  text: [
+    "brainstorm 5 taglines for an eco water bottle",
+    "rewrite this bio to sound more confident",
+    "outline a launch email for a new mobile app",
+  ],
+  image: [
+    "a neon poster for a late-night coffee brand",
+    "a dreamy hero image for a travel blog",
+    "a product photo of a watch resting on wet stone",
+  ],
+  vector: [
+    "a flat vector logo for a citrus soda brand",
+    "a set of clean line icons for a weather app",
+    "a transparent sticker of a smiling avocado",
+  ],
+  oneshot: [
+    "a cinematic desert highway at golden hour",
+    "a macro shot of morning dew on a spider web",
+    "an oil painting of a stormy harbor at night",
+  ],
+};
 
 // Ambient background motes — soft glowing sparks that drift up and twinkle.
 // Positions/sizes/timings are hand-scattered (not random) so the field feels
@@ -1477,15 +1509,24 @@ export default function StudioChatPage() {
   const lockedModelIsOneShotImage = isOneShotImageModel(lockedModel);
   const maxInputImages = maxInputImagesForModel(lockedModel);
 
-  // Rotating starter idea for the empty state. Pauses entirely for reduced-motion
-  // users (a static suggestion, no crossfade churn).
+  // Rotating starter idea for the empty state, drawn from the set that matches the
+  // selected model's output. Pauses entirely for reduced-motion users (a static
+  // suggestion, no crossfade churn).
+  const ideaCategory = modelIdeaCategory(lockedModel);
+  const activeIdeas = STARTER_IDEAS_BY_CATEGORY[ideaCategory];
   const prefersReducedMotion = useReducedMotion();
   const [ideaIndex, setIdeaIndex] = useState(0);
+  // Switching model can change the suggestion set — restart from the top so we
+  // never index past the end of a shorter list.
+  useEffect(() => {
+    setIdeaIndex(0);
+  }, [ideaCategory]);
   useEffect(() => {
     if (prefersReducedMotion || messages.length > 0) return;
-    const id = setInterval(() => setIdeaIndex((i) => (i + 1) % STARTER_IDEAS.length), 3600);
+    const id = setInterval(() => setIdeaIndex((i) => (i + 1) % activeIdeas.length), 3600);
     return () => clearInterval(id);
-  }, [prefersReducedMotion, messages.length]);
+  }, [prefersReducedMotion, messages.length, activeIdeas.length]);
+  const currentIdea = activeIdeas[ideaIndex % activeIdeas.length];
 
   // Composer "charge" burst — a bright light sweeps the border for a few laps then
   // settles to the calm idle ring. Plays once on open and again on every send.
@@ -2411,10 +2452,10 @@ export default function StudioChatPage() {
                         <span className="chat-idea-eyebrow">{t("Try")}</span>
                         <AnimatePresence mode="wait">
                           <motion.button
-                            key={ideaIndex}
+                            key={currentIdea}
                             type="button"
                             onClick={() => {
-                              setInput(t(STARTER_IDEAS[ideaIndex]));
+                              setInput(t(currentIdea));
                               requestAnimationFrame(() => textareaRef.current?.focus());
                             }}
                             initial={{ opacity: 0, y: 8 }}
@@ -2423,7 +2464,7 @@ export default function StudioChatPage() {
                             transition={{ duration: 0.36, ease: [0.16, 1, 0.3, 1] }}
                             className="chat-idea-pill"
                           >
-                            <span>“{t(STARTER_IDEAS[ideaIndex])}”</span>
+                            <span>“{t(currentIdea)}”</span>
                             <span className="material-symbols-outlined">north_east</span>
                           </motion.button>
                         </AnimatePresence>
