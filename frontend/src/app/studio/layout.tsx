@@ -63,14 +63,16 @@ export default function StudioLayout({ children }: { children: React.ReactNode }
     };
   }, [user]);
 
-  const hideSharedHeader = pathname === "/studio/chat" || pathname.startsWith("/studio/packs");
+  // The Playground moved out to /playground (which carries its own rail), so the
+  // only surfaces left under /studio are Packs and Smart Studio. Both keep their
+  // bespoke full-bleed chrome for now; the rail arrives here in a follow-up.
+  const hideSharedHeader = pathname.startsWith("/studio/packs");
   const hideSidebar = pathname === "/studio/create" || pathname.startsWith("/studio/packs");
-  const showMobileNav = pathname === "/studio";
 
   return (
     <RequireActiveUser>
       <div className="flex min-h-screen overflow-x-hidden bg-[#0c1324] text-[#dce1fb] selection:bg-[#4d8eff] selection:text-[#00285d]">
-        {!hideSharedHeader && !hideSidebar && <AppSidebar activePath="/studio" hideMobileNav={!showMobileNav} />}
+        {!hideSharedHeader && !hideSidebar && <AppSidebar activePath={pathname} />}
 
         <main className={`flex min-w-0 flex-1 flex-col ${hideSharedHeader || hideSidebar ? "" : "lg:ml-48"}`}>
           {hideSharedHeader ? null : (
@@ -106,7 +108,7 @@ export default function StudioLayout({ children }: { children: React.ReactNode }
             </header>
           )}
 
-          <div className={showMobileNav ? "pb-24 lg:pb-0" : ""}>{children}</div>
+          <div>{children}</div>
         </main>
       </div>
     </RequireActiveUser>

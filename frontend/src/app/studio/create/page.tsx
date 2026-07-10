@@ -1806,7 +1806,7 @@ export default function Home() {
             <div className="mb-4 lg:hidden">
               <div className="flex items-center justify-between">
                 <p className="font-headline text-[10px] font-bold uppercase tracking-[0.24em] text-primary">{t("Step 1 of 3")}</p>
-                <Link href="/studio/start" className="inline-flex items-center gap-1 text-xs text-slate-400 transition hover:text-white">
+                <Link href="/playground" className="inline-flex items-center gap-1 text-xs text-slate-400 transition hover:text-white">
                   <span className="material-symbols-outlined text-sm">arrow_back</span>
                   {t("Back")}
                 </Link>

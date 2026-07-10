@@ -589,7 +589,17 @@ export default function CreditsPage() {
 
           <div className="mt-6 flex flex-col items-start gap-3 border-t border-white/10 pt-5 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-[#c2c6d6]">{t("Don't have a code yet?")}</p>
-            <BuyCodesButton className="inline-flex items-center gap-2 whitespace-nowrap rounded-md border border-[#adc6ff]/40 bg-[#adc6ff]/10 px-6 py-2.5 text-sm font-bold text-[#adc6ff] transition-all hover:scale-105 hover:bg-[#adc6ff]/20 active:scale-95" />
+            <div className="flex flex-wrap items-center gap-3">
+              {/* /pricing left the sidebar in the nav redesign; this is now its way in. */}
+              <Link
+                href="/pricing"
+                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-white/10 px-5 py-2.5 text-sm font-semibold text-[#c2c6d6] transition-colors hover:border-white/25 hover:text-white"
+              >
+                <span className="material-symbols-outlined text-[17px]">payments</span>
+                {t("Model Pricing")}
+              </Link>
+              <BuyCodesButton className="inline-flex items-center gap-2 whitespace-nowrap rounded-md border border-[#adc6ff]/40 bg-[#adc6ff]/10 px-6 py-2.5 text-sm font-bold text-[#adc6ff] transition-all hover:scale-105 hover:bg-[#adc6ff]/20 active:scale-95" />
+            </div>
           </div>
 
           {codeMessage && (
@@ -612,7 +622,7 @@ export default function CreditsPage() {
               
               {codeMessage.success && (
                 <div className="mt-4 flex flex-wrap items-center gap-3">
-                  <Link href="/studio/start" className="inline-block rounded-md bg-[linear-gradient(90deg,#adc6ff,#4d8eff)] px-5 py-2 text-xs font-bold uppercase tracking-wider text-[#002e6a] hover:scale-105 active:scale-95 transition-all shadow-lg shadow-[#adc6ff]/20">
+                  <Link href="/playground" className="inline-block rounded-md bg-[linear-gradient(90deg,#adc6ff,#4d8eff)] px-5 py-2 text-xs font-bold uppercase tracking-wider text-[#002e6a] hover:scale-105 active:scale-95 transition-all shadow-lg shadow-[#adc6ff]/20">
                     {t("Go to Studio")}
                   </Link>
                   {showReplayButton && (

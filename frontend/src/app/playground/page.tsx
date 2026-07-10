@@ -2,23 +2,25 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Fragment, useEffect, useMemo, useRef, useState, type ChangeEvent, type ClipboardEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type ChangeEvent, type ClipboardEvent, type CSSProperties, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence, MotionConfig, useReducedMotion, type Variants, type Transition } from "framer-motion";
-import { useAuth } from "../../../context/AuthContext";
-import { recordRecentUpload } from "../../../lib/recentUploads";
-import { useLanguage } from "../../../context/LanguageContext";
-import InteractiveAuthenticatedImage from "../../../components/InteractiveAuthenticatedImage";
-import { isRenderableImageUrl } from "../../../components/AuthenticatedImage";
-import { ColorPickerPopover } from "../../../components/ColorPickerPopover";
-import { api, CONTENT_BLOCKED_MESSAGE, MODERATION_UNAVAILABLE_MESSAGE } from "../../../services/api";
-import { addHistoryEntry } from "../../../lib/history";
-import { getModelDescription } from "../../../lib/modelDescriptions";
-import { getUploadConstraints, maxInputImagesForModelId, preferredOutputType, providerLabelForModelId, readImageDimensions, type UploadImageConstraints } from "../../../lib/imageInputConstraints";
-import { LATENCY_FALLBACK_SECONDS, latencyBudgetForModel } from "../../../lib/modelLatency";
-import type { BillingBreakdown, BillingUsage, ModelPricingSummary, PlainChatModelItem, PlainChatParameterSchemaEntry, PlainChatPart, PlainChatTurnMeta, UploadedImageResult } from "../../../types";
+import { useAuth } from "../../context/AuthContext";
+import { recordRecentUpload } from "../../lib/recentUploads";
+import { useLanguage } from "../../context/LanguageContext";
+import InteractiveAuthenticatedImage from "../../components/InteractiveAuthenticatedImage";
+import { isRenderableImageUrl } from "../../components/AuthenticatedImage";
+import { ColorPickerPopover } from "../../components/ColorPickerPopover";
+import { api, CONTENT_BLOCKED_MESSAGE, MODERATION_UNAVAILABLE_MESSAGE } from "../../services/api";
+import { addHistoryEntry } from "../../lib/history";
+import { getModelDescription } from "../../lib/modelDescriptions";
+import { getUploadConstraints, maxInputImagesForModelId, preferredOutputType, providerLabelForModelId, readImageDimensions, type UploadImageConstraints } from "../../lib/imageInputConstraints";
+import { LATENCY_FALLBACK_SECONDS, latencyBudgetForModel } from "../../lib/modelLatency";
+import ModelPickerPopover, { type PickerGroup } from "./ModelPickerPopover";
+import AspectShapePicker from "../studio/packs/AspectShapePicker";
+import type { BillingBreakdown, BillingUsage, ModelPricingSummary, PlainChatModelItem, PlainChatParameterSchemaEntry, PlainChatPart, PlainChatTurnMeta, UploadedImageResult } from "../../types";
 
 type ChatRole = "user" | "assistant";
-type ChatPhase = "select" | "chat";
 
 interface ChatMessage {
   id: string;
@@ -57,7 +59,10 @@ interface ProviderGroup {
   models: ChatModelOption[];
 }
 
-const STORAGE_KEY = "studio-simple-chat-v2";
+// v3 drops the `phase`/`selectedProvider` fields that backed the retired
+// full-screen model catalogue. Bumping the key stops a stale v2 blob from
+// restoring `phase: "select"` into a page that can no longer render it.
+const STORAGE_KEY = "studio-simple-chat-v3";
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 // Per-model image limits (count / min dimension / formats) live in
 // lib/imageInputConstraints.ts, mirroring the AKM gateway guardrail.
@@ -99,6 +104,15 @@ const CHAT_PARAMETER_KEY_MAP = {
   colors: "colors",
   backgroundColor: "backgroundColor",
 } as const;
+
+// Parameters we still send (their schema defaults are seeded and posted) but no
+// longer offer as a user choice in Model Controls. Filtered at render only:
+// filtering getVisibleChatParameters would drop them from createParameterState
+// too, and we'd silently stop sending the tuned defaults to the provider.
+const HIDDEN_CHAT_PARAMETER_KEYS = new Set(["maxOutputTokens", "topP"]);
+
+// Rendered as proportioned boxes rather than text, via the packs AspectShapePicker.
+const SHAPE_PARAMETER_KEYS = new Set(["aspectRatio"]);
 
 type ParameterValue = string | number | boolean | string[];
 type ParameterState = Record<string, ParameterValue>;
@@ -946,17 +960,9 @@ const emptyItemVariants: Variants = {
   show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 26 } },
 };
 
-// Model Controls panel slides in from the right and, thanks to AnimatePresence,
-// now slides back out instead of snapping shut.
-const panelVariants: Variants = {
-  initial: { x: "100%", opacity: 0 },
-  animate: { x: 0, opacity: 1, transition: { type: "spring", stiffness: 360, damping: 38 } },
-  exit: { x: "100%", opacity: 0, transition: { duration: 0.22, ease: "easeInOut" } },
-};
-
 export default function StudioChatPage() {
   const { user, loading: authLoading } = useAuth();
-  const { t, language } = useLanguage();
+  const { t, language, isRtl } = useLanguage();
   const localizeChatWindow = (win: string): string => {
     const w = win.trim();
     if (/^1\s+minutes?$/i.test(w)) return t("1 minute");
@@ -979,12 +985,10 @@ export default function StudioChatPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const [phase, setPhase] = useState<ChatPhase>("select");
   const [settingsPanelOpen, setSettingsPanelOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [providerGroups, setProviderGroups] = useState<ProviderGroup[]>([]);
-  const [selectedProvider, setSelectedProvider] = useState("");
   const [selectedModel, setSelectedModel] = useState("");
   const [lockedModelId, setLockedModelId] = useState("");
   const [conversationId, setConversationId] = useState("");
@@ -997,6 +1001,8 @@ export default function StudioChatPage() {
   const [loadingConversation, setLoadingConversation] = useState(false);
   const [inputImages, setInputImages] = useState<UploadedImageState[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // Transient, self-dismissing confirmation (currently only the model-switch fork).
+  const [notice, setNotice] = useState<string | null>(null);
   const [currentCredits, setCurrentCredits] = useState<number | null>(null);
   const [conversationPromptTokens, setConversationPromptTokens] = useState(0);
   const [conversationCompletionTokens, setConversationCompletionTokens] = useState(0);
@@ -1004,9 +1010,6 @@ export default function StudioChatPage() {
   const [lastUsage, setLastUsage] = useState<BillingUsage | null>(null);
   const [lastBillingMeta, setLastBillingMeta] = useState<PlainChatTurnMeta | null>(null);
   const [parameterValues, setParameterValues] = useState<ParameterState>({});
-  const [providerSearch, setProviderSearch] = useState("");
-  const [modelSearch, setModelSearch] = useState("");
-  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const loadingReplyRef = useRef(false);
   const messageCountRef = useRef(0);
   const suppressEmptyConversationLoadRef = useRef(false);
@@ -1015,6 +1018,9 @@ export default function StudioChatPage() {
   const failedConversationLoadRef = useRef("");
   const inputImagesRef = useRef<UploadedImageState[]>([]);
   const deepLinkAppliedRef = useRef(false);
+  const settingsBtnRef = useRef<HTMLButtonElement>(null);
+  const settingsPanelRef = useRef<HTMLDivElement>(null);
+  const [settingsPos, setSettingsPos] = useState<{ left: number; bottom: number; width: number } | null>(null);
 
   const searchParams = useSearchParams();
   const forceNewSession = searchParams?.get("new") === "1";
@@ -1024,23 +1030,50 @@ export default function StudioChatPage() {
   const requestedConversationIsActive =
     Boolean(requestedConversationId) && requestedConversationId !== deletedConversationIdRef.current;
   const isBootstrappingRequestedConversation = requestedConversationIsActive && requestedConversationId !== conversationId;
-  const renderPhase: ChatPhase = requestedConversationIsActive ? "chat" : phase;
 
-  // On large screens, reveal the Model Controls panel automatically when a chat
-  // opens. Only auto-opens once per entry into the chat phase, so the user can
-  // still close it and it won't fight them until they go back and reopen a chat.
-  const autoOpenedControlsRef = useRef(false);
+  // Model Controls used to be a docked right rail that auto-opened on large
+  // screens. It is now a popover floating over the composer, so auto-opening
+  // would cover the empty state on every visit. It opens only on request.
+  //
+  // Anchored above the gear button, spanning the composer's width and clamped to
+  // the viewport. Portalled to <body>: the composer's overflow-hidden ancestors
+  // would otherwise clip a panel that opens upward.
   useEffect(() => {
-    if (renderPhase !== "chat") {
-      autoOpenedControlsRef.current = false;
-      return;
-    }
-    if (autoOpenedControlsRef.current) return;
-    if (typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches) {
-      setSettingsPanelOpen(true);
-      autoOpenedControlsRef.current = true;
-    }
-  }, [renderPhase]);
+    if (!settingsPanelOpen) return;
+
+    const place = () => {
+      const btn = settingsBtnRef.current?.getBoundingClientRect();
+      if (!btn) return;
+      const margin = 8;
+      const width = Math.min(680, window.innerWidth - 2 * margin);
+      const left = Math.min(Math.max(margin, btn.right - width), window.innerWidth - width - margin);
+      setSettingsPos({ left, bottom: Math.max(margin, window.innerHeight - btn.top + 10), width });
+    };
+    place();
+
+    const onDocMouseDown = (event: MouseEvent) => {
+      if (
+        !settingsPanelRef.current?.contains(event.target as Node) &&
+        !settingsBtnRef.current?.contains(event.target as Node)
+      ) {
+        setSettingsPanelOpen(false);
+      }
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSettingsPanelOpen(false);
+    };
+
+    document.addEventListener("mousedown", onDocMouseDown);
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      document.removeEventListener("mousedown", onDocMouseDown);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [settingsPanelOpen]);
 
   useEffect(() => {
     loadingReplyRef.current = loadingReply;
@@ -1051,11 +1084,9 @@ export default function StudioChatPage() {
     if (forceNewSession) {
       hasBootstrappedChatRef.current = true;
       sessionStorage.removeItem(STORAGE_KEY);
-      setPhase("select");
       setMessages([]);
-      setSelectedProvider("");
-      setSelectedModel("");
-      setLockedModelId("");
+      // Leave selectedModel/lockedModelId alone: loadConfig seeds a default
+      // model, and a blank one would leave the composer unable to send.
       setConversationId("");
       setConversationTitle(DEFAULT_CONVERSATION_TITLE);
       setConversationTitleDraft(DEFAULT_CONVERSATION_TITLE);
@@ -1080,9 +1111,9 @@ export default function StudioChatPage() {
       if (requestedConversationId === conversationId) {
         return;
       }
-      setPhase("chat");
       setMessages([]);
-      setSelectedProvider("");
+      // Cleared so the conversation loader can install the model the thread was
+      // actually created with, rather than whatever the composer last showed.
       setSelectedModel("");
       setLockedModelId("");
       setConversationId(requestedConversationId);
@@ -1109,18 +1140,14 @@ export default function StudioChatPage() {
       const saved = sessionStorage.getItem(STORAGE_KEY);
       if (!saved) return;
       const parsed = JSON.parse(saved) as {
-        phase?: ChatPhase;
         messages?: ChatMessage[];
-        selectedProvider?: string;
         selectedModel?: string;
         lockedModelId?: string;
         conversationId?: string;
         conversationTitle?: string;
         parameterValues?: ParameterState;
       };
-      setPhase(parsed.phase || "select");
       setMessages(parsed.messages || []);
-      setSelectedProvider(parsed.selectedProvider || "");
       setSelectedModel(parsed.selectedModel || "");
       setLockedModelId(parsed.lockedModelId || "");
       setConversationId(parsed.conversationId || "");
@@ -1136,9 +1163,9 @@ export default function StudioChatPage() {
     if (isBootstrappingRequestedConversation) return;
     sessionStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ phase, messages, selectedProvider, selectedModel, lockedModelId, conversationId, conversationTitle, parameterValues }),
+      JSON.stringify({ messages, selectedModel, lockedModelId, conversationId, conversationTitle, parameterValues }),
     );
-  }, [conversationId, conversationTitle, isBootstrappingRequestedConversation, lockedModelId, messages, parameterValues, phase, selectedModel, selectedProvider]);
+  }, [conversationId, conversationTitle, isBootstrappingRequestedConversation, lockedModelId, messages, parameterValues, selectedModel]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1216,24 +1243,33 @@ export default function StudioChatPage() {
         if (!cancelled) {
           setProviderGroups(nextGroups);
 
-          const nextProvider = selectedProvider && nextGroups.some((group) => group.provider === selectedProvider)
-            ? selectedProvider
-            : nextGroups[0]?.provider || "";
-          const nextProviderModels = nextGroups.find((group) => group.provider === nextProvider)?.models || [];
-          const nextSelected = selectedModel && nextProviderModels.some((model) => model.id === selectedModel)
-            ? selectedModel
-            : nextProviderModels[0]?.id || "";
+          const allModels = nextGroups.flatMap((group) => group.models);
+          const knows = (id: string) => Boolean(id) && allModels.some((model) => model.id === id);
 
-          setSelectedProvider(nextProvider);
-          setSelectedModel(nextSelected);
+          // There is no catalogue screen any more, so the composer must boot with
+          // a usable model: Send and the attach button are both gated on
+          // lockedModelId. Prefer the first curated recommendation that actually
+          // exists, then fall back to whatever the catalogue offers first.
+          const defaultModelId = recommendedModels[0]?.id || allModels[0]?.id || "";
 
-          if (lockedModelId && !nextGroups.some((group) => group.models.some((model) => model.id === lockedModelId))) {
-            setLockedModelId("");
+          // A conversation deep-link clears both ids on purpose and lets the
+          // conversation loader install the thread's own model — don't race it.
+          if (!requestedConversationIsActive) {
+            const nextSelected = knows(selectedModel) ? selectedModel : defaultModelId;
+            setSelectedModel(nextSelected);
+            setLockedModelId((current) => (knows(current) ? current : nextSelected));
+          }
+
+          // The locked model vanished from the catalogue (disabled by an admin,
+          // provider pulled). Drop the dead thread and reseed rather than
+          // stranding the composer on a model the backend will reject.
+          if (lockedModelId && !knows(lockedModelId)) {
+            setLockedModelId(defaultModelId);
+            setSelectedModel(defaultModelId);
             setConversationId("");
             setConversationTitle(DEFAULT_CONVERSATION_TITLE);
             setConversationTitleDraft(DEFAULT_CONVERSATION_TITLE);
             setEditingConversationTitle(false);
-            setPhase("select");
             setMessages([]);
             setConversationPromptTokens(0);
             setConversationCompletionTokens(0);
@@ -1262,8 +1298,8 @@ export default function StudioChatPage() {
   }, [authLoading, user]);
 
   // Deep-link bootstrap: open the Playground straight into a specific model with
-  // an optional pre-filled prompt (e.g. dashboard quick-start cards link here as
-  // /studio/chat?model=<id>&prompt=<text>). Runs once after models load.
+  // an optional pre-filled prompt (/playground?model=<id>&prompt=<text>; the old
+  // /studio/chat route forwards its query here). Runs once after models load.
   useEffect(() => {
     if (deepLinkAppliedRef.current) return;
     if (!requestedModelParam) return;
@@ -1271,14 +1307,9 @@ export default function StudioChatPage() {
 
     deepLinkAppliedRef.current = true;
 
-    let match: { provider: string; modelId: string } | null = null;
-    for (const group of providerGroups) {
-      const found = group.models.find((model) => model.id === requestedModelParam);
-      if (found) {
-        match = { provider: group.provider, modelId: found.id };
-        break;
-      }
-    }
+    const match = providerGroups
+      .flatMap((group) => group.models)
+      .find((model) => model.id === requestedModelParam) || null;
 
     // Strip the deep-link params so a refresh / back nav doesn't re-trigger it.
     if (typeof window !== "undefined") {
@@ -1288,12 +1319,11 @@ export default function StudioChatPage() {
       window.history.replaceState({}, "", url.toString());
     }
 
-    if (!match) return; // Requested model not available — leave the default picker.
+    if (!match) return; // Requested model not available — keep the seeded default.
 
     hasBootstrappedChatRef.current = true;
-    setSelectedProvider(match.provider);
-    setSelectedModel(match.modelId);
-    setLockedModelId(match.modelId);
+    setSelectedModel(match.id);
+    setLockedModelId(match.id);
     setConversationId("");
     setConversationTitle(DEFAULT_CONVERSATION_TITLE);
     setConversationTitleDraft(DEFAULT_CONVERSATION_TITLE);
@@ -1305,7 +1335,6 @@ export default function StudioChatPage() {
     setLastUsage(null);
     setLastBillingMeta(null);
     setError(null);
-    setPhase("chat");
     if (requestedPromptParam) setInput(requestedPromptParam);
   }, [providerGroups, requestedModelParam, requestedPromptParam]);
 
@@ -1313,7 +1342,7 @@ export default function StudioChatPage() {
     let cancelled = false;
 
     async function loadConversation() {
-      if (!user || phase !== "chat" || !conversationId) return;
+      if (!user || !conversationId) return;
 
       try {
         setLoadingConversation(true);
@@ -1351,7 +1380,6 @@ export default function StudioChatPage() {
         setConversationTitleDraft(DEFAULT_CONVERSATION_TITLE);
         setEditingConversationTitle(false);
         setMessages([]);
-        setPhase("select");
         setConversationPromptTokens(0);
         setConversationCompletionTokens(0);
         setConversationCostTotal(0);
@@ -1369,7 +1397,13 @@ export default function StudioChatPage() {
     return () => {
       cancelled = true;
     };
-  }, [conversationId, phase, user]);
+  }, [conversationId, user]);
+
+  useEffect(() => {
+    if (!notice) return;
+    const timer = setTimeout(() => setNotice(null), 3200);
+    return () => clearTimeout(timer);
+  }, [notice]);
 
   useEffect(() => {
     inputImagesRef.current = inputImages;
@@ -1385,53 +1419,36 @@ export default function StudioChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loadingReply]);
 
-  const activeProviderGroup = useMemo(
-    () => providerGroups.find((group) => group.provider === selectedProvider) || null,
-    [providerGroups, selectedProvider],
-  );
-
-  const visibleProviderGroups = useMemo(() => {
-    const providerQuery = providerSearch.trim().toLowerCase();
-    const modelQuery = modelSearch.trim().toLowerCase();
-
-    return providerGroups
-      .map((group) => {
-        const providerMatches = !providerQuery || group.provider.toLowerCase().includes(providerQuery);
-        const models = group.models.filter((model) => {
-          if (modelQuery) {
-            const haystack = `${model.displayName} ${getModelDescription(model.id, language) || model.description || ""}`.toLowerCase();
-            if (!haystack.includes(modelQuery)) return false;
-          }
-          return providerMatches;
-        });
-        return { ...group, models };
-      })
-      .filter((group) => group.models.length > 0);
-  }, [modelSearch, providerGroups, providerSearch, language]);
-
-  const visibleActiveProviderGroup = useMemo(() => {
-    return visibleProviderGroups.find((group) => group.provider === selectedProvider) || visibleProviderGroups[0] || null;
-  }, [selectedProvider, visibleProviderGroups]);
-
-  const visibleSelectedModelOption = useMemo(() => {
-    return visibleActiveProviderGroup?.models.find((model) => model.id === selectedModel)
-      || visibleActiveProviderGroup?.models[0]
-      || null;
-  }, [selectedModel, visibleActiveProviderGroup]);
-
-  const selectedModelOption = useMemo(
-    () => activeProviderGroup?.models.find((model) => model.id === selectedModel) || null,
-    [activeProviderGroup, selectedModel],
-  );
-
   const lockedModel = useMemo(
     () => providerGroups.flatMap((group) => group.models).find((model) => model.id === lockedModelId) || null,
     [lockedModelId, providerGroups],
   );
 
-  const selectedModelMinimumCost = useMemo(
-    () => getChatModelMinimumCost(visibleSelectedModelOption),
-    [visibleSelectedModelOption],
+  // Flattened, presentation-ready view of the catalogue for the composer's model
+  // picker. Everything the popover needs (labels, cost, affordability) is resolved
+  // here so the picker itself stays a dumb, testable component.
+  const pickerGroups = useMemo<PickerGroup[]>(
+    () =>
+      providerGroups.map((group) => ({
+        provider: group.provider,
+        label: group.provider === RECOMMENDED_PROVIDER ? t("Recommended") : toProviderLabel(group.provider),
+        icon: getProviderIcon(group.provider),
+        isRecommended: group.provider === RECOMMENDED_PROVIDER,
+        models: group.models.map((model) => {
+          const minimumCost = getChatModelMinimumCost(model);
+          return {
+            id: model.id,
+            displayName: model.displayName,
+            description: getModelDescription(model.id, language) || model.description || "",
+            tags: getModelFeatureLabels(model).map((label) => t(label)),
+            minimumCost,
+            // currentCredits is null until the profile lands; treat unknown as
+            // affordable rather than greying out the whole catalogue on load.
+            affordable: currentCredits === null || currentCredits >= minimumCost,
+          };
+        }),
+      })),
+    [providerGroups, language, currentCredits, t],
   );
 
   const lockedModelMinimumCost = useMemo(
@@ -1500,13 +1517,19 @@ export default function StudioChatPage() {
     };
   }, []);
 
-  const insufficientSelectedModelCredits = currentCredits !== null && currentCredits < selectedModelMinimumCost;
   const insufficientLockedModelMinimumCredits = currentCredits !== null && currentCredits < lockedModelMinimumCost;
   const insufficientLockedModelExpectedCredits = currentCredits !== null && currentCredits < lockedModelExpectedCost;
 
+  // Drives parameterValues (so hidden params keep their defaults and still ship).
   const lockedModelParameters = useMemo(
     () => (lockedModel ? getVisibleChatParameters(lockedModel.parameterSchema) : []),
     [lockedModel],
+  );
+
+  // Drives what Model Controls actually renders.
+  const editableModelParameters = useMemo(
+    () => lockedModelParameters.filter(([key]) => !HIDDEN_CHAT_PARAMETER_KEYS.has(key)),
+    [lockedModelParameters],
   );
 
   useEffect(() => {
@@ -1660,35 +1683,56 @@ export default function StudioChatPage() {
     void uploadInputImageFiles(pastedFiles);
   }
 
-  async function handleStartChat() {
-    if (!selectedModel || !user) return;
-    if (insufficientSelectedModelCredits) {
-      setError(`You need at least ${selectedModelMinimumCost.toFixed(2)} credits to use this model.`);
+  // A conversation's model is fixed server-side: POST /chat/conversations/{id}/messages
+  // carries no model and the backend reads conversation.model. So switching models
+  // mid-thread can't be expressed — once messages exist we fork into a fresh chat
+  // instead, carrying the composer's draft across. The old thread stays in history.
+  function handleModelChange(nextModelId: string) {
+    if (!nextModelId || !user || nextModelId === lockedModelId) return;
+
+    const nextModel = providerGroups.flatMap((group) => group.models).find((model) => model.id === nextModelId);
+    if (!nextModel) return;
+
+    const nextMinimumCost = getChatModelMinimumCost(nextModel);
+    if (currentCredits !== null && currentCredits < nextMinimumCost) {
+      setError(`You need at least ${nextMinimumCost.toFixed(2)} credits to use this model.`);
       return;
     }
 
-    try {
-      setLoadingReply(true);
-      setError(null);
-      setLockedModelId(selectedModel);
-      setConversationId("");
-      setConversationTitle(DEFAULT_CONVERSATION_TITLE);
-      setConversationTitleDraft(DEFAULT_CONVERSATION_TITLE);
-      setEditingConversationTitle(false);
-      setConversationPromptTokens(0);
-      setConversationCompletionTokens(0);
-      setConversationCostTotal(0);
-      setLastUsage(null);
-      setLastBillingMeta(null);
-      setPhase("chat");
-      setMessages([]);
-      setInput("");
-      clearAttachedImages();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t("Could not start a chat."));
-    } finally {
-      setLoadingReply(false);
+    setError(null);
+    setSelectedModel(nextModelId);
+    setLockedModelId(nextModelId);
+
+    // Empty chat: nothing to fork, just swap the model under the composer.
+    if (messages.length === 0 && !conversationId) return;
+
+    // Same bookkeeping as handleNewChat: mark the thread we're leaving so the
+    // bootstrap effect won't see a stale ?conversation= and pull us straight back
+    // into it, and go through the router (a raw history.replaceState leaves
+    // useSearchParams() still reporting the old id).
+    suppressEmptyConversationLoadRef.current = true;
+    hasBootstrappedChatRef.current = true;
+    if (conversationId) {
+      deletedConversationIdRef.current = conversationId;
     }
+    if (typeof window !== "undefined") {
+      sessionStorage.removeItem(STORAGE_KEY);
+    }
+    router.replace("/playground");
+
+    setConversationId("");
+    setConversationTitle(DEFAULT_CONVERSATION_TITLE);
+    setConversationTitleDraft(DEFAULT_CONVERSATION_TITLE);
+    setEditingConversationTitle(false);
+    setConversationPromptTokens(0);
+    setConversationCompletionTokens(0);
+    setConversationCostTotal(0);
+    setLastUsage(null);
+    setLastBillingMeta(null);
+    setMessages([]);
+    // `input` and the attached images survive on purpose: the user was mid-thought
+    // when they reached for a different model.
+    setNotice(`${t("Started a new chat with")} ${nextModel.displayName}`);
   }
 
   async function handleSend() {
@@ -1829,68 +1873,6 @@ export default function StudioChatPage() {
   const lastTotalTokens = getUsageTotalTokens(lastUsage);
   const lastBillingComponents = Object.entries(lastBillingMeta?.billing?.components || {});
 
-  function renderModelParamsPanel(isMobile = false) {
-    return (
-      <div
-        className={`h-full ${
-          isMobile
-            ? "overflow-hidden rounded-xl border border-[rgba(173,198,255,0.1)] bg-[rgba(25,31,49,0.7)] backdrop-blur-[16px]"
-            : "border-l border-white/10 bg-transparent"
-        }`}
-      >
-        <div className={`flex items-center justify-end border-b border-white/10 ${isMobile ? "p-5" : "px-4 py-5"}`}>
-          {lockedModelParameters.length > 0 ? (
-            <button
-              type="button"
-              onClick={() => {
-                if (!lockedModel) return;
-                setParameterValues(createParameterState(lockedModel.parameterSchema));
-              }}
-              className="text-[10px] font-bold uppercase text-[#adc6ff] hover:underline"
-            >
-              {t("Reset")}
-            </button>
-          ) : null}
-        </div>
-
-        <div className={`space-y-4 overflow-y-auto custom-scrollbar ${isMobile ? "max-h-[420px] p-5" : "h-[calc(100vh-64px-61px)] px-4 py-5"}`}>
-              {lockedModelParameters.length > 0 ? (
-                <div className="space-y-4">
-                  {lockedModelParameters.map(([key, entry]) => {
-                    const pricingHint = getChatParamPricingHint(lockedModel, key);
-                    return (
-                      <div key={key} className="space-y-2">
-                        <div className="flex items-start justify-between gap-3">
-                          <label className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-[#c2c6d6]">
-                            <span>{toParameterLabel(key)}</span>
-                            {pricingHint ? (
-                              <span
-                                className="group relative mr-1 inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-white/15 text-[10px] font-bold normal-case tracking-normal text-[#adc6ff]"
-                                aria-label="Show size pricing"
-                              >
-                                !
-                                <span className="pointer-events-none absolute left-4 top-full z-20 mt-4 hidden w-max max-w-[220px] whitespace-pre-line rounded-md border border-white/10 bg-[#151b2d] px-3 py-2 text-[11px] font-medium normal-case leading-5 tracking-normal text-white shadow-[0_12px_30px_rgba(0,0,0,0.35)] group-hover:block">
-                                  {pricingHint}
-                                </span>
-                              </span>
-                            ) : null}
-                          </label>
-                        </div>
-                        {renderParameterControl(key, entry)}
-                      </div>
-                    );
-                  })}
-                </div>
-          ) : (
-            <div className={`${isMobile ? "rounded-lg border border-white/8 bg-[#151b2d] px-4 py-5" : "px-1 py-2"} text-sm leading-6 text-[#8c909f]`}>
-              {t("This model does not expose editable chat parameters yet.")}
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
-
   async function handleNewChat() {
     if (!lockedModelId || !user) return;
 
@@ -1905,8 +1887,7 @@ export default function StudioChatPage() {
       if (typeof window !== "undefined") {
         sessionStorage.removeItem(STORAGE_KEY);
       }
-      router.replace("/studio/chat");
-      setPhase("chat");
+      router.replace("/playground");
       setConversationId("");
       setConversationTitle(DEFAULT_CONVERSATION_TITLE);
       setConversationTitleDraft(DEFAULT_CONVERSATION_TITLE);
@@ -1982,25 +1963,65 @@ export default function StudioChatPage() {
     const value = parameterValues[key];
 
     if (entry.type === "enum" && Array.isArray(entry.values) && entry.values.length > 0) {
+      const current = typeof value === "string" || typeof value === "number" ? String(value) : "";
+
+      const isOptionAffordable = (option: string) =>
+        currentCredits === null ||
+        getChatModelExpectedCost(lockedModel, { ...parameterValues, [key]: option }) <= currentCredits;
+
+      // Aspect ratio reads as a shape, not a string: draw each option as a box in
+      // its true proportions. Reuses the packs picker, which needs --accent vars.
+      if (SHAPE_PARAMETER_KEYS.has(key)) {
+        return (
+          <div
+            style={
+              {
+                "--accent": "#adc6ff",
+                "--accent-15": "color-mix(in srgb, #adc6ff 15%, transparent)",
+                "--accent-30": "color-mix(in srgb, #adc6ff 30%, transparent)",
+                "--accent-60": "color-mix(in srgb, #adc6ff 60%, transparent)",
+              } as CSSProperties
+            }
+          >
+            <AspectShapePicker
+              options={entry.values.map((option) => String(option))}
+              value={current}
+              onChange={(option) => setParameterValues((prev) => ({ ...prev, [key]: option }))}
+              isOptionDisabled={(option) => !isOptionAffordable(option)}
+            />
+          </div>
+        );
+      }
+
+      // A segmented row only survives a handful of options; aspect ratio routinely
+      // ships 6+. Past that, wrap into a chip grid instead of squeezing the row.
+      const segmented = entry.values.length <= 4;
+
       return (
-        <select
-          value={typeof value === "string" || typeof value === "number" ? String(value) : ""}
-          onChange={(event) => {
-            setParameterValues((current) => ({ ...current, [key]: event.target.value }));
-          }}
-          className="w-full rounded-md border border-white/10 bg-[#101728] px-3 py-2 text-sm text-white outline-none transition focus:border-[#adc6ff]/40"
-        >
+        <div className={segmented ? "flex rounded-lg border border-white/[0.07] bg-[#0a0f1e] p-0.5" : "flex flex-wrap gap-1.5"}>
           {entry.values.map((option) => {
             const nextOption = String(option);
-            const nextValues = { ...parameterValues, [key]: nextOption };
-            const affordable = currentCredits === null || getChatModelExpectedCost(lockedModel, nextValues) <= currentCredits;
+            const affordable = isOptionAffordable(nextOption);
+            const active = nextOption === current;
+
             return (
-              <option key={nextOption} value={nextOption} disabled={!affordable}>
-                {toEnumOptionLabel(key, nextOption)}{!affordable ? ` — ${t("locked")}` : ""}
-              </option>
+              <button
+                key={nextOption}
+                type="button"
+                disabled={!affordable}
+                title={!affordable ? t("locked") : undefined}
+                onClick={() => setParameterValues((prev) => ({ ...prev, [key]: nextOption }))}
+                className={`${segmented ? "flex-1" : ""} rounded-md px-2.5 py-1.5 text-[12px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-35 ${
+                  active
+                    ? "bg-white/[0.09] text-white shadow-[0_1px_2px_rgba(0,0,0,0.4)]"
+                    : `text-white/45 hover:text-white/80 ${segmented ? "" : "border border-white/[0.07]"}`
+                }`}
+              >
+                {toEnumOptionLabel(key, nextOption)}
+              </button>
             );
           })}
-        </select>
+        </div>
       );
     }
 
@@ -2038,44 +2059,40 @@ export default function StudioChatPage() {
       const step = getParameterStep(entry);
       const numericValue = typeof value === "number" ? value : min;
 
+      // The numeric readout sits in a pill on the label row (see the panel's
+      // header render), leaving the track the full width of the cell.
       return (
-        <div className="space-y-3">
-          <div className="flex items-center gap-3">
-            <input
-              type="range"
-              min={min}
-              max={max}
-              step={step}
-              value={numericValue}
-              onChange={(event) => {
-                const nextValue = entry.type === "integer" ? Number.parseInt(event.target.value, 10) : Number.parseFloat(event.target.value);
-                setParameterValues((current) => ({ ...current, [key]: nextValue }));
-              }}
-              className="chat-range-slider"
-            />
-            <input
-              type="number"
-              min={min}
-              max={max}
-              step={step}
-              value={numericValue}
-              onChange={(event) => {
-                const raw = event.target.value;
-                const parsed = entry.type === "integer" ? Number.parseInt(raw, 10) : Number.parseFloat(raw);
-                if (Number.isNaN(parsed)) {
-                  setParameterValues((current) => ({ ...current, [key]: min }));
-                  return;
-                }
-                const bounded = Math.min(max, Math.max(min, parsed));
-                setParameterValues((current) => ({ ...current, [key]: bounded }));
-              }}
-              className="w-28 rounded-md border border-white/10 bg-[#101728] px-3 py-2 text-sm text-white outline-none transition focus:border-[#adc6ff]/40"
-            />
-          </div>
-          <div className="flex justify-between text-[11px] text-[#8c909f]">
-            <span>{min}</span>
-            <span>{max}</span>
-          </div>
+        <div className="flex items-center gap-3">
+          <input
+            type="range"
+            min={min}
+            max={max}
+            step={step}
+            value={numericValue}
+            onChange={(event) => {
+              const nextValue = entry.type === "integer" ? Number.parseInt(event.target.value, 10) : Number.parseFloat(event.target.value);
+              setParameterValues((current) => ({ ...current, [key]: nextValue }));
+            }}
+            className="chat-range-slider"
+          />
+          <input
+            type="number"
+            min={min}
+            max={max}
+            step={step}
+            value={numericValue}
+            onChange={(event) => {
+              const raw = event.target.value;
+              const parsed = entry.type === "integer" ? Number.parseInt(raw, 10) : Number.parseFloat(raw);
+              if (Number.isNaN(parsed)) {
+                setParameterValues((current) => ({ ...current, [key]: min }));
+                return;
+              }
+              const bounded = Math.min(max, Math.max(min, parsed));
+              setParameterValues((current) => ({ ...current, [key]: bounded }));
+            }}
+            className="w-16 shrink-0 rounded-md border border-white/[0.07] bg-[#0a0f1e] px-2 py-1 text-right text-[12px] tabular-nums text-white/80 outline-none transition focus:border-[#adc6ff]/40"
+          />
         </div>
       );
     }
@@ -2142,210 +2159,8 @@ export default function StudioChatPage() {
   }
 
   return (
-    <section className={renderPhase === "chat" ? "h-dvh overflow-hidden" : "min-h-[calc(100vh-4rem)] overflow-x-hidden px-4 py-4 sm:px-6 sm:py-8 lg:px-10"}>
-      {renderPhase === "select" ? (
-        <div className="relative mx-auto flex min-h-[calc(100vh-6rem)] max-w-[1600px] flex-col overflow-hidden rounded-2xl border border-[#424754]/40 bg-[#051424] shadow-[0_24px_80px_rgba(0,0,0,0.28)] sm:min-h-[calc(100vh-8rem)]">
-          <div className="pointer-events-none absolute right-[-10rem] top-[-8rem] h-[34rem] w-[34rem] rounded-full bg-[#adc6ff]/10 blur-[120px]" />
-          <div className="pointer-events-none absolute bottom-[-10rem] left-[20%] h-[24rem] w-[24rem] rounded-full bg-[#4d8eff]/5 blur-[100px]" />
-
-          <div className="relative z-10 flex flex-1 flex-col px-4 py-5 sm:px-6 sm:py-7 lg:px-8">
-            <section className="mb-6 sm:mb-10">
-              <div className="mb-6 flex flex-col gap-2">
-                <p className="font-mono text-[11px] font-medium uppercase tracking-[0.18em] text-[#8c909f]">{t("Playground")}</p>
-                <h1 className="font-headline text-3xl font-bold tracking-tight text-[#d4e4fa] sm:text-4xl">{t("Engineered AI")}</h1>
-              </div>
-
-              <div className="mb-7 max-w-2xl">
-                <div className="group relative rounded-full shadow-[0_0_15px_rgba(173,198,255,0.16)]">
-                  <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-[#8c909f] transition-colors group-focus-within:text-[#adc6ff]">search</span>
-                  <input
-                    type="text"
-                    value={modelSearch}
-                    onChange={(event) => setModelSearch(event.target.value)}
-                    placeholder={t("Search across all models...")}
-                    className="w-full rounded-full border border-[#424754]/50 bg-[#010f1f]/65 py-3 pl-12 pr-6 text-sm text-[#d4e4fa] backdrop-blur-sm placeholder:text-[#8c909f]/55 transition-all focus:border-[#adc6ff] focus:outline-none focus:ring-2 focus:ring-[#adc6ff]/20"
-                  />
-                </div>
-              </div>
-
-              <div className="hidden gap-4 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:flex">
-                {providerGroups.map((group) => {
-                  const active = (visibleActiveProviderGroup?.provider || selectedProvider) === group.provider;
-                  const recommended = group.provider === RECOMMENDED_PROVIDER;
-                  return (
-                    <button
-                      key={group.provider}
-                      type="button"
-                      onClick={() => {
-                        setSelectedProvider(group.provider);
-                        setSelectedModel(group.models[0]?.id || "");
-                      }}
-                      className={`flex flex-shrink-0 items-center gap-3 rounded-2xl border px-5 py-3 text-left backdrop-blur-xl transition-all duration-300 ${
-                        active
-                          ? recommended
-                            ? "border-[#f5c97b] bg-[#f5c97b]/10 text-[#f8e3b8] shadow-[0_0_15px_rgba(245,201,123,0.22)]"
-                            : "border-[#adc6ff] bg-[#adc6ff]/10 text-[#d4e4fa] shadow-[0_0_15px_rgba(173,198,255,0.2)]"
-                          : recommended
-                            ? "border-[#f5c97b]/40 bg-[#f5c97b]/[0.04] text-[#e9d3a3] hover:border-[#f5c97b]/70 hover:bg-[#f5c97b]/10 hover:text-[#f8e3b8]"
-                            : "border-[#334155]/45 bg-[#0f172a]/40 text-[#c2c6d6] hover:border-[#adc6ff]/70 hover:bg-[#1c2b3c]/55 hover:text-[#d4e4fa]"
-                      }`}
-                    >
-                      <span className={`material-symbols-outlined text-[21px] ${recommended ? "text-[#f5c97b]" : active ? "text-[#adc6ff]" : "text-[#c2c6d6]"}`} style={active || recommended ? { fontVariationSettings: "'FILL' 1" } : undefined}>
-                        {getProviderIcon(group.provider)}
-                      </span>
-                      <span className="font-mono text-[12px] font-medium uppercase tracking-wider">{recommended ? t("Recommended") : group.provider}</span>
-                      {active ? (
-                        <span className={`material-symbols-outlined text-[18px] ${recommended ? "text-[#f5c97b]" : "text-[#adc6ff]"}`}>check_circle</span>
-                      ) : (
-                        <span className="rounded-full bg-[#273647]/70 px-2 py-0.5 text-[10px] text-[#8c909f]">{group.models.length}</span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div className="flex flex-wrap gap-2 sm:hidden">
-                {providerGroups.map((group) => {
-                  const active = (visibleActiveProviderGroup?.provider || selectedProvider) === group.provider;
-                  const recommended = group.provider === RECOMMENDED_PROVIDER;
-                  return (
-                    <button
-                      key={group.provider}
-                      type="button"
-                      onClick={() => {
-                        setSelectedProvider(group.provider);
-                        setSelectedModel(group.models[0]?.id || "");
-                      }}
-                      className={`flex flex-shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-[11px] font-medium uppercase tracking-wide backdrop-blur-xl transition-all duration-300 ${
-                        active
-                          ? recommended
-                            ? "border-[#f5c97b] bg-[#f5c97b]/10 text-[#f8e3b8] shadow-[0_0_15px_rgba(245,201,123,0.22)]"
-                            : "border-[#adc6ff] bg-[#adc6ff]/10 text-[#d4e4fa] shadow-[0_0_15px_rgba(173,198,255,0.2)]"
-                          : recommended
-                            ? "border-[#f5c97b]/40 bg-[#f5c97b]/[0.04] text-[#e9d3a3] hover:border-[#f5c97b]/70 hover:text-[#f8e3b8]"
-                            : "border-[#334155]/45 bg-[#0f172a]/40 text-[#c2c6d6] hover:border-[#adc6ff]/70 hover:text-[#d4e4fa]"
-                      }`}
-                    >
-                      <span className={`material-symbols-outlined text-[16px] ${recommended ? "text-[#f5c97b]" : active ? "text-[#adc6ff]" : "text-[#8c909f]"}`} style={active || recommended ? { fontVariationSettings: "'FILL' 1" } : undefined}>
-                        {getProviderIcon(group.provider)}
-                      </span>
-                      <span className="font-mono">{recommended ? t("Recommended") : group.provider}</span>
-                      {active ? (
-                        <span className={`material-symbols-outlined text-[14px] ${recommended ? "text-[#f5c97b]" : "text-[#adc6ff]"}`}>check_circle</span>
-                      ) : null}
-                    </button>
-                  );
-                })}
-              </div>
-            </section>
-
-            <section className="flex min-h-0 flex-1 flex-col pb-24">
-              <div className="mb-7 flex items-center justify-between gap-4">
-                <div>
-                  <h2 className="font-mono text-[12px] font-medium uppercase tracking-[0.18em] text-[#8c909f]">{t("Available Models")}</h2>
-                  {visibleActiveProviderGroup ? (
-                    <p className="mt-1 text-sm text-[#c2c6d6]/70">{visibleActiveProviderGroup.provider === RECOMMENDED_PROVIDER ? t("Recommended") : visibleActiveProviderGroup.provider} - {visibleActiveProviderGroup.models.length} {t("visible")}</p>
-                  ) : null}
-                </div>
-                <div className="hidden gap-2 sm:flex">
-                  <button
-                    type="button"
-                    onClick={() => setViewMode("grid")}
-                    className={`rounded-lg border p-2 transition-all ${viewMode === "grid" ? "border-[#424754] bg-[#122131] text-[#adc6ff]" : "border-transparent text-[#8c909f] hover:text-[#c2c6d6]"}`}
-                  >
-                    <span className="material-symbols-outlined block text-[20px]">grid_view</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setViewMode("list")}
-                    className={`rounded-lg border p-2 transition-all ${viewMode === "list" ? "border-[#424754] bg-[#122131] text-[#adc6ff]" : "border-transparent text-[#8c909f] hover:text-[#c2c6d6]"}`}
-                  >
-                    <span className="material-symbols-outlined block text-[20px]">list</span>
-                  </button>
-                </div>
-              </div>
-
-              {loadingConfig ? (
-                <div className="rounded-2xl border border-[#334155]/45 bg-[#0f172a]/40 p-8 text-sm text-[#c2c6d6] backdrop-blur-xl">{t("Loading models...")}</div>
-              ) : visibleActiveProviderGroup ? (
-                <div className={`grid gap-4 ${viewMode === "grid" ? "grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4" : "grid-cols-1"}`}>
-                  {visibleActiveProviderGroup.models.map((model) => {
-                    const active = (visibleSelectedModelOption?.id || selectedModel) === model.id;
-                    const recommendedActive = visibleActiveProviderGroup.provider === RECOMMENDED_PROVIDER;
-                    const minimumCost = getChatModelMinimumCost(model);
-                    const affordable = currentCredits === null || currentCredits >= minimumCost;
-                    const featureLabels = getModelFeatureLabels(model);
-                    return (
-                      <button
-                        key={model.id}
-                        type="button"
-                        disabled={!affordable}
-                        onClick={() => {
-                          if (!affordable) return;
-                          setSelectedProvider(visibleActiveProviderGroup.provider);
-                          setSelectedModel(model.id);
-                        }}
-                        className={`group flex min-h-[136px] flex-col rounded-xl border p-4 text-left backdrop-blur-xl transition-all duration-300 ${
-                          !affordable
-                            ? "cursor-not-allowed border-[#334155]/30 bg-[#0f172a]/25 opacity-55"
-                            : active
-                            ? recommendedActive
-                              ? "border-[#f5c97b]/70 bg-[#f5c97b]/10 shadow-[0_0_20px_rgba(245,201,123,0.16)]"
-                              : "border-[#adc6ff]/70 bg-[#adc6ff]/10 shadow-[0_0_20px_rgba(173,198,255,0.14)]"
-                            : recommendedActive
-                            ? "border-[#f5c97b]/25 bg-[#0f172a]/40 hover:border-[#f5c97b] hover:bg-[#241d10]/50 hover:shadow-[0_0_20px_rgba(245,201,123,0.12)]"
-                            : "border-[#334155]/45 bg-[#0f172a]/40 hover:border-[#adc6ff] hover:bg-[#1c2b3c]/50 hover:shadow-[0_0_20px_rgba(173,198,255,0.1)]"
-                        }`}
-                      >
-                        <div className="mb-2 flex items-start justify-between gap-3">
-                          <h3 className={`font-mono text-[13px] font-medium uppercase tracking-[0.04em] text-[#d4e4fa] transition-colors ${recommendedActive ? "group-hover:text-[#f5c97b]" : "group-hover:text-[#adc6ff]"}`}>{model.displayName}</h3>
-                          {active ? (
-                            <span className={`material-symbols-outlined text-[20px] ${recommendedActive ? "text-[#f5c97b]" : "text-[#adc6ff]"}`} style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
-                          ) : null}
-                        </div>
-
-                        <p className="mb-3 line-clamp-2 flex-1 text-[13px] leading-5 text-[#c2c6d6]/80">{getModelDescription(model.id, language) || t("Usage-based conversational model for playground.")}</p>
-
-                        {!affordable ? (
-                          <p className="mb-3 text-[11px] font-medium text-[#ffb4ab]">{t("Need at least")} {minimumCost.toFixed(2)} {t("credits.")}</p>
-                        ) : null}
-
-                        <div className="mt-auto flex flex-wrap gap-2">
-                          {featureLabels.map((label) => (
-                            <span key={label} className="rounded-full border border-[#424754]/70 px-3 py-1 text-[10px] font-medium uppercase tracking-[0.08em] text-[#8c909f]">
-                              {t(label)}
-                            </span>
-                          ))}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="rounded-2xl border border-[#334155]/45 bg-[#0f172a]/40 p-8 text-sm text-[#c2c6d6] backdrop-blur-xl">{t("No models available for the current search.")}</div>
-              )}
-            </section>
-          </div>
-
-          <footer className="sticky bottom-0 z-20 border-t border-[#424754]/35 bg-[#051424]/85 backdrop-blur-md">
-            <div className="flex flex-col justify-between gap-4 px-4 py-4 sm:flex-row sm:items-center sm:px-6 lg:px-8">
-              <Link href="/studio/start" className="flex items-center gap-2 font-mono text-[11px] font-medium uppercase tracking-[0.12em] text-[#c2c6d6] transition-colors hover:text-[#d4e4fa]">
-                <span className="material-symbols-outlined text-[18px]">arrow_back</span>
-                {t("Provider")}
-              </Link>
-              <button
-                type="button"
-                onClick={() => void handleStartChat()}
-                disabled={!visibleSelectedModelOption || loadingConfig || loadingReply || insufficientSelectedModelCredits}
-                className="group flex w-full items-center justify-center gap-2 rounded-xl bg-[#adc6ff] px-6 py-3 font-mono text-[13px] font-medium uppercase tracking-[0.05em] text-[#002e6a] shadow-[0_0_24px_rgba(173,198,255,0.2)] transition-all hover:scale-[1.02] hover:bg-[#adc6ff]/90 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
-              >
-                <span>{loadingReply ? t("Starting...") : insufficientSelectedModelCredits ? `${t("Need")} ${selectedModelMinimumCost.toFixed(2)} ${t("Credits")}` : t("Continue")}</span>
-                <span className="material-symbols-outlined text-[18px] transition-transform group-hover:translate-x-1">arrow_forward</span>
-              </button>
-            </div>
-          </footer>
-        </div>
-      ) : (
+    // Full-height app surface: the rail is supplied by playground/layout.tsx.
+    <section className="h-dvh overflow-hidden">
         <MotionConfig reducedMotion="user">
         <div ref={chatCanvasRef} className="chat-canvas flex h-full flex-col overflow-hidden">
           <div className="chat-sea" aria-hidden="true">
@@ -2446,20 +2261,12 @@ export default function StudioChatPage() {
               <button type="button" onClick={() => void handleDeleteConversation()} disabled={!conversationId || loadingReply} title={t("Delete Chat")} className="chat-topbar-btn hover:!text-red-400/80">
                 <span className="material-symbols-outlined text-[18px]">delete_outline</span>
               </button>
-              <Link href="/studio/start" title={t("Back to Choice")} className="chat-topbar-btn">
-                <span className="material-symbols-outlined text-[18px]">arrow_back</span>
-              </Link>
-
               <div className="mx-0.5 h-4 w-px bg-white/[0.06]" />
 
               <div className="chat-credits-badge">
                 <span className="material-symbols-outlined text-[13px] text-[#adc6ff]" style={{ fontVariationSettings: "'FILL' 1" }}>bolt</span>
                 <span className="text-[11px] font-bold tabular-nums text-blue-100/80">{currentCredits === null ? "..." : currentCredits.toFixed(2)}</span>
               </div>
-
-              <button type="button" onClick={() => setSettingsPanelOpen((prev) => !prev)} className={`chat-topbar-btn ${settingsPanelOpen ? "!text-[#adc6ff] bg-white/[0.04]" : ""}`} title={t("Model Settings")}>
-                <span className="material-symbols-outlined text-[18px]">tune</span>
-              </button>
             </div>
           </header>
 
@@ -2607,8 +2414,16 @@ export default function StudioChatPage() {
                 </div>
               </div>
 
-              <div className="shrink-0 px-2.5 pb-3 pt-2 sm:px-5 sm:pb-5">
+              {/* pb-[5.5rem] clears the app rail's fixed mobile bottom nav (h-20);
+                  on lg the rail is a left column and the extra padding goes away. */}
+              <div className="shrink-0 px-2.5 pb-[5.5rem] pt-2 sm:px-5 lg:pb-5">
                 <div className="mx-auto max-w-2xl">
+                  {notice ? (
+                    <div className="mb-3 flex items-center gap-2 rounded-xl border border-[#adc6ff]/25 bg-[#adc6ff]/[0.08] px-4 py-2.5 text-[13px] text-[#adc6ff]">
+                      <span className="material-symbols-outlined text-[16px]">auto_awesome</span>
+                      <span>{notice}</span>
+                    </div>
+                  ) : null}
                   {error ? (
                     error === CONTENT_BLOCKED_MESSAGE ? (
                       <div className="mb-3 rounded-xl border border-amber-500/30 bg-amber-500/[0.08] px-4 py-2.5 text-[13px] text-amber-200/90">
@@ -2693,7 +2508,7 @@ export default function StudioChatPage() {
                     />
 
                     <div className="mt-3 flex items-center justify-between border-t border-white/[0.04] pt-3">
-                      <div className="flex items-center gap-2.5">
+                      <div className="flex min-w-0 items-center gap-2.5">
                         {lockedModel?.supportsImageInput ? (
                           <button
                             type="button"
@@ -2705,10 +2520,35 @@ export default function StudioChatPage() {
                             <span className="material-symbols-outlined text-[17px]">add_photo_alternate</span>
                           </button>
                         ) : null}
-                        <span className={`text-[11px] tabular-nums text-white/12 transition-colors ${remainingChars < 400 ? "!text-red-400/50" : ""} ${input.length > 0 ? "!text-white/20" : ""}`}>
+
+                        <ModelPickerPopover
+                          groups={pickerGroups}
+                          value={lockedModelId}
+                          onSelect={handleModelChange}
+                          disabled={loadingConfig || loadingReply || loadingConversation}
+                          isRtl={isRtl}
+                          t={t}
+                        />
+
+                        <span className={`hidden text-[11px] tabular-nums text-white/12 transition-colors sm:inline ${remainingChars < 400 ? "!text-red-400/50" : ""} ${input.length > 0 ? "!text-white/20" : ""}`}>
                           {input.length > 0 ? `${input.length.toLocaleString()} / ${MAX_CHAT_TEXT_CHARS.toLocaleString()}` : ""}
                         </span>
                       </div>
+
+                      <div className="flex items-center gap-2">
+                      {/* Model Controls lives beside Send rather than in the topbar:
+                          it configures the next message, so it belongs with the
+                          controls that send one. */}
+                      <button
+                        ref={settingsBtnRef}
+                        type="button"
+                        onClick={() => setSettingsPanelOpen((prev) => !prev)}
+                        className={`chat-attach-btn ${settingsPanelOpen ? "!text-[#adc6ff] !bg-white/[0.06]" : ""}`}
+                        title={t("Model Settings")}
+                        aria-pressed={settingsPanelOpen}
+                      >
+                        <span className="material-symbols-outlined text-[17px]">tune</span>
+                      </button>
 
                       <motion.button
                         type="button"
@@ -2739,89 +2579,86 @@ export default function StudioChatPage() {
                           arrow_upward
                         </motion.span>
                       </motion.button>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
 
-            <AnimatePresence>
-            {settingsPanelOpen ? (
-              <Fragment key="model-controls-panel">
+            {settingsPanelOpen && settingsPos && typeof document !== "undefined"
+              ? createPortal(
                 <motion.div
-                  className="fixed inset-0 z-40 bg-black/20 backdrop-blur-[1px] lg:hidden"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.2 }}
-                  onClick={() => setSettingsPanelOpen(false)}
-                />
-                <motion.aside
-                  variants={panelVariants}
-                  initial="initial"
-                  animate="animate"
-                  exit="exit"
-                  className="fixed bottom-0 right-0 top-0 z-50 flex w-[56vw] min-w-[210px] max-w-[280px] flex-col border-l border-white/[0.05] bg-[#080c1a]/95 backdrop-blur-2xl sm:w-72 lg:relative lg:bottom-auto lg:top-auto lg:z-auto lg:w-[280px]"
+                  ref={settingsPanelRef}
+                  dir={isRtl ? "rtl" : "ltr"}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.16 }}
+                  style={{ position: "fixed", left: settingsPos.left, bottom: settingsPos.bottom, width: settingsPos.width }}
+                  className="z-[9998] max-h-[60vh] overflow-y-auto rounded-2xl border border-white/[0.08] bg-[#0f1626]/95 p-3 shadow-[0_20px_60px_rgba(0,0,0,0.65)] backdrop-blur-xl"
                 >
-                  <div className="flex h-12 shrink-0 items-center justify-between border-b border-white/[0.06] px-4">
-                    <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/35">{t("Model Controls")}</span>
-                    <div className="flex items-center gap-1">
-                      {lockedModelParameters.length > 0 ? (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (!lockedModel) return;
-                            setParameterValues(createParameterState(lockedModel.parameterSchema));
-                          }}
-                          className="text-[10px] font-bold uppercase tracking-wider text-[#adc6ff]/60 transition-colors hover:text-[#adc6ff]"
-                        >
-                          {t("Reset")}
-                        </button>
-                      ) : null}
-                      <button type="button" onClick={() => setSettingsPanelOpen(false)} className="chat-topbar-btn !h-7 !w-7">
-                        <span className="material-symbols-outlined text-[16px]">close</span>
+                  <div className="mb-2 flex items-center justify-between px-1">
+                    <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-white/30">{t("Model Controls")}</span>
+                    {editableModelParameters.length > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!lockedModel) return;
+                          setParameterValues(createParameterState(lockedModel.parameterSchema));
+                        }}
+                        className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-white/35 transition-colors hover:text-[#adc6ff]"
+                      >
+                        <span className="material-symbols-outlined text-[13px]">refresh</span>
+                        {t("Reset all")}
                       </button>
-                    </div>
+                    ) : null}
                   </div>
 
-                  <div className="chat-messages-scroll flex-1 space-y-4 overflow-y-auto px-4 py-5">
-                    {lockedModelParameters.length > 0 ? (
-                      lockedModelParameters.map(([key, entry]) => {
+                  {editableModelParameters.length > 0 ? (
+                    // Sliders take a full row; enums/booleans/colors sit two-up. The
+                    // per-model mix is lopsided (some models are all sliders, some all
+                    // enums), so this degrades better than a fixed two-column split.
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      {editableModelParameters.map(([key, entry]) => {
                         const pricingHint = getChatParamPricingHint(lockedModel, key);
+                        // Sliders need the track width; shape pickers need room to
+                        // lay their boxes out without wrapping mid-row.
+                        const isWide =
+                          entry.type === "float" || entry.type === "integer" || SHAPE_PARAMETER_KEYS.has(key);
                         return (
-                          <div key={key} className="chat-settings-group space-y-3">
-                            <div className="flex items-center justify-between gap-2">
-                              <label className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-white/35">
-                                <span>{toParameterLabel(key)}</span>
-                                {pricingHint ? (
-                                  <span className="group relative inline-flex h-3.5 w-3.5 cursor-help items-center justify-center rounded-full border border-white/8 text-[9px] font-bold normal-case tracking-normal text-[#adc6ff]/50">
-                                    ?
-                                    <span className="pointer-events-none absolute left-4 top-full z-20 mt-3 hidden w-max max-w-[200px] whitespace-pre-line rounded-xl border border-white/8 bg-[#0a0f1e] px-3 py-2.5 text-[11px] font-medium normal-case leading-5 tracking-normal text-white/75 shadow-2xl group-hover:block">
-                                      {pricingHint}
-                                    </span>
+                          <div
+                            key={key}
+                            className={`rounded-xl border border-white/[0.05] bg-white/[0.02] px-3 py-2.5 ${isWide ? "sm:col-span-2" : ""}`}
+                          >
+                            <div className="mb-2 flex items-center gap-1.5">
+                              <label className="text-[11px] font-medium text-white/50">{toParameterLabel(key)}</label>
+                              {pricingHint ? (
+                                <span className="group relative inline-flex h-3.5 w-3.5 cursor-help items-center justify-center rounded-full border border-white/10 text-[9px] font-bold text-[#adc6ff]/50">
+                                  ?
+                                  <span className="pointer-events-none absolute bottom-full left-0 z-20 mb-2 hidden w-max max-w-[220px] whitespace-pre-line rounded-xl border border-white/8 bg-[#0a0f1e] px-3 py-2.5 text-[11px] font-medium leading-5 text-white/75 shadow-2xl group-hover:block">
+                                    {pricingHint}
                                   </span>
-                                ) : null}
-                              </label>
+                                </span>
+                              ) : null}
                             </div>
                             {renderParameterControl(key, entry)}
                           </div>
                         );
-                      })
-                    ) : (
-                      <div className="chat-settings-group text-center text-[13px] leading-relaxed text-[#5a6580]">
-                        <span className="material-symbols-outlined mb-2 block text-xl text-white/15">settings_suggest</span>
-                        {t("No editable parameters for this model.")}
-                      </div>
-                    )}
-                  </div>
-                </motion.aside>
-              </Fragment>
-            ) : null}
-            </AnimatePresence>
+                      })}
+                    </div>
+                  ) : (
+                    <div className="px-1 py-6 text-center text-[12px] text-white/30">
+                      <span className="material-symbols-outlined mb-1 block text-xl text-white/12">settings_suggest</span>
+                      {t("No editable parameters for this model.")}
+                    </div>
+                  )}
+                </motion.div>,
+                document.body,
+              )
+              : null}
           </div>
         </div>
         </MotionConfig>
-      )}
     </section>
   );
 }

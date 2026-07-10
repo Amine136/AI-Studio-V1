@@ -241,7 +241,7 @@ export default function GalleryPage() {
             {t("Generate something in the studio first. Once a result is saved, it will appear here automatically.")}
           </p>
           <Link
-            href="/studio"
+            href="/playground"
             className="mt-8 inline-flex rounded-sm bg-[linear-gradient(90deg,#adc6ff,#4d8eff)] px-6 py-3 text-sm font-bold text-[#002e6a]"
           >
             {t("Open Studio")}

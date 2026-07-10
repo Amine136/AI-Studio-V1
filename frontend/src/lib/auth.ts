@@ -15,9 +15,9 @@ const EMAIL_FOR_SIGN_IN_KEY = "vibecraft_emailForSignIn";
 
 // Returns a same-origin path for the email-link continue URL. Anything that is
 // not a safe same-origin path (open-redirect attempts, the /auth page itself)
-// falls back to /dashboard.
+// falls back to /playground.
 function safeNextPath(next?: string | null): string {
-    if (!next || typeof window === "undefined") return "/dashboard";
+    if (!next || typeof window === "undefined") return "/playground";
     try {
         const url = new URL(next, window.location.origin);
         const path = `${url.pathname}${url.search}`;
@@ -27,7 +27,7 @@ function safeNextPath(next?: string | null): string {
     } catch {
         /* malformed next */
     }
-    return "/dashboard";
+    return "/playground";
 }
 
 export async function signUp(email: string, password: string) {

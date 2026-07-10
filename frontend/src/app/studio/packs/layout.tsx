@@ -38,7 +38,7 @@ export default function PacksLayout({ children }: { children: React.ReactNode })
     <div className="flex min-w-0 flex-1 flex-col" style={isRtl ? { fontFamily: "'Tajawal', sans-serif" } : undefined}>
       <header className="sticky top-0 z-40 flex h-[60px] items-center justify-between border-b border-white/[.08] bg-[#0d1320]/80 px-4 backdrop-blur-xl sm:px-8">
         <div className="flex items-center gap-2">
-          <Link href="/studio" title={t("Back to Studio")} className="chat-topbar-btn">
+          <Link href="/playground" title={t("Back to Playground")} className="chat-topbar-btn">
             <span className="material-symbols-outlined text-[18px]">arrow_back</span>
           </Link>
           <div className="flex items-baseline gap-2 font-['Bricolage_Grotesque'] tracking-tight">

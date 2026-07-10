@@ -6,14 +6,22 @@ import { useState } from "react";
 import { signOutUser } from "../../lib/auth";
 import { useLanguage } from "../../context/LanguageContext";
 
-const navItems = [
-  { href: "/dashboard", label: "Dashboard", icon: "dashboard" },
-  { href: "/studio", label: "Studio", icon: "auto_awesome" },
+type NavItem = { href: string; label: string; icon: string; matchPrefix?: boolean };
+
+const navItems: NavItem[] = [
+  { href: "/playground", label: "Playground", icon: "auto_awesome" },
+  // Packs has nested routes (/studio/packs/[id], .../batch) that must keep the
+  // section highlighted, so it matches on prefix rather than exact href.
+  { href: "/studio/packs", label: "Packs", icon: "grid_view", matchPrefix: true },
+  { href: "/studio/create", label: "Smart Studio", icon: "art_track" },
   { href: "/gallery", label: "Gallery", icon: "photo_library" },
   { href: "/credits", label: "Credits", icon: "account_balance_wallet" },
-  { href: "/pricing", label: "Pricing", icon: "payments" },
   { href: "/settings", label: "Settings", icon: "tune" },
 ];
+
+function isActive(item: NavItem, activePath: string) {
+  return item.matchPrefix ? activePath.startsWith(item.href) : item.href === activePath;
+}
 
 export default function AppSidebar({ activePath, hideMobileNav = false }: { activePath: string; hideMobileNav?: boolean }) {
   const router = useRouter();
@@ -48,7 +56,7 @@ export default function AppSidebar({ activePath, hideMobileNav = false }: { acti
 
         <nav className="flex-1 space-y-2 font-headline text-sm tracking-wide">
           {navItems.map((item) => {
-            const active = item.href === activePath;
+            const active = isActive(item, activePath);
             return (
               <Link
                 key={item.label}
@@ -86,7 +94,7 @@ export default function AppSidebar({ activePath, hideMobileNav = false }: { acti
       {hideMobileNav ? null : (
         <nav className="fixed bottom-0 left-0 z-50 grid h-20 w-full grid-cols-6 items-center border-t border-white/10 bg-slate-900/95 px-2 backdrop-blur-xl lg:hidden">
           {navItems.map((item) => {
-            const active = item.href === activePath;
+            const active = isActive(item, activePath);
             return (
               <Link key={item.label} href={item.href} className={`flex min-w-0 flex-col items-center gap-1 ${active ? "text-blue-300" : "text-slate-500"}`}>
                 <span

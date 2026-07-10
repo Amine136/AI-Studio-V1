@@ -42,9 +42,9 @@ import AuthPanel from "../components/auth/AuthPanel";
 function LandingContent() {
   const { user, loading } = useAuth();
   const { t, language, setLanguage } = useLanguage();
-  const primaryHref = user ? "/dashboard" : "/auth";
+  const primaryHref = user ? "/playground" : "/auth";
   const primaryLabel = user ? t("Open Dashboard") : t("Get Started");
-  const loginHref = user ? "/dashboard" : "/auth";
+  const loginHref = user ? "/playground" : "/auth";
 
   return (
     <main className="bg-[#0c1324] text-[#dce1fb] selection:bg-[#4d8eff]/30">
@@ -366,7 +366,7 @@ function LandingContent() {
             <Link href="/policy" className="font-body text-xs uppercase tracking-widest text-slate-500 transition-opacity hover:text-white">
               {t("Terms")}
             </Link>
-            <Link href="/dashboard" className="font-body text-xs uppercase tracking-widest text-slate-500 transition-opacity hover:text-white">
+            <Link href="/playground" className="font-body text-xs uppercase tracking-widest text-slate-500 transition-opacity hover:text-white">
               {t("Studio")}
             </Link>
             <Link href="/credits" className="font-body text-xs uppercase tracking-widest text-slate-500 transition-opacity hover:text-white">

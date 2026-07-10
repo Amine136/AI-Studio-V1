@@ -15,16 +15,21 @@ export default function AspectShapePicker({
   options,
   value,
   onChange,
+  isOptionDisabled,
 }: {
   options: string[];
   value: string;
   onChange: (v: string) => void;
+  // The Playground reuses this picker for the aspectRatio parameter, where an
+  // option can cost more credits than the user holds. Packs passes nothing.
+  isOptionDisabled?: (option: string) => boolean;
 }) {
   return (
     <div className="flex flex-wrap gap-2">
       {options.map((opt) => {
         const ratio = parseShapeRatio(opt);
         const selected = value === opt;
+        const disabled = isOptionDisabled?.(opt) ?? false;
 
         let w = FRAME;
         let h = FRAME;
@@ -36,8 +41,9 @@ export default function AspectShapePicker({
             key={opt}
             type="button"
             onClick={() => onChange(opt)}
+            disabled={disabled}
             aria-pressed={selected}
-            className={`flex cursor-pointer flex-col items-center gap-1 rounded-lg border px-2.5 py-1.5 transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent-60)] motion-reduce:transition-none ${
+            className={`flex cursor-pointer flex-col items-center gap-1 rounded-lg border px-2.5 py-1.5 transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent-60)] disabled:cursor-not-allowed disabled:opacity-35 motion-reduce:transition-none ${
               selected
                 ? "border-[color:var(--accent)] bg-[color:var(--accent-15)]"
                 : "border-white/10 bg-[#111826] hover:border-white/25"

@@ -45,7 +45,7 @@ export default function RequireActiveUser({ children }: { children: ReactNode })
           const target =
             typeof window !== "undefined"
               ? `${window.location.pathname}${window.location.search}`
-              : pathname || "/dashboard";
+              : pathname || "/playground";
           router.replace(`/auth?reason=unauthorized&next=${encodeURIComponent(target)}`);
         }
         return;
