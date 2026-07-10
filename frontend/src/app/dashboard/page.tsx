@@ -34,6 +34,19 @@ type ResolvedQuickStart = PlaygroundQuickStart & {
   outputModalities: string[];
 };
 
+type PackQuickStart = {
+  packId: string;
+  href: string;
+  title: string;
+  tagline: string;
+  about: string;
+  icon: string;
+  accent: string;
+  badge?: string;
+};
+
+type SpotlightCard = ({ kind: "playground" } & ResolvedQuickStart) | ({ kind: "pack" } & PackQuickStart);
+
 function formatSuspensionEndsAt(value: string): string | null {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
@@ -184,6 +197,22 @@ const playgroundQuickStarts: PlaygroundQuickStart[] = [
     icon: "polyline",
     accent: "#f0a868",
     badge: "SVG · For designers",
+  },
+];
+
+// Curated Packs spotlight(s). Each opens a specific pack straight into its
+// "pick a mockup to start" screen. Static (not resolved against the model
+// catalog) since packs aren't tied to a single provider model.
+const packQuickStarts: PackQuickStart[] = [
+  {
+    packId: "lifestyle-in-use",
+    href: "/studio/packs/lifestyle-in-use",
+    title: "Product in scene / lifestyle",
+    tagline: "Drop your product into a real, contextual background scene — pick a mockup and go.",
+    about: "Upload a product photo, choose a lifestyle scene, and Vibecraft composites it in with matching light, shadow and perspective.",
+    icon: "photo_camera",
+    accent: "#7dd8a0",
+    badge: "Packs · Photoreal",
   },
 ];
 
@@ -338,17 +367,26 @@ export default function DashboardPage() {
     [playgroundModelMap],
   );
 
+  // Playground quick-starts + Packs quick-starts, combined into one rotating spotlight.
+  const spotlightCards = useMemo<SpotlightCard[]>(
+    () => [
+      ...resolvedQuickStarts.map((entry): SpotlightCard => ({ kind: "playground", ...entry })),
+      ...packQuickStarts.map((entry): SpotlightCard => ({ kind: "pack", ...entry })),
+    ],
+    [resolvedQuickStarts],
+  );
+
   // Rotate the quick-start spotlight every 5 seconds.
   useEffect(() => {
-    if (resolvedQuickStarts.length <= 1) {
+    if (spotlightCards.length <= 1) {
       setActiveQuickStartIndex(0);
       return;
     }
     const intervalId = window.setInterval(() => {
-      setActiveQuickStartIndex((current) => (current + 1) % resolvedQuickStarts.length);
+      setActiveQuickStartIndex((current) => (current + 1) % spotlightCards.length);
     }, 5000);
     return () => window.clearInterval(intervalId);
-  }, [resolvedQuickStarts.length]);
+  }, [spotlightCards.length]);
 
   // Two recommended models: the curated picks, topped up with the best available
   // image models if any pick is missing.
@@ -444,85 +482,96 @@ export default function DashboardPage() {
         {/* Quick Start · Playground */}
         <div>
 
-          {resolvedQuickStarts.length === 0 ? (
+          {spotlightCards.length === 0 ? (
             <div className="h-[220px] animate-pulse rounded-2xl border border-white/5 bg-[#151b2d]" />
           ) : (
             (() => {
-              const quickStart = resolvedQuickStarts[activeQuickStartIndex % resolvedQuickStarts.length];
+              const card = spotlightCards[activeQuickStartIndex % spotlightCards.length];
+              const cardKey = card.kind === "playground" ? card.modelId : card.packId;
+              const title = card.kind === "playground" ? card.name : card.title;
+              const subtitle = card.kind === "playground" ? card.provider : t("Start in Packs");
+              const bodyLabel = card.kind === "playground" ? t("Starter prompt") : t("What it does");
+              const bodyText = card.kind === "playground" ? card.prompt : card.about;
+              const href = card.kind === "playground" ? buildPlaygroundHref(card.modelId, card.prompt) : card.href;
+              const ctaLabel = card.kind === "playground" ? t("Start in Playground") : t("Start in Packs");
               return (
                 <>
                   <div
-                    key={quickStart.modelId}
+                    key={cardKey}
                     className="group relative overflow-hidden rounded-2xl border p-5 duration-500 animate-in fade-in sm:p-7"
                     style={
-                      quickStart.badge
-                        ? { borderColor: `${quickStart.accent}55`, background: `linear-gradient(135deg, ${quickStart.accent}1f, #151b2d 55%)` }
+                      card.badge
+                        ? { borderColor: `${card.accent}55`, background: `linear-gradient(135deg, ${card.accent}1f, #151b2d 55%)` }
                         : { borderColor: "rgba(255,255,255,0.05)", backgroundColor: "#151b2d" }
                     }
                   >
                     <div
                       className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full opacity-25 blur-[90px]"
-                      style={{ backgroundColor: quickStart.accent }}
+                      style={{ backgroundColor: card.accent }}
                     />
                     <div className="relative z-10 flex flex-col gap-6 md:flex-row md:items-center">
                       <div className="flex-1">
                         <div className="flex items-center gap-3">
                           <div
                             className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl"
-                            style={{ backgroundColor: `${quickStart.accent}26`, color: quickStart.accent }}
+                            style={{ backgroundColor: `${card.accent}26`, color: card.accent }}
                           >
                             <span className="material-symbols-outlined text-2xl" style={{ fontVariationSettings: "'FILL' 1" }}>
-                              {quickStart.icon}
+                              {card.icon}
                             </span>
                           </div>
                           <div className="min-w-0">
-                            <h4 className="truncate font-headline text-lg font-bold text-blue-100 sm:text-xl">{quickStart.name}</h4>
-                            <span className="text-[10px] font-bold uppercase tracking-widest text-[#8c909f]">{quickStart.provider}</span>
+                            <h4 className="truncate font-headline text-lg font-bold text-blue-100 sm:text-xl">{title}</h4>
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-[#8c909f]">{subtitle}</span>
                           </div>
-                          {quickStart.badge && (
+                          {card.badge && (
                             <span
                               className="ml-auto shrink-0 rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider"
-                              style={{ backgroundColor: `${quickStart.accent}26`, color: quickStart.accent }}
+                              style={{ backgroundColor: `${card.accent}26`, color: card.accent }}
                             >
-                              {quickStart.badge}
+                              {card.badge}
                             </span>
                           )}
                         </div>
 
                         <div className="mt-4 rounded-lg border border-white/5 bg-[#070d1f] p-3">
-                          <span className="text-[10px] font-bold uppercase tracking-widest text-[#6b7a8f]">{t("Starter prompt")}</span>
-                          <p className="mt-1 text-xs leading-5 text-[#aeb6c8] line-clamp-2 md:line-clamp-none">{quickStart.prompt}</p>
+                          <span className="text-[10px] font-bold uppercase tracking-widest text-[#6b7a8f]">{bodyLabel}</span>
+                          <p className="mt-1 text-xs leading-5 text-[#aeb6c8] line-clamp-2 md:line-clamp-none">{bodyText}</p>
                         </div>
                       </div>
 
                       <div className="md:w-60 md:shrink-0">
                         <Link
-                          href={buildPlaygroundHref(quickStart.modelId, quickStart.prompt)}
+                          href={href}
                           className="flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-bold text-[#03203f] transition-transform hover:scale-[1.02] active:scale-95"
-                          style={{ background: `linear-gradient(135deg, ${quickStart.accent}, #4d8eff)` }}
+                          style={{ background: `linear-gradient(135deg, ${card.accent}, #4d8eff)` }}
                         >
                           <span className="material-symbols-outlined text-[18px]">bolt</span>
-                          {t("Start in Playground")}
+                          {ctaLabel}
                         </Link>
                       </div>
                     </div>
                   </div>
 
-                  {resolvedQuickStarts.length > 1 && (
+                  {spotlightCards.length > 1 && (
                     <div className="mt-4 flex justify-center gap-2">
-                      {resolvedQuickStarts.map((entry, index) => (
-                        <button
-                          key={entry.modelId}
-                          type="button"
-                          onClick={() => setActiveQuickStartIndex(index)}
-                          aria-label={`Show ${entry.name}`}
-                          className={`h-2 rounded-full transition-all ${
-                            index === activeQuickStartIndex % resolvedQuickStarts.length
-                              ? "w-6 bg-[#adc6ff]"
-                              : "w-2 bg-white/15 hover:bg-white/30"
-                          }`}
-                        />
-                      ))}
+                      {spotlightCards.map((entry, index) => {
+                        const entryKey = entry.kind === "playground" ? entry.modelId : entry.packId;
+                        const entryLabel = entry.kind === "playground" ? entry.name : entry.title;
+                        return (
+                          <button
+                            key={entryKey}
+                            type="button"
+                            onClick={() => setActiveQuickStartIndex(index)}
+                            aria-label={`Show ${entryLabel}`}
+                            className={`h-2 rounded-full transition-all ${
+                              index === activeQuickStartIndex % spotlightCards.length
+                                ? "w-6 bg-[#adc6ff]"
+                                : "w-2 bg-white/15 hover:bg-white/30"
+                            }`}
+                          />
+                        );
+                      })}
                     </div>
                   )}
                 </>

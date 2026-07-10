@@ -71,7 +71,7 @@ export default function PacksGalleryPage() {
         setError(null);
       })
       .catch((e) => {
-        if (!cancelled) setError(e?.message ?? "Failed to load packs");
+        if (!cancelled) setError(e?.message ?? pt(language, "loadPacksFailed"));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -181,7 +181,7 @@ export default function PacksGalleryPage() {
         >
           {marker}
           <span className={`flex-1 truncate text-sm font-medium text-[#93a0bd] ${displayClass}`}>{sectorLabel(language, s)}</span>
-          <span className="shrink-0 rounded bg-white/10 px-1.5 py-0.5 font-mono text-[8px] font-bold uppercase tracking-widest text-white/50">Soon</span>
+          <span className="shrink-0 rounded bg-white/10 px-1.5 py-0.5 font-mono text-[8px] font-bold uppercase tracking-widest text-white/50">{pt(language, "soon")}</span>
         </div>
       );
     }
@@ -235,6 +235,38 @@ export default function PacksGalleryPage() {
 
       {/* Content */}
       <section className="min-w-0 flex-1 px-5 py-7 sm:px-8 lg:px-9">
+        {/* Mobile sector switcher — the catalog rail above is hidden below sm,
+            so this is the only way to change sectors on a phone. */}
+        <div className="mb-4 sm:hidden">
+          <select
+            value={activeSector ?? ""}
+            onChange={(e) => {
+              setActiveSector(e.target.value);
+              setCraft("all");
+              setQuery("");
+            }}
+            className="w-full appearance-none rounded-full border border-white/[.13] bg-[#111826] px-4 py-2.5 text-sm font-medium text-[#eaedf6] focus:border-[#93a0bd] focus:outline-none"
+          >
+            <optgroup label={pt(language, "catalog")}>
+              {ordered.map((s) => (
+                <option key={s} value={s} disabled={!UNLOCKED_SECTORS.includes(s)}>
+                  {sectorLabel(language, s)}
+                  {!UNLOCKED_SECTORS.includes(s) ? ` — ${pt(language, "soon")}` : ""}
+                </option>
+              ))}
+            </optgroup>
+            {pinned.length > 0 && (
+              <optgroup label={pt(language, "homeMarket")}>
+                {pinned.map((s) => (
+                  <option key={s} value={s} disabled={!UNLOCKED_SECTORS.includes(s)}>
+                    {sectorLabel(language, s)}
+                    {!UNLOCKED_SECTORS.includes(s) ? ` — ${pt(language, "soon")}` : ""}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+          </select>
+        </div>
         {/* Masthead */}
         <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-4">
           <div className="min-w-0">
@@ -350,15 +382,15 @@ export default function PacksGalleryPage() {
                   <h3 className={`text-[15px] font-bold leading-tight tracking-tight text-white drop-shadow-sm ${displayClass}`}>
                     {p.title}
                   </h3>
-                  <div className="mt-2 flex items-center justify-between gap-2.5">
+                  <div className="mt-2 flex items-center justify-between gap-1.5">
                     <span
-                      className="inline-flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-[0.08em]"
+                      className="inline-flex min-w-0 flex-1 items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-[0.08em]"
                       style={{ color }}
                     >
-                      <span className="h-[7px] w-[7px] rounded-sm" style={{ background: color }} />
-                      {capabilityLabel(language, p.capability)}
+                      <span className="h-[7px] w-[7px] shrink-0 rounded-sm" style={{ background: color }} />
+                      <span className="truncate">{capabilityLabel(language, p.capability)}</span>
                     </span>
-                    <span className="inline-flex items-center gap-1.5 text-[11px] text-white/70">
+                    <span className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap text-[11px] text-white/70">
                       <NeedIcon img={p.requires_image_input} />
                       {p.requires_image_input ? pt(language, "needsPhoto") : pt(language, "justDescribe")}
                     </span>

@@ -8,6 +8,7 @@ import InteractiveAuthenticatedImage from "../../../../components/InteractiveAut
 import { api, isContentBlockedError } from "../../../../services/api";
 import { useAuth } from "../../../../context/AuthContext";
 import { useLanguage } from "../../../../context/LanguageContext";
+import type { Language } from "../../../../context/LanguageContext";
 import type { InputImagePayload, PackDetail, PackEstimate, PackPlan, PackTile, PackVariant } from "../../../../types";
 import { addHistoryEntry } from "../../../../lib/history";
 import { CAPABILITY_GLYPH, CRAFT_HEX, aspectFieldKey, capabilityLabel, fmtNum, pt, qualityLabel } from "../packsShared";
@@ -61,20 +62,20 @@ const UNIVERSAL_INPUT_CONSTRAINTS: UploadImageConstraints = {
   formats: ["image/png", "image/jpeg"],
 };
 
-function loadImageFromUrl(src: string): Promise<HTMLImageElement> {
+function loadImageFromUrl(src: string, language: Language): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const image = new Image();
     image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error("Could not decode the selected image."));
+    image.onerror = () => reject(new Error(pt(language, "imageDecodeFailed")));
     image.src = src;
   });
 }
 
-function canvasToBlob(canvas: HTMLCanvasElement, mimeType: string, quality?: number): Promise<Blob> {
+function canvasToBlob(canvas: HTMLCanvasElement, mimeType: string, quality: number | undefined, language: Language): Promise<Blob> {
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => {
       if (!blob) {
-        reject(new Error("Could not encode the selected image."));
+        reject(new Error(pt(language, "imageEncodeFailed")));
         return;
       }
       resolve(blob);
@@ -82,10 +83,10 @@ function canvasToBlob(canvas: HTMLCanvasElement, mimeType: string, quality?: num
   });
 }
 
-async function normalizeUploadImage(file: File, constraints: UploadImageConstraints): Promise<File> {
+async function normalizeUploadImage(file: File, constraints: UploadImageConstraints, language: Language): Promise<File> {
   const objectUrl = URL.createObjectURL(file);
   try {
-    const image = await loadImageFromUrl(objectUrl);
+    const image = await loadImageFromUrl(objectUrl, language);
     const longest = Math.max(image.width, image.height);
     const shortest = Math.min(image.width, image.height);
     let scale = Math.min(1, MAX_PROXY_IMAGE_DIMENSION / longest);
@@ -107,10 +108,10 @@ async function normalizeUploadImage(file: File, constraints: UploadImageConstrai
     if (!shouldReencode) return file;
 
     let quality = outputType === "image/webp" ? 0.86 : 0.82;
-    let blob = await canvasToBlob(canvas, outputType, quality);
+    let blob = await canvasToBlob(canvas, outputType, quality, language);
     while (blob.size > MAX_PROXY_IMAGE_BYTES && quality && quality > 0.35) {
       quality -= 0.08;
-      blob = await canvasToBlob(canvas, outputType, quality);
+      blob = await canvasToBlob(canvas, outputType, quality, language);
     }
     if (blob.size >= file.size && file.size <= MAX_PROXY_IMAGE_BYTES && file.type === outputType) return file;
 
@@ -208,7 +209,7 @@ export default function PackDetailPage() {
         setPack(p);
       })
       .catch((e) => {
-        if (!cancelled) setLoadError(e?.message ?? "Failed to load pack");
+        if (!cancelled) setLoadError(e?.message ?? pt(language, "loadPackFailed"));
       });
     return () => {
       cancelled = true;
@@ -289,7 +290,7 @@ export default function PackDetailPage() {
         if (!resp.ok) throw new Error("mockup fetch failed");
         const blob = await resp.blob();
         const raw = new File([blob], `mockup-${selectedVariant?.id ?? "scene"}.png`, { type: blob.type || "image/png" });
-        const file = await normalizeUploadImage(raw, UNIVERSAL_INPUT_CONSTRAINTS);
+        const file = await normalizeUploadImage(raw, UNIVERSAL_INPUT_CONSTRAINTS, language);
         const up = await api.uploadInputImage(file);
         if (cacheKey) writeMockupRef(cacheKey, { file_id: up.id, name: up.name, mime_type: up.mime_type, url: up.url });
         if (!cancelled) {
@@ -305,7 +306,7 @@ export default function PackDetailPage() {
     return () => {
       cancelled = true;
     };
-  }, [selectedVariant?.id, selectedVariant?.thumbnail_url, selectedVariant?.hero_example_url, user, pack?.kind]);
+  }, [selectedVariant?.id, selectedVariant?.thumbnail_url, selectedVariant?.hero_example_url, user, pack?.kind, language]);
 
   // Combined refs sent to the agent + model: mockup template first, then designs.
   const buildSendRefs = useCallback(
@@ -350,17 +351,17 @@ export default function PackDetailPage() {
     for (const original of slice) {
       try {
         if (!["image/png", "image/jpeg", "image/webp"].includes(original.type)) {
-          throw new Error("Only PNG, JPEG, and WEBP images are supported.");
+          throw new Error(pt(language, "unsupportedFormat"));
         }
         if (original.size > MAX_UPLOAD_BYTES) {
-          throw new Error("Each image must be 10 MB or smaller.");
+          throw new Error(pt(language, "fileTooLarge"));
         }
         const { width, height } = await readImageDimensions(original);
         if (Math.min(width, height) < validateConstraints.minDim) {
-          throw new Error(`Image too small — at least ${validateConstraints.minDim}px on the shortest side.`);
+          throw new Error(pt(language, "imageTooSmall").replace("{n}", String(validateConstraints.minDim)));
         }
         // Shrink in the browser before upload so payloads stay small.
-        const file = await normalizeUploadImage(original, UNIVERSAL_INPUT_CONSTRAINTS);
+        const file = await normalizeUploadImage(original, UNIVERSAL_INPUT_CONSTRAINTS, language);
         const res = await api.uploadInputImage(file);
         recordRecentUpload(user?.uid, { file_id: res.id, mime_type: res.mime_type, url: res.url });
         setImageRefs((prev) => [
@@ -368,10 +369,10 @@ export default function PackDetailPage() {
           { file_id: res.id, name: res.name, mime_type: res.mime_type, url: res.url },
         ]);
       } catch (e) {
-        setToast(e instanceof Error ? e.message : "Upload failed");
+        setToast(e instanceof Error ? e.message : pt(language, "uploadFailed"));
       }
     }
-  }, [imageRefs.length, designSlots]);
+  }, [imageRefs.length, designSlots, language]);
 
   // Compose the user's request text from the studio fields. Freeform packs use
   // their free prompt verbatim; structured packs join "label: value" lines.
@@ -455,7 +456,7 @@ export default function PackDetailPage() {
         setConfirmOpen(true);
       } catch (e) {
         setToast(
-          isContentBlockedError(e) ? pt(language, "blocked") : e instanceof Error ? e.message : "Failed",
+          isContentBlockedError(e) ? pt(language, "blocked") : e instanceof Error ? e.message : pt(language, "requestFailed"),
         );
       } finally {
         setPlanning(false);
@@ -551,7 +552,7 @@ export default function PackDetailPage() {
       } catch (e) {
         setTiles((prev) => prev.filter((t) => t.index < baseIndex));
         if (!append) setPhase("form");
-        setToast(isContentBlockedError(e) ? pt(language, "blocked") : e instanceof Error ? e.message : "Generation failed");
+        setToast(isContentBlockedError(e) ? pt(language, "blocked") : e instanceof Error ? e.message : pt(language, "generationFailed"));
       } finally {
         setBusy(false);
       }
@@ -587,10 +588,10 @@ export default function PackDetailPage() {
         a.remove();
         URL.revokeObjectURL(url);
       } catch {
-        setToast("Download failed");
+        setToast(pt(language, "downloadFailed"));
       }
     },
-    [user],
+    [user, language],
   );
 
   if (loadError) {

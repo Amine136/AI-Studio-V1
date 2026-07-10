@@ -164,23 +164,23 @@ function aspectOptionsFor(pack: PackDetail | null, modelId: string | undefined):
   return pack?.aspect_ratios ?? [];
 }
 
-function loadImageFromUrl(src: string): Promise<HTMLImageElement> {
+function loadImageFromUrl(src: string, language: Language): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const image = new Image();
     image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error("Could not decode the selected image."));
+    image.onerror = () => reject(new Error(pt(language, "imageDecodeFailed")));
     image.src = src;
   });
 }
-function canvasToBlob(canvas: HTMLCanvasElement, mimeType: string, quality?: number): Promise<Blob> {
+function canvasToBlob(canvas: HTMLCanvasElement, mimeType: string, quality: number | undefined, language: Language): Promise<Blob> {
   return new Promise((resolve, reject) => {
-    canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("encode failed"))), mimeType, quality);
+    canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error(pt(language, "imageEncodeFailed")))), mimeType, quality);
   });
 }
-async function normalizeUploadImage(file: File, constraints: UploadImageConstraints): Promise<File> {
+async function normalizeUploadImage(file: File, constraints: UploadImageConstraints, language: Language): Promise<File> {
   const objectUrl = URL.createObjectURL(file);
   try {
-    const image = await loadImageFromUrl(objectUrl);
+    const image = await loadImageFromUrl(objectUrl, language);
     const longest = Math.max(image.width, image.height);
     const shortest = Math.min(image.width, image.height);
     let scale = Math.min(1, MAX_PROXY_IMAGE_DIMENSION / longest);
@@ -197,10 +197,10 @@ async function normalizeUploadImage(file: File, constraints: UploadImageConstrai
     const shouldReencode = scale !== 1 || file.size > MAX_PROXY_IMAGE_BYTES || file.type !== outputType;
     if (!shouldReencode) return file;
     let quality = outputType === "image/webp" ? 0.86 : 0.82;
-    let blob = await canvasToBlob(canvas, outputType, quality);
+    let blob = await canvasToBlob(canvas, outputType, quality, language);
     while (blob.size > MAX_PROXY_IMAGE_BYTES && quality && quality > 0.35) {
       quality -= 0.08;
-      blob = await canvasToBlob(canvas, outputType, quality);
+      blob = await canvasToBlob(canvas, outputType, quality, language);
     }
     if (blob.size >= file.size && file.size <= MAX_PROXY_IMAGE_BYTES && file.type === outputType) return file;
     const extension = outputType === "image/webp" ? ".webp" : ".jpg";
@@ -380,7 +380,7 @@ export default function PackChat({
         if (!resp.ok) throw new Error("mockup fetch failed");
         const blob = await resp.blob();
         const raw = new File([blob], `mockup-${variant?.id ?? "scene"}.png`, { type: blob.type || "image/png" });
-        const file = await normalizeUploadImage(raw, UNIVERSAL_INPUT_CONSTRAINTS);
+        const file = await normalizeUploadImage(raw, UNIVERSAL_INPUT_CONSTRAINTS, language);
         const up = await api.uploadInputImage(file);
         if (key) writeMockupRef(key, { file_id: up.id, name: up.name, mime_type: up.mime_type, url: up.url });
         if (!cancelled) {
@@ -396,7 +396,7 @@ export default function PackChat({
     return () => {
       cancelled = true;
     };
-  }, [variant?.id, variant?.thumbnail_url, variant?.hero_example_url, uid, user]);
+  }, [variant?.id, variant?.thumbnail_url, variant?.hero_example_url, uid, user, language]);
 
   const mockupActive = Boolean(mockupRef) && useMockup;
   const designSlots = MAX_REFS - (mockupActive ? 1 : 0);
@@ -413,18 +413,18 @@ export default function PackChat({
       const validate = getUploadConstraints(undefined);
       for (const original of slice) {
         try {
-          if (!["image/png", "image/jpeg", "image/webp"].includes(original.type)) throw new Error("Only PNG, JPEG, and WEBP images are supported.");
-          if (original.size > MAX_UPLOAD_BYTES) throw new Error("Each image must be 10 MB or smaller.");
+          if (!["image/png", "image/jpeg", "image/webp"].includes(original.type)) throw new Error(pt(language, "unsupportedFormat"));
+          if (original.size > MAX_UPLOAD_BYTES) throw new Error(pt(language, "fileTooLarge"));
           const { width, height } = await readImageDimensions(original);
-          if (Math.min(width, height) < validate.minDim) throw new Error(`Image too small — at least ${validate.minDim}px on the shortest side.`);
-          const file = await normalizeUploadImage(original, UNIVERSAL_INPUT_CONSTRAINTS);
+          if (Math.min(width, height) < validate.minDim) throw new Error(pt(language, "imageTooSmall").replace("{n}", String(validate.minDim)));
+          const file = await normalizeUploadImage(original, UNIVERSAL_INPUT_CONSTRAINTS, language);
           const res = await api.uploadInputImage(file);
           // Only files a person actually chose land in the Uploaded tab — this is
           // the one call site that means "the user picked this from their machine".
           recordRecentUpload(uid, { file_id: res.id, mime_type: res.mime_type, url: res.url });
           setPendingRefs((prev) => [...prev, { file_id: res.id, name: res.name, mime_type: res.mime_type, url: res.url }]);
         } catch (e) {
-          setToast(e instanceof Error ? e.message : "Upload failed");
+          setToast(e instanceof Error ? e.message : pt(language, "uploadFailed"));
         }
       }
     },
@@ -514,11 +514,11 @@ export default function PackChat({
       try {
         const blob = await fetchAuthenticatedAsset(user, url);
         const raw = new File([blob], "gallery-image.png", { type: blob.type || "image/png" });
-        const file = await normalizeUploadImage(raw, UNIVERSAL_INPUT_CONSTRAINTS);
+        const file = await normalizeUploadImage(raw, UNIVERSAL_INPUT_CONSTRAINTS, language);
         const up = await api.uploadInputImage(file);
         useFromThread({ file_id: up.id, name: up.name, mime_type: up.mime_type, url: up.url });
       } catch (e) {
-        setToast(e instanceof Error ? e.message : "Upload failed");
+        setToast(e instanceof Error ? e.message : pt(language, "uploadFailed"));
       } finally {
         setPickerBusyUrl(null);
       }
@@ -622,7 +622,7 @@ export default function PackChat({
       setComposer((cur) => cur || prevComposer);
       setPendingRefs((cur) => (cur.length ? cur : prevRefs));
       setClarify((cur) => cur ?? prevClarify);
-      setToast(isContentBlockedError(e) ? pt(language, "blocked") : e instanceof Error ? e.message : "Failed");
+      setToast(isContentBlockedError(e) ? pt(language, "blocked") : e instanceof Error ? e.message : pt(language, "requestFailed"));
     } finally {
       setPlanning(false);
     }
@@ -679,7 +679,7 @@ export default function PackChat({
       } else {
         setResults((prev) => prev.map((t) => (t.id === tileId ? { ...t, status: "error" } : t)));
       }
-      setToast(isContentBlockedError(e) ? pt(language, "blocked") : e instanceof Error ? e.message : "Generation failed");
+      setToast(isContentBlockedError(e) ? pt(language, "blocked") : e instanceof Error ? e.message : pt(language, "generationFailed"));
     } finally {
       setBusy(false);
     }
@@ -814,13 +814,13 @@ export default function PackChat({
                 className="h-full w-full object-cover"
               />
             </div>
-            <div className="min-w-0 leading-tight">
+            <div className="max-w-[42%] min-w-0 shrink-0 leading-tight">
               <p className="truncate text-[12px] font-semibold text-white">{variant.title}</p>
               {onChangeMockup && (
                 <button
                   type="button"
                   onClick={onChangeMockup}
-                  className="text-[11px] text-[color:var(--accent)] transition hover:brightness-110"
+                  className="whitespace-nowrap text-[11px] text-[color:var(--accent)] transition hover:brightness-110"
                 >
                   ‹ {pt(language, "changeMockup")}
                 </button>
@@ -850,7 +850,7 @@ export default function PackChat({
               setRenaming(true);
             }}
             disabled={!sessionId}
-            className="flex min-w-0 items-center gap-1.5 text-sm text-white transition hover:text-[color:var(--accent)] disabled:cursor-default disabled:text-[#606d8a]"
+            className="flex min-w-0 flex-1 items-center gap-1.5 text-sm text-white transition hover:text-[color:var(--accent)] disabled:cursor-default disabled:text-[#606d8a]"
             title={sessionId ? pt(language, "rename") : ""}
           >
             <span className="truncate">{sessionTitle || pt(language, "untitledSession")}</span>
@@ -869,7 +869,7 @@ export default function PackChat({
               <span className="material-symbols-outlined text-[16px]">expand_more</span>
             </button>
             {sessionsOpen && (
-              <div className="absolute end-0 top-full z-20 mt-1 max-h-80 w-64 overflow-y-auto rounded-xl border border-white/10 bg-[#141b2d] p-1 shadow-xl">
+              <div className="absolute end-0 top-full z-30 mt-1 max-h-80 w-64 overflow-y-auto rounded-xl border border-white/10 bg-[#141b2d] p-1 shadow-xl">
                 {sessions.length === 0 ? (
                   <p className="p-3 text-xs text-[#606d8a]">{pt(language, "noSessions")}</p>
                 ) : (
