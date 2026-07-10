@@ -6,10 +6,11 @@ import { Fragment, useEffect, useMemo, useRef, useState, type ChangeEvent, type 
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence, MotionConfig, useReducedMotion, type Variants, type Transition } from "framer-motion";
 import { useAuth } from "../../context/AuthContext";
-import { recordRecentUpload } from "../../lib/recentUploads";
+import { recordRecentUpload, type RecentUpload } from "../../lib/recentUploads";
+import RefPicker from "./RefPicker";
 import { useLanguage } from "../../context/LanguageContext";
 import InteractiveAuthenticatedImage from "../../components/InteractiveAuthenticatedImage";
-import { isRenderableImageUrl } from "../../components/AuthenticatedImage";
+import { isRenderableImageUrl, fetchAuthenticatedAsset } from "../../components/AuthenticatedImage";
 import { ColorPickerPopover } from "../../components/ColorPickerPopover";
 import { api, CONTENT_BLOCKED_MESSAGE, MODERATION_UNAVAILABLE_MESSAGE } from "../../services/api";
 import { addHistoryEntry } from "../../lib/history";
@@ -1032,6 +1033,10 @@ export default function StudioChatPage() {
   const [uploadingImage, setUploadingImage] = useState(false);
   const [loadingConversation, setLoadingConversation] = useState(false);
   const [inputImages, setInputImages] = useState<UploadedImageState[]>([]);
+  // URL of the ref-picker tile currently being turned into an attachment. Set on
+  // both pick paths, it also serializes rapid clicks (RefPicker disables every
+  // tile while it's non-null), closing the stale-inputImagesRef race.
+  const [pickerBusyUrl, setPickerBusyUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Transient, self-dismissing confirmation (currently only the model-switch fork).
   const [notice, setNotice] = useState<string | null>(null);
@@ -1644,8 +1649,11 @@ export default function StudioChatPage() {
     }
   }
 
-  async function uploadInputImageFiles(selectedFiles: File[]) {
+  async function uploadInputImageFiles(selectedFiles: File[], options?: { record?: boolean }) {
     if (selectedFiles.length === 0) return;
+    // Gallery picks re-upload a generated output to mint an input file_id, but must
+    // NOT land in the Uploaded tab (that tab means "a file the person chose").
+    const record = options?.record ?? true;
 
     const slotsAvailable = maxInputImages - inputImagesRef.current.length;
     if (slotsAvailable <= 0) {
@@ -1692,7 +1700,9 @@ export default function StudioChatPage() {
       for (const originalFile of filesToUpload) {
         const file = await normalizeUploadImage(originalFile, constraints);
         const uploaded: UploadedImageResult = await api.uploadInputImage(file);
-        recordRecentUpload(user?.uid, { file_id: uploaded.id, mime_type: uploaded.mime_type, url: uploaded.url });
+        if (record) {
+          recordRecentUpload(user?.uid, { file_id: uploaded.id, mime_type: uploaded.mime_type, url: uploaded.url });
+        }
         const pendingImage = pendingImages[nextImages.length];
         URL.revokeObjectURL(pendingImage.previewUrl);
         nextImages.push({
@@ -1722,6 +1732,65 @@ export default function StudioChatPage() {
   async function handleImageUpload(event: ChangeEvent<HTMLInputElement>) {
     await uploadInputImageFiles(Array.from(event.target.files || []));
     event.target.value = "";
+  }
+
+  // A gallery output has no owned input-file record, so fetch it and re-upload to
+  // mint a file_id — the same route a fresh upload takes, minus the Uploaded-tab
+  // bookkeeping. pickerBusyUrl serializes picks against maxInputImages.
+  async function attachGalleryRef(url: string) {
+    if (pickerBusyUrl) return;
+    if (maxInputImages - inputImagesRef.current.length <= 0) {
+      setError(`Attach at most ${maxInputImages} images per message.`);
+      return;
+    }
+    setPickerBusyUrl(url);
+    try {
+      const blob = await fetchAuthenticatedAsset(user, url);
+      const type = ["image/png", "image/jpeg", "image/webp"].includes(blob.type) ? blob.type : "image/png";
+      const ext = type === "image/jpeg" ? "jpg" : type === "image/webp" ? "webp" : "png";
+      const file = new File([blob], `gallery-${Date.now()}.${ext}`, { type });
+      await uploadInputImageFiles([file], { record: false });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("Could not attach that image."));
+    } finally {
+      setPickerBusyUrl(null);
+    }
+  }
+
+  // An Uploaded-tab item already has a file_id, so attach it directly (no
+  // re-upload — that would pollute the Uploaded tab). We still fetch the asset to
+  // build a local preview, since the strip renders a plain <img>.
+  async function attachUploadedRef(item: RecentUpload) {
+    if (pickerBusyUrl) return;
+    if (maxInputImages - inputImagesRef.current.length <= 0) {
+      setError(`Attach at most ${maxInputImages} images per message.`);
+      return;
+    }
+    if (inputImagesRef.current.some((image) => image.fileId === item.file_id)) return;
+    setPickerBusyUrl(item.url);
+    try {
+      const blob = await fetchAuthenticatedAsset(user, item.url);
+      const previewUrl = URL.createObjectURL(blob);
+      setInputImages((current) =>
+        [
+          ...current,
+          {
+            localId: crypto.randomUUID(),
+            fileId: item.file_id,
+            name: item.file_id,
+            mimeType: item.mime_type || blob.type,
+            url: item.url,
+            previewUrl,
+            size: blob.size,
+            originalSize: blob.size,
+          },
+        ].slice(0, maxInputImages),
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("Could not attach that image."));
+    } finally {
+      setPickerBusyUrl(null);
+    }
   }
 
   function handleImagePaste(event: ClipboardEvent<HTMLTextAreaElement>) {
@@ -2625,15 +2694,17 @@ export default function StudioChatPage() {
                     <div className="mt-3 flex items-center justify-between border-t border-white/[0.04] pt-3">
                       <div className="flex min-w-0 items-center gap-2.5">
                         {lockedModel?.supportsImageInput ? (
-                          <button
-                            type="button"
-                            onClick={() => fileInputRef.current?.click()}
+                          <RefPicker
                             disabled={uploadingImage || loadingReply}
-                            className="chat-attach-btn"
-                            title={t("Upload image")}
-                          >
-                            <span className="material-symbols-outlined text-[17px]">add_photo_alternate</span>
-                          </button>
+                            uid={user?.uid ?? null}
+                            room={maxInputImages - inputImages.length}
+                            busyUrl={pickerBusyUrl}
+                            onPickGallery={(url) => void attachGalleryRef(url)}
+                            onPickUpload={(item) => void attachUploadedRef(item)}
+                            onFiles={(files) => void uploadInputImageFiles(Array.from(files ?? []))}
+                            isRtl={isRtl}
+                            t={t}
+                          />
                         ) : null}
 
                         <ModelPickerPopover
