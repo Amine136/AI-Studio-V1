@@ -18,7 +18,8 @@ import { getUploadConstraints, maxInputImagesForModelId, preferredOutputType, pr
 import { LATENCY_FALLBACK_SECONDS, latencyBudgetForModel } from "../../lib/modelLatency";
 import ModelPickerPopover, { type PickerGroup } from "./ModelPickerPopover";
 import AspectShapePicker from "../studio/packs/AspectShapePicker";
-import type { BillingBreakdown, BillingUsage, ModelPricingSummary, PlainChatModelItem, PlainChatParameterSchemaEntry, PlainChatPart, PlainChatTurnMeta, UploadedImageResult } from "../../types";
+import type { BillingBreakdown, BillingUsage, ModelPricingSummary, PlainChatConversationItem, PlainChatModelItem, PlainChatParameterSchemaEntry, PlainChatPart, PlainChatTurnMeta, UploadedImageResult } from "../../types";
+import HistoryPopover from "./HistoryPopover";
 
 type ChatRole = "user" | "assistant";
 
@@ -1022,6 +1023,15 @@ export default function StudioChatPage() {
   const settingsPanelRef = useRef<HTMLDivElement>(null);
   const [settingsPos, setSettingsPos] = useState<{ left: number; bottom: number; width: number } | null>(null);
 
+  // Recent-conversation history. The backend returns the most-recent N (capped
+  // at 100), so "load more" just re-fetches at a higher limit — no cursor.
+  const HISTORY_PAGE = 10;
+  const HISTORY_MAX = 100;
+  const [historyItems, setHistoryItems] = useState<PlainChatConversationItem[]>([]);
+  const [historyLimit, setHistoryLimit] = useState(HISTORY_PAGE);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+
   const searchParams = useSearchParams();
   const forceNewSession = searchParams?.get("new") === "1";
   const requestedConversationId = searchParams?.get("conversation");
@@ -1919,6 +1929,7 @@ export default function StudioChatPage() {
       setError(null);
       await api.deletePlainChatConversation(deletedConversationId);
       deletedConversationIdRef.current = deletedConversationId;
+      setHistoryItems((prev) => prev.filter((item) => item.id !== deletedConversationId));
       setConversationId("");
       setConversationTitle(DEFAULT_CONVERSATION_TITLE);
       setConversationTitleDraft(DEFAULT_CONVERSATION_TITLE);
@@ -1936,6 +1947,53 @@ export default function StudioChatPage() {
     } finally {
       setLoadingReply(false);
     }
+  }
+
+  async function fetchHistory(limit: number) {
+    if (!user) return;
+    const bounded = Math.min(Math.max(limit, HISTORY_PAGE), HISTORY_MAX);
+    setHistoryLoading(true);
+    setHistoryError(null);
+    try {
+      const response = await api.getPlainChatConversations(bounded);
+      setHistoryItems(response.conversations);
+      setHistoryLimit(bounded);
+    } catch (err) {
+      setHistoryError(err instanceof Error ? err.message : t("Could not load history."));
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
+  function handleHistoryOpenChange(open: boolean) {
+    // Re-fetch on every open so freshly created/renamed threads show up, keeping
+    // whatever depth the user had already expanded to.
+    if (open) void fetchHistory(historyLimit);
+  }
+
+  function handleHistoryLoadMore() {
+    const next = Math.min(historyLimit + HISTORY_PAGE, HISTORY_MAX);
+    if (next === historyLimit) return;
+    void fetchHistory(next);
+  }
+
+  // Open a stored conversation by routing through ?conversation=<id>, the same
+  // path deep-links use. Going through the router (not a bare setConversationId)
+  // updates useSearchParams so the bootstrap effect can't bounce back to a stale
+  // requested id, mirroring handleNewChat.
+  function handleOpenConversation(id: string) {
+    if (!id || id === conversationId) return;
+    deletedConversationIdRef.current = "";
+    failedConversationLoadRef.current = "";
+    hasBootstrappedChatRef.current = true;
+    // If the router already points at this id (e.g. a prior load failed and left
+    // the URL here while conversationId was cleared), router.replace is a no-op
+    // and the bootstrap effect won't re-fire — drive the load directly instead.
+    if (requestedConversationId === id) {
+      setConversationId(id);
+      return;
+    }
+    router.replace(`/playground?conversation=${encodeURIComponent(id)}`);
   }
 
   async function handleSaveConversationTitle() {
@@ -2255,6 +2313,19 @@ export default function StudioChatPage() {
               </div>
               <div className="mr-0.5 hidden h-4 w-px bg-white/[0.06] lg:block" />
 
+              <HistoryPopover
+                activeId={conversationId}
+                items={historyItems}
+                loading={historyLoading}
+                error={historyError}
+                canLoadMore={historyItems.length >= historyLimit && historyLimit < HISTORY_MAX}
+                onOpenChange={handleHistoryOpenChange}
+                onSelect={handleOpenConversation}
+                onLoadMore={handleHistoryLoadMore}
+                language={language}
+                isRtl={isRtl}
+                t={t}
+              />
               <button type="button" onClick={() => void handleNewChat()} title={t("New Chat")} className="chat-topbar-btn">
                 <span className="material-symbols-outlined text-[18px]">add</span>
               </button>
