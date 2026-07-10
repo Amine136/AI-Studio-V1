@@ -13,7 +13,6 @@ import { isRenderableImageUrl } from "../../components/AuthenticatedImage";
 import { ColorPickerPopover } from "../../components/ColorPickerPopover";
 import { api, CONTENT_BLOCKED_MESSAGE, MODERATION_UNAVAILABLE_MESSAGE } from "../../services/api";
 import { addHistoryEntry } from "../../lib/history";
-import { getModelDescription } from "../../lib/modelDescriptions";
 import { getUploadConstraints, maxInputImagesForModelId, preferredOutputType, providerLabelForModelId, readImageDimensions, type UploadImageConstraints } from "../../lib/imageInputConstraints";
 import { LATENCY_FALLBACK_SECONDS, latencyBudgetForModel } from "../../lib/modelLatency";
 import ModelPickerPopover, { type PickerGroup } from "./ModelPickerPopover";
@@ -1439,26 +1438,30 @@ export default function StudioChatPage() {
   // here so the picker itself stays a dumb, testable component.
   const pickerGroups = useMemo<PickerGroup[]>(
     () =>
-      providerGroups.map((group) => ({
-        provider: group.provider,
-        label: group.provider === RECOMMENDED_PROVIDER ? t("Recommended") : toProviderLabel(group.provider),
-        icon: getProviderIcon(group.provider),
-        isRecommended: group.provider === RECOMMENDED_PROVIDER,
-        models: group.models.map((model) => {
-          const minimumCost = getChatModelMinimumCost(model);
-          return {
-            id: model.id,
-            displayName: model.displayName,
-            description: getModelDescription(model.id, language) || model.description || "",
-            tags: getModelFeatureLabels(model).map((label) => t(label)),
-            minimumCost,
-            // currentCredits is null until the profile lands; treat unknown as
-            // affordable rather than greying out the whole catalogue on load.
-            affordable: currentCredits === null || currentCredits >= minimumCost,
-          };
-        }),
-      })),
-    [providerGroups, language, currentCredits, t],
+      providerGroups
+        // The picker now groups strictly by provider; "Recommended" is a per-model
+        // badge, not its own list, so drop the synthetic curated group (its models
+        // already appear under their real provider).
+        .filter((group) => group.provider !== RECOMMENDED_PROVIDER)
+        .map((group) => ({
+          provider: group.provider,
+          label: toProviderLabel(group.provider),
+          icon: getProviderIcon(group.provider),
+          models: group.models.map((model) => {
+            const minimumCost = getChatModelMinimumCost(model);
+            return {
+              id: model.id,
+              displayName: model.displayName,
+              tags: getModelFeatureLabels(model).map((label) => t(label)),
+              minimumCost,
+              recommended: RECOMMENDED_MODEL_IDS.includes(model.id),
+              // currentCredits is null until the profile lands; treat unknown as
+              // affordable rather than greying out the whole catalogue on load.
+              affordable: currentCredits === null || currentCredits >= minimumCost,
+            };
+          }),
+        })),
+    [providerGroups, currentCredits, t],
   );
 
   const lockedModelMinimumCost = useMemo(

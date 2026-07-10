@@ -6,9 +6,9 @@ import { createPortal } from "react-dom";
 export interface PickerModel {
   id: string;
   displayName: string;
-  description: string;
   tags: string[];
   minimumCost: number;
+  recommended: boolean;
   affordable: boolean;
 }
 
@@ -16,7 +16,6 @@ export interface PickerGroup {
   provider: string;
   label: string;
   icon: string;
-  isRecommended: boolean;
   models: PickerModel[];
 }
 
@@ -27,6 +26,10 @@ const POPOVER_MAX_HEIGHT = 420;
  * The model selector that replaced the full-screen catalogue gate. It opens from
  * the composer, next to the image-attach button, so picking a model never costs
  * a page transition.
+ *
+ * Models are grouped strictly by provider (one list per provider); the curated
+ * picks carry an inline "Recommended" badge rather than living in their own
+ * section. Descriptions are intentionally omitted to keep rows compact.
  *
  * Positioning follows ColorPickerPopover: a portal to <body> so the composer's
  * overflow/transform ancestors can't clip it, opening upward (the trigger sits
@@ -66,7 +69,7 @@ export default function ModelPickerPopover({
       .map((group) => ({
         ...group,
         models: group.models.filter((model) =>
-          `${model.displayName} ${model.description}`.toLowerCase().includes(needle),
+          `${model.displayName} ${model.tags.join(" ")}`.toLowerCase().includes(needle),
         ),
       }))
       .filter((group) => group.models.length > 0);
@@ -175,14 +178,8 @@ export default function ModelPickerPopover({
                 filtered.map((group) => (
                   <div key={group.provider} className="mb-1 last:mb-0">
                     <div className="flex items-center gap-1.5 px-2 pb-1 pt-2">
-                      <span
-                        className={`material-symbols-outlined text-[13px] ${group.isRecommended ? "text-[#e8c46a]" : "text-white/25"}`}
-                      >
-                        {group.icon}
-                      </span>
-                      <span
-                        className={`text-[10px] font-semibold uppercase tracking-[0.12em] ${group.isRecommended ? "text-[#e8c46a]" : "text-white/30"}`}
-                      >
+                      <span className="material-symbols-outlined text-[13px] text-white/25">{group.icon}</span>
+                      <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/30">
                         {group.label}
                       </span>
                     </div>
@@ -201,7 +198,7 @@ export default function ModelPickerPopover({
                             onSelect(model.id);
                             setOpen(false);
                           }}
-                          className={`group flex w-full items-start gap-2 rounded-lg px-2 py-2 text-start transition-colors ${
+                          className={`group flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-start transition-colors ${
                             !model.affordable
                               ? "cursor-not-allowed opacity-40"
                               : active
@@ -210,29 +207,28 @@ export default function ModelPickerPopover({
                           }`}
                         >
                           <span
-                            className={`material-symbols-outlined mt-[1px] text-[16px] ${active ? "text-[#adc6ff]" : "text-transparent"}`}
+                            className={`material-symbols-outlined text-[16px] ${active ? "text-[#adc6ff]" : "text-transparent"}`}
                           >
                             check_circle
                           </span>
 
                           <span className="min-w-0 flex-1">
-                            <span className="flex items-baseline justify-between gap-2">
+                            <span className="flex items-center gap-1.5">
                               <span className={`truncate text-[13px] font-medium ${active ? "text-[#adc6ff]" : "text-white/85"}`}>
                                 {model.displayName}
                               </span>
-                              <span className="shrink-0 font-mono text-[10px] tabular-nums text-white/30">
-                                {model.minimumCost > 0 ? `${model.minimumCost.toFixed(2)} Cr` : ""}
-                              </span>
+                              {model.recommended ? (
+                                <span className="inline-flex shrink-0 items-center gap-0.5 rounded-full border border-[#e8c46a]/25 bg-[#e8c46a]/10 px-1.5 py-[1px] text-[9px] font-semibold uppercase tracking-[0.04em] text-[#e8c46a]">
+                                  <span className="material-symbols-outlined text-[10px]" style={{ fontVariationSettings: "'FILL' 1" }}>
+                                    star
+                                  </span>
+                                  {t("Recommended")}
+                                </span>
+                              ) : null}
                             </span>
 
-                            {model.description ? (
-                              <span className="mt-0.5 line-clamp-2 block text-[11px] leading-4 text-white/35">
-                                {model.description}
-                              </span>
-                            ) : null}
-
                             {!model.affordable ? (
-                              <span className="mt-1 block text-[10px] font-medium uppercase tracking-wide text-red-400/60">
+                              <span className="mt-0.5 block text-[10px] font-medium uppercase tracking-wide text-red-400/60">
                                 {t("Need")} {model.minimumCost.toFixed(2)} {t("Credits")}
                               </span>
                             ) : model.tags.length > 0 ? (
@@ -247,6 +243,10 @@ export default function ModelPickerPopover({
                                 ))}
                               </span>
                             ) : null}
+                          </span>
+
+                          <span className="shrink-0 self-start pt-0.5 font-mono text-[10px] tabular-nums text-white/30">
+                            {model.minimumCost > 0 ? `${model.minimumCost.toFixed(2)} Cr` : ""}
                           </span>
                         </button>
                       );
