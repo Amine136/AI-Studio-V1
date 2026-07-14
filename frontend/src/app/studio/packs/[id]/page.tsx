@@ -27,12 +27,13 @@ import {
 
 type UITile = Omit<PackTile, "status"> & { status: PackTile["status"] | "generating" };
 
-// The confirm modal uses the packs-studio accent (periwinkle #a5b4fc) instead of
-// the per-pack craft hue, so its buttons/selectors/cost match the composer's send
-// button and focus states right below it. Overriding --accent* on the modal card
-// re-tints all var(--accent) usages inside (ModelPicker, AspectShapePicker,
-// quality, cost) in one place.
-const BRAND = "#a5b4fc";
+// The confirm modal uses the packs-studio accent instead of the per-pack craft
+// hue, so its buttons/selectors/cost match the composer's send button and focus
+// states right below it. Overriding --accent* on the modal card re-tints all
+// var(--accent) usages inside (ModelPicker, AspectShapePicker, quality, cost) in
+// one place. This is chrome, not craft data, so it follows the theme accent:
+// periwinkle on dark, brand blue on light (see --packs-brand in globals.css).
+const BRAND = "var(--packs-brand)";
 const MODAL_ACCENT = {
   "--accent": BRAND,
   "--accent-10": `color-mix(in srgb, ${BRAND} 10%, transparent)`,
@@ -665,8 +666,8 @@ export default function PackDetailPage() {
           <span className={`font-bold text-[#eaedf6] ${displayClass}`}>{pack.title}</span>
         </div>
         <span
-          className="flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold"
-          style={{ color: craftColor, backgroundColor: `${craftColor}22` }}
+          className="vc-craft-chip flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold"
+          style={{ color: craftColor, backgroundColor: mixAccent(13) }}
         >
           <span className="material-symbols-outlined text-[15px]">{CAPABILITY_GLYPH[pack.capability]}</span>
           {capLabel}
@@ -734,7 +735,7 @@ export default function PackDetailPage() {
                       <div key={img.file_id ?? i} className="relative h-14 w-14 overflow-hidden rounded-lg border border-white/10">
                         <AuthenticatedImage src={img.url} alt={img.name ?? "ref"} className="h-full w-full object-cover" />
                         {imageRefs.length > 1 && (
-                          <span className="absolute bottom-0 start-0 flex h-4 min-w-4 items-center justify-center bg-[color:var(--accent)] px-1 text-[10px] font-bold text-[#0d1320]">
+                          <span className="pack-accent-fill absolute bottom-0 start-0 flex h-4 min-w-4 items-center justify-center px-1 text-[10px] font-bold">
                             {fmtNum(language, i + 1)}
                           </span>
                         )}
@@ -817,7 +818,7 @@ export default function PackDetailPage() {
                   type="button"
                   disabled={busy || planning || mockupLoading}
                   onClick={onGenerateClick}
-                  className="w-full rounded-xl bg-[color:var(--accent)] py-3 text-sm font-bold text-[#0d1320] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="pack-cta w-full rounded-xl py-3 text-sm font-bold transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {planning ? pt(language, "planning") : mockupLoading ? pt(language, "loading") : `${pt(language, "generate")} →`}
                 </button>
@@ -881,7 +882,7 @@ export default function PackDetailPage() {
                 type="button"
                 disabled={planning}
                 onClick={() => void doPlan(2, clarifyAnswer)}
-                className="rounded-lg bg-[color:var(--accent)] px-4 py-2 text-sm font-bold text-[#0d1320] hover:brightness-110 disabled:opacity-50"
+                className="pack-cta rounded-lg px-4 py-2 text-sm font-bold hover:brightness-110 disabled:opacity-50"
               >
                 {planning ? pt(language, "planning") : `${pt(language, "continue")} →`}
               </button>
@@ -951,7 +952,7 @@ export default function PackDetailPage() {
                       onClick={() => setPopQuality(q)}
                       className={`cursor-pointer rounded-xl border px-3 py-1.5 text-sm transition ${
                         popQuality === q
-                          ? "border-[color:var(--accent)] bg-[color:var(--accent-15)] font-semibold text-[color:var(--accent)]"
+                          ? "pack-chip-on border-[color:var(--accent)] bg-[color:var(--accent-15)] font-semibold text-[color:var(--accent)]"
                           : "border-white/10 bg-[#111826] text-[#aebbe0] hover:border-white/20"
                       }`}
                     >
@@ -988,7 +989,7 @@ export default function PackDetailPage() {
                 type="button"
                 disabled={busy || popEstimating || popInsufficient}
                 onClick={confirmGenerate}
-                className="rounded-lg bg-[color:var(--accent)] px-4 py-2 text-sm font-bold text-[#1b2250] shadow-[0_4px_14px_-2px_rgba(165,180,252,.6)] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
+                className="pack-cta rounded-lg px-4 py-2 text-sm font-bold hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
               >
                 {popInsufficient ? pt(language, "notEnough") : `${pt(language, "confirm")} →`}
               </button>

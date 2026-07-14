@@ -29,13 +29,20 @@ import AspectShapePicker from "../AspectShapePicker";
 import ModelPicker from "../ModelPicker";
 import type { CSSProperties, ClipboardEvent, DragEvent } from "react";
 
-// The packs STUDIO (chrome + confirm modal) uses ONE accent: the periwinkle
-// packs-studio color #a5b4fc — the composer send-button hue — instead of the
-// per-pack craft accent, so the whole studio reads as one unit. It's exposed as
-// --accent* on the studio root below (accentVars), which every var(--accent)
-// usage — including the modal — inherits. The packs GALLERY still uses the
-// per-pack craft colors (CRAFT_HEX) for card/specimen identity.
-const BRAND = "#a5b4fc";
+// The packs STUDIO (chrome + confirm modal) uses ONE accent — the composer
+// send-button hue — instead of the per-pack craft accent, so the whole studio
+// reads as one unit. It's exposed as --accent* on the studio root below
+// (accentVars), which every var(--accent) usage — including the modal —
+// inherits. The packs GALLERY still uses the per-pack craft colors (CRAFT_HEX)
+// for card/specimen identity.
+//
+// This MUST stay a var, not a literal. It used to be #a5b4fc, and because these
+// accents are handed to color-mix() in INLINE styles, no stylesheet could retint
+// them — so light mode kept mixing tints out of a pale periwinkle. A 15% tint of
+// that reads bright on near-black and is practically white on white, which is why
+// the whole studio looked washed out in light. Dark keeps #a5b4fc; light is the
+// brand blue (see --packs-brand in globals.css).
+const BRAND = "var(--packs-brand)";
 
 // Generating-tile ETA counter. Reuses the shared per-model latency budget
 // (lib/modelLatency, the same source the plain-chat waiter uses) but presents it
@@ -323,6 +330,22 @@ export default function PackChat({
     const observer = new ResizeObserver(update);
     observer.observe(el);
     return () => observer.disconnect();
+  }, []);
+
+  // The seeded example is a suggestion, not something the user typed — so select it
+  // on open: the first keystroke replaces it outright instead of typing into it.
+  // Fires once per mount, and PackChat is keyed per-variant upstream, so opening a
+  // different mockup re-arms it. Touch devices get the selection on first tap
+  // instead — auto-focusing there would pop the keyboard over the reference scene.
+  const exampleSelectedRef = useRef(false);
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea || !textarea.value) return;
+    // Leave the ref unset on touch so the onFocus handler can select on first tap.
+    if (window.matchMedia?.("(pointer: coarse)").matches) return;
+    exampleSelectedRef.current = true;
+    textarea.focus();
+    textarea.select();
   }, []);
 
   // Grow the composer from 1 up to 4 lines as the user types (line 2 takes
@@ -1014,6 +1037,12 @@ export default function PackChat({
                   ref={textareaRef}
                   value={composer}
                   onChange={(e) => setComposer(e.target.value.slice(0, MAX_COMPOSER_CHARS))}
+                  onFocus={(e) => {
+                    // Touch counterpart to the mount effect: first tap selects the example.
+                    if (exampleSelectedRef.current) return;
+                    exampleSelectedRef.current = true;
+                    e.currentTarget.select();
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && !e.shiftKey) {
                       e.preventDefault();
@@ -1031,7 +1060,7 @@ export default function PackChat({
                 type="button"
                 disabled={!canSend}
                 onClick={() => void send()}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-[#a5b4fc] text-[#1b2250] shadow-[0_4px_14px_-2px_rgba(165,180,252,.6)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
+                className="pack-cta flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
               >
                 {planning ? (
                   <span className="h-4 w-4 animate-spin rounded-full border-2 border-[#0d1320]/40 border-t-[#0d1320]" />
@@ -1189,7 +1218,7 @@ export default function PackChat({
                 type="button"
                 disabled={busy || popEstimating || popInsufficient}
                 onClick={() => void confirmGenerate()}
-                className="rounded-lg bg-[color:var(--accent)] px-4 py-2 text-sm font-bold text-[#1b2250] shadow-[0_4px_14px_-2px_rgba(165,180,252,.6)] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
+                className="pack-cta rounded-lg px-4 py-2 text-sm font-bold hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
               >
                 {popInsufficient ? pt(language, "notEnough") : `${pt(language, "confirm")} →`}
               </button>

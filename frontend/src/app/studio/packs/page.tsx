@@ -8,12 +8,12 @@ import type { PackCapability, PackCard, PackVariant } from "../../../types";
 import Specimen from "./Specimen";
 import {
   CRAFT_HEX,
+  CRAFT_HEX_ON_DARK,
   CRAFT_ORDER,
   PINNED_SECTORS,
   SECTOR_ORDER,
   capabilityLabel,
   pt,
-  sectorDesc,
   sectorLabel,
 } from "./packsShared";
 
@@ -25,7 +25,6 @@ const MOCKUP_SECTORS: Record<string, string> = {
   quote: "quote-studio",
   digital: "digital-products-studio",
 };
-const MOCKUPS_WORD: Record<string, string> = { en: "mockups", fr: "mockups", ar: "مشاهد" };
 
 // Sectors that are actually open. Everything else renders as a disabled "soon" row
 // in the sidebar and must stay out of the grid — including search results.
@@ -273,15 +272,6 @@ export default function PacksGalleryPage() {
             <h1 className={`text-[clamp(1.9rem,3.5vw,2.5rem)] font-extrabold leading-[1.02] tracking-tight text-[#eaedf6] ${displayClass}`}>
               {activeSector ? sectorLabel(language, activeSector) : pt(language, "packs")}
             </h1>
-            {activeSector && !query && (
-              <p className="mt-3 max-w-[46ch] text-[15px] leading-relaxed text-[#93a0bd]">
-                {sectorDesc(language, activeSector)}
-              </p>
-            )}
-            <p className="mt-3.5 font-mono text-xs tracking-wide text-[#606d8a]">
-              {isMockup ? mockupTiles.length : query ? visible.length : sectorPacks.length}{" "}
-              {isMockup ? MOCKUPS_WORD[language] ?? MOCKUPS_WORD.en : pt(language, "packsCount")}
-            </p>
           </div>
           <div className="relative mt-1.5">
             <span className="material-symbols-outlined pointer-events-none absolute top-1/2 -translate-y-1/2 text-[18px] text-[#606d8a] start-3.5">
@@ -354,15 +344,19 @@ export default function PacksGalleryPage() {
             </div>
           )
         ) : (
-        <div className="mt-5 gap-1.5 [column-fill:_balance] columns-2 sm:columns-3 xl:columns-4">
+        // Pack cards run one column wider than the mockup grid above — a sector holds only a
+        // handful of packs, so they get the room to read as feature cards, not thumbnails.
+        <div className="mt-5 gap-2.5 [column-fill:_balance] columns-2 lg:columns-3">
           {visible.map((p) => {
-            const color = CRAFT_HEX[p.capability] ?? "#8fa0c4";
+            // The craft label lives in the caption overlay, on a black scrim in both
+            // themes — so it takes the on-dark weight, not the on-canvas one.
+            const color = CRAFT_HEX_ON_DARK[p.capability] ?? "#8fa0c4";
             const isNew = p.tags.includes("new");
             return (
               <Link
                 key={p.id}
                 href={`/studio/packs/${p.id}`}
-                className="group relative mb-1.5 block w-full break-inside-avoid overflow-hidden rounded-md border animate-fade-in-up border-white/[.08] bg-[#141b2b] transition duration-200 hover:border-white/[.13] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+                className="group relative mb-2.5 block w-full break-inside-avoid overflow-hidden rounded-md border animate-fade-in-up border-white/[.08] bg-[#141b2b] transition duration-200 hover:border-white/[.13] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
               >
                 {p.thumbnail_url ? (
                   // eslint-disable-next-line @next/next/no-img-element

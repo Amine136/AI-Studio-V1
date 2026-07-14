@@ -25,6 +25,11 @@ from app.services.sanitizer import sanitize_user_text
 # request never self-throttles. Larger fan-out is the Phase 6 batch runner.
 MAX_PACK_N = 8
 
+# The downstream pipeline caps user_text at 2000 chars (core.schema.GenerateRequest).
+# Long slot values or a long prompt_override would otherwise raise a pydantic
+# ValidationError deep inside _build_generate_request and surface as a 500.
+MAX_PROMPT_CHARS = 2000
+
 # Flat platform fee (credits) added per image on top of the resolved model's base
 # price. The user is reserved AND charged exactly base + fee (predictable), and the
 # real provider cost becomes margin. Not applied to the $0 fake test provider.
@@ -167,6 +172,8 @@ def render_prompt(pack: Pack, slot_values: Optional[Dict[str, Any]]) -> str:
         if fallback:
             return sanitize_user_text(fallback)
         raise PackError("EMPTY_PROMPT")
+    if len(rendered) > MAX_PROMPT_CHARS:
+        raise PackError("PROMPT_TOO_LONG")
     return rendered
 
 
@@ -299,6 +306,8 @@ def generate_pack(
     ratio = _resolve_aspect_ratio(pack, aspect_ratio, model)
     override = (prompt_override or "").strip()
     prompt = sanitize_user_text(override) if override else render_prompt(pack, slot_values)
+    if len(prompt) > MAX_PROMPT_CHARS:
+        raise PackError("PROMPT_TOO_LONG")
 
     # The model's ACTUAL provider cost is charged at capture (like the playground);
     # we only add this flat fee on top, so input images/tokens can never cause a

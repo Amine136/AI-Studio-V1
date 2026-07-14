@@ -161,7 +161,7 @@ export default function RefPicker({
       type="button"
       onClick={() => setTab(id)}
       className={`flex items-center gap-2 rounded-[12px] px-3 py-2.5 text-[13px] transition ${
-        tab === id ? "bg-white/10 text-white" : "text-[#93a0bd] hover:bg-white/5 hover:text-white"
+        tab === id ? "bg-white/10 text-white light:text-slate-900" : "text-[#93a0bd] hover:bg-white/5 hover:text-white"
       }`}
     >
       <span className="material-symbols-outlined text-[18px]">{icon}</span>
@@ -211,7 +211,7 @@ export default function RefPicker({
                   }}
                   className={`mt-0.5 flex flex-1 cursor-pointer flex-col items-center justify-center gap-2 rounded-[14px] border border-dashed px-3 py-6 text-center text-[12px] leading-snug transition ${
                     dragging
-                      ? "border-[#adc6ff]/60 bg-white/10 text-white"
+                      ? "border-[#adc6ff]/60 bg-white/10 text-white light:text-slate-900"
                       : "border-white/15 bg-white/[.03] text-[#93a0bd] hover:bg-white/[.07] hover:text-white"
                   }`}
                 >

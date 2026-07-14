@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@custom-variant light (&:where([data-theme="light"], [data-theme="light"] *));
 
 /* ===== AI STUDIO — DARK THEME DESIGN SYSTEM ===== */
 
@@ -82,7 +83,10 @@ body {
     radial-gradient(ellipse 60% 50% at 80% 100%, rgba(139, 92, 246, 0.06), transparent);
   color: var(--text-primary);
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
-  min-height: 100vh;
+  /* dvh, not vh: 100vh is the LARGE viewport (browser toolbars ignored), so on
+     mobile it makes the document one toolbar taller than the screen — enough for
+     a stray scrollIntoView to scroll the app header off the top. */
+  min-height: 100dvh;
 }
 
 .material-symbols-outlined {
@@ -2431,6 +2435,10 @@ body {
 
 .chat-attach-btn {
   display: flex;
+  /* Never shrink: it lives in a min-w-0 flex row beside the model name, and
+     without this the row squeezed it from 44px down to 26px wide. The model
+     name truncates instead — it has an ellipsis, a tap target doesn't. */
+  flex: 0 0 auto;
   align-items: center;
   justify-content: center;
   width: 34px;
@@ -3202,5 +3210,2466 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .pack-img-skeleton {
     animation: none;
+  }
+}
+
+
+/* =============================================================
+   LIGHT THEME — [data-theme="light"] on <html>.
+   Dark stays the :root default; everything below only overrides.
+   Palette: cool slate-tinted whites, brand accents one step darker
+   (blue/violet/green 500 -> 600), soft slate elevation instead of
+   glow shadows. Admin panel is excluded (forced dark in its layout).
+   ============================================================= */
+
+:root[data-theme="light"] {
+  /* Core backgrounds */
+  --bg-deep: #e9edf6;
+  --bg-body: #f4f6fb;
+  --bg-surface: rgba(255, 255, 255, 0.75);
+  --bg-surface-hover: rgba(255, 255, 255, 0.95);
+  --bg-elevated: rgba(255, 255, 255, 0.9);
+
+  /* Glass effects — tint flips to dark-on-light */
+  --glass-bg: rgba(15, 23, 42, 0.03);
+  --glass-border: rgba(15, 23, 42, 0.08);
+  --glass-highlight: rgba(255, 255, 255, 0.6);
+
+  /* Text — slate ramp walked from the other end */
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+  --text-disabled: #94a3b8;
+
+  /* Accent — Blue (500 -> 600) */
+  --accent-blue: #2563eb;
+  --accent-blue-glow: rgba(37, 99, 235, 0.18);
+  --accent-blue-soft: rgba(37, 99, 235, 0.08);
+
+  /* Accent — Purple (500 -> 600) */
+  --accent-purple: #7c3aed;
+  --accent-purple-glow: rgba(124, 58, 237, 0.18);
+  --accent-purple-soft: rgba(124, 58, 237, 0.08);
+
+  /* Accent — Green (500 -> 600) */
+  --accent-green: #16a34a;
+  --accent-green-glow: rgba(22, 163, 74, 0.15);
+  --accent-green-soft: rgba(22, 163, 74, 0.08);
+
+  /* Gradients */
+  --gradient-primary: linear-gradient(135deg, #2563eb, #7c3aed);
+  --gradient-primary-hover: linear-gradient(135deg, #1d4ed8, #6d28d9);
+  --gradient-surface: linear-gradient(135deg, rgba(37, 99, 235, 0.06), rgba(124, 58, 237, 0.06));
+
+  /* Borders */
+  --border-subtle: rgba(15, 23, 42, 0.06);
+  --border-default: rgba(15, 23, 42, 0.12);
+  --border-focus: rgba(37, 99, 235, 0.5);
+
+  /* Shadows — soft slate elevation, glows halved */
+  --shadow-sm: 0 2px 8px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 4px 20px rgba(15, 23, 42, 0.08);
+  --shadow-lg: 0 8px 40px rgba(15, 23, 42, 0.14);
+  --shadow-glow-blue: 0 0 20px rgba(37, 99, 235, 0.1), 0 0 60px rgba(37, 99, 235, 0.04);
+  --shadow-glow-purple: 0 0 20px rgba(124, 58, 237, 0.1), 0 0 60px rgba(124, 58, 237, 0.04);
+  --shadow-glow-green: 0 0 20px rgba(22, 163, 74, 0.1), 0 0 60px rgba(22, 163, 74, 0.04);
+}
+
+/* Material (M3) light scheme for pages using --color-* utilities
+   (studio/create). Fixed-role tokens are theme-invariant and stay. */
+:root[data-theme="light"] {
+  --color-primary: #494bd6;
+  --color-on-primary: #ffffff;
+  --color-primary-container: #e1e0ff;
+  --color-on-primary-container: #0d0096;
+  --color-inverse-primary: #c0c1ff;
+  --color-secondary: #6636c8;
+  --color-on-secondary: #ffffff;
+  --color-secondary-container: #e9ddff;
+  --color-on-secondary-container: #23005c;
+  --color-tertiary: #006a60;
+  --color-on-tertiary: #ffffff;
+  --color-tertiary-container: #62fae3;
+  --color-on-tertiary-container: #00201c;
+  --color-error: #ba1a1a;
+  --color-on-error: #ffffff;
+  --color-error-container: #ffdad6;
+  --color-on-error-container: #410002;
+  --color-background: #f4f6fb;
+  --color-on-background: #1a1b25;
+  --color-surface: #fbf9ff;
+  --color-surface-dim: #dbd9e8;
+  --color-surface-bright: #fbf9ff;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #f5f3fc;
+  --color-surface-container: #efedf8;
+  --color-surface-container-high: #e9e7f3;
+  --color-surface-container-highest: #e3e1ee;
+  --color-on-surface: #1a1b25;
+  --color-on-surface-variant: #46465a;
+  --color-surface-variant: #e4e1f0;
+  --color-outline: #767687;
+  --color-outline-variant: #c7c5d8;
+  --color-inverse-surface: #2f3040;
+  --color-inverse-on-surface: #f1f0fa;
+  --color-surface-tint: #494bd6;
+}
+
+/* ===== Base ===== */
+
+[data-theme="light"] body {
+  background: var(--bg-deep);
+  background-image:
+    radial-gradient(ellipse 80% 60% at 50% -20%, rgba(37, 99, 235, 0.05), transparent),
+    radial-gradient(ellipse 60% 50% at 80% 100%, rgba(124, 58, 237, 0.04), transparent);
+}
+
+[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: rgba(15, 23, 42, 0.15);
+}
+
+[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(15, 23, 42, 0.25);
+}
+
+/* ===== Shared components ===== */
+
+[data-theme="light"] .glass-input {
+  background: rgba(15, 23, 42, 0.02);
+}
+
+[data-theme="light"] .dark-select {
+  background-color: rgba(15, 23, 42, 0.02);
+}
+
+[data-theme="light"] .dark-select:hover {
+  background-color: rgba(15, 23, 42, 0.04);
+}
+
+[data-theme="light"] .dark-select option {
+  background: #ffffff;
+}
+
+[data-theme="light"] .btn-secondary:hover {
+  border-color: rgba(15, 23, 42, 0.2);
+  background: rgba(15, 23, 42, 0.03);
+}
+
+[data-theme="light"] .btn-dark {
+  background: rgba(15, 23, 42, 0.04);
+}
+
+[data-theme="light"] .btn-dark:hover {
+  background: rgba(15, 23, 42, 0.07);
+  border-color: rgba(15, 23, 42, 0.15);
+}
+
+[data-theme="light"] .animate-shimmer {
+  background: linear-gradient(90deg, transparent, rgba(15, 23, 42, 0.04), transparent);
+  background-size: 200% 100%;
+}
+
+[data-theme="light"] .toast-error {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.25);
+  color: #b91c1c;
+}
+
+[data-theme="light"] .toast-success {
+  background: rgba(34, 197, 94, 0.1);
+  border-color: rgba(34, 197, 94, 0.3);
+  color: #15803d;
+}
+
+/* ===== Auth ===== */
+
+[data-theme="light"] .auth-scene {
+  background:
+    radial-gradient(circle at 50% 18%, rgba(37, 99, 235, 0.07), transparent 30%),
+    #eef2f9;
+}
+
+[data-theme="light"] .auth-bg-glow {
+  background:
+    radial-gradient(circle at 50% 18%, rgba(37, 99, 235, 0.09), transparent 18%),
+    radial-gradient(circle at 50% 24%, rgba(59, 130, 246, 0.05), transparent 32%);
+}
+
+[data-theme="light"] .auth-particles span {
+  background: rgba(37, 99, 235, 0.45);
+  box-shadow: 0 0 10px rgba(37, 99, 235, 0.2);
+}
+
+[data-theme="light"] .auth-title {
+  text-shadow: none;
+}
+
+[data-theme="light"] .auth-toggle-container {
+  background: rgba(15, 23, 42, 0.04);
+}
+
+[data-theme="light"] .auth-error {
+  background: rgba(239, 68, 68, 0.06);
+  border-color: rgba(239, 68, 68, 0.25);
+  color: #b91c1c;
+}
+
+[data-theme="light"] .auth-google-btn {
+  background: #ffffff;
+  border-color: rgba(15, 23, 42, 0.12);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+
+[data-theme="light"] .auth-google-btn:hover:not(:disabled) {
+  background: #f8fafc;
+  border-color: rgba(37, 99, 235, 0.3);
+  box-shadow:
+    0 0 0 1px rgba(37, 99, 235, 0.08),
+    0 12px 28px rgba(15, 23, 42, 0.12),
+    0 0 24px rgba(37, 99, 235, 0.08);
+}
+
+[data-theme="light"] .auth-spinner {
+  border-color: rgba(15, 23, 42, 0.15);
+  border-top-color: #2563eb;
+}
+
+/* ===== Credits / redeem ===== */
+
+[data-theme="light"] .credits-shimmer {
+  background: linear-gradient(90deg, transparent, rgba(15, 23, 42, 0.04), transparent);
+}
+
+[data-theme="light"] .redeem-input {
+  background: rgba(15, 23, 42, 0.03);
+}
+
+[data-theme="light"] .redeem-result-error {
+  color: #b91c1c;
+}
+
+[data-theme="light"] .redeem-success-icon {
+  color: #15803d;
+}
+
+[data-theme="light"] .redeem-success-title {
+  color: #15803d;
+}
+
+[data-theme="light"] .redeem-success-detail {
+  color: rgba(21, 128, 61, 0.75);
+}
+
+/* ===== Pricing ===== */
+
+[data-theme="light"] .pricing-table-inner {
+  background: rgba(255, 255, 255, 0.78);
+}
+
+/* ===== Chat / playground ===== */
+
+[data-theme="light"] .chat-canvas::before {
+  background: radial-gradient(circle, rgba(37, 99, 235, 0.05) 0%, transparent 70%);
+}
+
+[data-theme="light"] .chat-canvas::after {
+  background: radial-gradient(circle, rgba(124, 58, 237, 0.04) 0%, transparent 70%);
+}
+
+[data-theme="light"] .chat-sea__blob--a,
+[data-theme="light"] .chat-sea__blob--b,
+[data-theme="light"] .chat-sea__blob--c,
+[data-theme="light"] .chat-sea__blob--d,
+[data-theme="light"] .chat-sea__tide {
+  opacity: 0.45;
+}
+
+[data-theme="light"] .chat-topbar-btn {
+  color: rgba(15, 23, 42, 0.45);
+}
+
+[data-theme="light"] .chat-topbar-btn:hover {
+  color: rgba(15, 23, 42, 0.9);
+  background: rgba(15, 23, 42, 0.06);
+}
+
+[data-theme="light"] .chat-topbar-btn:disabled:hover {
+  color: rgba(15, 23, 42, 0.45);
+}
+
+[data-theme="light"] .chat-messages-scroll {
+  scrollbar-color: rgba(15, 23, 42, 0.12) transparent;
+}
+
+[data-theme="light"] .chat-messages-scroll::-webkit-scrollbar-thumb {
+  background: rgba(15, 23, 42, 0.08);
+}
+
+[data-theme="light"] .chat-messages-scroll:hover::-webkit-scrollbar-thumb {
+  background: rgba(15, 23, 42, 0.15);
+}
+
+[data-theme="light"] .chat-msg-user {
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.08) 0%, rgba(124, 58, 237, 0.06) 100%);
+  border-color: rgba(37, 99, 235, 0.16);
+}
+
+[data-theme="light"] .chat-msg-user:hover {
+  border-color: rgba(37, 99, 235, 0.28);
+  box-shadow: 0 6px 28px rgba(37, 99, 235, 0.08);
+}
+
+[data-theme="light"] .chat-msg-assistant {
+  background: rgba(255, 255, 255, 0.72);
+  border-color: rgba(15, 23, 42, 0.07);
+}
+
+[data-theme="light"] .chat-msg-assistant:hover {
+  border-color: rgba(15, 23, 42, 0.13);
+  box-shadow: 0 6px 34px rgba(15, 23, 42, 0.08);
+}
+
+[data-theme="light"] .chat-msg-dot--user {
+  background: #2563eb;
+  box-shadow: 0 0 6px rgba(37, 99, 235, 0.4);
+}
+
+[data-theme="light"] .chat-thinking-caption,
+[data-theme="light"] .chat-thinking-frame__icon {
+  color: rgba(51, 65, 85, 0.7);
+}
+
+[data-theme="light"] .chat-thinking-shimmer {
+  background: linear-gradient(
+    100deg,
+    rgba(15, 23, 42, 0.05) 20%,
+    rgba(124, 58, 237, 0.25) 40%,
+    rgba(8, 145, 178, 0.25) 55%,
+    rgba(15, 23, 42, 0.05) 75%
+  );
+  background-size: 220% 100%;
+}
+
+[data-theme="light"] .chat-thinking-frame {
+  border-color: rgba(15, 23, 42, 0.12);
+  background: rgba(15, 23, 42, 0.035);
+  box-shadow: 0 12px 34px rgba(15, 23, 42, 0.1), inset 0 0 0 1px rgba(255, 255, 255, 0.5);
+}
+
+[data-theme="light"] .chat-thinking-frame .img-skeleton {
+  background: linear-gradient(
+    100deg,
+    rgba(15, 23, 42, 0.04) 20%,
+    rgba(124, 58, 237, 0.18) 42%,
+    rgba(8, 145, 178, 0.18) 58%,
+    rgba(15, 23, 42, 0.04) 80%
+  );
+  background-size: 220% 100%;
+}
+
+[data-theme="light"] .chat-thinking-frame__time {
+  border-color: rgba(15, 23, 42, 0.1);
+  background: rgba(15, 23, 42, 0.05);
+  color: #334155;
+}
+
+[data-theme="light"] .chat-thinking-frame__time-icon {
+  color: rgba(124, 58, 237, 0.85);
+}
+
+[data-theme="light"] .chat-thinking-frame__bar {
+  background: rgba(15, 23, 42, 0.08);
+}
+
+[data-theme="light"] .chat-thinking-frame__pulse {
+  background: #7c3aed;
+  box-shadow: 0 0 8px rgba(124, 58, 237, 0.6);
+}
+
+[data-theme="light"] .chat-composer {
+  background: rgba(255, 255, 255, 0.85);
+  border-color: rgba(15, 23, 42, 0.08);
+  box-shadow:
+    0 -2px 20px rgba(15, 23, 42, 0.06),
+    0 0 0 1px rgba(255, 255, 255, 0.6) inset,
+    0 1px 0 rgba(255, 255, 255, 0.8) inset;
+}
+
+[data-theme="light"] .chat-composer::after {
+  box-shadow: 0 0 40px rgba(124, 58, 237, 0.04), 0 0 90px rgba(8, 145, 178, 0.02);
+}
+
+[data-theme="light"] .chat-composer textarea {
+  caret-color: #7c3aed;
+}
+
+[data-theme="light"] .chat-composer:focus-within textarea::placeholder {
+  color: rgba(124, 58, 237, 0.4);
+}
+
+[data-theme="light"] .chat-attach-btn {
+  border-color: rgba(15, 23, 42, 0.1);
+  background: rgba(15, 23, 42, 0.03);
+  color: rgba(15, 23, 42, 0.45);
+}
+
+[data-theme="light"] .chat-attach-btn:hover:not(:disabled) {
+  color: #2563eb;
+  border-color: rgba(37, 99, 235, 0.25);
+  background: rgba(37, 99, 235, 0.06);
+}
+
+[data-theme="light"] .chat-settings-group {
+  border-color: rgba(15, 23, 42, 0.08);
+  background: rgba(15, 23, 42, 0.02);
+}
+
+[data-theme="light"] .chat-empty-orb__core {
+  background: radial-gradient(circle at 32% 26%, rgba(255, 255, 255, 0.95), rgba(226, 232, 244, 0.85) 70%);
+  border-color: rgba(15, 23, 42, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 8px 30px rgba(15, 23, 42, 0.12);
+}
+
+[data-theme="light"] .chat-idea-eyebrow {
+  color: rgba(71, 85, 105, 0.55);
+}
+
+[data-theme="light"] .chat-idea-pill {
+  border-color: rgba(15, 23, 42, 0.1);
+  background: rgba(15, 23, 42, 0.02);
+  color: #334155;
+}
+
+[data-theme="light"] .chat-idea-pill:hover {
+  border-color: rgba(124, 58, 237, 0.35);
+  background: rgba(124, 58, 237, 0.06);
+  color: #1e1b4b;
+  box-shadow: 0 6px 24px rgba(124, 58, 237, 0.12);
+}
+
+[data-theme="light"] .chat-idea-pill .material-symbols-outlined {
+  color: rgba(37, 99, 235, 0.55);
+}
+
+[data-theme="light"] .chat-idea-pill:hover .material-symbols-outlined {
+  color: #7c3aed;
+}
+
+[data-theme="light"] .chat-range-slider {
+  background: rgba(15, 23, 42, 0.1);
+}
+
+[data-theme="light"] .chat-range-slider:hover {
+  background: rgba(15, 23, 42, 0.16);
+}
+
+[data-theme="light"] .chat-range-slider::-webkit-slider-thumb {
+  background: #2563eb;
+  box-shadow: 0 0 8px rgba(37, 99, 235, 0.3), 0 0 0 3px rgba(244, 246, 251, 1);
+}
+
+[data-theme="light"] .chat-range-slider::-webkit-slider-thumb:hover {
+  box-shadow: 0 0 14px rgba(37, 99, 235, 0.4), 0 0 0 3px rgba(244, 246, 251, 1);
+}
+
+[data-theme="light"] .chat-range-slider::-moz-range-thumb {
+  background: #2563eb;
+  box-shadow: 0 0 8px rgba(37, 99, 235, 0.3);
+  border: 3px solid rgba(244, 246, 251, 1);
+}
+
+[data-theme="light"] .chat-image-preview {
+  border-color: rgba(15, 23, 42, 0.1);
+  background: rgba(15, 23, 42, 0.02);
+}
+
+[data-theme="light"] .chat-image-preview:hover {
+  border-color: rgba(15, 23, 42, 0.18);
+}
+
+[data-theme="light"] .chat-gen-image {
+  border-color: rgba(124, 58, 237, 0.2);
+  box-shadow: 0 12px 34px rgba(15, 23, 42, 0.12), inset 0 0 0 1px rgba(255, 255, 255, 0.4);
+}
+
+[data-theme="light"] .chat-gen-image:hover {
+  border-color: rgba(8, 145, 178, 0.35);
+  box-shadow: 0 18px 46px rgba(15, 23, 42, 0.18), 0 0 26px rgba(124, 58, 237, 0.1);
+}
+
+[data-theme="light"] .chat-user-image {
+  border-color: rgba(37, 99, 235, 0.2);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.1);
+}
+
+[data-theme="light"] .chat-user-image:hover {
+  border-color: rgba(37, 99, 235, 0.35);
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.15);
+}
+
+[data-theme="light"] .img-skeleton {
+  background: linear-gradient(
+    100deg,
+    rgba(15, 23, 42, 0.03) 20%,
+    rgba(124, 58, 237, 0.12) 42%,
+    rgba(8, 145, 178, 0.12) 58%,
+    rgba(15, 23, 42, 0.03) 80%
+  );
+  background-size: 220% 100%;
+}
+
+[data-theme="light"] .pack-img-skeleton {
+  background: linear-gradient(
+    100deg,
+    rgba(99, 102, 241, 0.06) 20%,
+    rgba(99, 102, 241, 0.18) 42%,
+    rgba(124, 58, 237, 0.18) 58%,
+    rgba(99, 102, 241, 0.06) 80%
+  );
+  background-size: 220% 100%;
+}
+
+[data-theme="light"] .chat-credits-badge {
+  border-color: rgba(37, 99, 235, 0.12);
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.05) 0%, rgba(99, 102, 241, 0.04) 100%);
+}
+
+[data-theme="light"] .chat-credits-badge:hover {
+  border-color: rgba(37, 99, 235, 0.2);
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.08) 0%, rgba(99, 102, 241, 0.06) 100%);
+}
+
+
+/* =============================================================
+   LIGHT THEME — global remap of the hardcoded dark-palette class
+   vocabulary used across the TSX pages. The app was built dark-first
+   with literal Tailwind classes (bg-[#151b2d], text-[#adc6ff],
+   border-white/10, ...). Each literal compiles to exactly one class,
+   so remapping the class token under [data-theme="light"] retints
+   every occurrence at once without touching dark mode.
+   [class~="x"] matches whole class tokens — no escaping needed.
+   Deliberately NOT remapped: bare text-white (gradient CTAs), the
+   periwinkle/teal chip backgrounds paired with dark text (readable on
+   light), and image overlays (bg-black/xx works on both themes).
+   ============================================================= */
+
+/* --- Dark navy surfaces -> light surfaces --- */
+[data-theme="light"] [class~="bg-[#151b2d]"] { background-color: #ffffff; }
+[data-theme="light"] [class~="bg-[#151b2d]/50"] { background-color: rgba(255, 255, 255, 0.6); }
+[data-theme="light"] [class~="bg-[#111826]"] { background-color: #ffffff; }
+[data-theme="light"] [class~="bg-[#0c1324]"] { background-color: #eef2f9; }
+[data-theme="light"] [class~="bg-[#0c1324]/80"] { background-color: rgba(244, 246, 251, 0.85); }
+[data-theme="light"] [class~="bg-[#0c1324]/60"] { background-color: rgba(244, 246, 251, 0.7); }
+[data-theme="light"] [class~="bg-[#070d1f]"] { background-color: #f4f6fb; }
+[data-theme="light"] [class~="bg-[#0e1525]"] { background-color: #f4f6fb; }
+[data-theme="light"] [class~="bg-[#0f1626]"] { background-color: #f4f6fb; }
+[data-theme="light"] [class~="bg-[#0a0f1e]"] { background-color: #e9edf6; }
+[data-theme="light"] [class~="bg-[#060e20]"] { background-color: #eef2f9; }
+[data-theme="light"] [class~="bg-[#060e20]/80"] { background-color: rgba(238, 242, 249, 0.85); }
+[data-theme="light"] [class~="bg-[#081121]/80"] { background-color: rgba(244, 246, 251, 0.85); }
+[data-theme="light"] [class~="bg-[#101728]"] { background-color: #f1f5f9; }
+[data-theme="light"] [class~="bg-[#141b2b]"] { background-color: #f8fafc; }
+[data-theme="light"] [class~="bg-[#141b2d]"] { background-color: #f8fafc; }
+[data-theme="light"] [class~="bg-[#1a2238]"] { background-color: #e8edf6; }
+[data-theme="light"] [class~="bg-[#191f31]"] { background-color: #eef1f8; }
+[data-theme="light"] [class~="bg-[#1a2333]"] { background-color: #e0e7ff; }
+[data-theme="light"] [class~="hover:bg-[#1a2333]"]:hover { background-color: #e0e7ff; }
+[data-theme="light"] [class~="bg-[#23293c]"] { background-color: #e2e8f0; }
+[data-theme="light"] [class~="bg-[#2e3447]"] { background-color: #e2e8f0; }
+[data-theme="light"] [class~="bg-slate-900"] { background-color: #f8fafc; }
+[data-theme="light"] [class~="bg-slate-800"] { background-color: #e2e8f0; }
+[data-theme="light"] [class~="bg-slate-950"] { background-color: #f4f6fb; }
+[data-theme="light"] [class~="hover:bg-slate-800"]:hover { background-color: #e2e8f0; }
+[data-theme="light"] [class~="hover:bg-slate-900"]:hover { background-color: #eef2f9; }
+[data-theme="light"] [class~="via-[#0c1324]/20"] { --tw-gradient-via: rgba(244, 246, 251, 0.2); }
+[data-theme="light"] [class~="to-[#11192c]"] { --tw-gradient-to: #e9edf6; }
+
+/* --- White-alpha chips on dark -> slate tints on light --- */
+[data-theme="light"] [class~="bg-white/5"] { background-color: rgba(15, 23, 42, 0.04); }
+[data-theme="light"] [class~="bg-white/10"] { background-color: rgba(15, 23, 42, 0.07); }
+[data-theme="light"] [class~="bg-white/[0.01]"] { background-color: rgba(15, 23, 42, 0.015); }
+[data-theme="light"] [class~="bg-white/[0.02]"] { background-color: rgba(15, 23, 42, 0.02); }
+[data-theme="light"] [class~="bg-white/[0.03]"] { background-color: rgba(15, 23, 42, 0.03); }
+[data-theme="light"] [class~="bg-white/[0.04]"] { background-color: rgba(15, 23, 42, 0.04); }
+[data-theme="light"] [class~="bg-white/[0.05]"] { background-color: rgba(15, 23, 42, 0.045); }
+[data-theme="light"] [class~="bg-white/[0.06]"] { background-color: rgba(15, 23, 42, 0.05); }
+[data-theme="light"] [class~="hover:bg-white/5"]:hover { background-color: rgba(15, 23, 42, 0.05); }
+[data-theme="light"] [class~="hover:bg-white/10"]:hover { background-color: rgba(15, 23, 42, 0.08); }
+[data-theme="light"] [class~="hover:bg-white/[0.03]"]:hover { background-color: rgba(15, 23, 42, 0.04); }
+[data-theme="light"] [class~="hover:bg-white/[0.04]"]:hover { background-color: rgba(15, 23, 42, 0.05); }
+[data-theme="light"] [class~="hover:bg-white/[0.06]"]:hover { background-color: rgba(15, 23, 42, 0.06); }
+[data-theme="light"] [class~="hover:bg-white/[.07]"]:hover { background-color: rgba(15, 23, 42, 0.07); }
+
+/* --- White-alpha borders -> slate borders --- */
+[data-theme="light"] [class~="border-white/5"] { border-color: rgba(15, 23, 42, 0.06); }
+[data-theme="light"] [class~="border-white/[0.04]"] { border-color: rgba(15, 23, 42, 0.05); }
+[data-theme="light"] [class~="border-white/[0.05]"] { border-color: rgba(15, 23, 42, 0.06); }
+[data-theme="light"] [class~="border-white/[0.06]"] { border-color: rgba(15, 23, 42, 0.07); }
+[data-theme="light"] [class~="border-white/[0.07]"] { border-color: rgba(15, 23, 42, 0.08); }
+[data-theme="light"] [class~="border-white/8"] { border-color: rgba(15, 23, 42, 0.09); }
+[data-theme="light"] [class~="border-white/[.08]"] { border-color: rgba(15, 23, 42, 0.09); }
+[data-theme="light"] [class~="border-white/10"] { border-color: rgba(15, 23, 42, 0.1); }
+[data-theme="light"] [class~="border-white/[.13]"] { border-color: rgba(15, 23, 42, 0.12); }
+[data-theme="light"] [class~="border-white/15"] { border-color: rgba(15, 23, 42, 0.14); }
+[data-theme="light"] [class~="border-white/[0.15]"] { border-color: rgba(15, 23, 42, 0.14); }
+[data-theme="light"] [class~="border-white/20"] { border-color: rgba(15, 23, 42, 0.18); }
+[data-theme="light"] [class~="border-white/25"] { border-color: rgba(15, 23, 42, 0.2); }
+[data-theme="light"] [class~="border-white/30"] { border-color: rgba(15, 23, 42, 0.25); }
+[data-theme="light"] [class~="hover:border-white/15"]:hover { border-color: rgba(15, 23, 42, 0.16); }
+[data-theme="light"] [class~="hover:border-white/[0.15]"]:hover { border-color: rgba(15, 23, 42, 0.16); }
+[data-theme="light"] [class~="hover:border-white/[.13]"]:hover { border-color: rgba(15, 23, 42, 0.14); }
+[data-theme="light"] [class~="hover:border-white/20"]:hover { border-color: rgba(15, 23, 42, 0.2); }
+[data-theme="light"] [class~="hover:border-white/25"]:hover { border-color: rgba(15, 23, 42, 0.22); }
+[data-theme="light"] [class~="border-slate-500"] { border-color: #94a3b8; }
+
+/* --- Light-on-dark text -> dark-on-light text --- */
+[data-theme="light"] [class~="text-[#dce1fb]"] { color: #1e293b; }
+[data-theme="light"] [class~="hover:text-[#dce1fb]"]:hover { color: #0f172a; }
+[data-theme="light"] [class~="text-[#eaedf6]"] { color: #1e293b; }
+[data-theme="light"] [class~="hover:text-[#eaedf6]"]:hover { color: #0f172a; }
+[data-theme="light"] [class~="text-[#dae2fd]"] { color: #1e293b; }
+[data-theme="light"] [class~="hover:text-[#dae2fd]"]:hover { color: #0f172a; }
+[data-theme="light"] [class~="text-[#cdd6f4]"] { color: #334155; }
+[data-theme="light"] [class~="text-[#c2c6d6]"] { color: #475569; }
+[data-theme="light"] [class~="text-[#b9c8de]"] { color: #475569; }
+[data-theme="light"] [class~="text-[#b9c8de]/70"] { color: rgba(71, 85, 105, 0.75); }
+[data-theme="light"] [class~="text-[#aebbe0]"] { color: #526181; }
+[data-theme="light"] [class~="text-[#93a0bd]"] { color: #64748b; }
+[data-theme="light"] [class~="text-[#9fb0d6]"] { color: #64748b; }
+[data-theme="light"] [class~="text-[#8a96b8]"] { color: #64748b; }
+[data-theme="light"] [class~="text-[#7e8db5]"] { color: #64748b; }
+[data-theme="light"] [class~="text-[#f1f5f9]"] { color: #0f172a; }
+[data-theme="light"] [class~="text-[#f8fafc]"] { color: #0f172a; }
+[data-theme="light"] [class~="hover:text-[#f8fafc]"]:hover { color: #0f172a; }
+[data-theme="light"] [class~="text-slate-100"] { color: #1e293b; }
+[data-theme="light"] [class~="text-slate-200"] { color: #334155; }
+[data-theme="light"] [class~="text-slate-300"] { color: #475569; }
+[data-theme="light"] [class~="text-slate-400"] { color: #64748b; }
+[data-theme="light"] [class~="hover:text-slate-100"]:hover { color: #1e293b; }
+[data-theme="light"] [class~="hover:text-slate-200"]:hover { color: #334155; }
+[data-theme="light"] [class~="hover:text-slate-300"]:hover { color: #475569; }
+[data-theme="light"] [class~="hover:text-white"]:hover { color: #0f172a; }
+[data-theme="light"] [class~="hover:text-white/85"]:hover { color: rgba(15, 23, 42, 0.85); }
+[data-theme="light"] [class~="hover:text-white/80"]:hover { color: rgba(15, 23, 42, 0.8); }
+[data-theme="light"] [class~="hover:text-white/75"]:hover { color: rgba(15, 23, 42, 0.75); }
+[data-theme="light"] [class~="text-white/90"] { color: rgba(15, 23, 42, 0.9); }
+[data-theme="light"] [class~="text-white/85"] { color: rgba(15, 23, 42, 0.85); }
+[data-theme="light"] [class~="text-white/80"] { color: rgba(15, 23, 42, 0.8); }
+[data-theme="light"] [class~="text-white/75"] { color: rgba(15, 23, 42, 0.75); }
+[data-theme="light"] [class~="text-white/60"] { color: rgba(15, 23, 42, 0.6); }
+[data-theme="light"] [class~="text-white/50"] { color: rgba(15, 23, 42, 0.5); }
+[data-theme="light"] [class~="text-white/45"] { color: rgba(15, 23, 42, 0.5); }
+[data-theme="light"] [class~="text-white/40"] { color: rgba(15, 23, 42, 0.45); }
+[data-theme="light"] [class~="text-white/35"] { color: rgba(15, 23, 42, 0.45); }
+[data-theme="light"] [class~="text-white/30"] { color: rgba(15, 23, 42, 0.4); }
+[data-theme="light"] [class~="text-white/25"] { color: rgba(15, 23, 42, 0.35); }
+[data-theme="light"] [class~="text-white/20"] { color: rgba(15, 23, 42, 0.3); }
+[data-theme="light"] [class~="text-white/12"] { color: rgba(15, 23, 42, 0.2); }
+[data-theme="light"] [class~="text-blue-100"] { color: #1d4ed8; }
+[data-theme="light"] [class~="text-blue-50"] { color: #0f172a; }
+[data-theme="light"] [class~="text-blue-300"] { color: #2563eb; }
+
+/* --- Periwinkle accent (#adc6ff family) -> indigo on light --- */
+[data-theme="light"] [class~="text-[#adc6ff]"] { color: #4338ca; }
+[data-theme="light"] [class~="hover:text-[#adc6ff]"]:hover { color: #4338ca; }
+[data-theme="light"] .group:hover [class~="group-hover:text-[#adc6ff]"] { color: #4338ca; }
+[data-theme="light"] [class~="text-[#adc6ff]/60"] { color: rgba(67, 56, 202, 0.65); }
+[data-theme="light"] [class~="border-[#adc6ff]"] { border-color: #6366f1; }
+[data-theme="light"] [class~="border-[#adc6ff]/40"] { border-color: rgba(99, 102, 241, 0.4); }
+[data-theme="light"] [class~="border-[#adc6ff]/35"] { border-color: rgba(99, 102, 241, 0.35); }
+[data-theme="light"] [class~="border-[#adc6ff]/30"] { border-color: rgba(99, 102, 241, 0.3); }
+[data-theme="light"] [class~="border-[#adc6ff]/15"] { border-color: rgba(99, 102, 241, 0.18); }
+[data-theme="light"] [class~="hover:border-[#adc6ff]/30"]:hover { border-color: rgba(99, 102, 241, 0.3); }
+[data-theme="light"] [class~="focus:border-[#adc6ff]/40"]:focus { border-color: rgba(99, 102, 241, 0.45); }
+[data-theme="light"] [class~="focus:border-[#adc6ff]/35"]:focus { border-color: rgba(99, 102, 241, 0.4); }
+[data-theme="light"] [class~="bg-[#adc6ff]/5"] { background-color: rgba(67, 56, 202, 0.05); }
+[data-theme="light"] [class~="bg-[#adc6ff]/10"] { background-color: rgba(67, 56, 202, 0.08); }
+[data-theme="light"] [class~="bg-[#adc6ff]/15"] { background-color: rgba(67, 56, 202, 0.1); }
+[data-theme="light"] [class~="bg-[#adc6ff]/20"] { background-color: rgba(67, 56, 202, 0.12); }
+[data-theme="light"] [class~="bg-[#adc6ff]/30"] { background-color: rgba(67, 56, 202, 0.18); }
+[data-theme="light"] [class~="text-[#d0bcff]"] { color: #7c3aed; }
+[data-theme="light"] [class~="bg-[#d0bcff]/10"] { background-color: rgba(124, 58, 237, 0.08); }
+
+/* --- Packs teal family -> deep teal on light --- */
+[data-theme="light"] [class~="text-[#57f1db]"] { color: #0f766e; }
+[data-theme="light"] [class~="hover:text-[#57f1db]"]:hover { color: #0f766e; }
+[data-theme="light"] [class~="text-[#3cddc7]"] { color: #0f766e; }
+[data-theme="light"] [class~="focus-within:text-[#3cddc7]"]:focus-within { color: #0f766e; }
+[data-theme="light"] [class~="focus:border-[#3cddc7]"]:focus { border-color: #0d9488; }
+[data-theme="light"] [class~="bg-[#57f1db]/10"] { background-color: rgba(15, 118, 110, 0.08); }
+[data-theme="light"] [class~="border-[#57f1db]"] { border-color: #0d9488; }
+[data-theme="light"] [class~="border-[#57f1db]/20"] { border-color: rgba(13, 148, 136, 0.25); }
+[data-theme="light"] [class~="text-[#bacac5]"] { color: #4b5f5b; }
+[data-theme="light"] [class~="text-[#bacac5]/70"] { color: rgba(75, 95, 91, 0.75); }
+
+/* --- Semantic / misc --- */
+[data-theme="light"] [class~="text-[#ffb4ab]"] { color: #ba1a1a; }
+[data-theme="light"] [class~="bg-[#93000a]/10"] { background-color: rgba(186, 26, 26, 0.08); }
+[data-theme="light"] [class~="text-[#e7b53c]"] { color: #a16207; }
+[data-theme="light"] [class~="hover:text-[#e7b53c]"]:hover { color: #a16207; }
+[data-theme="light"] [class~="border-[#e7b53c]/60"] { border-color: rgba(161, 98, 7, 0.5); }
+[data-theme="light"] [class~="focus:border-[#e7b53c]/60"]:focus { border-color: rgba(161, 98, 7, 0.55); }
+[data-theme="light"] [class~="text-[#ffd700]"] { color: #a16207; }
+[data-theme="light"] [class~="text-[#606d8a]"] { color: #64748b; }
+[data-theme="light"] [class~="ring-offset-[#151b2d]"] { --tw-ring-offset-color: #ffffff; }
+
+/* --- Light remap, round 2: rgba-literal surfaces, glow shadows,
+       and pale semantic text (found on auth card + shared alerts) --- */
+[data-theme="light"] [class~="bg-[rgba(25,31,49,0.74)]"] { background-color: rgba(255, 255, 255, 0.82); }
+[data-theme="light"] [class~="bg-[rgba(25,31,49,0.7)]"] { background-color: rgba(255, 255, 255, 0.8); }
+[data-theme="light"] [class~="bg-[rgba(25,31,49,0.6)]"] { background-color: rgba(255, 255, 255, 0.72); }
+[data-theme="light"] [class~="bg-[rgba(21,27,45,0.7)]"] { background-color: rgba(255, 255, 255, 0.8); }
+[data-theme="light"] [class~="bg-[rgba(12,19,36,0.92)]"] { background-color: rgba(250, 251, 254, 0.95); }
+[data-theme="light"] [class~="bg-[rgba(77,142,255,0.08)]"] { background-color: rgba(37, 99, 235, 0.06); }
+[data-theme="light"] [class~="border-[rgba(140,144,159,0.1)]"] { border-color: rgba(15, 23, 42, 0.1); }
+[data-theme="light"] [class~="bg-[#2e3447]/20"] { background-color: rgba(15, 23, 42, 0.04); }
+[data-theme="light"] [class~="shadow-[0_0_0_1px_rgba(173,198,255,0.08),0_24px_70px_-18px_rgba(77,142,255,0.45)]"] { box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.1), 0 24px 70px -18px rgba(15, 23, 42, 0.25); }
+[data-theme="light"] [class~="text-[#eef1ff]"] { color: #1e293b; }
+[data-theme="light"] [class~="text-[#ffd6d1]"] { color: #b91c1c; }
+[data-theme="light"] [class~="text-emerald-300"] { color: #047857; }
+[data-theme="light"] [class~="text-emerald-200"] { color: #065f46; }
+[data-theme="light"] [class~="text-rose-300"] { color: #be123c; }
+[data-theme="light"] [class~="text-rose-200"] { color: #be123c; }
+[data-theme="light"] [class~="text-red-300"] { color: #b91c1c; }
+[data-theme="light"] [class~="text-red-200"] { color: #b91c1c; }
+[data-theme="light"] [class~="text-amber-300"] { color: #a16207; }
+[data-theme="light"] [class~="text-amber-200"] { color: #a16207; }
+[data-theme="light"] [class~="text-amber-100"] { color: #854d0e; }
+
+
+/* --- LIGHT-LANDING: landing page light palette is deliberately reduced
+       to blue #3b82f6 / black / white. Image overlays and the product
+       mock keep their dark treatment so text over imagery stays legible.
+       Must stay AFTER the vocabulary remap: equal-specificity rules here
+       win by source order. --- */
+
+[data-theme="light"] .landing-logo { color: #3b82f6; }
+[data-theme="light"] .landing-nav-active { color: #3b82f6; border-color: #3b82f6; }
+[data-theme="light"] .landing-nav-active:hover { color: #2563eb; }
+[data-theme="light"] .landing-nav { color: #334155; }
+[data-theme="light"] .landing-nav:hover { color: #3b82f6; }
+[data-theme="light"] .landing-lang-pill { background-color: rgba(59, 130, 246, 0.12); box-shadow: none; }
+[data-theme="light"] .landing-lang-active { color: #2563eb; }
+[data-theme="light"] .landing-login { border-color: rgba(59, 130, 246, 0.45); background-color: #ffffff; color: #0f172a; }
+[data-theme="light"] .landing-login:hover { border-color: #3b82f6; background-color: rgba(59, 130, 246, 0.06); color: #0f172a; }
+[data-theme="light"] .landing-cta-primary { background-image: none; background-color: #3b82f6; color: #ffffff; }
+[data-theme="light"] .landing-cta-primary:hover { background-color: #2563eb; box-shadow: 0 10px 30px -10px rgba(59, 130, 246, 0.5); }
+[data-theme="light"] .landing-cta-ghost { background-color: #ffffff; color: #0f172a; border-color: rgba(15, 23, 42, 0.15); }
+[data-theme="light"] .landing-cta-ghost:hover { background-color: #f8fafc; color: #000000; }
+[data-theme="light"] .landing-eyebrow { color: #3b82f6; }
+[data-theme="light"] .landing-grad-text { background-image: linear-gradient(to right, #3b82f6, #93c5fd); }
+[data-theme="light"] .landing-copy { color: #334155; }
+[data-theme="light"] .landing-blob-a { background-color: rgba(59, 130, 246, 0.1); }
+[data-theme="light"] .landing-blob-b { background-color: rgba(59, 130, 246, 0.06); }
+[data-theme="light"] .landing-section { background-color: #ffffff; }
+[data-theme="light"] .landing-bar { background-color: #3b82f6; }
+[data-theme="light"] .landing-section [class~="text-[#adc6ff]"] { color: #3b82f6; }
+[data-theme="light"] .landing-card { background-color: #f8fafc; border-color: rgba(15, 23, 42, 0.08); }
+
+/* Image overlays stay dark in both themes so captions stay readable */
+[data-theme="light"] .landing-img-shade { background-image: linear-gradient(to top, #0c1324, rgba(12, 19, 36, 0.2), transparent); }
+[data-theme="light"] .landing-img-shade--models { background-image: linear-gradient(to top, rgba(12, 19, 36, 0.9), rgba(12, 19, 36, 0.2), transparent); }
+[data-theme="light"] .group:hover .landing-img-shade--models { background-image: linear-gradient(to top, rgba(12, 19, 36, 0.9), transparent, transparent); }
+[data-theme="light"] .landing-section .landing-img-caption h3 { color: #ffffff; }
+[data-theme="light"] .landing-section .landing-img-caption p { color: #cbd5e1; }
+[data-theme="light"] .landing-section .landing-img-caption .material-symbols-outlined { color: #93c5fd; }
+
+/* The in-page product mock is a screenshot of the dark app: keep it dark */
+[data-theme="light"] .landing-mock { color: #f1f5f9; }
+[data-theme="light"] .landing-mock [class~="bg-[#0c1324]"] { background-color: #0c1324; }
+[data-theme="light"] .landing-mock [class~="bg-[#23293c]"] { background-color: #23293c; }
+[data-theme="light"] .landing-mock [class~="bg-[#2e3447]"] { background-color: #2e3447; }
+[data-theme="light"] .landing-mock [class~="text-[#adc6ff]"] { color: #adc6ff; }
+[data-theme="light"] .landing-mock [class~="border-white/10"] { border-color: rgba(255, 255, 255, 0.1); }
+[data-theme="light"] .landing-mock [class~="border-white/5"] { border-color: rgba(255, 255, 255, 0.05); }
+
+/* Model badges keep their dark-theme chip colors over the images */
+[data-theme="light"] .landing-section [class~="bg-primary/90"] { background-color: rgb(192 193 255 / 0.9); }
+[data-theme="light"] .landing-section [class~="bg-secondary/90"] { background-color: rgb(208 188 255 / 0.9); }
+
+/* =============================================================
+   LIGHT — BRAND PASS. The light palette is white surfaces, ink
+   text and ONE accent (#3b82f6). Red stays for warnings, gold for
+   "recommended"; every other decorative hue (violet, cyan, pink,
+   indigo, teal) is retired on light static surfaces. Signature
+   animations (empty-state orb, vortex) keep their gradient.
+
+   Everything below is light-only and appended last so it wins over
+   the earlier light rules it supersedes. The dark theme is the
+   :root default and is not touched by any of it.
+   ============================================================= */
+
+:root[data-theme="light"] {
+  /* Two weights of the same blue: fills pass 3:1 as UI surfaces,
+     -ink passes 4.5:1 as small text on white. Not two colors. */
+  --brand: #3b82f6;
+  --brand-ink: #2563eb;
+  --brand-strong: #1d4ed8;
+  --brand-soft: rgba(59, 130, 246, 0.08);
+  --brand-ring: rgba(59, 130, 246, 0.35);
+
+  --bg-deep: #ffffff;
+  --bg-body: #ffffff;
+
+  --accent-blue: #3b82f6;
+  --accent-blue-glow: rgba(59, 130, 246, 0.18);
+  --accent-blue-soft: rgba(59, 130, 246, 0.08);
+  /* Purple is aliased onto the brand blue rather than deleted, so any
+     component still reaching for --accent-purple lands on-palette. */
+  --accent-purple: #3b82f6;
+  --accent-purple-glow: rgba(59, 130, 246, 0.18);
+  --accent-purple-soft: rgba(59, 130, 246, 0.08);
+
+  --gradient-primary: linear-gradient(135deg, #3b82f6, #2563eb);
+  --gradient-primary-hover: linear-gradient(135deg, #2563eb, #1d4ed8);
+  --gradient-surface: linear-gradient(135deg, rgba(59, 130, 246, 0.06), rgba(59, 130, 246, 0.03));
+  --border-focus: rgba(59, 130, 246, 0.5);
+  --shadow-glow-blue: 0 0 20px rgba(59, 130, 246, 0.12), 0 0 60px rgba(59, 130, 246, 0.05);
+  --shadow-glow-purple: 0 0 20px rgba(59, 130, 246, 0.12), 0 0 60px rgba(59, 130, 246, 0.05);
+}
+
+/* ===== Surfaces: flat white, no tinted wash ===== */
+
+[data-theme="light"] body {
+  background: #ffffff;
+  background-image: none;
+}
+
+/* App page surface. The /80 and /60 variants are separate class
+   tokens, so [class~=] needs a rule for each — missing them is what
+   left the chat topbar dark navy in light mode. */
+[data-theme="light"] [class~="bg-[#0c1324]"] { background-color: #ffffff; }
+[data-theme="light"] [class~="bg-[#0c1324]/80"] { background-color: rgba(255, 255, 255, 0.85); }
+[data-theme="light"] [class~="bg-[#0c1324]/60"] { background-color: rgba(255, 255, 255, 0.72); }
+[data-theme="light"] [class~="bg-[#0a0f1e]"] { background-color: #f1f5f9; }
+[data-theme="light"] [class~="bg-[#0a0f1e]/80"] { background-color: rgba(255, 255, 255, 0.82); }
+[data-theme="light"] [class~="bg-[#0a0f1e]/60"] { background-color: rgba(255, 255, 255, 0.7); }
+
+/* Placeholders are their own variant token and were never remapped,
+   so white-on-white made them invisible. */
+[data-theme="light"] [class~="placeholder:text-white/20"]::placeholder { color: rgba(15, 23, 42, 0.35); }
+[data-theme="light"] [class~="placeholder:text-white/25"]::placeholder { color: rgba(15, 23, 42, 0.38); }
+[data-theme="light"] [class~="placeholder:text-white/30"]::placeholder { color: rgba(15, 23, 42, 0.4); }
+[data-theme="light"] [class~="placeholder:text-white/40"]::placeholder { color: rgba(15, 23, 42, 0.45); }
+
+[data-theme="light"] [class~="text-white/15"] { color: rgba(15, 23, 42, 0.25); }
+[data-theme="light"] [class~="text-white/10"] { color: rgba(15, 23, 42, 0.2); }
+[data-theme="light"] [class~="text-[#6b7a8f]"] { color: #64748b; }
+[data-theme="light"] [class~="text-[#5a6580]"] { color: #475569; }
+
+/* ===== Periwinkle / violet accents -> the one blue ===== */
+
+[data-theme="light"] [class~="text-[#adc6ff]"] { color: #2563eb; }
+[data-theme="light"] [class~="hover:text-[#adc6ff]"]:hover { color: #2563eb; }
+[data-theme="light"] .group:hover [class~="group-hover:text-[#adc6ff]"] { color: #2563eb; }
+[data-theme="light"] [class~="text-[#adc6ff]/60"] { color: rgba(37, 99, 235, 0.7); }
+[data-theme="light"] [class~="text-[#d0bcff]"] { color: #2563eb; }
+[data-theme="light"] [class~="bg-[#d0bcff]/10"] { background-color: rgba(59, 130, 246, 0.08); }
+[data-theme="light"] [class~="border-[#adc6ff]"] { border-color: #3b82f6; }
+[data-theme="light"] [class~="border-[#adc6ff]/40"] { border-color: rgba(59, 130, 246, 0.45); }
+[data-theme="light"] [class~="border-[#adc6ff]/35"] { border-color: rgba(59, 130, 246, 0.4); }
+[data-theme="light"] [class~="border-[#adc6ff]/30"] { border-color: rgba(59, 130, 246, 0.35); }
+[data-theme="light"] [class~="border-[#adc6ff]/15"] { border-color: rgba(59, 130, 246, 0.2); }
+[data-theme="light"] [class~="hover:border-[#adc6ff]/30"]:hover { border-color: rgba(59, 130, 246, 0.35); }
+[data-theme="light"] [class~="focus:border-[#adc6ff]/40"]:focus { border-color: #3b82f6; }
+[data-theme="light"] [class~="focus:border-[#adc6ff]/35"]:focus { border-color: #3b82f6; }
+[data-theme="light"] [class~="bg-[#adc6ff]/5"] { background-color: rgba(59, 130, 246, 0.05); }
+[data-theme="light"] [class~="bg-[#adc6ff]/10"] { background-color: rgba(59, 130, 246, 0.08); }
+[data-theme="light"] [class~="bg-[#adc6ff]/15"] { background-color: rgba(59, 130, 246, 0.1); }
+[data-theme="light"] [class~="bg-[#adc6ff]/20"] { background-color: rgba(59, 130, 246, 0.12); }
+[data-theme="light"] [class~="bg-[#adc6ff]/30"] { background-color: rgba(59, 130, 246, 0.18); }
+[data-theme="light"] [class~="text-blue-100"] { color: #2563eb; }
+[data-theme="light"] [class~="text-blue-300"] { color: #2563eb; }
+
+/* ===== Chat canvas: white, with one faint blue breath of ambience ===== */
+
+[data-theme="light"] .chat-canvas::before,
+[data-theme="light"] .chat-canvas::after {
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.05) 0%, transparent 70%);
+}
+
+[data-theme="light"] .chat-sea__blob--a,
+[data-theme="light"] .chat-sea__blob--b,
+[data-theme="light"] .chat-sea__blob--c,
+[data-theme="light"] .chat-sea__blob--d {
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.09) 0%, rgba(59, 130, 246, 0.03) 45%, transparent 70%);
+  opacity: 0.5;
+}
+
+[data-theme="light"] .chat-sea__tide {
+  background: linear-gradient(to top, rgba(59, 130, 246, 0.05), rgba(59, 130, 246, 0.02) 45%, transparent);
+  opacity: 0.6;
+}
+
+/* Motes carry their colour as an inline style, so the override has to
+   outrank it; the drift/twinkle animation is untouched. */
+[data-theme="light"] .chat-mote {
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.55) 0%, transparent 70%) !important;
+  box-shadow: none !important;
+}
+
+/* ===== Composer: white card, slate hairline, blue focus ===== */
+
+[data-theme="light"] .chat-composer {
+  background: #ffffff;
+  border-color: rgba(15, 23, 42, 0.1);
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 10px 30px -14px rgba(15, 23, 42, 0.16);
+}
+
+/* The rotating violet/cyan/pink ring is the light theme's loudest
+   off-palette element. Focus is carried by border + ring instead. */
+[data-theme="light"] .chat-composer::before {
+  display: none;
+}
+
+[data-theme="light"] .chat-composer::after {
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.14);
+}
+
+[data-theme="light"] .chat-composer:focus-within {
+  border-color: #3b82f6;
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 12px 34px -14px rgba(59, 130, 246, 0.45);
+}
+
+[data-theme="light"] .chat-composer > .chat-composer__charge {
+  background: conic-gradient(
+    from var(--chat-charge-angle),
+    transparent 0deg,
+    transparent 250deg,
+    rgba(59, 130, 246, 0.35) 300deg,
+    #3b82f6 328deg,
+    rgba(59, 130, 246, 0.35) 350deg,
+    transparent 360deg
+  );
+  filter: drop-shadow(0 0 5px rgba(59, 130, 246, 0.45));
+}
+
+[data-theme="light"] .chat-composer textarea {
+  caret-color: #3b82f6;
+}
+
+[data-theme="light"] .chat-composer:focus-within textarea::placeholder {
+  color: rgba(15, 23, 42, 0.3);
+}
+
+[data-theme="light"] .chat-attach-btn:hover:not(:disabled) {
+  color: #2563eb;
+  border-color: rgba(59, 130, 246, 0.35);
+  background: rgba(59, 130, 246, 0.08);
+}
+
+/* ===== Send: solid brand fill, no gradient ===== */
+
+[data-theme="light"] .chat-send-btn {
+  background: #3b82f6;
+  color: #ffffff;
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.05),
+    0 8px 20px -10px rgba(59, 130, 246, 0.75);
+}
+
+[data-theme="light"] .chat-send-btn:hover:not(:disabled) {
+  background: #2563eb;
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.05),
+    0 10px 26px -10px rgba(37, 99, 235, 0.8);
+}
+
+[data-theme="light"] .chat-send-btn:active:not(:disabled) {
+  background: #1d4ed8;
+  box-shadow: 0 1px 6px rgba(37, 99, 235, 0.3);
+}
+
+/* Disabled reads as an inert grey chip rather than a washed-out blue. */
+[data-theme="light"] .chat-send-btn:disabled {
+  opacity: 1;
+  background: #eef2f7;
+  color: rgba(15, 23, 42, 0.35);
+  box-shadow: none;
+}
+
+/* ===== Empty state + message bubbles ===== */
+
+[data-theme="light"] .chat-idea-pill:hover {
+  border-color: rgba(59, 130, 246, 0.4);
+  background: rgba(59, 130, 246, 0.06);
+  color: #1e293b;
+  box-shadow: 0 6px 24px rgba(59, 130, 246, 0.14);
+}
+
+[data-theme="light"] .chat-idea-pill .material-symbols-outlined { color: rgba(37, 99, 235, 0.6); }
+[data-theme="light"] .chat-idea-pill:hover .material-symbols-outlined { color: #2563eb; }
+
+[data-theme="light"] .chat-msg-user {
+  background: rgba(59, 130, 246, 0.07);
+  border-color: rgba(59, 130, 246, 0.18);
+}
+
+[data-theme="light"] .chat-msg-user:hover {
+  border-color: rgba(59, 130, 246, 0.32);
+  box-shadow: 0 6px 28px rgba(59, 130, 246, 0.1);
+}
+
+[data-theme="light"] .chat-msg-assistant {
+  background: #ffffff;
+  border-color: rgba(15, 23, 42, 0.08);
+}
+
+[data-theme="light"] .chat-msg-dot--user {
+  background: #3b82f6;
+  box-shadow: 0 0 6px rgba(59, 130, 246, 0.45);
+}
+
+/* Loading shimmers: neutral sweep with a blue crest. */
+[data-theme="light"] .chat-thinking-shimmer,
+[data-theme="light"] .chat-thinking-frame .img-skeleton {
+  background: linear-gradient(
+    100deg,
+    rgba(15, 23, 42, 0.05) 20%,
+    rgba(59, 130, 246, 0.22) 48%,
+    rgba(15, 23, 42, 0.05) 76%
+  );
+  background-size: 220% 100%;
+}
+
+[data-theme="light"] .chat-thinking-frame__time-icon { color: rgba(37, 99, 235, 0.85); }
+
+[data-theme="light"] .chat-thinking-frame__pulse {
+  background: #3b82f6;
+  box-shadow: 0 0 8px rgba(59, 130, 246, 0.6);
+}
+
+[data-theme="light"] .chat-credits-badge {
+  border-color: rgba(59, 130, 246, 0.18);
+  background: rgba(59, 130, 246, 0.06);
+}
+
+[data-theme="light"] .chat-credits-badge:hover {
+  border-color: rgba(59, 130, 246, 0.32);
+  background: rgba(59, 130, 246, 0.1);
+}
+
+/* ===== Opacity-suffixed tokens =====
+   `bg-[#adc6ff]/40` is a whole class token of its own: [class~=] does NOT
+   match it via the bare `bg-[#adc6ff]` rule. Every suffix in use needs its
+   own line — the topbar stayed dark navy in light for exactly this reason
+   (`bg-[#0a0f1e]/80`). Keep this list in sync when new tints appear. */
+
+[data-theme="light"] [class~="text-blue-100/80"] { color: rgba(37, 99, 235, 0.85); }
+[data-theme="light"] [class~="text-[#adc6ff]/50"] { color: rgba(37, 99, 235, 0.6); }
+[data-theme="light"] [class~="border-[#adc6ff]/10"] { border-color: rgba(59, 130, 246, 0.14); }
+[data-theme="light"] [class~="border-[#adc6ff]/20"] { border-color: rgba(59, 130, 246, 0.25); }
+[data-theme="light"] [class~="border-[#adc6ff]/25"] { border-color: rgba(59, 130, 246, 0.3); }
+[data-theme="light"] [class~="border-[#adc6ff]/50"] { border-color: rgba(59, 130, 246, 0.55); }
+[data-theme="light"] [class~="border-[#adc6ff]/60"] { border-color: rgba(59, 130, 246, 0.65); }
+[data-theme="light"] [class~="border-[#adc6ff]/70"] { border-color: rgba(59, 130, 246, 0.75); }
+[data-theme="light"] [class~="from-[#adc6ff]/5"] { --tw-gradient-from: rgba(59, 130, 246, 0.05); }
+[data-theme="light"] [class~="via-[#adc6ff]/20"] { --tw-gradient-via: rgba(59, 130, 246, 0.2); }
+
+/* Electric blue (#4d8eff) and violet (#8b5cf6) had no light remap at all,
+   so they were still firing dark-theme neon on white surfaces. */
+[data-theme="light"] [class~="bg-[#4d8eff]/10"] { background-color: rgba(59, 130, 246, 0.08); }
+[data-theme="light"] [class~="bg-[#4d8eff]/18"] { background-color: rgba(59, 130, 246, 0.12); }
+[data-theme="light"] [class~="bg-[#4d8eff]/30"] { background-color: rgba(59, 130, 246, 0.18); }
+[data-theme="light"] [class~="border-[#4d8eff]/15"] { border-color: rgba(59, 130, 246, 0.2); }
+[data-theme="light"] [class~="border-[#4d8eff]/20"] { border-color: rgba(59, 130, 246, 0.25); }
+[data-theme="light"] [class~="border-[#4d8eff]/50"] { border-color: rgba(59, 130, 246, 0.55); }
+[data-theme="light"] [class~="text-[#4d8eff]"] { color: #2563eb; }
+[data-theme="light"] [class~="bg-[#8b5cf6]/5"] { background-color: rgba(59, 130, 246, 0.05); }
+[data-theme="light"] [class~="bg-[#8b5cf6]/10"] { background-color: rgba(59, 130, 246, 0.08); }
+[data-theme="light"] [class~="border-[#8b5cf6]/20"] { border-color: rgba(59, 130, 246, 0.25); }
+[data-theme="light"] [class~="text-[#8b5cf6]/70"] { color: rgba(37, 99, 235, 0.75); }
+[data-theme="light"] [class~="from-[#8b5cf6]/5"] { --tw-gradient-from: rgba(59, 130, 246, 0.05); }
+[data-theme="light"] [class~="bg-[#d0bcff]/12"] { background-color: rgba(59, 130, 246, 0.09); }
+
+/* ===== Portalled popovers (RefPicker, Model Controls, Model picker, History) =====
+   These float over the composer on their own surface tokens; the /95 suffixes
+   slipped the bare-hex rules, so the panels stayed dark navy on a white app. */
+[data-theme="light"] [class~="bg-[#0d1320]/95"] { background-color: rgba(255, 255, 255, 0.97); }
+[data-theme="light"] [class~="bg-[#0f1626]/95"] { background-color: rgba(255, 255, 255, 0.97); }
+
+/* Their drop shadows are near-opaque black — on white that reads as soot.
+   Slate elevation at the same blur instead. */
+[data-theme="light"] [class~="shadow-[0_24px_60px_-12px_rgba(0,0,0,.8)]"] { box-shadow: 0 24px 60px -18px rgba(15, 23, 42, 0.28); }
+[data-theme="light"] [class~="shadow-[0_20px_60px_rgba(0,0,0,0.65)]"] { box-shadow: 0 20px 60px -20px rgba(15, 23, 42, 0.26); }
+[data-theme="light"] [class~="shadow-[0_16px_48px_rgba(0,0,0,0.6)]"] { box-shadow: 0 16px 48px -16px rgba(15, 23, 42, 0.24); }
+
+/* Alpha tints written without the leading zero are, again, distinct tokens. */
+[data-theme="light"] [class~="bg-white/[.02]"] { background-color: rgba(15, 23, 42, 0.02); }
+[data-theme="light"] [class~="bg-white/[.03]"] { background-color: rgba(15, 23, 42, 0.03); }
+[data-theme="light"] [class~="ring-white/10"] { --tw-ring-color: rgba(15, 23, 42, 0.12); }
+[data-theme="light"] [class~="hover:ring-[#adc6ff]/60"]:hover { --tw-ring-color: rgba(59, 130, 246, 0.65); }
+
+/* Gold = "recommended". Keep the hue, walk it down to a weight that is
+   legible on white (the dark-theme #e8c46a is ~1.9:1 there). */
+[data-theme="light"] [class~="text-white/55"] { color: rgba(15, 23, 42, 0.6); }
+
+/* Slider thumb: brand blue on a white collar (the collar was still keyed to
+   the old slate body colour, which now reads as a grey halo on white). */
+[data-theme="light"] .chat-range-slider::-webkit-slider-thumb {
+  background: #3b82f6;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.2), 0 0 0 3px #ffffff;
+}
+
+[data-theme="light"] .chat-range-slider::-webkit-slider-thumb:hover {
+  box-shadow: 0 2px 10px rgba(59, 130, 246, 0.45), 0 0 0 3px #ffffff;
+}
+
+[data-theme="light"] .chat-range-slider::-moz-range-thumb {
+  background: #3b82f6;
+  border: 3px solid #ffffff;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.2);
+}
+
+[data-theme="light"] [class~="text-[#e8c46a]"] { color: #a16207; }
+[data-theme="light"] [class~="bg-[#e8c46a]/10"] { background-color: rgba(161, 98, 7, 0.09); }
+[data-theme="light"] [class~="border-[#e8c46a]/25"] { border-color: rgba(161, 98, 7, 0.3); }
+
+/* ===== Unmapped surfaces (swept, not spot-fixed) =====
+   The same diff done for text, run over every bg-/border-[#hex] literal:
+   81 had no light rule and were still painting dark navy panels, neon
+   accents or near-black borders onto a white app (mostly Packs/Studio).
+   Dark navy/graphite -> white or slate; periwinkle/violet/teal/pink ->
+   the brand blue; red stays red and gold stays gold, both dropped to a
+   weight that survives a white background. Alpha suffixes are carried
+   through, since each is its own class token. */
+[data-theme="light"] [class~="bg-[#060e20]/50"] { background-color: rgba(248,250,252, 0.5); }
+[data-theme="light"] [class~="bg-[#070d1f]/45"] { background-color: rgba(248,250,252, 0.45); }
+[data-theme="light"] [class~="bg-[#070d1f]/70"] { background-color: rgba(248,250,252, 0.7); }
+[data-theme="light"] [class~="bg-[#08111f]/80"] { background-color: rgba(255,255,255, 0.8); }
+[data-theme="light"] [class~="bg-[#081121]/95"] { background-color: rgba(255,255,255, 0.95); }
+[data-theme="light"] [class~="bg-[#0c1324]/40"] { background-color: rgba(255,255,255, 0.4); }
+[data-theme="light"] [class~="bg-[#0c1324]/90"] { background-color: rgba(255,255,255, 0.9); }
+[data-theme="light"] [class~="bg-[#0d1225]/80"] { background-color: rgba(255,255,255, 0.8); }
+[data-theme="light"] [class~="bg-[#0d1320]"] { background-color: rgb(255,255,255); }
+[data-theme="light"] [class~="bg-[#0d1320]/70"] { background-color: rgba(255,255,255, 0.7); }
+[data-theme="light"] [class~="bg-[#0d1320]/80"] { background-color: rgba(255,255,255, 0.8); }
+[data-theme="light"] [class~="bg-[#0f1f18]"] { background-color: rgba(22,163,74, 0.1); }
+[data-theme="light"] [class~="bg-[#10b981]"] { background-color: rgb(22,163,74); }
+[data-theme="light"] [class~="bg-[#11182a]/92"] { background-color: rgba(255,255,255, 0.92); }
+[data-theme="light"] [class~="bg-[#13192a]"] { background-color: rgb(248,250,252); }
+[data-theme="light"] [class~="bg-[#151f38]/70"] { background-color: rgba(248,250,252, 0.7); }
+[data-theme="light"] [class~="bg-[#151f38]/85"] { background-color: rgba(248,250,252, 0.85); }
+[data-theme="light"] [class~="bg-[#161d2e]"] { background-color: rgb(248,250,252); }
+[data-theme="light"] [class~="bg-[#191f31]/70"] { background-color: rgba(241,245,249, 0.7); }
+[data-theme="light"] [class~="bg-[#191f31]/95"] { background-color: rgba(241,245,249, 0.95); }
+[data-theme="light"] [class~="bg-[#1a170d]"] { background-color: rgba(161,98,7, 0.1); }
+[data-theme="light"] [class~="bg-[#1f2b42]"] { background-color: rgb(241,245,249); }
+[data-theme="light"] [class~="bg-[#2b3347]"] { background-color: rgb(226,232,240); }
+[data-theme="light"] [class~="bg-[#2e3447]/30"] { background-color: rgba(15,23,42, 0.036); }
+[data-theme="light"] [class~="bg-[#2e3447]/40"] { background-color: rgba(15,23,42, 0.048); }
+[data-theme="light"] [class~="bg-[#2e3447]/60"] { background-color: rgba(15,23,42, 0.072); }
+[data-theme="light"] [class~="bg-[#3b82f6]"] { background-color: rgb(59,130,246); }
+[data-theme="light"] [class~="bg-[#3b82f6]/10"] { background-color: rgba(59,130,246, 0.1); }
+[data-theme="light"] [class~="bg-[#3b82f6]/5"] { background-color: rgba(59,130,246, 0.05); }
+[data-theme="light"] [class~="bg-[#3cddc7]"] { background-color: rgb(59,130,246); }
+[data-theme="light"] [class~="bg-[#424754]/90"] { background-color: rgba(15,23,42, 0.108); }
+[data-theme="light"] [class~="bg-[#4338ca]"] { background-color: rgb(37,99,235); }
+[data-theme="light"] [class~="bg-[#4d8eff]"] { background-color: rgb(59,130,246); }
+[data-theme="light"] [class~="bg-[#8392a6]/10"] { background-color: rgba(100,116,139, 0.012); }
+[data-theme="light"] [class~="bg-[#8392a6]/90"] { background-color: rgba(100,116,139, 0.108); }
+[data-theme="light"] [class~="bg-[#93000a]/15"] { background-color: rgba(185,28,28, 0.09); }
+[data-theme="light"] [class~="bg-[#93000a]/20"] { background-color: rgba(185,28,28, 0.12); }
+[data-theme="light"] [class~="bg-[#93000a]/25"] { background-color: rgba(185,28,28, 0.15); }
+[data-theme="light"] [class~="bg-[#93000a]/30"] { background-color: rgba(185,28,28, 0.18); }
+[data-theme="light"] [class~="bg-[#a5b4fc]"] { background-color: rgb(59,130,246); }
+[data-theme="light"] [class~="bg-[#a78bfa]/10"] { background-color: rgba(59,130,246, 0.1); }
+[data-theme="light"] [class~="bg-[#a78bfa]/5"] { background-color: rgba(59,130,246, 0.05); }
+[data-theme="light"] [class~="bg-[#adc6ff]"] { background-color: rgb(59,130,246); }
+[data-theme="light"] [class~="bg-[#adc6ff]/[0.08]"] { background-color: rgba(59,130,246, 0.08); }
+[data-theme="light"] [class~="bg-[#b9c8de]"] { background-color: rgb(148,163,184); }
+[data-theme="light"] [class~="bg-[#b9c8de]/10"] { background-color: rgba(148,163,184, 0.1); }
+[data-theme="light"] [class~="bg-[#d0bcff]"] { background-color: rgb(59,130,246); }
+[data-theme="light"] [class~="bg-[#e7b53c]"] { background-color: rgb(161,98,7); }
+[data-theme="light"] [class~="bg-[#e7b53c]/15"] { background-color: rgba(161,98,7, 0.105); }
+[data-theme="light"] [class~="bg-[#ec4899]"] { background-color: rgb(59,130,246); }
+[data-theme="light"] [class~="bg-[#ef4444]"] { background-color: rgb(220,38,38); }
+[data-theme="light"] [class~="bg-[#f0c45a]"] { background-color: rgb(161,98,7); }
+[data-theme="light"] [class~="bg-[#f59e0b]"] { background-color: rgb(161,98,7); }
+[data-theme="light"] [class~="bg-[#ffd700]/10"] { background-color: rgba(161,98,7, 0.06999999999999999); }
+[data-theme="light"] [class~="border-[#0c1324]"] { border-color: rgb(255,255,255); }
+[data-theme="light"] [class~="border-[#0d1320]/40"] { border-color: rgba(255,255,255, 0.4); }
+[data-theme="light"] [class~="border-[#3b82f6]"] { border-color: rgb(59,130,246); }
+[data-theme="light"] [class~="border-[#3b82f6]/20"] { border-color: rgba(59,130,246, 0.2); }
+[data-theme="light"] [class~="border-[#3cddc7]"] { border-color: rgb(59,130,246); }
+[data-theme="light"] [class~="border-[#424754]/10"] { border-color: rgba(15,23,42, 0.012); }
+[data-theme="light"] [class~="border-[#424754]/30"] { border-color: rgba(15,23,42, 0.036); }
+[data-theme="light"] [class~="border-[#424754]/50"] { border-color: rgba(15,23,42, 0.06); }
+[data-theme="light"] [class~="border-[#4d8eff]"] { border-color: rgb(59,130,246); }
+[data-theme="light"] [class~="border-[#5b6a8c]"] { border-color: rgb(148,163,184); }
+[data-theme="light"] [class~="border-[#7f8fb5]"] { border-color: rgb(148,163,184); }
+[data-theme="light"] [class~="border-[#93000a]/20"] { border-color: rgba(185,28,28, 0.12); }
+[data-theme="light"] [class~="border-[#93000a]/30"] { border-color: rgba(185,28,28, 0.18); }
+[data-theme="light"] [class~="border-[#93000a]/35"] { border-color: rgba(185,28,28, 0.21); }
+[data-theme="light"] [class~="border-[#93000a]/40"] { border-color: rgba(185,28,28, 0.24); }
+[data-theme="light"] [class~="border-[#93000a]/50"] { border-color: rgba(185,28,28, 0.3); }
+[data-theme="light"] [class~="border-[#93a0bd]"] { border-color: rgb(148,163,184); }
+[data-theme="light"] [class~="border-[#a5b4fc]/70"] { border-color: rgba(59,130,246, 0.7); }
+[data-theme="light"] [class~="border-[#a78bfa]/50"] { border-color: rgba(59,130,246, 0.5); }
+[data-theme="light"] [class~="border-[#b9c8de]"] { border-color: rgb(148,163,184); }
+[data-theme="light"] [class~="border-[#b9c8de]/20"] { border-color: rgba(148,163,184, 0.2); }
+[data-theme="light"] [class~="border-[#b9c8de]/40"] { border-color: rgba(148,163,184, 0.4); }
+[data-theme="light"] [class~="border-[#d0bcff]"] { border-color: rgb(59,130,246); }
+[data-theme="light"] [class~="border-[#e7b53c]/30"] { border-color: rgba(161,98,7, 0.21); }
+[data-theme="light"] [class~="border-[#ffd700]/30"] { border-color: rgba(161,98,7, 0.21); }
+[data-theme="light"] [class~="border-[#ffd700]/50"] { border-color: rgba(161,98,7, 0.35); }
+[data-theme="light"] [class~="border-[#ffd700]/60"] { border-color: rgba(161,98,7, 0.42); }
+
+/* ===== Unmapped pale text (swept from the TSX, not spot-fixed) =====
+   Every text-[#hex] literal in the app was diffed against the remap
+   list; these were the light-on-dark ones with no light rule, so they
+   kept rendering pale on white (the Settings bio, text-[#d4e4fa], was
+   the visible symptom). Dark ink literals meant to sit ON accent fills
+   are deliberately left alone. */
+
+[data-theme="light"] [class~="text-[#d4e4fa]"] { color: #475569; }
+[data-theme="light"] [class~="text-[#dfe4f2]"] { color: #334155; }
+[data-theme="light"] [class~="text-[#c2c6d6]/60"] { color: rgba(71, 85, 105, 0.7); }
+[data-theme="light"] [class~="text-[#c2c6d6]/40"] { color: rgba(100, 116, 139, 0.65); }
+[data-theme="light"] [class~="text-[#94a3b8]"] { color: #64748b; }
+[data-theme="light"] [class~="text-[#8c909f]"] { color: #64748b; }
+[data-theme="light"] [class~="text-[#7a8197]"] { color: #64748b; }
+[data-theme="light"] [class~="text-[#6b7798]"] { color: #64748b; }
+[data-theme="light"] [class~="text-[#5e6c8f]"] { color: #64748b; }
+[data-theme="light"] [class~="text-[#42506f]"] { color: #475569; }
+
+/* Violet/indigo text -> the one blue. */
+[data-theme="light"] [class~="text-[#a5b4fc]"] { color: #2563eb; }
+[data-theme="light"] [class~="text-[#a78bfa]"] { color: #2563eb; }
+[data-theme="light"] [class~="text-[#8b5cf6]"] { color: #2563eb; }
+
+/* Gold = recommended, red = warning: hue kept, weight dropped to stay
+   legible on white. */
+[data-theme="light"] [class~="text-[#e7ad4d]"] { color: #a16207; }
+[data-theme="light"] [class~="text-[#e7b53c]/80"] { color: rgba(161, 98, 7, 0.9); }
+[data-theme="light"] [class~="text-[#ffd6a5]"] { color: #a16207; }
+[data-theme="light"] [class~="text-[#ffdad6]"] { color: #b91c1c; }
+[data-theme="light"] [class~="text-[#ffb4ab]/80"] { color: rgba(185, 28, 28, 0.9); }
+
+/* =============================================================
+   LIGHT — PRIVACY & POLICY. These two pages predate the theme and
+   carry their own palette: a teal accent (#57f1db) on a navy body
+   (#0b1326), plus an inline <style> block the [class~=] remap can
+   never reach. Teal folds into the brand blue; the prose/TOC rules
+   are re-declared here at a specificity the inline block can't beat
+   (an attribute + class + element always outranks its lone class).
+   ============================================================= */
+
+[data-theme="light"] [class~="bg-[#0b1326]"] { background-color: #ffffff; }
+[data-theme="light"] [class~="bg-[#0b1326]/95"] { background-color: rgba(255, 255, 255, 0.95); }
+[data-theme="light"] [class~="bg-[#0b1326]/80"] { background-color: rgba(255, 255, 255, 0.85); }
+[data-theme="light"] [class~="bg-[#222a3d]"] { background-color: #f1f5f9; }
+[data-theme="light"] [class~="bg-[#3c4a46]"] { background-color: #e2e8f0; }
+[data-theme="light"] [class~="border-[#3c4a46]/40"] { border-color: rgba(15, 23, 42, 0.12); }
+[data-theme="light"] [class~="border-[#3c4a46]/20"] { border-color: rgba(15, 23, 42, 0.08); }
+
+/* Teal family -> brand blue (also retires the teal left on Packs). */
+[data-theme="light"] [class~="text-[#57f1db]"] { color: #2563eb; }
+[data-theme="light"] [class~="hover:text-[#57f1db]"]:hover { color: #2563eb; }
+[data-theme="light"] [class~="text-[#3cddc7]"] { color: #2563eb; }
+[data-theme="light"] [class~="text-[#62fae3]"] { color: #2563eb; }
+[data-theme="light"] [class~="focus-within:text-[#3cddc7]"]:focus-within { color: #2563eb; }
+[data-theme="light"] [class~="focus:border-[#3cddc7]"]:focus { border-color: #3b82f6; }
+[data-theme="light"] [class~="bg-[#57f1db]"] { background-color: #3b82f6; }
+[data-theme="light"] [class~="bg-[#57f1db]/10"] { background-color: rgba(59, 130, 246, 0.08); }
+[data-theme="light"] [class~="bg-[#57f1db]/[0.07]"] { background-color: rgba(59, 130, 246, 0.06); }
+[data-theme="light"] [class~="border-[#57f1db]"] { border-color: #3b82f6; }
+[data-theme="light"] [class~="border-[#57f1db]/20"] { border-color: rgba(59, 130, 246, 0.25); }
+[data-theme="light"] [class~="text-[#bacac5]"] { color: #475569; }
+[data-theme="light"] [class~="text-[#bacac5]/70"] { color: rgba(71, 85, 105, 0.75); }
+/* The callout's body text — pale periwinkle at 90% on a pale blue panel
+   is invisible on light; this is the /NN suffix slipping the bare rule. */
+[data-theme="light"] [class~="text-[#dae2fd]/90"] { color: rgba(30, 41, 59, 0.92); }
+[data-theme="light"] [class~="bg-[#57f1db]/30"] { background-color: rgba(59, 130, 246, 0.25); }
+[data-theme="light"] [class~="bg-[#3c4a46]/25"] { background-color: rgba(15, 23, 42, 0.06); }
+[data-theme="light"] [class~="border-[#3c4a46]/30"] { border-color: rgba(15, 23, 42, 0.1); }
+
+/* The language pill's label sits ON the accent fill, so it flips to
+   white rather than following the ink ramp. Scoped: #0b1326 is a page
+   background elsewhere. */
+[data-theme="light"] .vc-privacy [class~="text-[#0b1326]"],
+[data-theme="light"] .vc-policy [class~="text-[#0b1326]"] { color: #ffffff; }
+
+/* Inline <style> overrides */
+[data-theme="light"] .vc-prose h2,
+[data-theme="light"] .vc-policy-content h2 { color: #2563eb; }
+
+[data-theme="light"] .vc-prose p,
+[data-theme="light"] .vc-prose li,
+[data-theme="light"] .vc-policy-content li { color: #475569; }
+
+[data-theme="light"] .vc-prose li::before,
+[data-theme="light"] .vc-policy-content li::before { background-color: #3b82f6; }
+
+[data-theme="light"] .vc-privacy .vc-glass,
+[data-theme="light"] .vc-policy .vc-glass {
+  background: rgba(255, 255, 255, 0.75);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+/* border-color (not -left-color): the RTL rules move this rail to the
+   right edge, and only the active side has a non-zero width anyway. */
+[data-theme="light"] .vc-privacy .vc-tocnav,
+[data-theme="light"] .vc-policy .vc-tocnav { border-color: rgba(15, 23, 42, 0.12); }
+
+[data-theme="light"] .vc-privacy .vc-toc-link,
+[data-theme="light"] .vc-policy .vc-toc-link { color: #64748b; }
+
+[data-theme="light"] .vc-privacy .vc-toc-link:hover,
+[data-theme="light"] .vc-policy .vc-toc-link:hover { color: #2563eb; }
+
+[data-theme="light"] .vc-privacy .vc-toc-link.active,
+[data-theme="light"] .vc-policy .vc-toc-link.active { color: #2563eb; border-color: #3b82f6; }
+[data-theme="light"] [class~="border-[#d0bcff]/20"] { border-color: rgba(59, 130, 246, 0.25); }
+[data-theme="light"] [class~="border-[#d0bcff]/40"] { border-color: rgba(59, 130, 246, 0.45); }
+
+/* ==========================================================================
+   LIGHT — PRICING
+   The page is built from translucent-white-on-dark surfaces. The global remap
+   flips those to translucent-black, which reads as flat grey cards. On this
+   page the cards should be white with a hairline, so the surfaces are pinned
+   here instead. Scoped to .vc-pricing (0,3,0) so it outranks the remap (0,2,0).
+   Palette: white / near-black ink / #3b82f6 (fills) / #2563eb (blue text).
+   ========================================================================== */
+
+/* Cards + info footer: white, not grey. */
+[data-theme="light"] .vc-pricing [class~="bg-white/[0.01]"],
+[data-theme="light"] .vc-pricing [class~="bg-white/[0.02]"] {
+  background-color: #ffffff;
+}
+[data-theme="light"] .vc-pricing [class~="border-white/[0.06]"] {
+  border-color: rgba(15, 23, 42, 0.1);
+}
+[data-theme="light"] .vc-pricing [class~="bg-white/[0.01]"],
+[data-theme="light"] .vc-pricing [class~="bg-white/[0.02]"] {
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+/* Card hover: lift on the brand blue, stay white. */
+[data-theme="light"] .vc-pricing [class~="hover:bg-white/[0.03]"]:hover {
+  background-color: #ffffff;
+}
+[data-theme="light"] .vc-pricing [class~="hover:border-white/[0.15]"]:hover {
+  border-color: rgba(59, 130, 246, 0.45);
+}
+[data-theme="light"] .vc-pricing [class~="hover:shadow-[0_8px_30px_rgb(0,0,0,0.12)]"]:hover {
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+}
+
+/* Provider filter pills — inactive. hover:text-white would vanish on a light pill. */
+[data-theme="light"] .vc-pricing [class~="bg-white/[0.02]"][class~="border-white/[0.08]"] {
+  background-color: #ffffff;
+  border-color: rgba(15, 23, 42, 0.12);
+  color: #475569;
+  box-shadow: none;
+}
+[data-theme="light"] .vc-pricing [class~="hover:text-white"]:hover {
+  color: #0f172a;
+}
+[data-theme="light"] .vc-pricing [class~="hover:bg-white/[0.06]"]:hover {
+  background-color: #f1f5f9;
+}
+
+/* Blue glows are for the dark canvas; on white they read as smudges. */
+[data-theme="light"] .vc-pricing [class~="shadow-[0_0_20px_rgba(59,130,246,0.4)]"] {
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
+}
+[data-theme="light"] .vc-pricing [class~="shadow-[0_0_30px_rgba(59,130,246,0.4)]"] {
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25);
+}
+[data-theme="light"] .vc-pricing [class~="hover:shadow-[0_0_40px_rgba(59,130,246,0.6)]"]:hover {
+  box-shadow: 0 6px 18px rgba(37, 99, 235, 0.35);
+}
+
+/* Section badges: blue text on white needs the darker weight to clear AA. */
+[data-theme="light"] .vc-pricing [class~="text-[#3b82f6]/70"] {
+  color: #2563eb;
+}
+
+/* Provider chip on the card. */
+[data-theme="light"] .vc-pricing [class~="bg-white/[0.05]"] {
+  background-color: rgba(15, 23, 42, 0.04);
+}
+
+/* Both section badges share one role — pin them to the same blue weight. */
+[data-theme="light"] .vc-pricing [class~="text-[#8b5cf6]/70"] {
+  color: #2563eb;
+}
+
+/* ==========================================================================
+   LIGHT — PACKS / SMART STUDIO / GALLERY / CREDITS
+   ========================================================================== */
+
+/* --- The craft accents (packs) -------------------------------------------
+   Five hues encode which craft a pack is. Dark keeps the museum-label
+   spectrum. Light steps five weights of the brand blue instead, per the
+   locked palette — the categorical read survives, the extra hue doesn't.
+   -od = the on-dark weight, for the card caption overlay, which sits on a
+   black scrim in BOTH themes and so needs pale values where the rest of the
+   light theme needs dark ones.
+   To restore the craft spectrum in light, delete the light block below. */
+:root {
+  --craft-photoreal: #4fc2a4;
+  --craft-text-in-image: #e7ad4d;
+  --craft-edit-from-reference: #9d8cf0;
+  --craft-vector-graphic: #5b93ea;
+  --craft-calligraphy: #e26d80;
+
+  --craft-photoreal-od: #4fc2a4;
+  --craft-text-in-image-od: #e7ad4d;
+  --craft-edit-from-reference-od: #9d8cf0;
+  --craft-vector-graphic-od: #5b93ea;
+  --craft-calligraphy-od: #e26d80;
+
+  /* Packs chrome accent (confirm modal). Periwinkle on dark. */
+  --packs-brand: #a5b4fc;
+}
+
+:root[data-theme="light"] {
+  --craft-photoreal: #1e3a8a;
+  --craft-text-in-image: #1d4ed8;
+  --craft-edit-from-reference: #2563eb;
+  --craft-vector-graphic: #3b82f6;
+  --craft-calligraphy: #60a5fa;
+
+  --craft-photoreal-od: #dbeafe;
+  --craft-text-in-image-od: #bfdbfe;
+  --craft-edit-from-reference-od: #93c5fd;
+  --craft-vector-graphic-od: #60a5fa;
+  --craft-calligraphy-od: #3b82f6;
+
+  --packs-brand: #3b82f6;
+}
+
+/* The craft chip paints the accent as TEXT on a 13% tint of itself. The palest
+   two weights can't carry text on white — and the chip already spells the craft
+   out in words, so colour isn't the carrier there (it is on the dots and the
+   specimen art, which have no label). Pin the ink; keep the tint. */
+[data-theme="light"] .vc-craft-chip {
+  color: #1d4ed8 !important;
+}
+
+/* --- Material (M3) tokens, brand-aligned ---------------------------------
+   studio/create runs on the M3 --color-* set, whose light scheme shipped with
+   an indigo primary and purple-tinted greys. Re-point it at the locked palette.
+   Later in source order than the base light scheme, so this wins. */
+:root[data-theme="light"] {
+  --color-primary: #3b82f6;
+  --color-on-primary: #ffffff;
+  --color-primary-container: #dbeafe;
+  --color-on-primary-container: #1e3a8a;
+  --color-inverse-primary: #93c5fd;
+  --color-secondary: #2563eb;
+  --color-on-secondary: #ffffff;
+  --color-secondary-container: #dbeafe;
+  --color-on-secondary-container: #1e3a8a;
+  --color-tertiary: #2563eb;
+  --color-on-tertiary: #ffffff;
+  --color-tertiary-container: #dbeafe;
+  --color-on-tertiary-container: #1e3a8a;
+  --color-background: #ffffff;
+  --color-on-background: #0f172a;
+  --color-surface: #ffffff;
+  --color-surface-dim: #e2e8f0;
+  --color-surface-bright: #ffffff;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #f8fafc;
+  --color-surface-container: #f1f5f9;
+  --color-surface-container-high: #e9eef5;
+  --color-surface-container-highest: #e2e8f0;
+  --color-on-surface: #0f172a;
+  --color-on-surface-variant: #475569;
+  --color-surface-variant: #e2e8f0;
+  --color-outline: #64748b;
+  --color-outline-variant: #cbd5e1;
+  --color-inverse-surface: #1e293b;
+  --color-inverse-on-surface: #f8fafc;
+  --color-surface-tint: #3b82f6;
+}
+
+/* --- White ink -> dark ink -----------------------------------------------
+   These pages carry ~95 bare `text-white` labels, written for a dark canvas.
+   The surface remap turns their panels white, so the text has to invert too.
+   Two exceptions keep their white: anything on a black scrim (bg-black/*), and
+   the pack-card captions, whose scrim is a gradient on an ANCESTOR — the only
+   handle on those is the drop-shadow-sm they carry for exactly that reason. */
+[data-theme="light"] .vc-lightpage [class~="text-white"] {
+  color: #0f172a;
+}
+[data-theme="light"] .vc-lightpage [class~="text-white"][class*="bg-black/"],
+[data-theme="light"] .vc-lightpage [class~="text-white"][class~="drop-shadow-sm"] {
+  color: #ffffff;
+}
+[data-theme="light"] .vc-lightpage [class~="hover:text-white"]:hover,
+[data-theme="light"] .vc-lightpage [class~="focus-visible:text-white"]:focus-visible {
+  color: #0f172a;
+}
+[data-theme="light"] .vc-lightpage [class~="text-white/70"] {
+  color: rgba(15, 23, 42, 0.7);
+}
+
+/* --- Gold stays gold ------------------------------------------------------
+   A previous sweep sent every gold token to #a16207, which is the right weight
+   for gold TEXT on white but turns the "recommended" FILL buttons into brown
+   with near-black ink on them. Fills keep the gold; only text darkens. */
+[data-theme="light"] [class~="bg-[#e7b53c]"] { background-color: #e7b53c; }
+[data-theme="light"] [class~="bg-[#f0c45a]"] { background-color: #f0c45a; }
+[data-theme="light"] [class~="hover:bg-[#f0c45a]"]:hover { background-color: #f0c45a; }
+[data-theme="light"] [class~="bg-[#e7b53c]/15"] { background-color: rgba(231, 181, 60, 0.22); }
+
+/* --- Surfaces / borders the sweep missed --------------------------------- */
+[data-theme="light"] [class~="bg-[#151b2de6]"] { background-color: #ffffff; }
+[data-theme="light"] [class~="focus-within:bg-[#151f38]/85"]:focus-within { background-color: #ffffff; }
+[data-theme="light"] [class~="from-[#1b2540]"] { --tw-gradient-from: #f1f5f9; }
+[data-theme="light"] [class~="bg-white/[.04]"] { background-color: rgba(15, 23, 42, 0.04); }
+[data-theme="light"] [class~="bg-white/[.06]"] { background-color: rgba(15, 23, 42, 0.05); }
+[data-theme="light"] [class~="bg-white/[.08]"] { background-color: rgba(15, 23, 42, 0.06); }
+[data-theme="light"] [class~="hover:bg-white/[.04]"]:hover { background-color: rgba(15, 23, 42, 0.04); }
+[data-theme="light"] [class~="hover:bg-white/20"]:hover { background-color: rgba(15, 23, 42, 0.12); }
+[data-theme="light"] [class~="from-white/[.07]"] { --tw-gradient-from: rgba(15, 23, 42, 0.05); }
+[data-theme="light"] [class~="to-white/[.02]"] { --tw-gradient-to: rgba(15, 23, 42, 0.02); }
+[data-theme="light"] [class~="divide-white/10"] > * + * { border-color: rgba(15, 23, 42, 0.1); }
+[data-theme="light"] [class~="focus:border-[#93a0bd]"]:focus { border-color: #3b82f6; }
+[data-theme="light"] [class~="hover:border-[#93a0bd]"]:hover { border-color: rgba(59, 130, 246, 0.5); }
+[data-theme="light"] [class~="hover:border-[#7f8fb5]"]:hover { border-color: rgba(59, 130, 246, 0.5); }
+
+/* Smart Studio accents */
+[data-theme="light"] [class~="accent-[#4d8eff]"] { accent-color: #3b82f6; }
+[data-theme="light"] [class~="hover:bg-[#4d8eff]"]:hover { background-color: #3b82f6; }
+[data-theme="light"] [class~="from-[#4d8eff]"] { --tw-gradient-from: #3b82f6; }
+[data-theme="light"] [class~="to-[#4d8eff]"] { --tw-gradient-to: #2563eb; }
+[data-theme="light"] [class~="from-[#adc6ff]"] { --tw-gradient-from: #3b82f6; }
+[data-theme="light"] [class~="via-[#d0bcff]"] { --tw-gradient-via: #2563eb; }
+[data-theme="light"] [class~="to-[#d0bcff]"] { --tw-gradient-to: #1d4ed8; }
+[data-theme="light"] [class~="focus:ring-[#adc6ff]/20"]:focus { --tw-ring-color: rgba(59, 130, 246, 0.25); }
+[data-theme="light"] [class~="focus:ring-[#adc6ff]/40"]:focus { --tw-ring-color: rgba(59, 130, 246, 0.45); }
+[data-theme="light"] [class~="focus:ring-[#d0bcff]/20"]:focus { --tw-ring-color: rgba(59, 130, 246, 0.25); }
+[data-theme="light"] [class~="focus:ring-[#b9c8de]/20"]:focus { --tw-ring-color: rgba(59, 130, 246, 0.25); }
+[data-theme="light"] [class~="focus:border-[#d0bcff]/40"]:focus { border-color: rgba(59, 130, 246, 0.5); }
+[data-theme="light"] [class~="focus:border-[#b9c8de]/40"]:focus { border-color: rgba(59, 130, 246, 0.5); }
+[data-theme="light"] [class~="group-hover:border-[#adc6ff]/50"] { border-color: rgba(59, 130, 246, 0.5); }
+[data-theme="light"] [class~="hover:bg-[#93000a]/30"]:hover { background-color: rgba(185, 28, 28, 0.14); }
+
+/* Credits */
+[data-theme="light"] [class~="focus:border-[#adc6ff]"]:focus { border-color: #3b82f6; }
+[data-theme="light"] [class~="focus:ring-[#adc6ff]/30"]:focus { --tw-ring-color: rgba(59, 130, 246, 0.35); }
+[data-theme="light"] [class~="hover:bg-[#adc6ff]/20"]:hover { background-color: rgba(59, 130, 246, 0.14); }
+[data-theme="light"] [class~="shadow-[#adc6ff]/10"] { --tw-shadow-color: rgba(59, 130, 246, 0.12); }
+[data-theme="light"] [class~="shadow-[#adc6ff]/20"] { --tw-shadow-color: rgba(59, 130, 246, 0.2); }
+
+/* ==========================================================================
+   LIGHT — NAMED TAILWIND UTILITIES (leftovers)
+   The bulk of the pale named utilities (text-slate-100..400, text-blue-50,
+   text-rose-300, text-amber-200, text-emerald-200/300) already have light
+   rules above. These four hover/alpha variants are separate class tokens, so
+   those rules never matched them — the same /NN-suffix trap as the hex remap.
+   ========================================================================== */
+
+[data-theme="light"] [class~="text-amber-400"] { color: #a16207; }
+[data-theme="light"] [class~="text-amber-200/60"] { color: rgba(161, 98, 7, 0.75); }
+[data-theme="light"] [class~="hover:text-amber-100"]:hover { color: #854d0e; }
+[data-theme="light"] [class~="hover:text-rose-300"]:hover { color: #9f1239; }
+
+/* --- Panels need an edge in light -----------------------------------------
+   These cards (gallery stat blocks, credits/studio panels) carry no border:
+   on the dark canvas they read as panels purely by being LIGHTER than the
+   body. In light they resolve to white on a white page, so the grouping
+   disappears. Give them a hairline + a soft lift instead. Inset ring rather
+   than `border` so nothing shifts by a pixel and existing borders still win. */
+[data-theme="light"] .vc-lightpage [class~="bg-[#151b2d]"],
+[data-theme="light"] .vc-lightpage [class~="bg-[#151b2d]/50"] {
+  box-shadow:
+    inset 0 0 0 1px rgba(15, 23, 42, 0.09),
+    0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+/* ==========================================================================
+   LIGHT — ARBITRARY GRADIENT BACKGROUNDS + INK ON ACCENT FILLS
+   Two families the hex sweep structurally could not see:
+
+   1. `bg-[linear-gradient(...)]` / `bg-[radial-gradient(...)]` — the whole
+      gradient is one class token, so no `bg-[#hex]` rule ever matched it. The
+      Smart Studio "Optimize" hero is one of these: it stayed dark navy while
+      the text-white on it correctly flipped to ink -> dark-on-dark.
+   2. text-[#002e6a] / text-[#00285d] — dark navy ink that only ever sits ON an
+      accent fill. Those fills are pale periwinkle in dark (so navy ink reads)
+      but solid #3b82f6 in light, where the ink has to be white instead.
+   ========================================================================== */
+
+/* Smart Studio "Optimize" hero panel */
+[data-theme="light"] [class~="bg-[linear-gradient(135deg,#11182a_0%,#0c1324_40%,#18233a_100%)]"] {
+  background-image: linear-gradient(135deg, #ffffff 0%, #f8fafc 40%, #eef2f8 100%);
+}
+[data-theme="light"] [class~="bg-[radial-gradient(circle_at_18%_18%,rgba(77,142,255,0.22),transparent_28%),radial-gradient(circle_at_82%_22%,rgba(208,188,255,0.18),transparent_24%),radial-gradient(circle_at_60%_78%,rgba(185,200,222,0.1),transparent_26%)]"] {
+  background-image:
+    radial-gradient(circle at 18% 18%, rgba(59, 130, 246, 0.1), transparent 28%),
+    radial-gradient(circle at 82% 22%, rgba(59, 130, 246, 0.07), transparent 24%),
+    radial-gradient(circle at 60% 78%, rgba(15, 23, 42, 0.04), transparent 26%);
+}
+/* Same hero, when the user uploaded a reference: the veil darkens the photo so
+   white text reads. Light needs the mirror — a white veil under dark ink. */
+[data-theme="light"] [class~="bg-[linear-gradient(115deg,rgba(12,19,36,0.92),rgba(12,19,36,0.72)_45%,rgba(12,19,36,0.94))]"] {
+  background-image: linear-gradient(115deg, rgba(255, 255, 255, 0.93), rgba(255, 255, 255, 0.78) 45%, rgba(255, 255, 255, 0.95));
+}
+/* Reference-thumbnail scrim in the drop zone — same inversion. */
+[data-theme="light"] [class~="bg-[linear-gradient(180deg,rgba(7,13,31,0.2),rgba(7,13,31,0.85))]"] {
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.25), rgba(255, 255, 255, 0.88));
+}
+
+/* Accent glow blobs behind the hero */
+[data-theme="light"] [class~="bg-[#4d8eff]/18"] { background-color: rgba(59, 130, 246, 0.1); }
+[data-theme="light"] [class~="bg-[#4d8eff]/10"] { background-color: rgba(59, 130, 246, 0.08); }
+[data-theme="light"] [class~="bg-[#d0bcff]/10"] { background-color: rgba(59, 130, 246, 0.07); }
+[data-theme="light"] [class~="bg-[#8392a6]/10"] { background-color: rgba(15, 23, 42, 0.05); }
+
+/* Primary buttons: periwinkle->blue gradient becomes brand blue. */
+[data-theme="light"] [class~="bg-[linear-gradient(90deg,#adc6ff,#4d8eff)]"] {
+  background-image: linear-gradient(90deg, #3b82f6, #2563eb);
+}
+
+/* Ink on those fills flips to white. */
+[data-theme="light"] [class~="text-[#002e6a]"],
+[data-theme="light"] [class~="text-[#00285d]"] { color: #ffffff; }
+[data-theme="light"] [class~="hover:text-[#00285d]"]:hover { color: #ffffff; }
+[data-theme="light"] [class~="selection:text-[#00285d]"] ::selection { color: #ffffff; }
+
+/* ==========================================================================
+   CREDITS — FUEL GAUGE
+   The balance has no maximum (a user can redeem any amount), so this is a fuel
+   gauge, not a percentage: "full" is the top of the comfortable range (30 Cr,
+   set in credits/page.tsx), and any balance above that simply reads as a full
+   tank. Blue = safe, red = below the smallest code we sell. Semantic classes,
+   so both themes are handled here rather than through the hex remap.
+   ========================================================================== */
+
+.vc-fuel-track {
+  position: relative;
+  height: 7px;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+.vc-fuel-fill {
+  position: relative;
+  height: 100%;
+  overflow: hidden;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #3b82f6, #60a5fa);
+  box-shadow: 0 0 12px rgba(59, 130, 246, 0.45);
+  /* No width transition: the count-up clock in page.tsx sets width per frame. */
+  transition: background 400ms ease, box-shadow 400ms ease;
+}
+
+.vc-fuel[data-low="true"] .vc-fuel-fill {
+  background: linear-gradient(90deg, #dc2626, #f87171);
+  box-shadow: 0 0 12px rgba(248, 113, 113, 0.45);
+}
+
+/* Slow travelling highlight — the only thing on this bar that moves once the
+   width has settled, so it reads as "live" without demanding attention. */
+.vc-fuel-sheen {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.55) 50%, transparent 100%);
+  transform: translateX(-100%);
+  animation: vc-fuel-sweep 3.6s ease-in-out infinite;
+}
+
+@keyframes vc-fuel-sweep {
+  0%, 55% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vc-fuel-sheen { animation: none; opacity: 0; }
+  .vc-fuel-fill { transition: none; }
+}
+
+.vc-fuel-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #8fa8e0;
+}
+
+.vc-fuel[data-low="true"] .vc-fuel-status {
+  color: #f87171;
+}
+
+.vc-fuel-cta {
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #dbeafe;
+  background: rgba(59, 130, 246, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.35);
+  transition: background 160ms ease, color 160ms ease;
+}
+
+.vc-fuel-cta:hover {
+  background: #3b82f6;
+  color: #ffffff;
+}
+
+/* Light */
+[data-theme="light"] .vc-fuel-track {
+  background: rgba(15, 23, 42, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.06);
+}
+
+[data-theme="light"] .vc-fuel-fill {
+  background: linear-gradient(90deg, #2563eb, #3b82f6);
+  box-shadow: 0 0 10px rgba(59, 130, 246, 0.3);
+}
+
+[data-theme="light"] .vc-fuel[data-low="true"] .vc-fuel-fill {
+  background: linear-gradient(90deg, #b91c1c, #dc2626);
+  box-shadow: 0 0 10px rgba(220, 38, 38, 0.28);
+}
+
+[data-theme="light"] .vc-fuel-sheen {
+  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.7) 50%, transparent 100%);
+}
+
+[data-theme="light"] .vc-fuel-status { color: #2563eb; }
+[data-theme="light"] .vc-fuel[data-low="true"] .vc-fuel-status { color: #dc2626; }
+
+[data-theme="light"] .vc-fuel-cta {
+  color: #1d4ed8;
+  background: rgba(59, 130, 246, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.3);
+}
+
+[data-theme="light"] .vc-fuel-cta:hover {
+  background: #3b82f6;
+  color: #ffffff;
+}
+
+/* ==========================================================================
+   CREDITS — THE REDEMPTION MOMENT
+   Replaces the old confetti + full-screen black spotlight. That version was
+   decorative (confetti says nothing about what happened), it blacked out and
+   froze the page for 1.5s, and its gold/periwinkle/emerald tier colours were
+   off-palette. The new moment IS the product event: the tank refuels. The
+   gauge fill and the balance count-up are driven by one clock in page.tsx
+   (width is set per frame — never add a width transition here, it would fight
+   the rAF), and a "+N.NN Cr" chip rises at the card. One hero, one accent.
+   ========================================================================== */
+
+.vc-refuel-delta {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 999px;
+  padding: 3px 9px;
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: #dbeafe;
+  background: rgba(59, 130, 246, 0.18);
+  box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.45);
+  animation: vc-refuel-rise 2600ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Gold is the "recommended" accent, so the top pack — and only the top pack —
+   still gets its own mark, the way the old diamond did. */
+.vc-refuel-delta[data-top-tier="true"] {
+  color: #e7b53c;
+  background: rgba(231, 181, 60, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(231, 181, 60, 0.45);
+}
+
+@keyframes vc-refuel-rise {
+  0% { opacity: 0; transform: translateY(8px) scale(0.94); }
+  12% { opacity: 1; transform: translateY(0) scale(1); }
+  75% { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateY(-10px) scale(1); }
+}
+
+.vc-redeem-ok {
+  border-color: rgba(59, 130, 246, 0.45);
+  background: rgba(59, 130, 246, 0.1);
+  color: #bfdbfe;
+}
+
+[data-theme="light"] .vc-refuel-delta {
+  color: #1d4ed8;
+  background: rgba(59, 130, 246, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.4);
+}
+
+[data-theme="light"] .vc-refuel-delta[data-top-tier="true"] {
+  color: #4a3506;
+  background: linear-gradient(180deg, #f7d97f 0%, #e7b53c 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(146, 105, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.55),
+    0 1px 3px rgba(120, 83, 0, 0.3);
+}
+
+[data-theme="light"] .vc-redeem-ok {
+  border-color: rgba(59, 130, 246, 0.4);
+  background: rgba(59, 130, 246, 0.08);
+  color: #1d4ed8;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vc-refuel-delta { animation: vc-refuel-fade 2600ms linear forwards; }
+  @keyframes vc-refuel-fade {
+    0%, 90% { opacity: 1; transform: none; }
+    100% { opacity: 0; transform: none; }
+  }
+}
+
+/* ==========================================================================
+   CREDITS — GAUGE/REFUEL: PHONE + SLOW-DEVICE HARDENING
+   ========================================================================== */
+
+/* Isolate the bar so a per-frame width change can't cost a page-wide relayout
+   on a slow phone, and warn the compositor what is about to move. */
+.vc-fuel-track {
+  contain: layout style;
+}
+
+
+
+.vc-fuel-sheen {
+  will-change: transform;
+  /* Cheap on a phone GPU, and stops the sweep from repainting the text under it. */
+  backface-visibility: hidden;
+}
+
+.vc-refuel-delta {
+  will-change: transform, opacity;
+}
+
+/* The pill reads small, but the tap area must clear 44px (Apple HIG / MD 48dp).
+   The ::after extends the hit target past the visual bounds instead of bloating
+   the pill itself. */
+.vc-fuel-cta {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+}
+
+.vc-fuel-cta::after {
+  content: "";
+  position: absolute;
+  left: -8px;
+  right: -8px;
+  top: 50%;
+  height: 44px;
+  transform: translateY(-50%);
+}
+
+/* Small phones: keep the delta chip from crowding the AVAILABLE BALANCE label
+   it shares the top row with. */
+@media (max-width: 420px) {
+  .vc-refuel-delta {
+    top: 10px;
+    right: 10px;
+    padding: 2px 7px;
+    font-size: 11px;
+  }
+}
+
+/* Coarse pointers get no sheen: it is pure decoration and it is the only thing
+   on this card that repaints forever. */
+@media (hover: none) and (pointer: coarse) {
+  .vc-fuel-sheen {
+    animation-duration: 5s;
+  }
+}
+
+/* Icon slot is reserved even before the icon font loads, so the label next to
+   it never jumps when the glyph finally lands. */
+.vc-fuel-icon {
+  display: inline-block;
+  width: 15px;
+  height: 15px;
+  font-size: 15px;
+  line-height: 15px;
+  overflow: hidden;
+}
+
+.vc-fuel-icon[data-ready="false"] {
+  visibility: hidden;
+}
+
+/* ==========================================================================
+   CREDITS — REDEEM AMOUNT BADGES (history table)
+   The tier ladder is base -> blue -> gold, gold being the 70 Cr pack.
+   DARK is a reproduction of the exact values these badges already had
+   (#ffd700 glow / #adc6ff / emerald-500) — dark is signed off, it must not move.
+   LIGHT is the mirror of the EFFECT, not of the values: a gold glow on near-black
+   reads premium, but the same translucent gold on white just washes out. So the
+   top tier becomes a filled gold plate with dark ink — foil, not tint — which is
+   what "premium" looks like on a white surface.
+   ========================================================================== */
+
+/* Dark (default) */
+.vc-amount--gold {
+  border-color: rgba(255, 215, 0, 0.3);
+  background-color: rgba(255, 215, 0, 0.1);
+  color: #ffd700;
+  box-shadow: 0 0 10px rgba(255, 215, 0, 0.15);
+}
+
+.vc-amount--blue {
+  border-color: rgba(173, 198, 255, 0.4);
+  background-color: rgba(173, 198, 255, 0.15);
+  color: #adc6ff;
+  box-shadow: 0 0 8px rgba(173, 198, 255, 0.15);
+}
+
+.vc-amount--base {
+  border-color: rgba(16, 185, 129, 0.3);
+  background-color: rgba(16, 185, 129, 0.1);
+  color: #6ee7b7;
+}
+
+/* Light */
+[data-theme="light"] .vc-amount--gold {
+  color: #4a3506;
+  background: linear-gradient(180deg, #f7d97f 0%, #e7b53c 100%);
+  border-color: rgba(146, 105, 0, 0.45);
+  /* Lift + a top highlight: on white, depth is what sells "premium", the way a
+     glow does on black. */
+  box-shadow:
+    0 1px 3px rgba(120, 83, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+
+[data-theme="light"] .vc-amount--blue {
+  color: #1d4ed8;
+  background: rgba(59, 130, 246, 0.12);
+  border-color: rgba(59, 130, 246, 0.4);
+  box-shadow: none;
+}
+
+[data-theme="light"] .vc-amount--base {
+  color: #15803d;
+  background: rgba(16, 185, 129, 0.1);
+  border-color: rgba(16, 185, 129, 0.35);
+  box-shadow: none;
+}
+
+/* ==========================================================================
+   LIGHT — CHAT COMPOSER: MAKE IT READ AS A SURFACE
+   In dark, the composer is defined by a rotating aurora ring on a near-black
+   page — it cannot be missed. In light that ring is off-palette and switched
+   off, which left an 85%-white card with a 10% hairline sitting on a white
+   page: no edge, no elevation, invisible. The most important control on the
+   screen was the least visible thing on it.
+   White-on-white needs the same thing paper needs: a real edge and a real
+   shadow. Elevation is how a light UI says "this is on top".
+   ========================================================================== */
+
+[data-theme="light"] .chat-composer {
+  /* Opaque. Translucency over a white page buys nothing and only washes the
+     hairline out further. */
+  background: #ffffff;
+  border-color: rgba(15, 23, 42, 0.16);
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.06),
+    0 10px 24px -8px rgba(15, 23, 42, 0.16),
+    0 28px 56px -20px rgba(15, 23, 42, 0.14);
+}
+
+/* Focus: the brand blue takes over the edge and adds a ring — the light-mode
+   equivalent of the aurora lighting up. */
+[data-theme="light"] .chat-composer:focus-within {
+  border-color: #3b82f6;
+  box-shadow:
+    0 0 0 3px rgba(59, 130, 246, 0.16),
+    0 1px 2px rgba(15, 23, 42, 0.06),
+    0 14px 30px -10px rgba(59, 130, 246, 0.32),
+    0 28px 56px -20px rgba(15, 23, 42, 0.14);
+}
+
+/* ::after was doing a second, competing focus ring; the border + ring above is
+   the whole focus signal now. */
+[data-theme="light"] .chat-composer::after {
+  box-shadow: none;
+}
+
+[data-theme="light"] .chat-composer textarea::placeholder {
+  color: #64748b;
+}
+
+[data-theme="light"] .chat-composer:focus-within textarea::placeholder {
+  color: #94a3b8;
+}
+
+/* ==========================================================================
+   PACKS STUDIO — ACCENT FILLS + LIGHT COMPOSER
+   The studio accent (--accent, set inline from BRAND in PackChat) is pale
+   periwinkle on dark, and every fill assumed that: solid accent background with
+   near-BLACK ink. That inverts in light, where the accent is the brand blue —
+   dark navy ink on solid #3B82F6 is unreadable. So the ink flips with the theme.
+   Dark values are the originals; only light is new.
+   ========================================================================== */
+
+.pack-cta,
+.pack-accent-fill {
+  background: var(--accent);
+  color: #1b2250; /* near-black navy: correct ON the pale periwinkle */
+}
+
+.pack-cta {
+  box-shadow: 0 4px 14px -2px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+[data-theme="light"] .pack-cta,
+[data-theme="light"] .pack-accent-fill {
+  background: #3b82f6;
+  color: #ffffff;
+}
+
+[data-theme="light"] .pack-cta {
+  box-shadow: 0 4px 14px -2px rgba(59, 130, 246, 0.45);
+}
+
+[data-theme="light"] .pack-cta:disabled {
+  box-shadow: none;
+}
+
+/* The packs composer had NO light rules at all — it inherited a dark glass card
+   on a white page. Same fix as the chat composer: an opaque surface with a real
+   edge and real elevation, because that is how a light UI says "on top". Its
+   focus ring is ::before tinted with var(--accent), which is now the brand blue,
+   so it lights up correctly on its own. */
+[data-theme="light"] .pack-composer {
+  background: #ffffff;
+  border-color: rgba(15, 23, 42, 0.16);
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.06),
+    0 10px 24px -8px rgba(15, 23, 42, 0.16),
+    0 28px 56px -20px rgba(15, 23, 42, 0.14);
+}
+
+[data-theme="light"] .pack-composer:focus-within {
+  border-color: #3b82f6;
+  box-shadow:
+    0 0 0 3px rgba(59, 130, 246, 0.16),
+    0 1px 2px rgba(15, 23, 42, 0.06),
+    0 14px 30px -10px rgba(59, 130, 246, 0.32);
+}
+
+[data-theme="light"] .pack-composer textarea::placeholder {
+  color: #64748b;
+}
+
+/* ==========================================================================
+   PACKS — SELECTED CHIP (model / size / quality)
+   Selection was drawn as a 15% tint of the accent. On near-black that tint is a
+   visible glow; on white it computes to ~#e3edfe — a hair off the page itself,
+   which is why "selected" and "not selected" looked the same in light.
+   Light gets a SOLID fill instead of a tint. The inner shape and label must go
+   white with it: they were tinted with the same accent, so on a blue fill they
+   would be blue-on-blue and vanish.
+   Dark is untouched (the Tailwind tint classes still win there).
+   ========================================================================== */
+
+[data-theme="light"] .pack-chip-on {
+  background-color: #3b82f6;
+  border-color: #3b82f6;
+  color: #ffffff;
+}
+
+/* The shape preview, its dashed "auto" frame, and the caption underneath. */
+[data-theme="light"] .pack-chip-on * {
+  color: #ffffff;
+  border-color: #ffffff;
+}
+
+/* The filled shape swatch is a 30% accent tint — needs to read against blue. */
+[data-theme="light"] .pack-chip-on [class~="bg-[color:var(--accent-30)]"] {
+  background-color: rgba(255, 255, 255, 0.45);
+}
+
+/* ==========================================================================
+   LIGHT — STUDIO TOPBAR
+   The sticky studio header carries shadow-[0_16px_40px_rgba(0,0,0,0.2)] — a
+   heavy BLACK shadow. On the dark canvas it just reads as depth; on white it
+   smears a grey band under the bar. Light keeps the hairline border only, so
+   the header sits flat like the rest of the light chrome.
+   ========================================================================== */
+
+[data-theme="light"] [class~="shadow-[0_16px_40px_rgba(0,0,0,0.2)]"] {
+  box-shadow: none;
+}
+
+/* ==========================================================================
+   LIGHT — SMART STUDIO HERO ("visual identity.")
+   The dark gradient is pale periwinkle → lavender → blue (#adc6ff/#d0bcff/
+   #4d8eff). Those are chosen to GLOW on near-black; on white the first two
+   stops are barely darker than the page, so the phrase fades out and only the
+   last stop reads. Light needs the mirror: stops that gain weight on white.
+   A blue that deepens left→right, so the gradient still moves without leaving
+   the locked palette.
+   ========================================================================== */
+
+[data-theme="light"] .vc-hero-accent {
+  background-image: linear-gradient(90deg, #3b82f6 0%, #2563eb 55%, #1d4ed8 100%);
+}
+
+/* ==========================================================================
+   LIGHT — SMART STUDIO HERO: ONE BLUE RAMP ACROSS THE WHOLE LINE
+   Not black + blue. The whole headline is a single gradient that runs from the
+   brand blue to a heavy navy, so the weight builds left→right.
+   The clip lives on the H1, so the gradient spans the FULL phrase; the inner
+   accent span drops its own gradient and lets its glyphs go transparent, which
+   is what lets the parent's ramp paint straight through them.
+   Floor is #3b82f6 (3.7:1 on white) — anything lighter (#60a5fa is 2.4:1) stops
+   being legible at this size, which is why the ramp starts here and only darkens.
+   The .vc-lightpage selector is needed to outrank the global text-white remap,
+   which would otherwise paint the glyphs solid #0f172a and hide the gradient.
+   ========================================================================== */
+
+[data-theme="light"] .vc-lightpage .vc-hero-h1,
+[data-theme="light"] .vc-hero-h1 {
+  background-image: linear-gradient(100deg, #3b82f6 0%, #2563eb 38%, #1d4ed8 68%, #1e3a8a 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+[data-theme="light"] .vc-hero-h1 .vc-hero-accent {
+  background-image: none;
+}
+
+/* ==========================================================================
+   LIGHT — WARNINGS & ERRORS (auth, generation, network, moderation, rate limit)
+   Every alert in the app is drawn for a dark surface: PALE ink (red-200,
+   rose-300, amber-200, #ffdad6) on a translucent red/amber wash. Invert the
+   surface and the ink is the same weight as the fill — the credits banner was
+   pale pink text on pale pink, i.e. an error message you cannot read.
+   Light needs the mirror: DARK ink on the pale wash.
+   Audited every red/rose/amber/yellow + M3 #93000a token in app/ and
+   components/ — 31 of the 56 had no light rule at all, mostly because of the
+   `/NN` trap: `text-red-200` was mapped but `text-red-200/90` is a DIFFERENT
+   class token, so the banner slipped through. Opacity suffixes are covered here.
+
+   Ink:     error #b91c1c (5.9:1 on white) · warning #a16207 (4.8:1)
+   Surface: ~8% wash · Border: ~30% so the banner still has an edge.
+   ========================================================================== */
+
+/* ---- Error ink ---------------------------------------------------------- */
+[data-theme="light"] [class~="text-red-400"],
+[data-theme="light"] [class~="text-red-200/90"],
+[data-theme="light"] [class~="text-red-200/75"],
+[data-theme="light"] [class~="text-red-300/80"],
+[data-theme="light"] [class~="text-red-400/80"],
+[data-theme="light"] [class~="text-red-400/70"] {
+  color: #b91c1c;
+}
+
+/* The faintest inks are secondary/meta text — keep them red but a shade softer,
+   still well past the 4.5:1 floor. */
+[data-theme="light"] [class~="text-red-400/60"],
+[data-theme="light"] [class~="text-red-400/50"] {
+  color: rgba(185, 28, 28, 0.8);
+}
+
+[data-theme="light"] [class~="hover:text-red-300"]:hover {
+  color: #991b1b;
+}
+
+/* ---- Error surfaces ----------------------------------------------------- */
+[data-theme="light"] [class~="bg-red-500/10"],
+[data-theme="light"] [class~="bg-red-500/[0.07]"],
+[data-theme="light"] [class~="bg-rose-500/10"],
+[data-theme="light"] [class~="bg-red-400/15"] {
+  background-color: rgba(220, 38, 38, 0.08);
+}
+
+[data-theme="light"] [class~="bg-red-500/5"] {
+  background-color: rgba(220, 38, 38, 0.05);
+}
+
+[data-theme="light"] [class~="hover:bg-rose-500/15"]:hover {
+  background-color: rgba(220, 38, 38, 0.12);
+}
+
+[data-theme="light"] [class~="hover:bg-[#93000a]/10"]:hover {
+  background-color: rgba(185, 28, 28, 0.07);
+}
+
+[data-theme="light"] [class~="hover:bg-[#93000a]/25"]:hover {
+  background-color: rgba(185, 28, 28, 0.15);
+}
+
+/* Solid destructive fill keeps its red — white label rides on it. */
+[data-theme="light"] [class~="hover:bg-red-500/80"]:hover {
+  background-color: #dc2626;
+}
+
+/* ---- Error borders ------------------------------------------------------ */
+[data-theme="light"] [class~="border-red-500/20"],
+[data-theme="light"] [class~="border-red-500/25"],
+[data-theme="light"] [class~="border-rose-500/20"],
+[data-theme="light"] [class~="border-red-400/30"] {
+  border-color: rgba(220, 38, 38, 0.3);
+}
+
+[data-theme="light"] [class~="border-rose-500/60"] {
+  border-color: rgba(220, 38, 38, 0.55);
+}
+
+/* ---- Warning (moderation / policy) ink ---------------------------------- */
+[data-theme="light"] [class~="text-amber-200/90"],
+[data-theme="light"] [class~="text-yellow-400"] {
+  /* #a16207 measured 4.31:1 on the amber wash — under the 4.5 floor at 13px.
+     amber-800 clears it without going brown. */
+  color: #92400e;
+}
+
+/* ---- Warning surfaces + borders ----------------------------------------- */
+[data-theme="light"] [class~="bg-amber-500/10"],
+[data-theme="light"] [class~="bg-amber-500/[0.08]"],
+[data-theme="light"] [class~="bg-yellow-500/10"] {
+  background-color: rgba(180, 83, 9, 0.1);
+}
+
+[data-theme="light"] [class~="border-amber-500/30"],
+[data-theme="light"] [class~="border-yellow-500/20"] {
+  border-color: rgba(180, 83, 9, 0.32);
+}
+
+/* =============================================================
+   MOBILE APP SHELL — bottom tab bar + "More" sheet
+   The bar is the app's primary navigation below lg. Its height is
+   published as a variable so pages can reserve exactly the right
+   clearance (.app-nav-clear) instead of hardcoding a padding that
+   drifts out of sync with the bar.
+   ============================================================= */
+:root {
+  --app-nav-h: 3.75rem; /* 60px of content; the safe-area inset is added on top */
+  --app-safe-b: env(safe-area-inset-bottom, 0px);
+}
+
+.app-bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  z-index: 50;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  width: 100%;
+  height: calc(var(--app-nav-h) + var(--app-safe-b));
+  padding-bottom: var(--app-safe-b);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(15, 23, 42, 0.95);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+/* Each cell is a full-height touch target (~72 x 60px), comfortably past the
+   44px minimum, so the label never has to be the thing you aim at. */
+.app-bottom-nav__item {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  height: var(--app-nav-h);
+  color: #64748b;
+  transition: color 160ms ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.app-bottom-nav__item:active {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.app-bottom-nav__item--active {
+  color: #93c5fd;
+}
+
+.app-bottom-nav__label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+/* Clearance for content sitting above the fixed bar. */
+.app-nav-clear {
+  padding-bottom: calc(var(--app-nav-h) + var(--app-safe-b) + 0.5rem);
+}
+
+@media (min-width: 1024px) {
+  /* Must live here, not on the element as `lg:hidden`: that utility sits in
+     @layer utilities and loses to this file's unlayered `display: grid`. */
+  .app-bottom-nav {
+    display: none;
+  }
+
+  .app-nav-clear {
+    padding-bottom: 1.25rem;
+  }
+}
+
+.app-sheet__scrim {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  background: rgba(2, 6, 23, 0.55);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  animation: app-sheet-fade 180ms ease-out;
+}
+
+.app-sheet {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 0.5rem 0.75rem calc(0.75rem + var(--app-safe-b));
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px 20px 0 0;
+  background: #0f1626;
+  box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.45);
+  animation: app-sheet-up 240ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.app-sheet__grab {
+  width: 36px;
+  height: 4px;
+  margin: 4px auto 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.app-sheet__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  padding: 0 12px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(214, 228, 250, 0.78);
+  transition: background 160ms ease, color 160ms ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.app-sheet__row:active {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.app-sheet__row--active {
+  background: rgba(173, 198, 255, 0.1);
+  color: #adc6ff;
+  font-weight: 600;
+}
+
+@keyframes app-sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes app-sheet-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-sheet,
+  .app-sheet__scrim {
+    animation: none;
+  }
+}
+
+[data-theme="light"] .app-bottom-nav {
+  border-top-color: rgba(15, 23, 42, 0.1);
+  background: rgba(255, 255, 255, 0.96);
+}
+
+[data-theme="light"] .app-bottom-nav__item {
+  color: #64748b;
+}
+
+[data-theme="light"] .app-bottom-nav__item--active {
+  color: #2563eb;
+}
+
+[data-theme="light"] .app-sheet {
+  border-top-color: rgba(15, 23, 42, 0.08);
+  background: #ffffff;
+  box-shadow: 0 -12px 40px rgba(15, 23, 42, 0.16);
+}
+
+[data-theme="light"] .app-sheet__grab {
+  background: rgba(15, 23, 42, 0.16);
+}
+
+[data-theme="light"] .app-sheet__row {
+  color: #475569;
+}
+
+[data-theme="light"] .app-sheet__row--active {
+  background: rgba(37, 99, 235, 0.08);
+  color: #2563eb;
+}
+
+/* =============================================================
+   TOUCH TARGETS (mobile) — the chat controls were sized for a
+   mouse (32-35px). Below sm they grow past the 44px minimum;
+   from sm up they keep their original compact desktop size.
+   ============================================================= */
+@media (max-width: 639px) {
+  .chat-topbar-btn {
+    width: 44px;
+    height: 44px;
+    flex: 0 0 auto;
+  }
+
+  .chat-attach-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  /* Icon-only square: the word "Send" costs ~55px that the 360px row does not
+     have, and losing it is what stops the model pill and the tune button from
+     colliding. The arrow keeps the affordance; aria-label keeps the name. */
+  .chat-send-btn {
+    width: 44px;
+    height: 44px;
+    flex: 0 0 auto;
+    gap: 0;
+    padding: 0;
   }
 }

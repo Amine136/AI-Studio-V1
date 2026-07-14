@@ -31,16 +31,28 @@ export const CAPABILITY_GLYPH: Record<PackCapability, string> = {
   calligraphy: "brush",
 };
 
-// The "Crafts Index" color system: the page is monochrome ink-on-dark and the
-// ONLY hue comes from these five craft accents (a muted museum-label spectrum),
-// used on the specimen art, filter dots, and card craft label. Tuned to read on
-// the dark canvas.
+// The "Crafts Index" color system: the page is monochrome ink-on-canvas and the
+// ONLY hue comes from these five craft accents, used on the specimen art, filter
+// dots, and card craft label. The values live in CSS (globals.css) so each theme
+// can tune them: dark keeps the museum-label spectrum, light steps five weights
+// of the brand blue. Read them through these maps, never as raw hex.
 export const CRAFT_HEX: Record<PackCapability, string> = {
-  photoreal: "#4fc2a4",
-  "text-in-image": "#e7ad4d",
-  "edit-from-reference": "#9d8cf0",
-  "vector-graphic": "#5b93ea",
-  calligraphy: "#e26d80",
+  photoreal: "var(--craft-photoreal)",
+  "text-in-image": "var(--craft-text-in-image)",
+  "edit-from-reference": "var(--craft-edit-from-reference)",
+  "vector-graphic": "var(--craft-vector-graphic)",
+  calligraphy: "var(--craft-calligraphy)",
+};
+
+// Same five accents, for the one place they sit on a dark scrim in BOTH themes:
+// the pack card's caption overlay, which lies over the thumbnail art. The light
+// theme needs pale weights there, where CRAFT_HEX needs dark ones.
+export const CRAFT_HEX_ON_DARK: Record<PackCapability, string> = {
+  photoreal: "var(--craft-photoreal-od)",
+  "text-in-image": "var(--craft-text-in-image-od)",
+  "edit-from-reference": "var(--craft-edit-from-reference-od)",
+  "vector-graphic": "var(--craft-vector-graphic-od)",
+  calligraphy: "var(--craft-calligraphy-od)",
 };
 
 // Filter/display order for the craft strip (most-common first).

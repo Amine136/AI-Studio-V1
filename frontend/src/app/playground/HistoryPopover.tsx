@@ -42,7 +42,7 @@ export default function HistoryPopover({
   t: (key: string) => string;
 }) {
   const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState<{ top: number; left: number; maxHeight: number } | null>(null);
+  const [pos, setPos] = useState<{ top: number; left: number; maxHeight: number; width: number } | null>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
   const popRef = useRef<HTMLDivElement>(null);
 
@@ -58,13 +58,15 @@ export default function HistoryPopover({
       const b = btnRef.current?.getBoundingClientRect();
       if (!b) return;
       const margin = 8;
+      // Clamp to the viewport so the card keeps a margin on a 360px phone.
+      const width = Math.min(POPOVER_WIDTH, window.innerWidth - 2 * margin);
       const left = Math.min(
-        Math.max(margin, isRtl ? b.right - POPOVER_WIDTH : b.left),
-        window.innerWidth - POPOVER_WIDTH - margin,
+        Math.max(margin, isRtl ? b.right - width : b.left),
+        window.innerWidth - width - margin,
       );
       const top = b.bottom + 6;
       const maxHeight = Math.min(POPOVER_MAX_HEIGHT, window.innerHeight - top - margin);
-      setPos({ top, left, maxHeight });
+      setPos({ top, left, maxHeight, width });
     };
     place();
 
@@ -111,7 +113,7 @@ export default function HistoryPopover({
             ref={popRef}
             dir={isRtl ? "rtl" : "ltr"}
             role="menu"
-            style={{ position: "fixed", top: pos.top, left: pos.left, width: POPOVER_WIDTH, maxHeight: pos.maxHeight }}
+            style={{ position: "fixed", top: pos.top, left: pos.left, width: pos.width, maxHeight: pos.maxHeight }}
             className="z-[9999] flex flex-col overflow-hidden rounded-xl border border-white/10 bg-[#0f1626] shadow-[0_16px_48px_rgba(0,0,0,0.6)]"
           >
             <div className="flex shrink-0 items-center justify-between border-b border-white/[0.06] px-3 py-2.5">
@@ -169,7 +171,7 @@ export default function HistoryPopover({
                   type="button"
                   onClick={onLoadMore}
                   disabled={loading}
-                  className="flex w-full items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-[12px] font-medium text-white/55 transition-colors hover:bg-white/[0.04] hover:text-white/85 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="flex w-full items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-[12px] font-medium text-white/55 transition-colors hover:bg-white/[0.04] hover:text-white/85 disabled:cursor-not-allowed disabled:opacity-40 light:text-slate-700 light:hover:text-slate-900"
                 >
                   <span className="material-symbols-outlined text-[15px]">expand_more</span>
                   {t("Load more")}

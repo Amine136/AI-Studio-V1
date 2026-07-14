@@ -45,7 +45,7 @@ export default function AspectShapePicker({
             aria-pressed={selected}
             className={`flex cursor-pointer flex-col items-center gap-1 rounded-lg border px-2.5 py-1.5 transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent-60)] disabled:cursor-not-allowed disabled:opacity-35 motion-reduce:transition-none ${
               selected
-                ? "border-[color:var(--accent)] bg-[color:var(--accent-15)]"
+                ? "pack-chip-on border-[color:var(--accent)] bg-[color:var(--accent-15)]"
                 : "border-white/10 bg-[#111826] hover:border-white/25"
             }`}
           >

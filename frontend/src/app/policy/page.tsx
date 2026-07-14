@@ -19,7 +19,7 @@ const policyLocales = {
     },
     effective: {
       label: "Effective",
-      date: "June 18, 2026",
+      date: "July 14, 2026",
       desc: "This policy applies to the current Vibecraft production workflow unless replaced by a later revision.",
     },
     support: {
@@ -47,9 +47,8 @@ const policyLocales = {
         title: "Usage Limits",
         summary: "The current service ceilings used to control cost and abuse exposure.",
         items: [
-          "First 24 hours after signup: maximum 1 credit total usage.",
-          "After the first 24 hours: maximum 5 credits per rolling 24 hours.",
-          "Smart analysis fees, generation charges, and plain-chat billed usage all count toward account usage.",
+          "Maximum 30 credits of usage per rolling 24-hour period.",
+          "Smart analysis fees and generation charges count toward this rolling limit.",
           "Operator-side safety, credit, abuse, or provider limits may block requests before a requested action runs.",
         ],
       },

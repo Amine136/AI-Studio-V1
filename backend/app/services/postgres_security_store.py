@@ -1459,7 +1459,6 @@ def list_credit_activity_entries(uid: str, max_items: int = 20) -> list[dict[str
     index = 0
     while index < len(ordered):
         current = ordered[index]
-        next_item = ordered[index + 1] if index + 1 < len(ordered) else None
         current_id = str(current.get("id") or "")
 
         if current.get("activityType") == "chat":
@@ -1483,21 +1482,42 @@ def list_credit_activity_entries(uid: str, max_items: int = 20) -> list[dict[str
             merged.append(chat_group)
             continue
 
-        if (
-            current_id.startswith("generation_job:")
-            and next_item is not None
-            and str(next_item.get("id") or "").startswith("smart_generation:")
-            and abs(int(current.get("createdAt") or 0) - int(next_item.get("createdAt") or 0)) < 3600
-        ):
-            merged.append({
-                **current,
-                "id": f"{current_id}+{next_item['id']}",
-                "activityType": "smart_generation",
-                "activity": "Smart Content Creation",
-                "deltaMinor": int(current.get("deltaMinor") or 0) + int(next_item.get("deltaMinor") or 0),
-            })
-            index += 2
-            continue
+        # A Smart run bills in two places: the analysis fee (smart_generation) and
+        # the generation itself (generation_job), and the ledger carries no link
+        # between them, so they're stitched back together by position — the
+        # generation rows sit directly above their analysis row in this
+        # newest-first list.
+        #
+        # A retried run produces SEVERAL generation jobs above one analysis row,
+        # so absorb the whole consecutive run, not just the nearest one. Matching
+        # only the nearest left the earlier attempts stranded as their own rows —
+        # and a failed attempt reserves then releases the same amount, so it
+        # showed up as a meaningless "Generation 0.00 Cr".
+        if current_id.startswith("generation_job:"):
+            run_end = index
+            while run_end < len(ordered) and str(ordered[run_end].get("id") or "").startswith("generation_job:"):
+                run_end += 1
+
+            smart = ordered[run_end] if run_end < len(ordered) else None
+            if (
+                smart is not None
+                and str(smart.get("id") or "").startswith("smart_generation:")
+                and all(
+                    abs(int(ordered[i].get("createdAt") or 0) - int(smart.get("createdAt") or 0)) < 3600
+                    for i in range(index, run_end)
+                )
+            ):
+                run = [ordered[i] for i in range(index, run_end)] + [smart]
+                merged.append({
+                    **current,
+                    "id": "+".join(str(item.get("id") or "") for item in run),
+                    "activityType": "smart_generation",
+                    "activity": "Smart Content Creation",
+                    "deltaMinor": sum(int(item.get("deltaMinor") or 0) for item in run),
+                    "entryCount": sum(int(item.get("entryCount") or 1) for item in run),
+                })
+                index = run_end + 1
+                continue
 
         merged.append(current)
         index += 1
@@ -1583,6 +1603,12 @@ def list_pack_sessions(uid: str, pack_id: str | None = None, max_items: int = 50
     with session_scope() as session:
         repo = SecurityRepository(session)
         return [_pack_session_dict(entry) for entry in repo.list_pack_sessions(uid, pack_id, max_items)]
+
+
+def count_pack_sessions(uid: str) -> int:
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        return repo.count_pack_sessions(uid)
 
 
 def get_pack_session(uid: str, session_id: str) -> dict[str, Any] | None:

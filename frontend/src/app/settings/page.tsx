@@ -14,6 +14,7 @@ import {
   persistAccentColor,
   readAccentColorFromCookie,
 } from "../../lib/accentColor";
+import { setTheme, useThemeMode } from "../../lib/theme";
 
 const PROFILE_SAVE_COOLDOWN_MS = 1200;
 
@@ -38,6 +39,7 @@ export default function SettingsPage() {
   const router = useRouter();
   const { user, loading } = useAuth();
   const { t, language, setLanguage } = useLanguage();
+  const themeMode = useThemeMode();
 
   const [emailNotifications, setEmailNotifications] = useState(true);
   const [productUpdates, setProductUpdates] = useState(false);
@@ -455,9 +457,30 @@ export default function SettingsPage() {
                 />
               ))}
             </div>
-            <p className="mt-8 text-center text-[10px] font-bold uppercase tracking-[0.24em] text-[#8c909f]">
-              {t("System theme: Obsidian Dark")}
-            </p>
+            <div className="mt-8">
+              <p className="mb-3 text-center text-[10px] font-bold uppercase tracking-[0.24em] text-[#8c909f]">
+                {t("Theme")}
+              </p>
+              <div className="mx-auto flex w-full max-w-[220px] rounded-md bg-white/[0.04] p-1 light:bg-slate-900/[0.06]">
+                {(["dark", "light"] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setTheme(mode)}
+                    className={`flex flex-1 items-center justify-center gap-1.5 rounded-sm px-3 py-2 text-xs font-bold uppercase tracking-wide transition-colors ${
+                      themeMode === mode
+                        ? "bg-[#adc6ff] text-[#0b1326] light:bg-[#4338ca] light:text-white"
+                        : "text-[#8c909f] hover:text-[#dce1fb] light:hover:text-slate-900"
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-[16px]">
+                      {mode === "dark" ? "dark_mode" : "light_mode"}
+                    </span>
+                    {t(mode === "dark" ? "Dark" : "Light")}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
 
           <div className="overflow-hidden rounded-md bg-[#151b2d] lg:col-span-3">

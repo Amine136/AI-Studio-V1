@@ -1056,6 +1056,13 @@ class SecurityRepository:
         stmt = stmt.order_by(PackSession.updated_at.desc(), PackSession.created_at.desc()).limit(limit)
         return list(self.session.execute(stmt).scalars())
 
+    def count_pack_sessions(self, uid: str) -> int:
+        return int(
+            self.session.execute(
+                select(func.count()).select_from(PackSession).where(PackSession.uid == uid)
+            ).scalar_one()
+        )
+
     def get_pack_session(self, uid: str, session_id: str) -> PackSession | None:
         return self.session.execute(
             select(PackSession).where(PackSession.id == session_id, PackSession.uid == uid)

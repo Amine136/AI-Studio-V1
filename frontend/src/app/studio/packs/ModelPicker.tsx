@@ -50,7 +50,7 @@ export default function ModelPicker({
               onClick={() => onSelect(m.id)}
               className={`cursor-pointer rounded-xl border px-3 py-1.5 text-sm transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent-60)] motion-reduce:transition-none ${
                 selected
-                  ? "border-[color:var(--accent)] bg-[color:var(--accent-15)] font-semibold text-[color:var(--accent)]"
+                  ? "pack-chip-on border-[color:var(--accent)] bg-[color:var(--accent-15)] font-semibold text-[color:var(--accent)]"
                   : "border-white/10 bg-[#111826] text-[#aebbe0] hover:border-white/20"
               }`}
             >

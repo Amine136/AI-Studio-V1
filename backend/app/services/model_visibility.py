@@ -95,6 +95,26 @@ def is_model_enabled(model_id: str, model_entry: dict[str, Any] | None = None) -
     return True
 
 
+def visible_model_catalog() -> Dict[str, Dict[str, Dict[str, Any]]]:
+    """The live model catalog with admin-disabled models/providers removed. This is
+    the catalog every model SELECTION and VALIDATION path must read, so a disabled
+    model is both hidden from the UI and refused at generation time. The raw
+    ``settings.model_catalog`` is only for pricing/parameter lookups of a model that
+    has already been resolved through this view."""
+    # Source the CANONICAL catalog (the same one /config serves), not
+    # settings.model_catalog directly: the latter is set from a startup AKM fetch and
+    # is only reconciled to the live catalog as a side effect of get_catalog(), so
+    # reading it directly can be stale/ordering-dependent and would wrongly reject a
+    # legitimately-available model at the /generate validators.
+    from app.services.catalog_store import catalog_store
+    return filter_catalog(catalog_store.get_catalog())
+
+
+def visible_image_models() -> Dict[str, Dict[str, Any]]:
+    """Convenience view: just the enabled image models."""
+    return visible_model_catalog().get("image", {}) or {}
+
+
 def filter_catalog(catalog: Dict[str, Dict[str, Dict[str, Any]]]) -> Dict[str, Dict[str, Dict[str, Any]]]:
     with _LOCK:
         config = _load_config_unlocked()

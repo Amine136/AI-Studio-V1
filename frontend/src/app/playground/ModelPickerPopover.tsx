@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -52,7 +53,7 @@ export default function ModelPickerPopover({
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
   const popRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -85,15 +86,18 @@ export default function ModelPickerPopover({
       const b = btnRef.current?.getBoundingClientRect();
       if (!b) return;
       const margin = 8;
+      // Never wider than the viewport: 340px on a 360px phone would otherwise sit
+      // edge to edge with no breathing room.
+      const width = Math.min(POPOVER_WIDTH, window.innerWidth - 2 * margin);
       const left = Math.min(
-        Math.max(margin, isRtl ? b.right - POPOVER_WIDTH : b.left),
-        window.innerWidth - POPOVER_WIDTH - margin,
+        Math.max(margin, isRtl ? b.right - width : b.left),
+        window.innerWidth - width - margin,
       );
       // Prefer opening upward — the composer lives at the bottom of the screen.
       const height = Math.min(POPOVER_MAX_HEIGHT, window.innerHeight - 2 * margin);
       let top = b.top - height - 6;
       if (top < margin) top = Math.min(b.bottom + 6, window.innerHeight - height - margin);
-      setPos({ top, left });
+      setPos({ top, left, width });
     };
     place();
 
@@ -123,6 +127,10 @@ export default function ModelPickerPopover({
 
   return (
     <>
+      {/* No leading `tune` glyph on the trigger: the Model Settings button beside it
+          is also a `tune`, and two identical icons either side of a truncated name
+          read as one control. The chevron alone says "this opens a list", and dropping
+          the icon buys back the ~20px that was truncating "Nano Banana 2". */}
       <button
         ref={btnRef}
         type="button"
@@ -131,13 +139,12 @@ export default function ModelPickerPopover({
         title={t("Change model")}
         aria-haspopup="listbox"
         aria-expanded={open}
-        className={`flex max-w-[160px] items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 sm:max-w-[220px] ${
+        className={`flex min-h-[44px] min-w-0 max-w-[190px] items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 sm:min-h-0 sm:max-w-[220px] ${
           open
             ? "border-[#adc6ff]/40 bg-white/[0.05] text-[#adc6ff]"
             : "border-white/[0.07] text-white/45 hover:border-white/15 hover:text-white/75"
         }`}
       >
-        <span className="material-symbols-outlined text-[15px]">tune</span>
         <span className="truncate">{selected?.displayName || t("Model")}</span>
         <span className="material-symbols-outlined shrink-0 text-[15px] opacity-60">
           {open ? "expand_less" : "expand_more"}
@@ -150,7 +157,7 @@ export default function ModelPickerPopover({
             ref={popRef}
             dir={isRtl ? "rtl" : "ltr"}
             role="listbox"
-            style={{ position: "fixed", top: pos.top, left: pos.left, width: POPOVER_WIDTH, maxHeight: POPOVER_MAX_HEIGHT }}
+            style={{ position: "fixed", top: pos.top, left: pos.left, width: pos.width, maxHeight: POPOVER_MAX_HEIGHT }}
             className="z-[9999] flex flex-col overflow-hidden rounded-xl border border-white/10 bg-[#0f1626] shadow-[0_16px_48px_rgba(0,0,0,0.6)]"
           >
             <div className="shrink-0 border-b border-white/[0.06] p-2">
@@ -254,6 +261,21 @@ export default function ModelPickerPopover({
                   </div>
                 ))
               )}
+            </div>
+
+            {/* Pinned so the full rate card stays reachable while the list scrolls. */}
+            <div className="shrink-0 border-t border-white/[0.06] p-1.5">
+              <Link
+                href="/pricing"
+                onClick={() => setOpen(false)}
+                className="flex items-center justify-between gap-2 rounded-lg px-2 py-2 text-[11px] font-medium text-white/40 transition-colors hover:bg-white/[0.04] hover:text-white/75"
+              >
+                <span className="flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-[14px]">payments</span>
+                  {t("Model Pricing")}
+                </span>
+                <span className="material-symbols-outlined text-[14px] opacity-50 rtl:rotate-180">arrow_forward</span>
+              </Link>
             </div>
           </div>,
           document.body,

@@ -74,6 +74,8 @@ const DEFAULT_CONVERSATION_TITLE = "New Chat";
 // Curated "Recommended" tab surfaced before the real providers. Models are keyed by
 // slug (model.id) and rendered in this order. Gold-accented, vs. the blue providers.
 const RECOMMENDED_PROVIDER = "Recommended";
+// Synthetic group that collects every text-only model at the bottom of the picker.
+const TEXT_MODELS_PROVIDER = "Text models";
 const RECOMMENDED_MODEL_IDS = [
   "gemini-3.1-flash-image-preview", // Nano Banana 2
   "imagen-4.0-generate-001", // Imagen 4 Standard
@@ -1462,7 +1464,10 @@ export default function StudioChatPage() {
   }, []);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    // block: "nearest" keeps this inside .chat-messages-scroll. A bare
+    // scrollIntoView() scrolls EVERY scrollable ancestor, document included,
+    // which is what used to shove the chat header off the top on first paint.
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [messages, loadingReply]);
 
   const lockedModel = useMemo(
@@ -1473,33 +1478,50 @@ export default function StudioChatPage() {
   // Flattened, presentation-ready view of the catalogue for the composer's model
   // picker. Everything the popover needs (labels, cost, affordability) is resolved
   // here so the picker itself stays a dumb, testable component.
-  const pickerGroups = useMemo<PickerGroup[]>(
-    () =>
-      providerGroups
-        // The picker now groups strictly by provider; "Recommended" is a per-model
-        // badge, not its own list, so drop the synthetic curated group (its models
-        // already appear under their real provider).
-        .filter((group) => group.provider !== RECOMMENDED_PROVIDER)
-        .map((group) => ({
+  const pickerGroups = useMemo<PickerGroup[]>(() => {
+    const toPickerModel = (model: ChatModelOption) => {
+      const minimumCost = getChatModelMinimumCost(model);
+      return {
+        id: model.id,
+        displayName: model.displayName,
+        tags: getModelFeatureLabels(model).map((label) => t(label)),
+        minimumCost,
+        recommended: RECOMMENDED_MODEL_IDS.includes(model.id),
+        // currentCredits is null until the profile lands; treat unknown as
+        // affordable rather than greying out the whole catalogue on load.
+        affordable: currentCredits === null || currentCredits >= minimumCost,
+      };
+    };
+
+    const textOnly: ChatModelOption[] = [];
+    const imageGroups = providerGroups
+      // The picker groups strictly by provider; "Recommended" is a per-model badge,
+      // not its own list, so drop the synthetic curated group (its models already
+      // appear under their real provider).
+      .filter((group) => group.provider !== RECOMMENDED_PROVIDER)
+      .map((group) => {
+        textOnly.push(...group.models.filter((model) => !outputsImage(model)));
+        return {
           provider: group.provider,
           label: toProviderLabel(group.provider),
           icon: getProviderIcon(group.provider),
-          models: group.models.map((model) => {
-            const minimumCost = getChatModelMinimumCost(model);
-            return {
-              id: model.id,
-              displayName: model.displayName,
-              tags: getModelFeatureLabels(model).map((label) => t(label)),
-              minimumCost,
-              recommended: RECOMMENDED_MODEL_IDS.includes(model.id),
-              // currentCredits is null until the profile lands; treat unknown as
-              // affordable rather than greying out the whole catalogue on load.
-              affordable: currentCredits === null || currentCredits >= minimumCost,
-            };
-          }),
-        })),
-    [providerGroups, currentCredits, t],
-  );
+          models: group.models.filter((model) => outputsImage(model)).map(toPickerModel),
+        };
+      })
+      .filter((group) => group.models.length > 0);
+
+    if (textOnly.length === 0) return imageGroups;
+
+    return [
+      ...imageGroups,
+      {
+        provider: TEXT_MODELS_PROVIDER,
+        label: t("Text models"),
+        icon: "chat_bubble",
+        models: textOnly.map(toPickerModel),
+      },
+    ];
+  }, [providerGroups, currentCredits, t]);
 
   const lockedModelMinimumCost = useMemo(
     () => getChatModelMinimumCost(lockedModel),
@@ -2184,7 +2206,7 @@ export default function StudioChatPage() {
                 onClick={() => setParameterValues((prev) => ({ ...prev, [key]: nextOption }))}
                 className={`${segmented ? "flex-1" : ""} rounded-md px-2.5 py-1.5 text-[12px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-35 ${
                   active
-                    ? "bg-white/[0.09] text-white shadow-[0_1px_2px_rgba(0,0,0,0.4)]"
+                    ? "bg-white/[0.09] text-white shadow-[0_1px_2px_rgba(0,0,0,0.4)] light:!bg-[#3b82f6] light:!text-white light:shadow-none"
                     : `text-white/45 hover:text-white/80 ${segmented ? "" : "border border-white/[0.07]"}`
                 }`}
               >
@@ -2301,7 +2323,7 @@ export default function StudioChatPage() {
               />
               <button
                 type="button"
-                aria-label="Remove color"
+                aria-label={t("Remove color")}
                 onClick={() => setParameterValues((current) => ({ ...current, [key]: list.filter((_, i) => i !== index) }))}
                 className="px-1 text-sm font-bold text-[#8c909f] hover:text-red-300"
               >
@@ -2331,7 +2353,9 @@ export default function StudioChatPage() {
 
   return (
     // Full-height app surface: the rail is supplied by playground/layout.tsx.
-    <section className="h-dvh overflow-hidden">
+    // h-full, not h-dvh — the shell above already measured the visible viewport,
+    // and re-deriving it here would reintroduce the dvh overshoot it fixes.
+    <section className="h-full overflow-hidden">
         <MotionConfig reducedMotion="user">
         <div ref={chatCanvasRef} className="chat-canvas flex h-full flex-col overflow-hidden">
           <div className="chat-sea" aria-hidden="true">
@@ -2361,8 +2385,9 @@ export default function StudioChatPage() {
               />
             ))}
           </div>
-          <header className="relative z-30 flex h-12 shrink-0 items-center justify-between border-b border-white/[0.06] bg-[#0a0f1e]/80 px-2.5 backdrop-blur-xl sm:px-5">
-            <div className="flex min-w-0 items-center gap-2.5">
+          {/* h-14 on mobile so the 40px touch targets inside it actually fit. */}
+          <header className="relative z-30 flex h-14 shrink-0 items-center justify-between gap-2 border-b border-white/[0.06] bg-[#0a0f1e]/80 px-2.5 backdrop-blur-xl sm:h-12 sm:px-5">
+            <div className="flex min-w-0 flex-1 items-center gap-2.5">
               {editingConversationTitle ? (
                 <div className="flex items-center gap-1.5">
                   <input
@@ -2381,7 +2406,7 @@ export default function StudioChatPage() {
                     }}
                     maxLength={120}
                     autoFocus
-                    className="w-36 rounded-lg border border-white/15 bg-white/5 px-2.5 py-1 text-sm font-semibold text-white outline-none focus:border-[#adc6ff]/40 sm:w-52"
+                    className="w-36 rounded-lg border border-white/15 bg-white/5 px-2.5 py-1 text-sm font-semibold text-white outline-none focus:border-[#adc6ff]/40 light:text-slate-900 sm:w-52"
                   />
                   <button type="button" onClick={() => void handleSaveConversationTitle()} className="chat-topbar-btn !h-7 !w-7 text-[#adc6ff]">
                     <span className="material-symbols-outlined text-[16px]">check</span>
@@ -2406,7 +2431,7 @@ export default function StudioChatPage() {
                   }}
                   className="group flex min-w-0 items-center gap-1.5"
                 >
-                  <h1 className="max-w-[128px] truncate text-sm font-semibold text-white sm:max-w-xs">{normalizedConversationTitle === DEFAULT_CONVERSATION_TITLE ? t("New Chat") : normalizedConversationTitle}</h1>
+                  <h1 className="max-w-[38vw] truncate text-sm font-semibold text-white light:text-slate-900 sm:max-w-xs">{normalizedConversationTitle === DEFAULT_CONVERSATION_TITLE ? t("New Chat") : normalizedConversationTitle}</h1>
                   <span className="material-symbols-outlined shrink-0 text-[14px] text-white/25 transition-colors group-hover:text-white/60">edit</span>
                 </button>
               )}
@@ -2442,6 +2467,9 @@ export default function StudioChatPage() {
               <button type="button" onClick={() => void handleNewChat()} title={t("New Chat")} className="chat-topbar-btn">
                 <span className="material-symbols-outlined text-[18px]">add</span>
               </button>
+              {/* Delete is destructive and sits in a row of same-sized icon buttons,
+                  so it gets a divider rather than being flush against New Chat. */}
+              <div className="mx-1 h-4 w-px bg-white/[0.06]" />
               <button type="button" onClick={() => void handleDeleteConversation()} disabled={!conversationId || loadingReply} title={t("Delete Chat")} className="chat-topbar-btn hover:!text-red-400/80">
                 <span className="material-symbols-outlined text-[18px]">delete_outline</span>
               </button>
@@ -2454,18 +2482,26 @@ export default function StudioChatPage() {
             </div>
           </header>
 
-          <div className="flex items-center justify-center gap-4 border-b border-white/[0.04] bg-[#0a0f1e]/60 px-4 py-1.5 text-[11px] text-[#6b7a8f] lg:hidden">
-            <span className="tabular-nums">{conversationTotalTokens.toLocaleString()} {t("tokens")}</span>
-            <span className="text-white/10">.</span>
-            <span className="tabular-nums text-[#adc6ff]/60">{conversationCostTotal.toFixed(2)} Cr</span>
-          </div>
+          {/* Usage strip: a whole row of mobile chrome that reads "0 tokens . 0.00 Cr"
+              on every new chat. It only earns its vertical space once there is
+              usage to report. */}
+          {conversationTotalTokens > 0 || conversationCostTotal > 0 ? (
+            <div className="flex items-center justify-center gap-4 border-b border-white/[0.04] bg-[#0a0f1e]/60 px-4 py-1.5 text-[11px] text-[#6b7a8f] lg:hidden">
+              <span className="tabular-nums">{conversationTotalTokens.toLocaleString()} {t("tokens")}</span>
+              <span className="text-white/10">.</span>
+              <span className="tabular-nums text-[#adc6ff]/60">{conversationCostTotal.toFixed(2)} Cr</span>
+            </div>
+          ) : null}
 
           <div className="relative z-10 flex flex-1 overflow-hidden">
             <div className="flex flex-1 flex-col overflow-hidden">
               <div className="chat-messages-scroll flex-1 overflow-y-auto" onScroll={handleMessagesScroll}>
-                <div className="mx-auto max-w-4xl px-3 py-6 sm:px-6 sm:py-8 lg:px-8">
+                {/* min-h-full + flex-1 on the children: the empty state centres in the
+                    space actually left over between header and composer, instead of in a
+                    fixed 55vh block that left a dead gap above the composer on phones. */}
+                <div className="mx-auto flex min-h-full max-w-4xl flex-col px-3 py-6 sm:px-6 sm:py-8 lg:px-8">
                   {loadingConversation || isBootstrappingRequestedConversation ? (
-                    <div className="flex min-h-[50vh] items-center justify-center">
+                    <div className="flex flex-1 items-center justify-center">
                       <div className="flex items-center gap-2">
                         <div className="chat-typing-dot" />
                         <div className="chat-typing-dot" />
@@ -2474,41 +2510,12 @@ export default function StudioChatPage() {
                     </div>
                   ) : messages.length === 0 ? (
                     <motion.div
-                      className="flex min-h-[55vh] flex-col items-center justify-center"
+                      className="flex flex-1 flex-col items-center justify-center py-4"
                       variants={emptyContainerVariants}
                       initial="hidden"
                       animate="show"
                     >
-                      <motion.div variants={emptyItemVariants} className="chat-empty-orb" aria-hidden="true">
-                        <span className="chat-empty-orb__ring" />
-                        <span className="chat-empty-orb__core">
-                          <motion.span
-                            className="chat-vortex-wrap"
-                            animate={{ scale: [1, 1.06, 1], opacity: [0.85, 1, 0.85] }}
-                            transition={{ duration: 4.5, ease: "easeInOut", repeat: Infinity }}
-                          >
-                            {/* Spiral vortex inspired by the Vibecraft logo — swirling
-                                blades curling into a hollow core, slowly counter-rotating
-                                against the aurora ring for a sense of depth. */}
-                            <svg className="chat-vortex" viewBox="0 0 100 100" fill="none">
-                              <defs>
-                                <linearGradient id="chatVortexGrad" x1="0" y1="0" x2="1" y2="1">
-                                  <stop offset="0%" stopColor="#dcd4ff" />
-                                  <stop offset="45%" stopColor="#8b5cf6" />
-                                  <stop offset="100%" stopColor="#22d3ee" />
-                                </linearGradient>
-                              </defs>
-                              <g className="chat-vortex__spin" stroke="url(#chatVortexGrad)" strokeWidth="4.4" strokeLinecap="round">
-                                {[0, 60, 120, 180, 240, 300].map((deg) => (
-                                  <path key={deg} d="M50 40 C66 39 74 55 62 68" transform={`rotate(${deg} 50 50)`} />
-                                ))}
-                              </g>
-                              <circle cx="50" cy="50" r="3.2" fill="#ede9fe" />
-                            </svg>
-                          </motion.span>
-                        </span>
-                      </motion.div>
-                      <motion.h2 variants={emptyItemVariants} className="mt-7 text-[22px] font-semibold tracking-[-0.015em] text-white/90">
+                      <motion.h2 variants={emptyItemVariants} className="text-center text-[20px] font-semibold tracking-[-0.015em] text-white/90 sm:text-[22px]">
                         {lockedModelIsOneShotImage ? t("One-shot image generation") : t("What will you create?")}
                       </motion.h2>
                       <motion.p variants={emptyItemVariants} className="mt-2.5 max-w-[360px] text-center text-[13px] leading-relaxed text-[#5a6580]">
@@ -2517,7 +2524,9 @@ export default function StudioChatPage() {
                           : `${t("Ask a question, describe an image, or start a brainstorming session with")} ${lockedModel?.displayName || t("your model")}.`}
                       </motion.p>
 
-                      <motion.div variants={emptyItemVariants} className="mt-6 flex min-h-[42px] flex-col items-center gap-2">
+                      {/* The ideas rotate and some wrap to two lines on a phone. Reserve
+                          the taller height so the block doesn't jump on every rotation. */}
+                      <motion.div variants={emptyItemVariants} className="mt-6 flex min-h-[92px] w-full flex-col items-center gap-2 sm:min-h-[70px]">
                         <span className="chat-idea-eyebrow">{t("Try")}</span>
                         <AnimatePresence mode="wait">
                           <motion.button
@@ -2598,9 +2607,9 @@ export default function StudioChatPage() {
                 </div>
               </div>
 
-              {/* pb-[5.5rem] clears the app rail's fixed mobile bottom nav (h-20);
-                  on lg the rail is a left column and the extra padding goes away. */}
-              <div className="shrink-0 px-2.5 pb-[5.5rem] pt-2 sm:px-5 lg:pb-5">
+              {/* app-nav-clear reserves the mobile bottom nav's height plus the
+                  gesture-bar inset; on lg the rail is a left column and it collapses. */}
+              <div className="app-nav-clear shrink-0 px-2.5 pt-2 sm:px-5">
                 <div className="mx-auto max-w-2xl">
                   {notice ? (
                     <div className="mb-3 flex items-center gap-2 rounded-xl border border-[#adc6ff]/25 bg-[#adc6ff]/[0.08] px-4 py-2.5 text-[13px] text-[#adc6ff]">
@@ -2691,8 +2700,10 @@ export default function StudioChatPage() {
                       className="w-full resize-none bg-transparent text-[14px] leading-relaxed text-white/90 outline-none placeholder:text-white/20"
                     />
 
-                    <div className="mt-3 flex items-center justify-between border-t border-white/[0.04] pt-3">
-                      <div className="flex min-w-0 items-center gap-2.5">
+                    <div className="mt-3 flex items-center gap-2 border-t border-white/[0.04] pt-3">
+                      {/* flex-1 + min-w-0 so the long model name truncates; the
+                          controls on the right are fixed-size and must not squash. */}
+                      <div className="flex min-w-0 flex-1 items-center gap-2">
                         {lockedModel?.supportsImageInput ? (
                           <RefPicker
                             disabled={uploadingImage || loadingReply}
@@ -2721,7 +2732,7 @@ export default function StudioChatPage() {
                         </span>
                       </div>
 
-                      <div className="flex items-center gap-2">
+                      <div className="flex shrink-0 items-center gap-2">
                       {/* Model Controls lives beside Send rather than in the topbar:
                           it configures the next message, so it belongs with the
                           controls that send one. */}
@@ -2755,10 +2766,12 @@ export default function StudioChatPage() {
                         whileTap="tap"
                         transition={CHAT_SPRING}
                         className="chat-send-btn"
+                        aria-label={uploadingImage ? t("Uploading...") : t("Send")}
+                        title={uploadingImage ? t("Uploading...") : t("Send")}
                       >
-                        <span>{uploadingImage ? t("Uploading...") : t("Send")}</span>
+                        <span className="hidden sm:inline">{uploadingImage ? t("Uploading...") : t("Send")}</span>
                         <motion.span
-                          className="material-symbols-outlined text-[15px]"
+                          className="material-symbols-outlined text-[18px] sm:text-[15px]"
                           variants={{ hover: { y: -2, x: 1 }, tap: { y: 0 } }}
                           transition={CHAT_SPRING}
                         >

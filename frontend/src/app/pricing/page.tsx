@@ -234,7 +234,7 @@ export default function PricingPage() {
   }
 
   return (
-    <div className="relative min-h-full overflow-hidden pb-20" dir={language === 'ar' ? 'rtl' : 'ltr'}>
+    <div className="vc-pricing relative min-h-full overflow-hidden pb-20" dir={language === 'ar' ? 'rtl' : 'ltr'}>
       {/* Language Selector moved to layout */}
 
       {/* Background Atmospheric Glows */}

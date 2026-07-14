@@ -32,6 +32,17 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         return () => window.removeEventListener("keydown", onKeyDown, true);
     }, []);
 
+    // The admin panel keeps the Nebula dark theme regardless of the user-app
+    // light/dark preference; the choice is restored when leaving admin.
+    useEffect(() => {
+        const root = document.documentElement;
+        const previous = root.getAttribute("data-theme");
+        root.removeAttribute("data-theme");
+        return () => {
+            if (previous) root.setAttribute("data-theme", previous);
+        };
+    }, []);
+
     let content: React.ReactNode;
 
     if (pathname === "/admin/login") {

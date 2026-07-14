@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 from copy import deepcopy
 from pathlib import Path
@@ -75,9 +76,27 @@ class Config:
             self.meta_capi_registration_value = float(os.getenv("META_CAPI_REGISTRATION_VALUE", "1.0"))
         except ValueError:
             self.meta_capi_registration_value = 1.0
+        self.app_env = os.getenv("APP_ENV", "prod").strip().lower() or "prod"
+
         # Staging-only test hook: when truthy, Pack GENERATIONS route through the
-        # $0 fake provider (estimates stay real). Never enable in production.
-        self.packs_test_fake_provider = os.getenv("PACKS_TEST_FAKE_PROVIDER", "").strip().lower() in {"1", "true", "yes", "on"}
+        # $0 fake provider (estimates stay real). Hard-gated on APP_ENV: prod ignores
+        # the flag outright, so a stray copy of it in a production .env cannot silently
+        # turn paid customer generations into free placeholder images. Ignoring it is
+        # deliberate — refusing to boot over a test flag would be a worse prod outcome.
+        _fake_requested = os.getenv("PACKS_TEST_FAKE_PROVIDER", "").strip().lower() in {"1", "true", "yes", "on"}
+        self.packs_test_fake_provider = _fake_requested and self.app_env != "prod"
+        if _fake_requested and not self.packs_test_fake_provider:
+            logging.getLogger(__name__).warning(
+                "PACKS_TEST_FAKE_PROVIDER is set but APP_ENV=%s: ignoring it, pack generations "
+                "will use the real providers.",
+                self.app_env,
+            )
+        elif self.packs_test_fake_provider:
+            logging.getLogger(__name__).warning(
+                "PACKS_TEST_FAKE_PROVIDER is ACTIVE (APP_ENV=%s): pack generations route to the "
+                "$0 fake provider and are NOT billed.",
+                self.app_env,
+            )
         self.admin_session_secret = os.getenv("ADMIN_SESSION_SECRET", "").strip()
         self.admin_session_cookie_name = os.getenv("ADMIN_SESSION_COOKIE_NAME", "vibecraft_admin_session").strip() or "vibecraft_admin_session"
         self.admin_csrf_cookie_name = os.getenv("ADMIN_CSRF_COOKIE_NAME", "vibecraft_admin_csrf").strip() or "vibecraft_admin_csrf"
@@ -120,6 +139,13 @@ class Config:
         self.plain_chat_context_message_limit = int(os.getenv("PLAIN_CHAT_CONTEXT_MESSAGE_LIMIT", "20"))
         self.plain_chat_context_char_limit = int(os.getenv("PLAIN_CHAT_CONTEXT_CHAR_LIMIT", "24000"))
         self.plain_chat_max_request_bytes = int(os.getenv("PLAIN_CHAT_MAX_REQUEST_BYTES", str(96 * 1024)))
+        # Packs: the planning agent is free to the user but makes billed provider
+        # calls, so it is metered per user. Session autosave is capped by body size
+        # (real sessions are ~3-11 KB) and by how many a user may keep.
+        self.packs_plan_user_limit = int(os.getenv("PACKS_PLAN_USER_LIMIT", "30"))
+        self.packs_plan_window_seconds = int(os.getenv("PACKS_PLAN_WINDOW_SECONDS", str(60 * 60)))
+        self.pack_session_max_request_bytes = int(os.getenv("PACK_SESSION_MAX_REQUEST_BYTES", str(256 * 1024)))
+        self.pack_sessions_per_user_limit = int(os.getenv("PACK_SESSIONS_PER_USER_LIMIT", "200"))
         self.plain_chat_max_text_chars_per_part = int(os.getenv("PLAIN_CHAT_MAX_TEXT_CHARS_PER_PART", "4000"))
         self.plain_chat_max_message_chars = int(os.getenv("PLAIN_CHAT_MAX_MESSAGE_CHARS", "12000"))
         self.plain_chat_max_system_chars = int(os.getenv("PLAIN_CHAT_MAX_SYSTEM_CHARS", "4000"))
@@ -214,7 +240,7 @@ class Config:
 
         # Authentication
         self.api_key = os.getenv("API_KEY")
-        self.app_env = os.getenv("APP_ENV", "prod").strip().lower() or "prod"
+        # NOTE: self.app_env is set earlier — the packs fake-provider gate depends on it.
         self.authorized_user_emails = {
             email.strip().lower()
             for email in os.getenv("AUTHORIZED_USER_EMAILS", "").split(",")

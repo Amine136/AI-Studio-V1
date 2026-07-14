@@ -1831,9 +1831,9 @@ export default function Home() {
             </div>
 
             <header className="mb-4 sm:mb-6 2xl:mx-auto 2xl:w-full 2xl:max-w-[1240px]">
-              <h1 className="font-headline text-2xl font-bold leading-tight tracking-tighter text-white sm:text-[32px]">
+              <h1 className="vc-hero-h1 font-headline text-2xl font-bold leading-tight tracking-tighter text-white sm:text-[32px]">
                 {t("Architect your")}{" "}
-                <span className="bg-gradient-to-r from-[#adc6ff] via-[#d0bcff] to-[#4d8eff] bg-clip-text text-transparent">
+                <span className="vc-hero-accent bg-gradient-to-r from-[#adc6ff] via-[#d0bcff] to-[#4d8eff] bg-clip-text text-transparent">
                   {t("visual identity.")}
                 </span>
               </h1>
@@ -2034,18 +2034,7 @@ export default function Home() {
               </div>
             )}
 
-            <footer className="mt-6 flex flex-col items-stretch gap-4 border-t border-white/5 pt-4 sm:mt-8 sm:flex-row sm:items-center sm:justify-between 2xl:mx-auto 2xl:w-full 2xl:max-w-[1240px]">
-              <div className="flex items-center gap-3">
-                <div className="flex -space-x-2 shrink-0">
-                  <img className="inline-block h-8 w-8 rounded-full ring-2 ring-[#0c1324]" src="https://i.pravatar.cc/100?img=33" alt="" />
-                  <img className="inline-block h-8 w-8 rounded-full ring-2 ring-[#0c1324]" src="https://i.pravatar.cc/100?img=47" alt="" />
-                  <img className="inline-block h-8 w-8 rounded-full ring-2 ring-[#0c1324]" src="https://i.pravatar.cc/100?img=12" alt="" />
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-[11px] text-[#8c909f] leading-snug">{t("Only")} <strong className="text-white">70 {t("creators")}</strong> {t("have unlocked this so far.")}</span>
-                  <span className="text-[11px] text-[#8c909f] leading-snug"><strong className="text-slate-300">{t("Be the 71st creator")}</strong> {t("to master this workflow.")}</span>
-                </div>
-              </div>
+            <footer className="mt-6 flex flex-col items-stretch gap-4 border-t border-white/5 pt-4 sm:mt-8 sm:flex-row sm:items-center sm:justify-end 2xl:mx-auto 2xl:w-full 2xl:max-w-[1240px]">
               <button
                 onClick={handleOpenModePicker}
                 disabled={loading || hasUploadingInputImages || !userText.trim() || selectedOutputs.length === 0}

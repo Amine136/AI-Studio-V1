@@ -29,7 +29,7 @@ from app.services.admin_auth import AdminAuthRateLimitError, authenticate_admin,
 from app.services.apikeymanager_client import ApiKeyManagerProxyError, check_apikeymanager_ready
 from app.services.auth import format_suspension_detail, verify_admin_csrf, verify_admin_session, verify_api_key, verify_firebase_user
 from app.services.catalog_store import catalog_store
-from app.services.model_visibility import filter_catalog, list_model_visibility, update_model_visibility
+from app.services.model_visibility import filter_catalog, list_model_visibility, update_model_visibility, visible_model_catalog
 from app.services.chat_service import assemble_plain_chat_context, list_plain_chat_models, minimum_required_credits_for_plain_chat, normalize_plain_chat_system, prepare_plain_chat_conversation_request, preview_plain_chat_prompt, send_plain_chat, serialize_plain_chat_parts
 from app.services.security_backend import (
     add_history_entry,
@@ -42,6 +42,7 @@ from app.services.security_backend import (
     consume_rate_limit,
     create_chat_conversation,
     create_pack_session,
+    count_pack_sessions,
     list_pack_sessions,
     get_pack_session,
     update_pack_session,
@@ -752,7 +753,12 @@ def create_plain_chat_conversation(
 ):
     _enforce_plain_chat_request_size(request)
     catalog_store.get_catalog()
-    normalized_system = normalize_plain_chat_system(payload.model, payload.system)
+    try:
+        normalized_system = normalize_plain_chat_system(payload.model, payload.system)
+    except ValueError as exc:
+        # e.g. the chosen model was disabled by an admin between selection and send:
+        # surface a clear message instead of a bare 500.
+        raise HTTPException(status_code=400, detail=_plain_chat_error_message(str(exc))) from exc
     conversation = create_chat_conversation(
         user["uid"],
         payload.model,
@@ -2434,7 +2440,7 @@ def _plain_chat_error_message(error_code: str) -> str:
     if error_code == "CHAT_MODEL_REQUIRED":
         return "A chat model is required."
     if error_code == "CHAT_MODEL_NOT_FOUND":
-        return "The selected chat model is no longer available. Refresh the model list and try again."
+        return "This model is no longer available - it may have been turned off. Please pick another model and try again."
     if error_code == "CHAT_MODEL_PROVIDER_MISSING" or error_code == "CHAT_MODEL_ID_MISSING":
         return "The selected chat model is misconfigured."
     if error_code == "CHAT_LAST_MESSAGE_MUST_BE_USER":
@@ -2609,7 +2615,9 @@ def _validate_generate_request(payload: GenerateRequest) -> None:
 
 
 def _resolve_model_choice(task: str, prefs: Dict[str, str]) -> str | None:
-    valid_models = settings.model_catalog.get(task, {})
+    # Visible catalog: an admin-disabled model must not be selectable or usable,
+    # including by a client that posts its id directly (bypassing the UI list).
+    valid_models = visible_model_catalog().get(task, {})
     user_choice = prefs.get(f"{task}_model") or prefs.get(task)
     if user_choice:
         return user_choice if user_choice in valid_models else None
@@ -2624,7 +2632,7 @@ def _validate_selected_model_exists(task: str, prefs: Dict[str, str], is_request
     if not user_choice:
         return
 
-    valid_models = settings.model_catalog.get(task, {})
+    valid_models = visible_model_catalog().get(task, {})
     if user_choice not in valid_models:
         raise HTTPException(
             status_code=400,
@@ -3425,6 +3433,22 @@ def plan_pack_endpoint(
     question. No credits are reserved or charged. The real moderation gate still
     runs at /generate; here clearly-abusive requests get a brief decline."""
     pack = _require_available_pack(pack_id)
+    uid = str(user["uid"])
+    # The agent is free to the user but makes real (billed) provider calls, so it is
+    # metered per user like the paid /generate path. The per-IP limit alone does not
+    # bound one account fanning out across addresses.
+    if not consume_rate_limit(
+        f"packs:plan:user:{uid}",
+        max_count=settings.packs_plan_user_limit,
+        window_seconds=settings.packs_plan_window_seconds,
+    ):
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                f"You reached the limit of {settings.packs_plan_user_limit} planning requests per "
+                f"{_format_wait_window(settings.packs_plan_window_seconds)}. Please try again later."
+            ),
+        )
     if len(payload.image_refs or []) > MAX_INPUT_IMAGES:
         raise HTTPException(status_code=400, detail=f"At most {MAX_INPUT_IMAGES} input images are allowed")
     # Prepare uploads to inline base64 so the vision agent can actually SEE them
@@ -3496,6 +3520,21 @@ def generate_pack_endpoint(
 # A pack session is a named, reopenable gallery of generations + the agent memory,
 # stored per user. Mirrors the plain-chat conversation list/rename/reopen UX.
 
+def _enforce_pack_session_request_size(request: Request) -> None:
+    """A session autosaves its gallery + agent memory as free-form JSON, so cap the
+    body: without this an authenticated user can push arbitrary blobs into Postgres
+    (nginx allows 25 MB, while real sessions are ~3-11 KB)."""
+    content_length = request.headers.get("content-length")
+    if not content_length:
+        return
+    try:
+        request_bytes = int(content_length)
+    except (TypeError, ValueError):
+        return
+    if request_bytes > int(settings.pack_session_max_request_bytes):
+        raise HTTPException(status_code=413, detail="Session data is too large.")
+
+
 @app.post("/pack-sessions", tags=["Packs"], summary="Create Pack Session")
 @limiter.limit("60/minute")
 def create_pack_session_endpoint(
@@ -3503,8 +3542,18 @@ def create_pack_session_endpoint(
     payload: PackSessionCreate,
     user: Dict[str, Any] = Depends(verify_firebase_user),
 ):
+    _enforce_pack_session_request_size(request)
+    uid = str(user["uid"])
+    if count_pack_sessions(uid) >= settings.pack_sessions_per_user_limit:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"You have reached the maximum of {settings.pack_sessions_per_user_limit} saved "
+                "sessions. Delete one and try again."
+            ),
+        )
     title = (payload.title or "New session").strip()[:120] or "New session"
-    return create_pack_session(str(user["uid"]), payload.pack_id, payload.variant_id, title, payload.data or {})
+    return create_pack_session(uid, payload.pack_id, payload.variant_id, title, payload.data or {})
 
 
 @app.get("/pack-sessions", tags=["Packs"], summary="List Pack Sessions")
@@ -3538,6 +3587,7 @@ def update_pack_session_endpoint(
     payload: PackSessionUpdate,
     user: Dict[str, Any] = Depends(verify_firebase_user),
 ):
+    _enforce_pack_session_request_size(request)
     title = payload.title.strip()[:120] if payload.title is not None else None
     entry = update_pack_session(str(user["uid"]), session_id, title=title, data=payload.data)
     if entry is None:

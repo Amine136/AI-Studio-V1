@@ -15,6 +15,7 @@ from __future__ import annotations
 from typing import List, Optional
 
 from app.config import settings
+from app.services.model_visibility import visible_image_models
 
 # Ordered preference per capability. First candidate present in the live image
 # catalog wins. All ids below are real entries seen in model_catalog.live.json;
@@ -225,7 +226,7 @@ def selectable_models(pack_aspect_ratios: Optional[List[str]] = None) -> List[di
     aspect_ratios = the model's own size/ratio options for the confirm pop-up,
     reordered toward ``pack_aspect_ratios`` when given - see
     ``order_aspect_ratios``)."""
-    catalog = settings.model_catalog.get("image", {}) or {}
+    catalog = visible_image_models()
     # Every real image model live in the catalog (minus the $0 test provider),
     # ordered by SELECTABLE_MODELS first, then any other enabled model.
     live = [mid for mid in catalog if mid and mid != TEST_FAKE_IMAGE_MODEL]
@@ -247,7 +248,7 @@ def selectable_models_for_mockup(pack_aspect_ratios: Optional[List[str]] = None)
     """Like selectable_models() but restricted to MOCKUP_SELECTABLE_MODELS —
     only models that handle image-compositing well, in preferred order,
     filtered to those currently live in the AKM catalog."""
-    catalog = settings.model_catalog.get("image", {}) or {}
+    catalog = visible_image_models()
     out: List[dict] = []
     for mid in MOCKUP_SELECTABLE_MODELS:
         if mid not in catalog or mid == TEST_FAKE_IMAGE_MODEL:
@@ -275,8 +276,10 @@ def resolve_image_model(
     when ``has_image`` is set, prefer an image-input editing model so the upload
     is used; then the capability's curated models; then a universal fallback.
     ``use_fake`` forces the staging $0 fake provider when present - testing only.
+    A disabled model/provider is excluded here too, so a client that posts a
+    disabled model id cannot force it through a pack generation.
     """
-    catalog = settings.model_catalog.get("image", {}) or {}
+    catalog = visible_image_models()
     if use_fake:
         # Test mode must NEVER fall back to a billable model: return the fake
         # provider only if it is actually live, else None (caller refuses).

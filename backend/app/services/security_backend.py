@@ -10,6 +10,7 @@ from app.services.postgres_security_store import (  # noqa: F401
     consume_rate_limit,
     create_chat_conversation,
     create_pack_session,
+    count_pack_sessions,
     list_pack_sessions,
     get_pack_session,
     update_pack_session,
