@@ -2,15 +2,15 @@ import base64
 import json
 import logging
 import traceback
-from typing import Dict, Any, List
+from typing import Dict, Any
 
-from app.core.state import StudioState, ContentSpec, OutputType
+from app.core.state import StudioState, ContentSpec
 from app.config import settings
 from app.services.model_visibility import filter_catalog
 from app.graph.plugins import PLUGIN_REGISTRY
 from app.services.llm_client import generate_text, generate_text_payload
 from app.services.apikeymanager_client import ApiKeyManagerProxyError
-from app.services.image_client import generate_image_url, generate_image_and_text, generate_image_and_text_payload, generate_image_payload
+from app.services.image_client import generate_image_and_text_payload, generate_image_payload
 from app.services.sanitizer import sanitize_user_text
 from app.services.user_files import load_private_user_file, private_file_id_from_url
 from app.core.schema import IntentAnalysis

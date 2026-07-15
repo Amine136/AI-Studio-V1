@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import Any, Dict
 
-from fastapi import Depends, HTTPException, Request, Response, Security
+from fastapi import HTTPException, Request, Response, Security
 from fastapi.security import APIKeyHeader
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from google.auth.transport.requests import Request as GoogleRequest

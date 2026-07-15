@@ -1,4 +1,4 @@
-from typing import TypedDict, Any, Dict, List, Literal, Optional
+from typing import TypedDict, Any, Dict, List, Literal
 
 # ---------------------------
 # 1. Type Definitions
