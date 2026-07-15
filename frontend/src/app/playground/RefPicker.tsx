@@ -1,18 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { api } from "../../services/api";
 import AuthenticatedImage from "../../components/AuthenticatedImage";
-import { listRecentUploads, type RecentUpload } from "../../lib/recentUploads";
+import { type RecentUpload } from "../../lib/recentUploads";
+import {
+  useRefPickerData,
+  REF_PICKER_PAGE,
+  type RefTab,
+  type RefGalleryItem,
+} from "../../lib/useRefPickerData";
 
-type Tab = "gallery" | "uploaded";
-type GalleryItem = { id: string; url: string };
-
-// Each tile is a full authenticated image fetch (no thumbnails), so the grid
-// reveals a page at a time instead of one request per row the user may never
-// scroll to. Mirrors the /gallery page's own budget.
-const PAGE = 12;
 const PANEL_WIDTH = 560;
 const PANEL_MAX_HEIGHT = 360;
 
@@ -50,11 +48,6 @@ export default function RefPicker({
   t: (key: string) => string;
 }) {
   const [open, setOpen] = useState(false);
-  const [tab, setTab] = useState<Tab>("gallery");
-  const [gallery, setGallery] = useState<GalleryItem[] | null>(null);
-  const [uploads, setUploads] = useState<RecentUpload[] | null>(null);
-  const [failed, setFailed] = useState(false);
-  const [shown, setShown] = useState(PAGE);
   const [dragging, setDragging] = useState(false);
   const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
@@ -100,52 +93,17 @@ export default function RefPicker({
     };
   }, [open, isRtl]);
 
-  // Fetch each list once per opening, lazily per tab.
-  useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
-    void (async () => {
-      try {
-        if (tab === "gallery" && gallery === null) {
-          const res = await api.getHistory(60);
-          const entries: Array<{ id?: string; imageUrl?: string }> = res?.entries ?? [];
-          const items = entries
-            .filter((e) => typeof e.imageUrl === "string" && e.imageUrl)
-            .map((e, i) => ({ id: String(e.id ?? i), url: e.imageUrl as string }));
-          if (!cancelled) setGallery(items);
-        } else if (tab === "uploaded" && uploads === null) {
-          if (!cancelled) setUploads(listRecentUploads(uid));
-        }
-      } catch {
-        if (!cancelled) setFailed(true);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [open, tab, gallery, uploads, uid]);
-
-  useEffect(() => {
-    setShown(PAGE);
-  }, [tab]);
-
-  // Re-read the (localStorage) upload history every time the picker opens so a
-  // file added while it was closed still shows up. Costs nothing.
-  useEffect(() => {
-    if (open) setUploads(null);
-  }, [open]);
+  // Gallery/uploads fetching + per-tab paging (shared with the Packs picker).
+  const { tab, setTab, shown, setShown, items, loading, visible, failed } =
+    useRefPickerData({ open, uid });
 
   // Close once every slot is full, so the picker doesn't linger uselessly.
   useEffect(() => {
     if (open && room <= 0) setOpen(false);
   }, [open, room]);
 
-  const items = tab === "gallery" ? gallery : uploads;
-  const loading = items === null && !failed;
-  const visible = useMemo(() => (items ?? []).slice(0, shown), [items, shown]);
-
   const pick = useCallback(
-    (item: GalleryItem | RecentUpload) => {
+    (item: RefGalleryItem | RecentUpload) => {
       if (room <= 0 || busyUrl) return;
       if (tab === "gallery") onPickGallery(item.url);
       else onPickUpload(item as RecentUpload);
@@ -156,7 +114,7 @@ export default function RefPicker({
     [room, busyUrl, tab, onPickGallery, onPickUpload],
   );
 
-  const tabButton = (id: Tab, label: string, icon: string) => (
+  const tabButton = (id: RefTab, label: string, icon: string) => (
     <button
       type="button"
       onClick={() => setTab(id)}
@@ -272,7 +230,7 @@ export default function RefPicker({
                     {(items?.length ?? 0) > shown && (
                       <button
                         type="button"
-                        onClick={() => setShown((n) => n + PAGE)}
+                        onClick={() => setShown((n) => n + REF_PICKER_PAGE)}
                         className="mx-auto mt-2 block rounded-full border border-white/10 px-3 py-1 text-[11px] text-[#93a0bd] transition hover:bg-white/5 hover:text-white"
                       >
                         {t("Show more")}

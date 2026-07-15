@@ -1,10 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api } from "../../../../services/api";
+import { useCallback, useEffect, useRef, useState } from "react";
 import AuthenticatedImage from "../../../../components/AuthenticatedImage";
 import type { Language } from "../../../../context/LanguageContext";
-import { listRecentUploads, type RecentUpload } from "../../../../lib/recentUploads";
+import { type RecentUpload } from "../../../../lib/recentUploads";
+import {
+  useRefPickerData,
+  REF_PICKER_PAGE,
+  type RefTab,
+  type RefGalleryItem,
+} from "../../../../lib/useRefPickerData";
 import { pt } from "../packsShared";
 
 // Marks a drag that started on a result tile inside the app. Chrome puts a real
@@ -12,15 +17,6 @@ import { pt } from "../packsShared";
 // an internal drag is indistinguishable from a file off the user's disk — and we
 // would re-upload an image the server already has.
 export const REF_DND_TYPE = "application/x-vibecraft-ref";
-
-type Tab = "gallery" | "uploaded";
-
-// Each tile does a full authenticated image fetch (there are no thumbnails), so
-// the grid reveals a page at a time instead of firing one request per row the
-// user may never scroll to. Mirrors the /gallery page's own budget.
-const PAGE = 12;
-
-type GalleryItem = { id: string; url: string };
 
 export default function RefPicker({
   open,
@@ -51,11 +47,6 @@ export default function RefPicker({
   /** A result dragged in from the canvas — referenced by url, never uploaded. */
   onDropRefUrl: (url: string) => void;
 }) {
-  const [tab, setTab] = useState<Tab>("gallery");
-  const [gallery, setGallery] = useState<GalleryItem[] | null>(null);
-  const [uploads, setUploads] = useState<RecentUpload[] | null>(null);
-  const [failed, setFailed] = useState(false);
-  const [shown, setShown] = useState(PAGE);
   const [dragging, setDragging] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
@@ -77,48 +68,12 @@ export default function RefPicker({
     };
   }, [open, onClose]);
 
-  // Fetch each list once per opening, lazily per tab.
-  useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
-    void (async () => {
-      try {
-        if (tab === "gallery" && gallery === null) {
-          const res = await api.getHistory(60);
-          const entries: Array<{ id?: string; imageUrl?: string }> = res?.entries ?? [];
-          const items = entries
-            .filter((e) => typeof e.imageUrl === "string" && e.imageUrl)
-            .map((e, i) => ({ id: String(e.id ?? i), url: e.imageUrl as string }));
-          if (!cancelled) setGallery(items);
-        } else if (tab === "uploaded" && uploads === null) {
-          if (!cancelled) setUploads(listRecentUploads(uid));
-        }
-      } catch {
-        if (!cancelled) setFailed(true);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [open, tab, gallery, uploads, uid]);
-
-  useEffect(() => {
-    setShown(PAGE);
-  }, [tab]);
-
-  // Re-read the upload history every time the picker opens: a file dropped while
-  // it was closed (or on the canvas) would otherwise be missing from the tab.
-  // It's a localStorage read, so this costs nothing.
-  useEffect(() => {
-    if (open) setUploads(null);
-  }, [open]);
-
-  const items = tab === "gallery" ? gallery : uploads;
-  const loading = items === null && !failed;
-  const visible = useMemo(() => (items ?? []).slice(0, shown), [items, shown]);
+  // Gallery/uploads fetching + per-tab paging (shared with the Playground picker).
+  const { tab, setTab, shown, setShown, items, loading, visible, failed } =
+    useRefPickerData({ open, uid });
 
   const pick = useCallback(
-    (item: GalleryItem | RecentUpload) => {
+    (item: RefGalleryItem | RecentUpload) => {
       if (room <= 0 || busyUrl) return;
       if (tab === "gallery") onPickGallery(item.url);
       else onPickUpload(item as RecentUpload);
@@ -128,7 +83,7 @@ export default function RefPicker({
 
   if (!open) return null;
 
-  const tabButton = (id: Tab, label: string, icon: string) => (
+  const tabButton = (id: RefTab, label: string, icon: string) => (
     <button
       type="button"
       onClick={() => setTab(id)}
@@ -232,7 +187,7 @@ export default function RefPicker({
               {(items?.length ?? 0) > shown && (
                 <button
                   type="button"
-                  onClick={() => setShown((n) => n + PAGE)}
+                  onClick={() => setShown((n) => n + REF_PICKER_PAGE)}
                   className="mx-auto mt-2 block rounded-full border border-white/10 px-3 py-1 text-[11px] text-[#93a0bd] transition hover:bg-white/5 hover:text-white"
                 >
                   {pt(language, "refShowMore")}
