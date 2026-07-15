@@ -1,4 +1,3 @@
-// frontend/src/app/page.tsx
 "use client";
 
 import { useState, useEffect, useRef, useMemo, useCallback, type ChangeEvent, type ClipboardEvent, type DragEvent } from "react";
