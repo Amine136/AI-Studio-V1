@@ -738,7 +738,7 @@ export default function SettingsPage() {
 
       <FeedbackModal open={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
 
-      <p className="pb-8 text-center text-xs text-[#7a8197]">Vibecraft v2.0.2</p>
+      <p className="pb-8 text-center text-xs text-[#7a8197]">Vibecraft v2.0.3</p>
     </div>
   );
 }
