@@ -1949,8 +1949,6 @@ def submit_platform_feedback(
             user_agent=user_agent,
         )
     except ValueError as exc:
-        if str(exc) == "FEEDBACK_DAILY_LIMIT":
-            raise HTTPException(status_code=429, detail="Feedback is limited to 10 messages per day") from exc
         raise HTTPException(status_code=400, detail="Invalid feedback") from exc
 
 

@@ -647,7 +647,8 @@ def delete_dashboard_news_item(
         )
 
 
-FEEDBACK_DAILY_LIMIT = 10
+FEEDBACK_MONTHLY_LIMIT = 3
+FEEDBACK_MONTHLY_WINDOW_SECONDS = 30 * 86400
 
 
 def submit_feedback(
@@ -660,11 +661,27 @@ def submit_feedback(
     language: str,
     user_agent: str,
 ) -> dict[str, Any]:
-    day_ago = int(time.time()) - 86400
+    now = int(time.time())
+    window_start = now - FEEDBACK_MONTHLY_WINDOW_SECONDS
     with session_scope() as session:
         repo = SecurityRepository(session)
-        if repo.count_feedback_items_since(uid, day_ago) >= FEEDBACK_DAILY_LIMIT:
-            raise ValueError("FEEDBACK_DAILY_LIMIT")
+        if repo.count_feedback_items_since(uid, window_start) >= FEEDBACK_MONTHLY_LIMIT:
+            # Over the monthly cap: acknowledge but drop. The response is
+            # indistinguishable from a stored submission, so spamming past the
+            # cap yields nothing to probe and nothing in the admin inbox.
+            return {
+                "id": str(uuid.uuid4()),
+                "uid": uid,
+                "email": email,
+                "category": category,
+                "message": message,
+                "route": route,
+                "language": language,
+                "userAgent": user_agent,
+                "status": "new",
+                "createdAt": now,
+                "updatedAt": now,
+            }
         item = repo.create_feedback_item(
             uid=uid,
             email=email,
