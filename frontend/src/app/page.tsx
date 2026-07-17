@@ -106,7 +106,7 @@ function LandingContent() {
             </div>
             <ThemeToggle className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/10 bg-[#0c1324]/80 text-slate-300 shadow-inner backdrop-blur-md transition-colors hover:border-white/25 hover:text-white light:border-slate-900/10 light:bg-white/80 light:text-slate-500 light:hover:border-slate-900/25 light:hover:text-slate-900 sm:h-10 sm:w-10" />
 
-            <Link href={loginHref} className="landing-login font-headline inline-flex items-center rounded-md border border-[#adc6ff]/40 bg-[#adc6ff]/5 px-2.5 py-2 text-xs font-semibold tracking-tight text-[#dce1fb] transition-all duration-200 hover:border-[#adc6ff]/70 hover:bg-[#adc6ff]/15 hover:text-white active:scale-95 sm:px-5 sm:text-sm">
+            <Link href={loginHref} className="landing-login font-headline hidden sm:inline-flex items-center rounded-md border border-[#adc6ff]/40 bg-[#adc6ff]/5 px-2.5 py-2 text-xs font-semibold tracking-tight text-[#dce1fb] transition-all duration-200 hover:border-[#adc6ff]/70 hover:bg-[#adc6ff]/15 hover:text-white active:scale-95 sm:px-5 sm:text-sm">
               {t("Log In") || "Log In"}
             </Link>
             <Link href={primaryHref} className="landing-cta-primary inline-flex rounded-md bg-gradient-to-br from-[#adc6ff] to-[#4d8eff] px-2.5 py-2 text-xs font-medium text-[#002e6a] transition-transform duration-100 active:scale-95 sm:px-5 sm:text-sm lg:px-6">
