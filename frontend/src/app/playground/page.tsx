@@ -17,7 +17,7 @@ import { addHistoryEntry } from "../../lib/history";
 import { getUploadConstraints, maxInputImagesForModelId, preferredOutputType, providerLabelForModelId, readImageDimensions, type UploadImageConstraints } from "../../lib/imageInputConstraints";
 import { LATENCY_FALLBACK_SECONDS, latencyBudgetForModel } from "../../lib/modelLatency";
 import ModelPickerPopover, { type PickerGroup } from "./ModelPickerPopover";
-import AspectShapePicker from "../studio/packs/AspectShapePicker";
+import AspectShapePicker from "../(studio)/packs/AspectShapePicker";
 import type { BillingBreakdown, BillingUsage, ModelPricingSummary, PlainChatConversationItem, PlainChatModelItem, PlainChatParameterSchemaEntry, PlainChatPart, PlainChatTurnMeta, UploadedImageResult } from "../../types";
 import HistoryPopover from "./HistoryPopover";
 
@@ -64,6 +64,9 @@ interface ProviderGroup {
 // full-screen model catalogue. Bumping the key stops a stale v2 blob from
 // restoring `phase: "select"` into a page that can no longer render it.
 const STORAGE_KEY = "studio-simple-chat-v3";
+// The Playground is open for anonymous browsing; when a logged-out visitor tries
+// to send, we stash their typed prompt here and restore it after they sign in.
+const DRAFT_KEY = "playground-anon-draft-v1";
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 // Per-model image limits (count / min dimension / formats) live in
 // lib/imageInputConstraints.ts, mirroring the AKM gateway guardrail.
@@ -1057,6 +1060,9 @@ export default function StudioChatPage() {
   const failedConversationLoadRef = useRef("");
   const inputImagesRef = useRef<UploadedImageState[]>([]);
   const deepLinkAppliedRef = useRef(false);
+  // Model an anonymous visitor had selected before the auth wall; applied once the
+  // catalogue loads after sign-in so their pick survives login (see restore effect).
+  const pendingModelRef = useRef<string>("");
   const settingsBtnRef = useRef<HTMLButtonElement>(null);
   const settingsPanelRef = useRef<HTMLDivElement>(null);
   const [settingsPos, setSettingsPos] = useState<{ left: number; bottom: number; width: number } | null>(null);
@@ -1238,13 +1244,9 @@ export default function StudioChatPage() {
       };
     }
 
-    if (!user) {
-      setLoadingConfig(false);
-      setProviderGroups([]);
-      return () => {
-        cancelled = true;
-      };
-    }
+    // Note: the model catalogue (loadConfig) loads for anonymous visitors too — the
+    // Playground is open for browsing and /chat/models is public. Only the
+    // per-user profile (credits) is gated on `user` below.
 
     async function loadProfile() {
       try {
@@ -1337,13 +1339,56 @@ export default function StudioChatPage() {
       }
     }
 
-    void loadProfile();
+    if (user) {
+      void loadProfile();
+    } else {
+      setCurrentCredits(null);
+    }
     void loadConfig();
 
     return () => {
       cancelled = true;
     };
   }, [authLoading, user]);
+
+  // After an anonymous visitor signs in (goToAuthWall stashed their prompt), refill
+  // the composer with the draft so they land back exactly where they were. We do
+  // NOT auto-send — the user presses Send themselves, so no surprise credit spend.
+  useEffect(() => {
+    if (!user) return;
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      if (!raw) return;
+      localStorage.removeItem(DRAFT_KEY);
+      // Back-compat: an older build stored the prompt as a plain string.
+      let parsed: { text?: string; model?: string };
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        parsed = { text: raw };
+      }
+      if (parsed.text) setInput(parsed.text);
+      // Don't set model state here — the catalogue may not be loaded yet, and
+      // loadConfig would clobber it. Stash it; the effect below applies it once
+      // providerGroups populate.
+      if (parsed.model) pendingModelRef.current = parsed.model;
+    } catch {
+      /* storage unavailable — nothing to restore */
+    }
+  }, [user]);
+
+  // Apply the restored model once the catalogue is available. Runs after loadConfig
+  // has seeded its default, so it wins — but only if the model still exists.
+  useEffect(() => {
+    const restored = pendingModelRef.current;
+    if (!restored || providerGroups.length === 0) return;
+    pendingModelRef.current = "";
+    const known = providerGroups.some((group) => group.models.some((model) => model.id === restored));
+    if (known) {
+      setSelectedModel(restored);
+      setLockedModelId(restored);
+    }
+  }, [providerGroups]);
 
   // Deep-link bootstrap: open the Playground straight into a specific model with
   // an optional pre-filled prompt (/playground?model=<id>&prompt=<text>; the old
@@ -1673,6 +1718,7 @@ export default function StudioChatPage() {
 
   async function uploadInputImageFiles(selectedFiles: File[], options?: { record?: boolean }) {
     if (selectedFiles.length === 0) return;
+    if (requireAuth()) return;
     // Gallery picks re-upload a generated output to mint an input file_id, but must
     // NOT land in the Uploaded tab (that tab means "a file the person chose").
     const record = options?.record ?? true;
@@ -1760,6 +1806,7 @@ export default function StudioChatPage() {
   // mint a file_id — the same route a fresh upload takes, minus the Uploaded-tab
   // bookkeeping. pickerBusyUrl serializes picks against maxInputImages.
   async function attachGalleryRef(url: string) {
+    if (requireAuth()) return;
     if (pickerBusyUrl) return;
     if (maxInputImages - inputImagesRef.current.length <= 0) {
       setError(`Attach at most ${maxInputImages} images per message.`);
@@ -1783,6 +1830,7 @@ export default function StudioChatPage() {
   // re-upload — that would pollute the Uploaded tab). We still fetch the asset to
   // build a local preview, since the strip renders a plain <img>.
   async function attachUploadedRef(item: RecentUpload) {
+    if (requireAuth()) return;
     if (pickerBusyUrl) return;
     if (maxInputImages - inputImagesRef.current.length <= 0) {
       setError(`Attach at most ${maxInputImages} images per message.`);
@@ -1833,7 +1881,10 @@ export default function StudioChatPage() {
   // mid-thread can't be expressed — once messages exist we fork into a fresh chat
   // instead, carrying the composer's draft across. The old thread stays in history.
   function handleModelChange(nextModelId: string) {
-    if (!nextModelId || !user || nextModelId === lockedModelId) return;
+    // No `!user` guard: picking a model is local-only (no op, no cost), so an
+    // anonymous visitor must be able to switch models while browsing. Their choice
+    // is stashed at the auth wall and restored after sign-in.
+    if (!nextModelId || nextModelId === lockedModelId) return;
 
     const nextModel = providerGroups.flatMap((group) => group.models).find((model) => model.id === nextModelId);
     if (!nextModel) return;
@@ -1880,13 +1931,46 @@ export default function StudioChatPage() {
     setNotice(`${t("Started a new chat with")} ${nextModel.displayName}`);
   }
 
+  // Anonymous browsing: the Playground renders for logged-out visitors, but every
+  // operation (send, attach, upload) is walled here. Stash the typed prompt so it
+  // is restored after sign-in, then route to /auth with a next= back to here.
+  function goToAuthWall() {
+    try {
+      const draft = input.trim();
+      // Stash BOTH the prompt and the selected model so sign-in restores exactly what
+      // the visitor set up. localStorage (not sessionStorage): the email sign-in-link
+      // path returns in a NEW tab where sessionStorage would be empty. The restore
+      // effect deletes the key on read, so it never lingers past a single restore.
+      if (draft || lockedModelId) {
+        localStorage.setItem(DRAFT_KEY, JSON.stringify({ text: draft, model: lockedModelId }));
+      }
+    } catch {
+      /* storage unavailable — proceed to auth without the draft */
+    }
+    // No reason= param: the visitor was browsing the open Playground and simply hit
+    // an action gate — "You need an active account to access that page" reads as an
+    // error here, so land on the clean login page instead.
+    router.push(`/auth?next=${encodeURIComponent("/playground")}`);
+  }
+
+  // Returns true (and redirects) when the visitor is not logged in, so callers can
+  // `if (requireAuth()) return;` at the top of any operation.
+  function requireAuth(): boolean {
+    if (!user) {
+      goToAuthWall();
+      return true;
+    }
+    return false;
+  }
+
   async function handleSend() {
     const text = input.trim();
     if (text.length > MAX_CHAT_TEXT_CHARS) {
       setError(`Your message is too long. Maximum ${MAX_CHAT_TEXT_CHARS} characters.`);
       return;
     }
-    if ((!text && inputImages.length === 0) || !lockedModelId || loadingReply || !user) return;
+    if ((!text && inputImages.length === 0) || !lockedModelId || loadingReply) return;
+    if (requireAuth()) return;
     if (insufficientLockedModelMinimumCredits) {
       setError(`You need at least ${lockedModelMinimumCost.toFixed(2)} credits to use this chat model.`);
       return;
@@ -2422,7 +2506,7 @@ export default function StudioChatPage() {
                     <span className="material-symbols-outlined text-[16px]">close</span>
                   </button>
                 </div>
-              ) : (
+              ) : user ? (
                 <button
                   type="button"
                   onClick={() => {
@@ -2434,51 +2518,76 @@ export default function StudioChatPage() {
                   <h1 className="max-w-[38vw] truncate text-sm font-semibold text-white light:text-slate-900 sm:max-w-xs">{normalizedConversationTitle === DEFAULT_CONVERSATION_TITLE ? t("New Chat") : normalizedConversationTitle}</h1>
                   <span className="material-symbols-outlined shrink-0 text-[14px] text-white/25 transition-colors group-hover:text-white/60">edit</span>
                 </button>
+              ) : (
+                // Anonymous: no thread to rename — show a static title, no edit affordance.
+                <h1 className="max-w-[38vw] truncate text-sm font-semibold text-white light:text-slate-900 sm:max-w-xs">{t("New Chat")}</h1>
               )}
               <span className="hidden text-white/15 sm:inline">.</span>
               <span className="hidden max-w-[160px] truncate text-[11px] font-medium text-[#6b7a8f] sm:inline">{lockedModel?.displayName || t("Model")}</span>
             </div>
 
             <div className={`items-center gap-1 ${editingConversationTitle ? "hidden sm:flex" : "flex"}`}>
-              <div className="mr-1.5 hidden items-center gap-2.5 text-[11px] text-[#6b7a8f] lg:flex">
-                <span className="font-mono tabular-nums">
-                  {conversationTotalTokens.toLocaleString()} <span className="text-white/20">tok</span>
-                </span>
-                <span className="text-white/10">.</span>
-                <span className="font-mono tabular-nums text-[#adc6ff]/60">
-                  {conversationCostTotal.toFixed(2)} <span className="text-white/20">Cr</span>
-                </span>
-              </div>
-              <div className="mr-0.5 hidden h-4 w-px bg-white/[0.06] lg:block" />
+              {/* Conversation usage + history belong to a logged-in session; anon has none. */}
+              {user ? (
+                <>
+                  <div className="mr-1.5 hidden items-center gap-2.5 text-[11px] text-[#6b7a8f] lg:flex">
+                    <span className="font-mono tabular-nums">
+                      {conversationTotalTokens.toLocaleString()} <span className="text-white/20">tok</span>
+                    </span>
+                    <span className="text-white/10">.</span>
+                    <span className="font-mono tabular-nums text-[#adc6ff]/60">
+                      {conversationCostTotal.toFixed(2)} <span className="text-white/20">Cr</span>
+                    </span>
+                  </div>
+                  <div className="mr-0.5 hidden h-4 w-px bg-white/[0.06] lg:block" />
 
-              <HistoryPopover
-                activeId={conversationId}
-                items={historyItems}
-                loading={historyLoading}
-                error={historyError}
-                canLoadMore={historyItems.length >= historyLimit && historyLimit < HISTORY_MAX}
-                onOpenChange={handleHistoryOpenChange}
-                onSelect={handleOpenConversation}
-                onLoadMore={handleHistoryLoadMore}
-                language={language}
-                isRtl={isRtl}
-                t={t}
-              />
+                  <HistoryPopover
+                    activeId={conversationId}
+                    items={historyItems}
+                    loading={historyLoading}
+                    error={historyError}
+                    canLoadMore={historyItems.length >= historyLimit && historyLimit < HISTORY_MAX}
+                    onOpenChange={handleHistoryOpenChange}
+                    onSelect={handleOpenConversation}
+                    onLoadMore={handleHistoryLoadMore}
+                    language={language}
+                    isRtl={isRtl}
+                    t={t}
+                  />
+                </>
+              ) : null}
               <button type="button" onClick={() => void handleNewChat()} title={t("New Chat")} className="chat-topbar-btn">
                 <span className="material-symbols-outlined text-[18px]">add</span>
               </button>
               {/* Delete is destructive and sits in a row of same-sized icon buttons,
                   so it gets a divider rather than being flush against New Chat. */}
-              <div className="mx-1 h-4 w-px bg-white/[0.06]" />
-              <button type="button" onClick={() => void handleDeleteConversation()} disabled={!conversationId || loadingReply} title={t("Delete Chat")} className="chat-topbar-btn hover:!text-red-400/80">
-                <span className="material-symbols-outlined text-[18px]">delete_outline</span>
-              </button>
+              {user ? (
+                <>
+                  <div className="mx-1 h-4 w-px bg-white/[0.06]" />
+                  <button type="button" onClick={() => void handleDeleteConversation()} disabled={!conversationId || loadingReply} title={t("Delete Chat")} className="chat-topbar-btn hover:!text-red-400/80">
+                    <span className="material-symbols-outlined text-[18px]">delete_outline</span>
+                  </button>
+                </>
+              ) : null}
               <div className="mx-0.5 h-4 w-px bg-white/[0.06]" />
 
-              <div className="chat-credits-badge">
-                <span className="material-symbols-outlined text-[13px] text-[#adc6ff]" style={{ fontVariationSettings: "'FILL' 1" }}>bolt</span>
-                <span className="text-[11px] font-bold tabular-nums text-blue-100/80">{currentCredits === null ? "..." : currentCredits.toFixed(2)}</span>
-              </div>
+              {user ? (
+                <div className="chat-credits-badge">
+                  <span className="material-symbols-outlined text-[13px] text-[#adc6ff]" style={{ fontVariationSettings: "'FILL' 1" }}>bolt</span>
+                  <span className="text-[11px] font-bold tabular-nums text-blue-100/80">{currentCredits === null ? "..." : currentCredits.toFixed(2)}</span>
+                </div>
+              ) : (
+                // Anonymous: the credits badge slot becomes the primary sign-in CTA.
+                <button
+                  type="button"
+                  onClick={() => router.push(`/auth?next=${encodeURIComponent("/playground")}`)}
+                  className="chat-credits-badge hover:bg-white/[0.06]"
+                  title={t("Sign in")}
+                >
+                  <span className="material-symbols-outlined text-[13px] text-[#adc6ff]">login</span>
+                  <span className="text-[11px] font-bold text-blue-100/80">{t("Sign in")}</span>
+                </button>
+              )}
             </div>
           </header>
 
@@ -2705,17 +2814,30 @@ export default function StudioChatPage() {
                           controls on the right are fixed-size and must not squash. */}
                       <div className="flex min-w-0 flex-1 items-center gap-2">
                         {lockedModel?.supportsImageInput ? (
-                          <RefPicker
-                            disabled={uploadingImage || loadingReply}
-                            uid={user?.uid ?? null}
-                            room={maxInputImages - inputImages.length}
-                            busyUrl={pickerBusyUrl}
-                            onPickGallery={(url) => void attachGalleryRef(url)}
-                            onPickUpload={(item) => void attachUploadedRef(item)}
-                            onFiles={(files) => void uploadInputImageFiles(Array.from(files ?? []))}
-                            isRtl={isRtl}
-                            t={t}
-                          />
+                          user ? (
+                            <RefPicker
+                              disabled={uploadingImage || loadingReply}
+                              uid={user?.uid ?? null}
+                              room={maxInputImages - inputImages.length}
+                              busyUrl={pickerBusyUrl}
+                              onPickGallery={(url) => void attachGalleryRef(url)}
+                              onPickUpload={(item) => void attachUploadedRef(item)}
+                              onFiles={(files) => void uploadInputImageFiles(Array.from(files ?? []))}
+                              isRtl={isRtl}
+                              t={t}
+                            />
+                          ) : (
+                            // Anonymous: the picker itself fetches the user's gallery, so
+                            // don't open it — this stand-in walls straight to /auth.
+                            <button
+                              type="button"
+                              onClick={goToAuthWall}
+                              className="chat-attach-btn"
+                              title={t("Sign in to attach images")}
+                            >
+                              <span className="material-symbols-outlined text-[17px]">add_photo_alternate</span>
+                            </button>
+                          )
                         ) : null}
 
                         <ModelPickerPopover

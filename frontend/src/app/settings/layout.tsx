@@ -8,7 +8,10 @@ import RequireActiveUser from "../../components/auth/RequireActiveUser";
 // top of the main column.
 export default function SettingsLayout({ children }: { children: React.ReactNode }) {
   return (
-    <RequireActiveUser>
+    // Settings is browsable logged-out: theme/accent/language work locally for
+    // anyone; the account card shows a labelled sample and every server-backed
+    // action (profile save, notification toggles) walls to /auth.
+    <RequireActiveUser allowAnonymous>
       <div className="flex min-h-screen overflow-x-hidden bg-[#0c1324] text-[#dce1fb] selection:bg-[#adc6ff]/30">
         <AppSidebar activePath="/settings" />
 

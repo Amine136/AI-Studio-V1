@@ -65,13 +65,8 @@ export default function SettingsPage() {
   const profileSaveCooldownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const displayName = user?.displayName || user?.email?.split("@")[0] || "Vibecraft User";
   const email = user?.email || "No email available";
-  const photoUrl = user?.photoURL || null;
-
-  useEffect(() => {
-    if (!loading && !user) {
-      router.replace("/auth");
-    }
-  }, [loading, router, user]);
+  // Guests get the standard Vibecraft creator visual instead of empty initials.
+  const photoUrl = user ? user.photoURL || null : "/samples/guest-avatar.jpg";
 
   useEffect(() => {
     const savedAccent = readAccentColorFromCookie();
@@ -122,12 +117,18 @@ export default function SettingsPage() {
     };
   }, [displayName, email, user]);
 
-  if (loading || !user) {
+  if (loading) {
     return (
       <main className="flex min-h-screen items-center justify-center">
         <div className="auth-loader" />
       </main>
     );
+  }
+
+  // Anonymous preview: server-backed actions wall to /auth; local preferences
+  // (accent, theme, language) work for everyone since they live in cookies.
+  function goToAuthWall() {
+    router.push(`/auth?next=${encodeURIComponent("/settings")}`);
   }
   const profileNote =
     t("Google authentication is currently the only live user sign-in method. Update your Google profile if you want Vibecraft to reflect a new name or image.");
@@ -136,6 +137,7 @@ export default function SettingsPage() {
   const profileSaveDisabled = !isProfileDirty || savingProfile || profileSaveCooldown || profileDailyLimitReached;
 
   async function handleProfileSave() {
+    if (!user) return goToAuthWall();
     if (profileSaveDisabled || profileSaveInFlightRef.current) return;
     profileSaveInFlightRef.current = true;
     setProfileSaveCooldown(true);
@@ -179,6 +181,7 @@ export default function SettingsPage() {
     emailGeneralNewsEnabled: boolean;
     emailPlatformUpdatesEnabled: boolean;
   }) {
+    if (!user) return goToAuthWall();
     const previousEmailNotifications = emailNotifications;
     const previousProductUpdates = productUpdates;
     setSavingNotifications(true);
@@ -232,7 +235,19 @@ export default function SettingsPage() {
           <div>
             <h3 className="font-headline text-3xl font-bold tracking-tight text-[#dce1fb] sm:text-4xl">{t("Account")}</h3>
             <p className="mt-2 max-w-md text-[#c2c6d6]">
-              {t("Manage your public profile and core identity within the Vibecraft ecosystem.")}
+              {user ? (
+                t("Manage your public profile and core identity within the Vibecraft ecosystem.")
+              ) : (
+                <>
+                  {t("Sample profile — sign in to manage your own account.")}{" "}
+                  <Link
+                    href={`/auth?next=${encodeURIComponent("/settings")}`}
+                    className="font-semibold text-[#adc6ff] hover:underline"
+                  >
+                    {t("Sign in")}
+                  </Link>
+                </>
+              )}
             </p>
           </div>
         </div>
@@ -589,22 +604,36 @@ export default function SettingsPage() {
         <div className="flex flex-col items-start justify-between gap-5 rounded-2xl border border-white/8 bg-[#151b2d] p-5 sm:flex-row sm:items-center sm:p-8">
           <div>
             <h4 className="text-xl font-bold text-[#dce1fb]">{t("Session")}</h4>
-            <p className="mt-1 text-sm text-[#c2c6d6]">{t("End your current session securely.")}</p>
+            <p className="mt-1 text-sm text-[#c2c6d6]">
+              {user ? t("End your current session securely.") : t("You are browsing as a guest.")}
+            </p>
           </div>
-          <button
-            type="button"
-            onClick={() => void handleSignOut()}
-            disabled={signingOut}
-            className={`inline-flex items-center gap-2 rounded-sm border border-white/10 bg-[#070d1f] px-5 py-2.5 text-sm font-bold text-[#dce1fb] transition ${
-              signingOut ? "cursor-not-allowed opacity-70" : "hover:border-[#adc6ff]/35 hover:text-[#adc6ff]"
-            }`}
-          >
-            <span className="material-symbols-outlined text-lg">{signingOut ? "hourglass_top" : "logout"}</span>
-            {signingOut ? t("Signing Out...") : t("Sign Out")}
-          </button>
+          {user ? (
+            <button
+              type="button"
+              onClick={() => void handleSignOut()}
+              disabled={signingOut}
+              className={`inline-flex items-center gap-2 rounded-sm border border-white/10 bg-[#070d1f] px-5 py-2.5 text-sm font-bold text-[#dce1fb] transition ${
+                signingOut ? "cursor-not-allowed opacity-70" : "hover:border-[#adc6ff]/35 hover:text-[#adc6ff]"
+              }`}
+            >
+              <span className="material-symbols-outlined text-lg">{signingOut ? "hourglass_top" : "logout"}</span>
+              {signingOut ? t("Signing Out...") : t("Sign Out")}
+            </button>
+          ) : (
+            <Link
+              href={`/auth?next=${encodeURIComponent("/settings")}`}
+              className="inline-flex items-center gap-2 rounded-sm border border-white/10 bg-[#070d1f] px-5 py-2.5 text-sm font-bold text-[#dce1fb] transition hover:border-[#adc6ff]/35 hover:text-[#adc6ff]"
+            >
+              <span className="material-symbols-outlined text-lg">login</span>
+              {t("Sign in")}
+            </Link>
+          )}
         </div>
       </section>
 
+      {/* Account deactivation only makes sense with an account — hidden for guests. */}
+      {user ? (
       <section className="pb-12 pt-8 sm:pt-12">
         <div className="flex flex-col items-start justify-between gap-6 rounded-2xl border border-[#93000a]/30 bg-[#93000a]/10 p-5 sm:p-8 md:flex-row md:items-center">
           <div>
@@ -626,6 +655,7 @@ export default function SettingsPage() {
           </button>
         </div>
       </section>
+      ) : null}
       {showDeactivateConfirm ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-6">
           <div className="w-full max-w-lg rounded-md border border-[#93000a]/35 bg-[#151b2d] p-8">
@@ -660,7 +690,7 @@ export default function SettingsPage() {
         </div>
       ) : null}
 
-      <p className="pb-8 text-center text-xs text-[#7a8197]">Vibecraft v1.1.5</p>
+      <p className="pb-8 text-center text-xs text-[#7a8197]">Vibecraft v2.0.2</p>
     </div>
   );
 }

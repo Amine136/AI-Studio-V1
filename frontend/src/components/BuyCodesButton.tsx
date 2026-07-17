@@ -26,7 +26,7 @@ export default function BuyCodesButton({
   const content = (
     <>
       {showIcon && (
-        <span className="material-symbols-outlined text-[18px]" style={{ fontVariationSettings: "'FILL' 1" }}>
+        <span className="material-symbols-outlined text-[16px]" style={{ fontVariationSettings: "'FILL' 1" }}>
           shopping_bag
         </span>
       )}

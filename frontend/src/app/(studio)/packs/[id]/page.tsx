@@ -217,7 +217,7 @@ export default function PackDetailPage() {
     };
   }, [packId, language]);
 
-  // Deep-link: /studio/packs/<id>?variant=<vid> pre-selects a mockup and jumps
+  // Deep-link: /packs/<id>?variant=<vid> pre-selects a mockup and jumps
   // straight into the studio (used by the Social gallery, which lists mockups
   // directly instead of category cards). Applied once, after the pack loads.
   const deepLinkedRef = useRef(false);
@@ -598,7 +598,7 @@ export default function PackDetailPage() {
   if (loadError) {
     return (
       <div className="p-8">
-        <Link href="/studio/packs" className="text-sm text-[#93a0bd] hover:text-white">
+        <Link href="/packs" className="text-sm text-[#93a0bd] hover:text-white">
           ‹ {pt(language, "back")}
         </Link>
         <p className="mt-6 text-sm text-rose-300">{loadError}</p>
@@ -659,7 +659,7 @@ export default function PackDetailPage() {
       {/* breadcrumb */}
       <div className="mb-6 flex items-center justify-between">
         <div className="flex items-center gap-2 text-sm">
-          <Link href="/studio/packs" className="text-[#93a0bd] transition hover:text-white">
+          <Link href="/packs" className="text-[#93a0bd] transition hover:text-white">
             ‹ {pt(language, "back")}
           </Link>
           <span className="text-[#42506f]">/</span>
@@ -823,7 +823,7 @@ export default function PackDetailPage() {
                   {planning ? pt(language, "planning") : mockupLoading ? pt(language, "loading") : `${pt(language, "generate")} →`}
                 </button>
                 <Link
-                  href={`/studio/packs/${packId}/batch`}
+                  href={`/packs/${packId}/batch`}
                   className="mt-2 block text-center text-xs text-[#93a0bd] transition hover:text-[color:var(--accent)]"
                 >
                   {pt(language, "applyToMany")} →

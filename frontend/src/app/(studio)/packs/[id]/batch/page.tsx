@@ -251,7 +251,7 @@ export default function PackBatchPage() {
   if (loadError) {
     return (
       <div className="p-8">
-        <Link href="/studio/packs" className="text-sm text-[#9fb0d6] hover:text-white">‹ {pt(language, "back")}</Link>
+        <Link href="/packs" className="text-sm text-[#9fb0d6] hover:text-white">‹ {pt(language, "back")}</Link>
         <p className="mt-6 text-sm text-rose-300">{loadError}</p>
       </div>
     );
@@ -265,7 +265,7 @@ export default function PackBatchPage() {
     <div className="p-4 sm:p-8">
       <div className="mb-6 flex items-center justify-between">
         <div className="flex items-center gap-2 text-sm">
-          <Link href={`/studio/packs/${packId}`} className="text-[#9fb0d6] hover:text-white">‹ {pack.title}</Link>
+          <Link href={`/packs/${packId}`} className="text-[#9fb0d6] hover:text-white">‹ {pack.title}</Link>
           <span className="text-[#42506f]">/</span>
           <span className="font-semibold text-white">{pt(language, "applyToMany")}</span>
         </div>

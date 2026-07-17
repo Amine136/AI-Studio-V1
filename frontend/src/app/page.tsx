@@ -43,24 +43,31 @@ import ThemeToggle from "../components/ThemeToggle";
 function LandingContent() {
   const { user, loading } = useAuth();
   const { t, language, setLanguage } = useLanguage();
-  const primaryHref = user ? "/playground" : "/auth";
+  // The Playground is open for anonymous browsing (auth-wall on any operation),
+  // so the primary CTA and "View Live Studio" take everyone straight there.
+  // "Log In" keeps pointing at /auth for logged-out visitors.
+  const primaryHref = "/playground?new=1";
   const primaryLabel = user ? t("Start Creating") : t("Get Started");
   const loginHref = user ? "/playground" : "/auth";
 
   return (
     <main className="bg-[#0c1324] text-[#dce1fb] selection:bg-[#4d8eff]/30">
       <nav className="fixed top-0 z-50 w-full bg-[#0c1324]/80 shadow-xl shadow-blue-900/10 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-3 px-4 py-4 sm:px-6 sm:py-5 lg:px-12 lg:py-6">
-          <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
+        <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-2 px-3 py-4 sm:px-6 sm:py-5 lg:px-12 lg:py-6">
+          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
             <img
               src="/best-version/logo-192.png?v=20260506-1210"
               alt="Vibecraft logo"
-              className="h-8 w-8 shrink-0 object-contain sm:h-9 sm:w-9"
+              className="h-7 w-7 shrink-0 object-contain sm:h-9 sm:w-9"
             />
             {/* Below ~400px the nav (pills + theme toggle + Log In) leaves the wordmark
                 less room than its 80px of text needs, and it spills under the pills.
-                The logo mark beside it already carries the brand at that size. */}
-            <div className="landing-logo font-headline truncate text-xl font-bold tracking-tighter text-blue-100 max-[399px]:hidden sm:text-2xl">Vibecraft</div>
+                Collapse to the "VC" monogram there (Anthropic-style ANTHROP\\C -> A\\)
+                instead of dropping the name entirely. */}
+            <div className="landing-logo font-headline truncate text-lg font-bold tracking-tighter text-blue-100 sm:text-2xl">
+              <span className="max-sm:hidden">Vibecraft</span>
+              <span className="sm:hidden">VC</span>
+            </div>
           </div>
 
           <div className="hidden items-center gap-10 md:flex">
@@ -72,8 +79,8 @@ function LandingContent() {
             </a>
           </div>
 
-          <div className="flex shrink-0 items-center gap-2.5 sm:gap-3 lg:gap-6">
-            <div className="flex items-center rounded-full border border-white/10 bg-[#0c1324]/80 p-0.5 sm:p-1 shadow-inner backdrop-blur-md me-1 sm:me-2" dir="ltr">
+          <div className="flex shrink-0 items-center gap-1.5 sm:gap-3 lg:gap-6">
+            <div className="flex items-center rounded-full border border-white/10 bg-[#0c1324]/80 p-0.5 sm:p-1 shadow-inner backdrop-blur-md me-0.5 sm:me-2" dir="ltr">
               {(
                 [
                   { id: "en", label: "EN" },
@@ -84,7 +91,7 @@ function LandingContent() {
                 <button
                   key={lang.id}
                   onClick={() => setLanguage(lang.id)}
-                  className={`relative px-2 sm:px-3 py-1 text-[9px] sm:text-[10px] font-bold uppercase tracking-widest transition-all duration-300 ${
+                  className={`relative px-1 sm:px-3 py-1 text-[9px] sm:text-[10px] font-bold uppercase tracking-widest transition-all duration-300 ${
                     language === lang.id
                       ? "text-white landing-lang-active"
                       : "text-slate-400 hover:text-slate-200"
@@ -97,12 +104,12 @@ function LandingContent() {
                 </button>
               ))}
             </div>
-            <ThemeToggle className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/10 bg-[#0c1324]/80 text-slate-300 shadow-inner backdrop-blur-md transition-colors hover:border-white/25 hover:text-white light:border-slate-900/10 light:bg-white/80 light:text-slate-500 light:hover:border-slate-900/25 light:hover:text-slate-900 sm:h-10 sm:w-10" />
+            <ThemeToggle className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/10 bg-[#0c1324]/80 text-slate-300 shadow-inner backdrop-blur-md transition-colors hover:border-white/25 hover:text-white light:border-slate-900/10 light:bg-white/80 light:text-slate-500 light:hover:border-slate-900/25 light:hover:text-slate-900 sm:h-10 sm:w-10" />
 
-            <Link href={loginHref} className="landing-login font-headline inline-flex items-center rounded-md border border-[#adc6ff]/40 bg-[#adc6ff]/5 px-3.5 py-2 text-xs font-semibold tracking-tight text-[#dce1fb] transition-all duration-200 hover:border-[#adc6ff]/70 hover:bg-[#adc6ff]/15 hover:text-white active:scale-95 sm:px-5 sm:text-sm">
+            <Link href={loginHref} className="landing-login font-headline inline-flex items-center rounded-md border border-[#adc6ff]/40 bg-[#adc6ff]/5 px-2.5 py-2 text-xs font-semibold tracking-tight text-[#dce1fb] transition-all duration-200 hover:border-[#adc6ff]/70 hover:bg-[#adc6ff]/15 hover:text-white active:scale-95 sm:px-5 sm:text-sm">
               {t("Log In") || "Log In"}
             </Link>
-            <Link href={primaryHref} className="landing-cta-primary hidden sm:inline-flex rounded-md bg-gradient-to-br from-[#adc6ff] to-[#4d8eff] px-3.5 py-2 text-xs font-medium text-[#002e6a] transition-transform duration-100 active:scale-95 sm:px-5 sm:text-sm lg:px-6">
+            <Link href={primaryHref} className="landing-cta-primary inline-flex rounded-md bg-gradient-to-br from-[#adc6ff] to-[#4d8eff] px-2.5 py-2 text-xs font-medium text-[#002e6a] transition-transform duration-100 active:scale-95 sm:px-5 sm:text-sm lg:px-6">
               {primaryLabel}
             </Link>
           </div>

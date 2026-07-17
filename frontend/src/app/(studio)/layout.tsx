@@ -66,7 +66,7 @@ export default function StudioLayout({ children }: { children: React.ReactNode }
   // The Playground moved out to /playground, but Packs and Smart Studio now carry
   // the same app rail so navigation is reachable everywhere. Packs brings its own
   // brand header, so only that surface hides the shared "Studio" header.
-  const hideSharedHeader = pathname.startsWith("/studio/packs");
+  const hideSharedHeader = pathname.startsWith("/packs");
 
   return (
     <RequireActiveUser>

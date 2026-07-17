@@ -160,15 +160,20 @@ def rate_limit_key(request: Request) -> str:
 
 
 def _get_client_ip(request: Request) -> str:
-    forwarded_for = request.headers.get("x-forwarded-for", "")
-    if forwarded_for:
-        first_ip = forwarded_for.split(",", 1)[0].strip()
-        if first_ip:
-            return first_ip
-
+    # Trust X-Real-IP first: nginx sets it from $remote_addr, so clients cannot
+    # forge it. X-Forwarded-For is built with $proxy_add_x_forwarded_for, which
+    # APPENDS the real IP to any client-supplied value — taking its first entry
+    # would let a caller mint a fresh rate-limit bucket per request.
     real_ip = request.headers.get("x-real-ip", "").strip()
     if real_ip:
         return real_ip
+
+    forwarded_for = request.headers.get("x-forwarded-for", "")
+    if forwarded_for:
+        # Last entry is the one appended by our own proxy hop.
+        last_ip = forwarded_for.rsplit(",", 1)[-1].strip()
+        if last_ip:
+            return last_ip
 
     return get_remote_address(request)
 
@@ -706,9 +711,11 @@ def get_system_config(request: Request, _=Depends(verify_api_key)):
     description="Return available catalog models for the dedicated plain-chat flow.",
 )
 @limiter.limit("30/minute")
-def list_plain_chat_model_options(request: Request, user: Dict[str, Any] = Depends(verify_firebase_user)):
+def list_plain_chat_model_options(request: Request):
+    # Public, no auth: the catalogue is non-sensitive (ids, providers, modalities,
+    # pricing summary already shown on /pricing) and carries no per-user data. This
+    # lets the open Playground populate its model picker for anonymous visitors.
     del request
-    del user
     catalog_store.get_catalog()
     return PlainChatModelListResponse(models=list_plain_chat_models())
 

@@ -21,7 +21,16 @@ function resolveInactiveReason(profile?: CurrentUserProfile | null, error?: unkn
   return "unauthorized";
 }
 
-export default function RequireActiveUser({ children }: { children: ReactNode }) {
+export default function RequireActiveUser({
+  children,
+  allowAnonymous = false,
+}: {
+  children: ReactNode;
+  // When true, logged-out visitors are allowed through (browse mode) instead of
+  // being redirected to /auth. Logged-in users still pass the full active-account
+  // validation below, so the suspended/deactivated sign-out still fires.
+  allowAnonymous?: boolean;
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const { user, loading: authLoading } = useAuth();
@@ -35,6 +44,15 @@ export default function RequireActiveUser({ children }: { children: ReactNode })
 
     async function validateAccess() {
       if (!user) {
+        if (allowAnonymous) {
+          // Browse mode: render the page for anonymous visitors. Every real
+          // operation is still gated at the backend (Firebase token required).
+          if (!cancelled) {
+            setAllowed(true);
+            setValidating(false);
+          }
+          return;
+        }
         if (typeof window !== "undefined" && sessionStorage.getItem("signingOut") === "true") {
           sessionStorage.removeItem("signingOut");
           router.replace("/auth");
@@ -46,7 +64,10 @@ export default function RequireActiveUser({ children }: { children: ReactNode })
             typeof window !== "undefined"
               ? `${window.location.pathname}${window.location.search}`
               : pathname || "/playground";
-          router.replace(`/auth?reason=unauthorized&next=${encodeURIComponent(target)}`);
+          // No reason= param: a simply-logged-out visitor doesn't need the scary
+          // "you need an active account" banner — just show the clean login page.
+          // The reason banners below stay for suspended/deactivated accounts.
+          router.replace(`/auth?next=${encodeURIComponent(target)}`);
         }
         return;
       }
@@ -83,7 +104,7 @@ export default function RequireActiveUser({ children }: { children: ReactNode })
     return () => {
       cancelled = true;
     };
-  }, [authLoading, pathname, router, user]);
+  }, [authLoading, pathname, router, user, allowAnonymous]);
 
   if (authLoading || validating || !allowed) {
     return (

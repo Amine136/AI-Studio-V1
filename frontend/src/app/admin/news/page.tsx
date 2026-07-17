@@ -15,7 +15,7 @@ const emptyNewsForm: DashboardNewsUpsertRequest = {
     linkLabel: "Learn more",
     linkLabelFr: "",
     linkLabelAr: "",
-    linkHref: "/studio",
+    linkHref: "/playground",
     tone: "blue",
     sortOrder: 0,
     isActive: true,
@@ -360,7 +360,7 @@ export default function AdminNewsPage() {
                                             value={newsForm.linkHref}
                                             onChange={(e) => handleFieldChange("linkHref", e.target.value)}
                                             className="w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-4 py-2 text-body-sm focus:ring-2 focus:ring-primary/50 outline-none" 
-                                            placeholder="/studio" 
+                                            placeholder="/playground" 
                                             type="text" 
                                         />
                                     </div>
@@ -370,7 +370,7 @@ export default function AdminNewsPage() {
                                     type="button"
                                     onClick={() => {
                                         handleFieldChange("linkLabel", "Learn more");
-                                        handleFieldChange("linkHref", "/studio");
+                                        handleFieldChange("linkHref", "/playground");
                                     }}
                                     className="w-full py-2.5 border border-dashed border-outline-variant rounded-lg text-[11px] font-label-caps text-on-surface-variant hover:text-primary hover:border-primary/50 hover:bg-primary/5 transition-all"
                                 >

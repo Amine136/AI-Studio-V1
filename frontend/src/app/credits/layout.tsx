@@ -8,7 +8,9 @@ import RequireActiveUser from "../../components/auth/RequireActiveUser";
 // top of the main column.
 export default function CreditsLayout({ children }: { children: React.ReactNode }) {
   return (
-    <RequireActiveUser>
+    // Credits is browsable logged-out: anon sees a clearly-labelled SAMPLE
+    // balance/history preview (page handles it), and redeeming walls to /auth.
+    <RequireActiveUser allowAnonymous>
       <div className="vc-lightpage flex min-h-screen overflow-x-hidden bg-[#0c1324] text-[#dce1fb] selection:bg-[#adc6ff]/30">
         <AppSidebar activePath="/credits" />
 

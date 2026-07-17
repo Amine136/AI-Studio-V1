@@ -335,7 +335,7 @@ export default function PacksGalleryPage() {
               {mockupTiles.map((v) => (
                 <MockupTile
                   key={v.id}
-                  href={`/studio/packs/${activeMockupPack}?variant=${v.id}`}
+                  href={`/packs/${activeMockupPack}?variant=${v.id}`}
                   title={v.title}
                   src={v.thumbnail_url}
                   displayClass={displayClass}
@@ -355,7 +355,7 @@ export default function PacksGalleryPage() {
             return (
               <Link
                 key={p.id}
-                href={`/studio/packs/${p.id}`}
+                href={`/packs/${p.id}`}
                 className="group relative mb-2.5 block w-full break-inside-avoid overflow-hidden rounded-md border animate-fade-in-up border-white/[.08] bg-[#141b2b] transition duration-200 hover:border-white/[.13] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
               >
                 {p.thumbnail_url ? (

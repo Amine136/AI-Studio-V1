@@ -8,7 +8,10 @@ import RequireActiveUser from "../../components/auth/RequireActiveUser";
 // top of the main column.
 export default function GalleryLayout({ children }: { children: React.ReactNode }) {
   return (
-    <RequireActiveUser>
+    // Gallery is browsable logged-out: anon sees the standard SAMPLE_HISTORY
+    // showcase (public /public/samples images, labelled "Example") — the same
+    // starter set brand-new accounts get before their first real generation.
+    <RequireActiveUser allowAnonymous>
       <div className="vc-lightpage flex min-h-screen overflow-x-hidden bg-[#0c1324] text-[#dce1fb] selection:bg-[#adc6ff]/30">
         <AppSidebar activePath="/gallery" />
 

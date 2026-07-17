@@ -175,6 +175,25 @@ const faqItems = [
   },
 ];
 
+/* ── Anonymous preview ──
+   The page is browsable logged-out: visitors see the real layout filled with
+   SAMPLE data (clearly labelled "Example") so they understand how credits work
+   before creating an account. The activity labels below are the exact strings
+   the backend ledger emits, so they run through the same translations. Redeem
+   carries the typed code through the auth wall as /credits?code=... — the
+   existing deep-link effect then auto-redeems it right after sign-in. */
+const DEMO_CREDITS = 24.5;
+
+function buildDemoHistory(): CreditActivityEntry[] {
+  const now = Math.floor(Date.now() / 1000);
+  return [
+    { id: "demo-1", createdAt: now - 2 * 3600, activityType: "generation", activity: "Image Generation", status: "COMPLETED", deltaMinor: -26 },
+    { id: "demo-2", createdAt: now - 26 * 3600, activityType: "smart_generation", activity: "Smart Content Creation", status: "COMPLETED", deltaMinor: -120 },
+    { id: "demo-3", createdAt: now - 50 * 3600, activityType: "chat", activity: 'Chat: "a neon poster for a late-night coffee brand"', status: "COMPLETED", deltaMinor: -8 },
+    { id: "demo-4", createdAt: now - 74 * 3600, activityType: "credit_code_redeem", activity: "Credit Redeem", status: "COMPLETED", deltaMinor: 3000 },
+  ];
+}
+
 function formatExpiresIn(expiresAt: number): string {
   const seconds = Math.max(0, Math.floor(expiresAt - Date.now() / 1000));
   if (seconds <= 0) return "expiring now";
@@ -328,12 +347,6 @@ export default function CreditsPage() {
 
   const redeemCooldownStorageKey = user ? `vibecraft:redeemCooldownUntil:${user.uid}` : null;
 
-  useEffect(() => {
-    if (!loading && !user) {
-      router.replace("/auth");
-    }
-  }, [loading, router, user]);
-
   const fetchBalance = useCallback(async () => {
     if (!user) return;
     try {
@@ -367,9 +380,16 @@ export default function CreditsPage() {
   }, [user]);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      if (loading) return; // don't flash the sample while auth is still resolving
+      // Anonymous preview: sample balance + history, labelled "Example" in the UI.
+      setCredits(DEMO_CREDITS);
+      setHistory(buildDemoHistory());
+      setHistoryLoading(false);
+      return;
+    }
     void Promise.all([fetchBalance(), fetchHistory()]);
-  }, [fetchBalance, fetchHistory, user]);
+  }, [fetchBalance, fetchHistory, loading, user]);
 
   useEffect(() => {
     if (!redeemCooldownStorageKey || typeof window === "undefined") return;
@@ -417,7 +437,16 @@ export default function CreditsPage() {
 
   const handleRedeem = useCallback(async (overrideCode?: string | React.MouseEvent | React.KeyboardEvent) => {
     const codeToUse = typeof overrideCode === "string" ? overrideCode : codeInput;
-    if (!user || !codeToUse.trim()) return;
+    if (!user) {
+      // Auth wall, keeping the typed code: /credits?code=... auto-redeems right
+      // after sign-in via the deep-link effect below, so the visitor doesn't
+      // have to re-type it.
+      const trimmed = codeToUse.trim();
+      const next = trimmed ? `/credits?code=${encodeURIComponent(trimmed)}` : "/credits";
+      router.push(`/auth?next=${encodeURIComponent(next)}`);
+      return;
+    }
+    if (!codeToUse.trim()) return;
     if (redeemBlockedUntil && redeemBlockedUntil > Date.now()) {
       setCodeMessage({
         text: t("This account reached 5 failed credit code attempts in 5 minutes. Please wait about 5 minutes before trying again and review the usage policy."),
@@ -490,13 +519,24 @@ export default function CreditsPage() {
     } finally {
       setRedeeming(false);
     }
-  }, [activateRedeemCooldown, codeInput, fetchBalance, redeemBlockedUntil, redeemCooldownStorageKey, user]);
+  }, [activateRedeemCooldown, codeInput, fetchBalance, redeemBlockedUntil, redeemCooldownStorageKey, router, user]);
 
   useEffect(() => {
-    if (typeof window === "undefined" || !user || autoRedeemProcessed) return;
+    if (typeof window === "undefined" || autoRedeemProcessed) return;
 
     const params = new URLSearchParams(window.location.search);
     const codeFromUrl = params.get("code")?.trim().toUpperCase();
+
+    if (!user) {
+      // Anon with a shared code link: prefill the input so pressing Redeem
+      // carries the code through the auth wall. Functional update so re-runs
+      // (this effect depends on handleRedeem) never clobber the visitor's own
+      // typing. Don't mark processed — after sign-in it auto-redeems as usual.
+      if (codeFromUrl && codeFromUrl.startsWith("VC-")) {
+        setCodeInput((prev) => prev || codeFromUrl);
+      }
+      return;
+    }
 
     if (codeFromUrl && codeFromUrl.startsWith("VC-")) {
       setCodeInput(codeFromUrl);
@@ -524,7 +564,7 @@ export default function CreditsPage() {
   );
 
 
-  if (loading || !user) {
+  if (loading) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#0c1324]">
         <div className="auth-loader" />
@@ -656,9 +696,21 @@ export default function CreditsPage() {
                 </div>
               )}
             </div>
-            <p className="mt-4 text-sm text-[#c2c6d6]">
-              {profileError || t("Generation and Smart analysis draw from the same live account balance.")}
-            </p>
+            {user ? (
+              <p className="mt-4 text-sm text-[#c2c6d6]">
+                {profileError || t("Generation and Smart analysis draw from the same live account balance.")}
+              </p>
+            ) : (
+              <p className="mt-4 text-sm text-[#c2c6d6]">
+                {t("Sample data — sign in to see your real balance and history.")}{" "}
+                <Link
+                  href={`/auth?next=${encodeURIComponent("/credits")}`}
+                  className="font-semibold text-[#adc6ff] hover:underline"
+                >
+                  {t("Sign in")}
+                </Link>
+              </p>
+            )}
           </div>
         </div>
       </section>

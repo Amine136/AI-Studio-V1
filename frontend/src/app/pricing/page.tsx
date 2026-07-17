@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
 import { useLanguage } from "../../context/LanguageContext";
 import { api } from "../../services/api";
@@ -168,8 +167,7 @@ function CardSkeleton() {
 /* ── Page ── */
 
 export default function PricingPage() {
-  const router = useRouter();
-  const { user, loading: authLoading } = useAuth();
+  const { loading: authLoading } = useAuth();
   const { t, language, setLanguage } = useLanguage();
 
   const [plainChatModels, setPlainChatModels] = useState<PlainChatModelItem[]>([]);
@@ -177,12 +175,10 @@ export default function PricingPage() {
   const [pricingLoading, setPricingLoading] = useState(true);
   const [activeProvider, setActiveProvider] = useState<string>("All");
 
-  useEffect(() => {
-    if (!authLoading && !user) router.replace("/auth");
-  }, [authLoading, router, user]);
-
+  // Pricing is browsable logged-out: both fetches work anonymously —
+  // /chat/models is public and /config only needs the app-level X-API-Key
+  // header the client always attaches. No user gate, no /auth redirect.
   const fetchPricing = useCallback(async () => {
-    if (!user) return;
     setPricingLoading(true);
     try {
       const [plainChatResponse, configResponse] = await Promise.all([
@@ -197,11 +193,11 @@ export default function PricingPage() {
     } finally {
       setPricingLoading(false);
     }
-  }, [user]);
+  }, []);
 
   useEffect(() => {
-    if (user) void fetchPricing();
-  }, [fetchPricing, user]);
+    void fetchPricing();
+  }, [fetchPricing]);
 
   const textModels = useMemo(() => buildTextModels(plainChatModels, systemConfig, t), [plainChatModels, systemConfig, t]);
   const imageModels = useMemo(() => buildImageModels(systemConfig, t), [systemConfig, t]);
@@ -225,7 +221,7 @@ export default function PricingPage() {
       : imageModels.filter((m) => m.provider === activeProvider);
   }, [imageModels, activeProvider]);
 
-  if (authLoading || !user) {
+  if (authLoading) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#0c1324]">
         <div className="auth-loader" />
@@ -253,7 +249,7 @@ export default function PricingPage() {
             {t("Transparent, usage-based pricing. Pay only for the tokens you compute and the images you generate.")}
           </p>
           <div className="mt-8 flex justify-center">
-            <BuyCodesButton className="inline-flex items-center gap-2 rounded-full bg-[#3b82f6] px-7 py-3 text-sm font-semibold text-white shadow-[0_0_30px_rgba(59,130,246,0.4)] transition-all duration-300 hover:scale-105 hover:shadow-[0_0_40px_rgba(59,130,246,0.6)] active:scale-95">
+            <BuyCodesButton className="inline-flex items-center gap-2 rounded-md bg-[#3b82f6] px-3.5 py-2 text-xs sm:px-5 sm:text-sm font-semibold text-white shadow-[0_0_30px_rgba(59,130,246,0.4)] transition-all duration-300 hover:scale-105 hover:shadow-[0_0_40px_rgba(59,130,246,0.6)] active:scale-95">
               {t("Buy Codes")}
             </BuyCodesButton>
           </div>
@@ -266,7 +262,7 @@ export default function PricingPage() {
               <button
                 key={provider}
                 onClick={() => setActiveProvider(provider)}
-                className={`px-5 py-2.5 rounded-full text-sm font-medium transition-all duration-300 ${
+                className={`px-3.5 py-2 rounded-md text-xs sm:px-4 sm:text-sm font-medium transition-all duration-300 ${
                   activeProvider === provider
                     ? "bg-[#3b82f6] text-white shadow-[0_0_20px_rgba(59,130,246,0.4)] border border-[#3b82f6]"
                     : "bg-white/[0.02] border border-white/[0.08] text-[#94a3b8] hover:text-white hover:bg-white/[0.06] hover:border-white/[0.15]"

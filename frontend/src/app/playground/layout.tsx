@@ -57,7 +57,9 @@ export default function PlaygroundLayout({ children }: { children: React.ReactNo
   useVisibleViewportHeight();
 
   return (
-    <RequireActiveUser>
+    // Playground is open for anonymous browsing; every operation (send, upload,
+    // attach, history) is walled to /auth by the page itself.
+    <RequireActiveUser allowAnonymous>
       {/* Height comes from --app-vh (the measured visible viewport); 100dvh is only
           the pre-hydration fallback. See useVisibleViewportHeight above. */}
       <div

@@ -8,7 +8,9 @@ import RequireActiveUser from "../../components/auth/RequireActiveUser";
 // top of the main column.
 export default function PricingLayout({ children }: { children: React.ReactNode }) {
   return (
-    <RequireActiveUser>
+    // Pricing is browsable logged-out (like the Playground): the catalogue is
+    // public information, and Buy Codes / redemption still require an account.
+    <RequireActiveUser allowAnonymous>
       <div className="flex min-h-screen overflow-x-hidden bg-[#0c1324] text-[#dce1fb] selection:bg-[#adc6ff]/30">
         <AppSidebar activePath="/pricing" />
 

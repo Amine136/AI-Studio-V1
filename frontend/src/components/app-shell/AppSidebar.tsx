@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { signOutUser } from "../../lib/auth";
 import { setTheme, useThemeMode } from "../../lib/theme";
 import { useLanguage } from "../../context/LanguageContext";
+import { useAuth } from "../../context/AuthContext";
 
 type NavItem = {
   href: string;
@@ -20,10 +21,10 @@ type NavItem = {
 // for a bottom bar at 360px; everything else lives behind "More".
 const primaryItems: NavItem[] = [
   { href: "/playground", label: "Playground", icon: "auto_awesome" },
-  // Packs has nested routes (/studio/packs/[id], .../batch) that must keep the
+  // Packs has nested routes (/packs/[id], .../batch) that must keep the
   // section highlighted, so it matches on prefix rather than exact href.
-  { href: "/studio/packs", label: "Packs", icon: "grid_view", matchPrefix: true },
-  { href: "/studio/create", label: "Smart Studio", icon: "art_track", shortLabel: "Studio" },
+  { href: "/packs", label: "Packs", icon: "grid_view", matchPrefix: true },
+  { href: "/create", label: "Smart Studio", icon: "art_track", shortLabel: "Studio" },
   { href: "/gallery", label: "Gallery", icon: "photo_library" },
 ];
 
@@ -44,6 +45,8 @@ export default function AppSidebar({ activePath, hideMobileNav = false }: { acti
   const [moreOpen, setMoreOpen] = useState(false);
   const { t } = useLanguage();
   const theme = useThemeMode();
+  // Playground is browsable while logged out, so the rail can render for anon.
+  const { user } = useAuth();
 
   const moreActive = secondaryItems.some((item) => isActive(item, activePath));
 
@@ -127,14 +130,24 @@ export default function AppSidebar({ activePath, hideMobileNav = false }: { acti
             <span className="material-symbols-outlined text-[20px]">{theme === "dark" ? "light_mode" : "dark_mode"}</span>
             <span>{theme === "dark" ? t("Light Mode") : t("Dark Mode")}</span>
           </button>
-          <button
-            type="button"
-            onClick={handleSignOut}
-            className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-[#b9c8de]/70 transition-colors hover:bg-[#1a2333] hover:text-[#adc6ff] light:text-slate-500 light:hover:bg-slate-900/[0.04] light:hover:text-slate-900"
-          >
-            <span className="material-symbols-outlined text-[20px]">logout</span>
-            <span>{signingOut ? t("Signing Out...") : t("Sign Out")}</span>
-          </button>
+          {user ? (
+            <button
+              type="button"
+              onClick={handleSignOut}
+              className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-[#b9c8de]/70 transition-colors hover:bg-[#1a2333] hover:text-[#adc6ff] light:text-slate-500 light:hover:bg-slate-900/[0.04] light:hover:text-slate-900"
+            >
+              <span className="material-symbols-outlined text-[20px]">logout</span>
+              <span>{signingOut ? t("Signing Out...") : t("Sign Out")}</span>
+            </button>
+          ) : (
+            <Link
+              href={`/auth?next=${encodeURIComponent(activePath)}`}
+              className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-[#adc6ff] transition-colors hover:bg-[#1a2333] light:text-[#2563eb] light:hover:bg-slate-900/[0.04]"
+            >
+              <span className="material-symbols-outlined text-[20px]">login</span>
+              <span>{t("Sign in")}</span>
+            </Link>
+          )}
         </div>
       </aside>
 
