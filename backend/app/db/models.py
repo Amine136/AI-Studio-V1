@@ -520,3 +520,24 @@ class AdminAuditLog(Base):
         Index("ix_admin_audit_logs_target_created_at", "target_type", "target_id", "created_at"),
         Index("ix_admin_audit_logs_action_created_at", "action", "created_at"),
     )
+
+
+class FeedbackItem(Base):
+    __tablename__ = "feedback_items"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    uid: Mapped[str | None] = mapped_column(ForeignKey("users.uid", ondelete="SET NULL"), nullable=True)
+    email: Mapped[str] = mapped_column(String(320), default="", nullable=False)
+    category: Mapped[str] = mapped_column(String(24), default="other", nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    route: Mapped[str] = mapped_column(String(255), default="", nullable=False)
+    language: Mapped[str] = mapped_column(String(8), default="", nullable=False)
+    user_agent: Mapped[str] = mapped_column(String(255), default="", nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="new", nullable=False)
+    created_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    updated_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+    __table_args__ = (
+        Index("ix_feedback_items_status_created_at", "status", "created_at"),
+        Index("ix_feedback_items_uid_created_at", "uid", "created_at"),
+    )

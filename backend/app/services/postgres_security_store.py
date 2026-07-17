@@ -647,6 +647,85 @@ def delete_dashboard_news_item(
         )
 
 
+FEEDBACK_DAILY_LIMIT = 10
+
+
+def submit_feedback(
+    *,
+    uid: str,
+    email: str,
+    category: str,
+    message: str,
+    route: str,
+    language: str,
+    user_agent: str,
+) -> dict[str, Any]:
+    day_ago = int(time.time()) - 86400
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        if repo.count_feedback_items_since(uid, day_ago) >= FEEDBACK_DAILY_LIMIT:
+            raise ValueError("FEEDBACK_DAILY_LIMIT")
+        item = repo.create_feedback_item(
+            uid=uid,
+            email=email,
+            category=category,
+            message=message,
+            route=route,
+            language=language,
+            user_agent=user_agent,
+        )
+        return _feedback_dict_from_model(item)
+
+
+def list_feedback_items(*, status: str | None = None, limit: int = 200) -> list[dict[str, Any]]:
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        return [_feedback_dict_from_model(item) for item in repo.list_feedback_items(status=status, limit=limit)]
+
+
+def update_feedback_item_status(
+    item_id: str,
+    *,
+    status: str,
+    admin_uid: str | None,
+    admin_email: str,
+) -> dict[str, Any]:
+    now = int(time.time())
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        item = repo.get_feedback_item_for_update(item_id)
+        if item is None:
+            raise ValueError("FEEDBACK_NOT_FOUND")
+        repo.update_feedback_item_status(item, status=status)
+        repo.add_admin_audit_log(
+            admin_uid=admin_uid,
+            admin_email=admin_email.strip(),
+            action="feedback_status_update",
+            target_type="feedback",
+            target_id=item_id,
+            reason=f"Marked feedback item as '{status}'.",
+            metadata_json={"status": status, "category": item.category},
+            created_at=now,
+        )
+        return _feedback_dict_from_model(item)
+
+
+def _feedback_dict_from_model(item: Any) -> dict[str, Any]:
+    return {
+        "id": item.id,
+        "uid": item.uid,
+        "email": item.email,
+        "category": item.category,
+        "message": item.message,
+        "route": item.route,
+        "language": item.language,
+        "userAgent": item.user_agent,
+        "status": item.status,
+        "createdAt": item.created_at,
+        "updatedAt": item.updated_at,
+    }
+
+
 def adjust_credits(
     uid: str,
     delta: float,

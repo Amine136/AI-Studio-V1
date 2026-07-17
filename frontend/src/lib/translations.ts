@@ -1,6 +1,18 @@
 export const translations = {
   en: {
 
+    // Feedback
+    "Feedback": "Feedback",
+    "Share Feedback": "Share Feedback",
+    "Help us improve Vibecraft.": "Help us improve Vibecraft.",
+    "Report a bug, suggest an idea, or tell us what you think": "Report a bug, suggest an idea, or tell us what you think",
+    "Bug report": "Bug report",
+    "Tell us what's working, what's broken, or what you'd love to see.": "Tell us what's working, what's broken, or what you'd love to see.",
+    "Send Feedback": "Send Feedback",
+    "Sending...": "Sending...",
+    "Thanks! Your feedback has been received.": "Thanks! Your feedback has been received.",
+    "Failed to send feedback.": "Failed to send feedback.",
+
     // Settings Page
     "Not available": "Not available",
     "Account": "Account",
@@ -565,6 +577,18 @@ export const translations = {
     "Vibecraft AI Tunis. The premier Tunisian AI studio. All rights reserved.": "Vibecraft AI Tunis. The premier Tunisian AI studio. All rights reserved."
   },
   fr: {
+
+    // Feedback
+    "Feedback": "Feedback",
+    "Share Feedback": "Partager un retour",
+    "Help us improve Vibecraft.": "Aidez-nous à améliorer Vibecraft.",
+    "Report a bug, suggest an idea, or tell us what you think": "Signalez un bug, proposez une idée ou dites-nous ce que vous en pensez",
+    "Bug report": "Signaler un bug",
+    "Tell us what's working, what's broken, or what you'd love to see.": "Dites-nous ce qui fonctionne, ce qui ne va pas, ou ce que vous aimeriez voir.",
+    "Send Feedback": "Envoyer le retour",
+    "Sending...": "Envoi...",
+    "Thanks! Your feedback has been received.": "Merci ! Votre retour a bien été reçu.",
+    "Failed to send feedback.": "Échec de l'envoi du retour.",
 
     // Auth — passwordless email link
     "Enter your email": "Saisissez votre e-mail",
@@ -1269,6 +1293,18 @@ export const translations = {
     "Vibecraft AI Tunis. The premier Tunisian AI studio. All rights reserved.": "Vibecraft AI Tunis. Le premier studio d'IA tunisien. Tous droits réservés."
   },
   ar: {
+
+    // Feedback
+    "Feedback": "الملاحظات",
+    "Share Feedback": "شارك ملاحظاتك",
+    "Help us improve Vibecraft.": "ساعدنا في تحسين Vibecraft.",
+    "Report a bug, suggest an idea, or tell us what you think": "أبلغ عن خلل، أو اقترح فكرة، أو أخبرنا برأيك",
+    "Bug report": "بلاغ عن خلل",
+    "Tell us what's working, what's broken, or what you'd love to see.": "أخبرنا بما يعمل جيدًا، وما لا يعمل، وما تودّ رؤيته.",
+    "Send Feedback": "إرسال الملاحظات",
+    "Sending...": "جارٍ الإرسال...",
+    "Thanks! Your feedback has been received.": "شكرًا! تم استلام ملاحظاتك.",
+    "Failed to send feedback.": "تعذّر إرسال الملاحظات.",
 
     // Auth — passwordless email link
     "Enter your email": "أدخل بريدك الإلكتروني",

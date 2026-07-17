@@ -10,7 +10,7 @@ from sqlalchemy import case, delete, func, select, update
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from app.db.models import AdminAccount, AdminAuditLog, AdminSession, AnalyzeSession, ChatConversation, ChatMessage, CreditCode, CreditCodeClaim, CreditLedgerEntry, CreditLot, CreditLotAllocation, DashboardNewsItem, DeactivatedEmail, GenerationJob, HistoryEntry, ModerationRejection, PackSession, RateLimitBucket, User, UserFile
+from app.db.models import AdminAccount, AdminAuditLog, AdminSession, AnalyzeSession, ChatConversation, ChatMessage, CreditCode, CreditCodeClaim, CreditLedgerEntry, CreditLot, CreditLotAllocation, DashboardNewsItem, DeactivatedEmail, FeedbackItem, GenerationJob, HistoryEntry, ModerationRejection, PackSession, RateLimitBucket, User, UserFile
 
 USERNAME_ALLOWED_RE = re.compile(r"[^a-z0-9._-]+")
 
@@ -242,6 +242,61 @@ class SecurityRepository:
     def delete_dashboard_news_item(self, item: DashboardNewsItem) -> None:
         self.session.delete(item)
         self.session.flush()
+
+    def create_feedback_item(
+        self,
+        *,
+        uid: str | None,
+        email: str,
+        category: str,
+        message: str,
+        route: str,
+        language: str,
+        user_agent: str,
+    ) -> FeedbackItem:
+        now = int(time.time())
+        item = FeedbackItem(
+            id=str(uuid.uuid4()),
+            uid=uid,
+            email=email,
+            category=category,
+            message=message,
+            route=route,
+            language=language,
+            user_agent=user_agent,
+            status="new",
+            created_at=now,
+            updated_at=now,
+        )
+        self.session.add(item)
+        self.session.flush()
+        return item
+
+    def list_feedback_items(self, *, status: str | None = None, limit: int = 200) -> list[FeedbackItem]:
+        stmt = select(FeedbackItem)
+        if status:
+            stmt = stmt.where(FeedbackItem.status == status)
+        stmt = stmt.order_by(FeedbackItem.created_at.desc()).limit(limit)
+        return list(self.session.execute(stmt).scalars())
+
+    def count_feedback_items_since(self, uid: str, since: int) -> int:
+        stmt = (
+            select(func.count())
+            .select_from(FeedbackItem)
+            .where(FeedbackItem.uid == uid, FeedbackItem.created_at >= since)
+        )
+        return int(self.session.execute(stmt).scalar_one())
+
+    def get_feedback_item_for_update(self, item_id: str) -> FeedbackItem | None:
+        return self.session.execute(
+            select(FeedbackItem).where(FeedbackItem.id == item_id).with_for_update()
+        ).scalar_one_or_none()
+
+    def update_feedback_item_status(self, item: FeedbackItem, *, status: str) -> FeedbackItem:
+        item.status = status
+        item.updated_at = int(time.time())
+        self.session.flush()
+        return item
 
     def _username_taken(self, username: str, *, exclude_uid: str | None = None) -> bool:
         stmt = select(User.uid).where(User.username == username)

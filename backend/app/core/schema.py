@@ -618,6 +618,41 @@ class DashboardNewsUpsertRequest(BaseModel):
         return str(value or "").strip()
 
 
+class FeedbackSubmitRequest(BaseModel):
+    category: Literal["bug", "idea", "other"] = "other"
+    message: str = Field(..., min_length=3, max_length=2000)
+    route: str = Field(default="", max_length=255)
+    language: str = Field(default="", max_length=8)
+
+    @field_validator("message", "route", "language")
+    @classmethod
+    def normalize_text_fields(cls, value: str) -> str:
+        return str(value or "").strip()
+
+
+class FeedbackItemResponse(BaseModel):
+    id: str
+    uid: Optional[str] = None
+    email: str = ""
+    category: str = "other"
+    message: str
+    route: str = ""
+    language: str = ""
+    userAgent: str = ""
+    status: str = "new"
+    createdAt: Optional[int] = None
+    updatedAt: Optional[int] = None
+
+
+class FeedbackListResponse(BaseModel):
+    items: List[FeedbackItemResponse]
+    total: int
+
+
+class FeedbackStatusUpdateRequest(BaseModel):
+    status: Literal["new", "handled"]
+
+
 class AdminAuthFailureSummaryItem(BaseModel):
     username: str
     isActive: bool = True

@@ -323,6 +323,35 @@ export interface DashboardNewsUpsertRequest {
   isActive: boolean;
 }
 
+export type FeedbackCategory = "bug" | "idea" | "other";
+export type FeedbackStatus = "new" | "handled";
+
+export interface FeedbackItem {
+  id: string;
+  uid?: string | null;
+  email: string;
+  category: FeedbackCategory;
+  message: string;
+  route: string;
+  language: string;
+  userAgent: string;
+  status: FeedbackStatus;
+  createdAt?: number | null;
+  updatedAt?: number | null;
+}
+
+export interface FeedbackListResponse {
+  items: FeedbackItem[];
+  total: number;
+}
+
+export interface FeedbackSubmitRequest {
+  category: FeedbackCategory;
+  message: string;
+  route?: string;
+  language?: string;
+}
+
 // Step 1: What we send to start
 export interface GenerateRequest {
   user_text: string;

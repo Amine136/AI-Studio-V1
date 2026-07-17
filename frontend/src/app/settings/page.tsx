@@ -15,6 +15,7 @@ import {
   readAccentColorFromCookie,
 } from "../../lib/accentColor";
 import { setTheme, useThemeMode } from "../../lib/theme";
+import FeedbackModal from "../../components/FeedbackModal";
 
 const PROFILE_SAVE_COOLDOWN_MS = 1200;
 
@@ -58,6 +59,7 @@ export default function SettingsPage() {
   const [notificationsSuccess, setNotificationsSuccess] = useState<string | null>(null);
   const [savingNotifications, setSavingNotifications] = useState(false);
   const [deactivationError, setDeactivationError] = useState<string | null>(null);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [showDeactivateConfirm, setShowDeactivateConfirm] = useState(false);
   const [deactivatingAccount, setDeactivatingAccount] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
@@ -550,6 +552,50 @@ export default function SettingsPage() {
         </div>
       </section>
 
+      <section id="support" className="pt-8">
+        <div className="mb-8">
+          <h3 className="font-headline text-2xl font-bold tracking-tight text-[#dce1fb] sm:text-3xl">{t("Support")}</h3>
+          <p className="mt-2 text-[#c2c6d6]">{t("Help us improve Vibecraft.")}</p>
+        </div>
+
+        <div className="overflow-hidden rounded-2xl border border-white/8 bg-[#151b2d]">
+          {user ? (
+            <button
+              type="button"
+              onClick={() => setFeedbackOpen(true)}
+              className="group flex w-full items-center justify-between p-4 text-left transition-colors hover:bg-white/[0.03] sm:p-6"
+            >
+              <div className="flex items-center gap-4">
+                <div className="flex h-10 w-10 items-center justify-center rounded-sm bg-[#2e3447] text-[#adc6ff]">
+                  <span className="material-symbols-outlined">rate_review</span>
+                </div>
+                <div>
+                  <p className="font-bold text-[#dce1fb]">{t("Share Feedback")}</p>
+                  <p className="text-xs text-[#c2c6d6]">{t("Report a bug, suggest an idea, or tell us what you think")}</p>
+                </div>
+              </div>
+              <span className="material-symbols-outlined text-[#8c909f] transition-colors group-hover:text-[#adc6ff]">chevron_right</span>
+            </button>
+          ) : (
+            <Link
+              href={`/auth?next=${encodeURIComponent("/settings")}`}
+              className="group flex items-center justify-between p-4 transition-colors hover:bg-white/[0.03] sm:p-6"
+            >
+              <div className="flex items-center gap-4">
+                <div className="flex h-10 w-10 items-center justify-center rounded-sm bg-[#2e3447] text-[#adc6ff]">
+                  <span className="material-symbols-outlined">rate_review</span>
+                </div>
+                <div>
+                  <p className="font-bold text-[#dce1fb]">{t("Share Feedback")}</p>
+                  <p className="text-xs text-[#c2c6d6]">{t("Report a bug, suggest an idea, or tell us what you think")}</p>
+                </div>
+              </div>
+              <span className="material-symbols-outlined text-[#8c909f] transition-colors group-hover:text-[#adc6ff]">chevron_right</span>
+            </Link>
+          )}
+        </div>
+      </section>
+
       <section id="legal" className="pt-8">
         <div className="mb-8">
           <h3 className="font-headline text-2xl font-bold tracking-tight text-[#dce1fb] sm:text-3xl">{t("Legal")}</h3>
@@ -689,6 +735,8 @@ export default function SettingsPage() {
           </div>
         </div>
       ) : null}
+
+      <FeedbackModal open={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
 
       <p className="pb-8 text-center text-xs text-[#7a8197]">Vibecraft v2.0.2</p>
     </div>

@@ -20,7 +20,7 @@ from slowapi.errors import RateLimitExceeded
 from sqlalchemy import text
 
 from app.config import settings
-from app.core.schema import AdminAuditLogListResponse, AdminAuthFailureSummaryResponse, AdminCreditCodeBatchListResponse, AdminCreditCodeListResponse, AdminGenerationJobItem, AdminGenerationJobListResponse, AdminLoginRequest, AdminReasonRequest, AdminSessionResponse, AdminUserDetailResponse, AdminUserListResponse, CatalogUpdateNotification, CreditActivityListResponse, CreditLedgerListResponse, DashboardNewsItemResponse, DashboardNewsListResponse, DashboardNewsUpsertRequest, GenerateRequest, GenerationResult, PlainChatConversationCreateRequest, PlainChatConversationItem, PlainChatConversationListResponse, PlainChatConversationMessageCreateRequest, PlainChatConversationMessagesResponse, PlainChatConversationTurnResponse, PlainChatConversationUpdateRequest, PlainChatModelListResponse, SystemConfig, UserNotificationPreferencesUpdateRequest, UserProfileUpdateRequest, ProfileCompletionRequest, PackEstimateRequest, PackGenerateRequest, PackPlanRequest, PackSessionCreate, PackSessionUpdate
+from app.core.schema import AdminAuditLogListResponse, AdminAuthFailureSummaryResponse, AdminCreditCodeBatchListResponse, AdminCreditCodeListResponse, AdminGenerationJobItem, AdminGenerationJobListResponse, AdminLoginRequest, AdminReasonRequest, AdminSessionResponse, AdminUserDetailResponse, AdminUserListResponse, CatalogUpdateNotification, CreditActivityListResponse, CreditLedgerListResponse, DashboardNewsItemResponse, DashboardNewsListResponse, DashboardNewsUpsertRequest, FeedbackItemResponse, FeedbackListResponse, FeedbackStatusUpdateRequest, FeedbackSubmitRequest, GenerateRequest, GenerationResult, PlainChatConversationCreateRequest, PlainChatConversationItem, PlainChatConversationListResponse, PlainChatConversationMessageCreateRequest, PlainChatConversationMessagesResponse, PlainChatConversationTurnResponse, PlainChatConversationUpdateRequest, PlainChatModelListResponse, SystemConfig, UserNotificationPreferencesUpdateRequest, UserProfileUpdateRequest, ProfileCompletionRequest, PackEstimateRequest, PackGenerateRequest, PackPlanRequest, PackSessionCreate, PackSessionUpdate
 from app.packs import catalog as packs_catalog, service as packs_service
 from app.db.session import session_scope
 from app.db.repositories.security import SecurityRepository
@@ -57,6 +57,9 @@ from app.services.security_backend import (
     delete_chat_conversation,
     delete_dashboard_news_item,
     delete_history_entries_by_image_urls,
+    list_feedback_items,
+    submit_feedback,
+    update_feedback_item_status,
     disable_credit_code_batch,
     disable_credit_code,
     enable_credit_code,
@@ -1925,6 +1928,77 @@ def admin_delete_dashboard_news(
             raise HTTPException(status_code=404, detail="Dashboard news item not found") from exc
         raise
     return {"success": True}
+
+
+@app.post("/feedback", response_model=FeedbackItemResponse, tags=["Configuration"], summary="Submit Platform Feedback")
+@limiter.limit("10/hour")
+def submit_platform_feedback(
+    request: Request,
+    payload: FeedbackSubmitRequest,
+    user: Dict[str, Any] = Depends(verify_firebase_user),
+):
+    user_agent = (request.headers.get("user-agent") or "")[:255]
+    try:
+        return submit_feedback(
+            uid=user["uid"],
+            email=str(user.get("email") or ""),
+            category=payload.category,
+            message=payload.message,
+            route=payload.route,
+            language=payload.language,
+            user_agent=user_agent,
+        )
+    except ValueError as exc:
+        if str(exc) == "FEEDBACK_DAILY_LIMIT":
+            raise HTTPException(status_code=429, detail="Feedback is limited to 10 messages per day") from exc
+        raise HTTPException(status_code=400, detail="Invalid feedback") from exc
+
+
+@app.get(
+    "/admin/feedback",
+    response_model=FeedbackListResponse,
+    tags=["Configuration"],
+    summary="List Feedback For Admin",
+)
+@limiter.limit("30/minute")
+def admin_list_feedback(
+    request: Request,
+    status: str | None = None,
+    _admin: Dict[str, Any] = Depends(verify_admin_session),
+):
+    del request
+    if status not in (None, "new", "handled"):
+        raise HTTPException(status_code=400, detail="Invalid status filter")
+    items = list_feedback_items(status=status)
+    return {"items": items, "total": len(items)}
+
+
+@app.patch(
+    "/admin/feedback/{item_id}",
+    response_model=FeedbackItemResponse,
+    tags=["Configuration"],
+    summary="Update Feedback Status For Admin",
+)
+@limiter.limit("30/minute")
+def admin_update_feedback_status(
+    request: Request,
+    item_id: str,
+    payload: FeedbackStatusUpdateRequest,
+    admin: Dict[str, Any] = Depends(verify_admin_session),
+    _csrf: None = Depends(verify_admin_csrf),
+):
+    del request
+    try:
+        return update_feedback_item_status(
+            item_id,
+            status=payload.status,
+            admin_uid=admin["uid"],
+            admin_email=admin["email"],
+        )
+    except ValueError as exc:
+        if str(exc) == "FEEDBACK_NOT_FOUND":
+            raise HTTPException(status_code=404, detail="Feedback item not found") from exc
+        raise
 
 
 @app.post(
