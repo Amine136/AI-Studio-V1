@@ -4,6 +4,7 @@ export const translations = {
     // Feedback
     "Feedback": "Feedback",
     "Share Feedback": "Share Feedback",
+    "Category": "Category",
     "Help us improve Vibecraft.": "Help us improve Vibecraft.",
     "Report a bug, suggest an idea, or tell us what you think": "Report a bug, suggest an idea, or tell us what you think",
     "Bug report": "Bug report",
@@ -581,6 +582,7 @@ export const translations = {
     // Feedback
     "Feedback": "Feedback",
     "Share Feedback": "Partager un retour",
+    "Category": "Catégorie",
     "Help us improve Vibecraft.": "Aidez-nous à améliorer Vibecraft.",
     "Report a bug, suggest an idea, or tell us what you think": "Signalez un bug, proposez une idée ou dites-nous ce que vous en pensez",
     "Bug report": "Signaler un bug",
@@ -1297,6 +1299,7 @@ export const translations = {
     // Feedback
     "Feedback": "الملاحظات",
     "Share Feedback": "شارك ملاحظاتك",
+    "Category": "الفئة",
     "Help us improve Vibecraft.": "ساعدنا في تحسين Vibecraft.",
     "Report a bug, suggest an idea, or tell us what you think": "أبلغ عن خلل، أو اقترح فكرة، أو أخبرنا برأيك",
     "Bug report": "بلاغ عن خلل",
