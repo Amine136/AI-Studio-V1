@@ -73,7 +73,7 @@ interface AuthPanelProps {
 /**
  * Self-contained sign-in card (Google + passwordless email link). Owns all auth
  * state, the email-link completion flow, and the post-sign-in redirect to
- * /dashboard or /onboarding. Reused on the /auth page and embedded in the
+ * /playground or /onboarding. Reused on the /auth page and embedded in the
  * landing page. The redirect effect only fires after the user signs in, so
  * mounting it for an already-signed-in visitor is the caller's responsibility
  * (the landing page renders it for signed-out visitors only).
@@ -167,7 +167,7 @@ export default function AuthPanel({ className = "w-full max-w-md" }: AuthPanelPr
       .then((profile) => {
         if (cancelled) return;
         const rawNext = new URLSearchParams(window.location.search).get("next");
-        let safeNext = "/dashboard";
+        let safeNext = "/playground";
         if (rawNext) {
           try {
             const url = new URL(rawNext, window.location.origin);

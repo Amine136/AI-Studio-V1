@@ -432,6 +432,26 @@ class ChatMessage(Base):
     )
 
 
+class PackSession(Base):
+    """A saved pack-studio session: a named gallery of generations plus the agent
+    memory, so a user can reopen and continue it later. The whole session lives in
+    one JSON ``data`` blob (results + history + mockup ref) - no per-image rows."""
+    __tablename__ = "pack_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    uid: Mapped[str] = mapped_column(ForeignKey("users.uid", ondelete="CASCADE"), nullable=False)
+    pack_id: Mapped[str] = mapped_column(String(80), nullable=False)
+    variant_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    title: Mapped[str] = mapped_column(String(120), default="New session", nullable=False)
+    data_json: Mapped[dict[str, Any]] = mapped_column("data", JSON, default=dict, nullable=False)
+    created_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    updated_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+    __table_args__ = (
+        Index("ix_pack_sessions_uid_pack_updated", "uid", "pack_id", "updated_at"),
+    )
+
+
 class GenerationJob(Base):
     __tablename__ = "generation_jobs"
 

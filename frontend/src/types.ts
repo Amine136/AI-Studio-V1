@@ -574,3 +574,172 @@ export interface AdminAuthFailureSummaryResponse {
   summaries: AdminAuthFailureSummaryItem[];
   total: number;
 }
+
+// ---------------------------------------------------------------------------
+// Template / Use-Case Packs
+// ---------------------------------------------------------------------------
+export type PackCapability =
+  | "photoreal"
+  | "edit-from-reference"
+  | "text-in-image"
+  | "vector-graphic"
+  | "calligraphy";
+
+export interface PackCard {
+  id: string;
+  sector: string;
+  capability: PackCapability;
+  title: string;
+  promise: string;
+  thumbnail_url: string;
+  requires_image_input: boolean;
+  kind?: "structured" | "freeform";
+  tags: string[];
+}
+
+export interface PackListResponse {
+  sector: string | null;
+  lang: string;
+  packs: PackCard[];
+}
+
+export interface PackSlotOption {
+  value: string;
+  label: string;
+}
+
+export interface PackSlot {
+  key: string;
+  type: "text" | "select" | "image_ref";
+  label: string;
+  required: boolean;
+  options?: PackSlotOption[];
+  placeholder?: string;
+  multiline?: boolean;
+}
+
+export interface PackVariant {
+  id: string;
+  title: string;
+  scene: string;
+  thumbnail_url: string;
+  hero_example_url: string;
+  // Editable example text that pre-fills the studio composer for this mockup.
+  example?: string;
+}
+
+export interface PackModelOption {
+  id: string;
+  label: string;
+  quality_options?: string[];
+  // The size/ratio values THIS model accepts (grok ratio strings vs gpt-image
+  // pixel sizes). The confirm pop-up's aspect-ratio options follow the selected
+  // model; falls back to the pack-level list when absent.
+  aspect_ratios?: string[];
+}
+
+export interface PackDetail extends PackCard {
+  hero_example_url: string;
+  slots: PackSlot[];
+  aspect_ratios: string[];
+  default_n: number;
+  models?: PackModelOption[];
+  mockup_models?: PackModelOption[];
+  variants?: PackVariant[];
+  // Pack-level example that pre-fills the studio composer (variant example wins).
+  example?: string;
+}
+
+export interface PackEstimate {
+  available: boolean;
+  model: string | null;
+  unit: number;
+  n: number;
+  total: number;
+}
+
+export interface PackTile {
+  index: number;
+  status: "success" | "blocked" | "skipped" | "error";
+  image: string | null;
+  charged_cost: number;
+  error?: string;
+  reason?: string;
+}
+
+export interface PackGenerateResponse {
+  pack_id: string;
+  requested: number;
+  tiles: PackTile[];
+  summary: {
+    succeeded: number;
+    charged_total: number;
+    current_balance: number | null;
+  };
+}
+
+export interface PackGenerateBody {
+  slot_values?: Record<string, string>;
+  n?: number;
+  aspect_ratio?: string;
+  image_refs?: InputImagePayload[];
+  model?: string;
+  quality?: string;
+  prompt_override?: string;
+}
+
+// ---- Planning agent (the free step between studio and image model) ----
+export interface PackChatTurn {
+  role: "user" | "assistant";
+  text: string;
+}
+
+// ---- Saved studio sessions (reopenable gallery + memory) ----
+export interface PackSessionData {
+  results?: { image: string; prompt?: string }[];
+  history?: PackChatTurn[];
+  mockup?: InputImagePayload | null;
+}
+
+export interface PackSessionMeta {
+  id: string;
+  pack_id: string;
+  variant_id: string | null;
+  title: string;
+  created_at: number;
+  updated_at: number;
+  thumbnail: string | null;
+  count: number;
+}
+
+export interface PackSessionFull extends PackSessionMeta {
+  data: PackSessionData;
+}
+
+export interface PackPlanBody {
+  text?: string;
+  image_refs?: InputImagePayload[];
+  lang?: string;
+  variant_id?: string;
+  round?: number;
+  mockup_first?: boolean;
+  history?: PackChatTurn[];
+}
+
+export interface PackPlan {
+  final_prompt: string;
+  model: string | null;
+  aspect_ratio: string | null;
+  quality: string | null;
+  image_usage: string;
+  summary: string;
+}
+
+export interface PackPlanResponse {
+  status: "ok" | "needs_clarification" | "moderation_unavailable";
+  clarification?: string;
+  plan?: PackPlan;
+  estimate?: PackEstimate | null;
+  round: number;
+  max_rounds: number;
+}

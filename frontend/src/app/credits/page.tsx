@@ -2,14 +2,65 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState, useRef } from "react";
+import { memo, useCallback, useEffect, useMemo, useState, useRef } from "react";
+import type { RefObject } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { useLanguage } from "../../context/LanguageContext";
 import { api } from "../../services/api";
-import confetti from "canvas-confetti";
 import BuyCodesButton from "../../components/BuyCodesButton";
 import type { CreditActivityEntry, CreditBreakdown } from "../../types";
 
+
+// Balance is unbounded, so these are comfort thresholds, not limits: the gauge
+// reads full from 30 Cr up, and warns below the smallest code we sell (10 Cr).
+const FUEL_FULL_AT = 30;
+const FUEL_LOW_BELOW = 10;
+const REFUEL_MS = 1200;
+
+const formatCr = (value: number) => `${value.toFixed(2)} Cr`;
+const fuelPercent = (value: number) =>
+  value > 0 ? Math.max(3, Math.min(100, (value / FUEL_FULL_AT) * 100)) : 0;
+
+/* The refuel animation writes to these two nodes DIRECTLY, frame by frame,
+   instead of going through setState — a per-frame setState re-renders the whole
+   page (history table and all) 60x a second, which is what drops frames on a
+   slow phone. They are memoised on their settled value, so React leaves the
+   nodes alone mid-flight and the direct writes survive any unrelated re-render
+   (history arriving, breakdown loading). React takes over again at the end. */
+const BalanceReadout = memo(function BalanceReadout({
+  nodeRef,
+  value,
+}: {
+  nodeRef: RefObject<HTMLDivElement | null>;
+  value: number | null;
+}) {
+  return (
+    <div
+      ref={nodeRef}
+      className="mt-2 text-3xl font-bold tracking-tight text-white tabular-nums sm:text-4xl"
+    >
+      {value === null ? "..." : formatCr(value)}
+    </div>
+  );
+});
+
+const FuelFill = memo(function FuelFill({
+  nodeRef,
+  value,
+}: {
+  nodeRef: RefObject<HTMLDivElement | null>;
+  value: number | null;
+}) {
+  return (
+    <div
+      ref={nodeRef}
+      className="vc-fuel-fill"
+      style={{ width: `${value === null ? 0 : fuelPercent(value)}%` }}
+    >
+      <span className="vc-fuel-sheen" />
+    </div>
+  );
+});
 
 interface SuspensionState {
   reason: string;
@@ -89,11 +140,18 @@ function mapActivityToUsageEvents(entries: CreditActivityEntry[]): UsageEvent[] 
   });
 }
 
+// Colour lives in globals.css (.vc-amount--*), not in hex utilities here: on a
+// dark card "premium" is a gold GLOW, but the same gold washes out to nothing on
+// white. Light needs the mirror of the effect, not the same values — so each
+// theme states its own, instead of the class remap guessing.
+const AMOUNT_BADGE_BASE =
+  "inline-flex items-center justify-center rounded-md border px-2.5 py-1 text-[13px] font-bold vc-amount";
+
 function getAmountBadgeClass(positive: boolean, rawCredits: number) {
   if (!positive) return "text-[#c2c6d6]";
-  if (rawCredits >= 60) return "inline-flex items-center justify-center rounded-md border border-[#ffd700]/30 bg-[#ffd700]/10 px-2.5 py-1 text-[13px] font-bold text-[#ffd700] shadow-[0_0_10px_rgba(255,215,0,0.15)]";
-  if (rawCredits >= 30) return "inline-flex items-center justify-center rounded-md border border-[#adc6ff]/40 bg-[#adc6ff]/15 px-2.5 py-1 text-[13px] font-bold text-[#adc6ff] shadow-[0_0_8px_rgba(173,198,255,0.15)]";
-  return "inline-flex items-center justify-center rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[13px] font-bold text-emerald-300";
+  if (rawCredits >= 60) return `${AMOUNT_BADGE_BASE} vc-amount--gold`;
+  if (rawCredits >= 30) return `${AMOUNT_BADGE_BASE} vc-amount--blue`;
+  return `${AMOUNT_BADGE_BASE} vc-amount--base`;
 }
 
 
@@ -116,6 +174,25 @@ const faqItems = [
     body: "Smart mode adds a fixed analysis fee before generation starts, then applies the selected model costs for any successful output.",
   },
 ];
+
+/* ── Anonymous preview ──
+   The page is browsable logged-out: visitors see the real layout filled with
+   SAMPLE data (clearly labelled "Example") so they understand how credits work
+   before creating an account. The activity labels below are the exact strings
+   the backend ledger emits, so they run through the same translations. Redeem
+   carries the typed code through the auth wall as /credits?code=... — the
+   existing deep-link effect then auto-redeems it right after sign-in. */
+const DEMO_CREDITS = 24.5;
+
+function buildDemoHistory(): CreditActivityEntry[] {
+  const now = Math.floor(Date.now() / 1000);
+  return [
+    { id: "demo-1", createdAt: now - 2 * 3600, activityType: "generation", activity: "Image Generation", status: "COMPLETED", deltaMinor: -26 },
+    { id: "demo-2", createdAt: now - 26 * 3600, activityType: "smart_generation", activity: "Smart Content Creation", status: "COMPLETED", deltaMinor: -120 },
+    { id: "demo-3", createdAt: now - 50 * 3600, activityType: "chat", activity: 'Chat: "a neon poster for a late-night coffee brand"', status: "COMPLETED", deltaMinor: -8 },
+    { id: "demo-4", createdAt: now - 74 * 3600, activityType: "credit_code_redeem", activity: "Credit Redeem", status: "COMPLETED", deltaMinor: 3000 },
+  ];
+}
 
 function formatExpiresIn(expiresAt: number): string {
   const seconds = Math.max(0, Math.floor(expiresAt - Date.now() / 1000));
@@ -173,92 +250,102 @@ export default function CreditsPage() {
 
   const [displayCredits, setDisplayCredits] = useState<number | null>(null);
   const creditsRef = useRef<number | null>(null);
-  const previousBalanceRef = useRef<number | null>(null);
+  const balanceNodeRef = useRef<HTMLDivElement | null>(null);
+  const fuelNodeRef = useRef<HTMLDivElement | null>(null);
   const [redeemedTier, setRedeemedTier] = useState<number | null>(null);
+  const [redeemDelta, setRedeemDelta] = useState<number | null>(null);
+  const [fontsReady, setFontsReady] = useState(false);
   const [autoRedeemProcessed, setAutoRedeemProcessed] = useState(false);
 
-  const [isAnimatingSpotlight, setIsAnimatingSpotlight] = useState(false);
-  const [showReplayButton, setShowReplayButton] = useState(false);
-  const [replayTrigger, setReplayTrigger] = useState(0);
-
-  const fireConfetti = useCallback((tier: number) => {
-    if (tier === 70) {
-      const duration = 3000;
-      const animationEnd = Date.now() + duration;
-      const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 100 };
-      const interval: any = setInterval(function() {
-        const timeLeft = animationEnd - Date.now();
-        if (timeLeft <= 0) return clearInterval(interval);
-        const particleCount = 50 * (timeLeft / duration);
-        confetti(Object.assign({}, defaults, { particleCount, origin: { x: Math.random(), y: Math.random() - 0.2 }, colors: ['#ffd700', '#ffb142', '#ffffff'] }));
-      }, 250);
-    } else if (tier === 35) {
-      confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 }, colors: ['#adc6ff', '#4d8eff', '#ffffff'], zIndex: 100 });
-    }
-  }, []);
-
-  const handleReplay = useCallback(() => {
-    if (redeemedTier) fireConfetti(redeemedTier);
-    setReplayTrigger((prev) => prev + 1);
-  }, [fireConfetti, redeemedTier]);
-
+  // Icon fonts render as raw ligature text ("diamond") until they load.
   useEffect(() => {
-    if (!showReplayButton) return;
-    const timeout = setTimeout(() => {
-      setShowReplayButton(false);
-    }, 2 * 60 * 1000);
-    return () => clearTimeout(timeout);
-  }, [showReplayButton]);
-
-  // Number Roll Animation & Spotlight
-  useEffect(() => {
-    if (credits === null) return;
-    if (creditsRef.current === null) {
-      setDisplayCredits(credits);
-      creditsRef.current = credits;
+    if (typeof document === "undefined" || !("fonts" in document)) {
+      setFontsReady(true);
       return;
     }
-    
-    const isReplay = replayTrigger > 0;
-    if (creditsRef.current === credits && !isReplay) return;
-
-    const startValue = isReplay && previousBalanceRef.current !== null 
-       ? previousBalanceRef.current 
-       : (creditsRef.current || 0);
-    const endValue = credits;
-    
-    const duration = 1500;
-    const startTime = performance.now();
-    
-    const isRedemption = endValue > startValue;
-    if (isRedemption) setIsAnimatingSpotlight(true);
-
-    const animate = (currentTime: number) => {
-      const elapsed = currentTime - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-      const easeProgress = 1 - Math.pow(1 - progress, 4); // easeOutQuart
-      
-      setDisplayCredits(startValue + (endValue - startValue) * easeProgress);
-
-      if (progress < 1) {
-        requestAnimationFrame(animate);
-      } else {
-        setDisplayCredits(endValue);
-        if (isRedemption) setIsAnimatingSpotlight(false);
-      }
+    let alive = true;
+    void document.fonts.ready.then(() => alive && setFontsReady(true));
+    return () => {
+      alive = false;
     };
-    
-    requestAnimationFrame(animate);
+  }, []);
+
+  // The delta chip is the whole celebration; it clears itself.
+  useEffect(() => {
+    if (redeemDelta === null) return;
+    const timeout = setTimeout(() => setRedeemDelta(null), 2600);
+    return () => clearTimeout(timeout);
+  }, [redeemDelta]);
+
+  // Refuelling: ONE clock drives BOTH the balance count-up and the fuel gauge,
+  // because they are the same event — so the bar and the number can never drift
+  // apart or land on different beats.
+  useEffect(() => {
+    if (credits === null) return;
+
+    const startValue = creditsRef.current;
+    const endValue = credits;
     creditsRef.current = credits;
-  }, [credits, replayTrigger]);
+
+    if (startValue === null || startValue === endValue) {
+      setDisplayCredits(endValue);
+      return;
+    }
+
+    const reduceMotion =
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduceMotion) {
+      setDisplayCredits(endValue);
+      return;
+    }
+
+    let frame = 0;
+    let cancelled = false;
+
+    const step = (now: number, startTime: number) => {
+      if (cancelled) return;
+      const progress = Math.min((now - startTime) / REFUEL_MS, 1);
+      const eased = 1 - Math.pow(1 - progress, 4); // easeOutQuart
+      const value = startValue + (endValue - startValue) * eased;
+
+      if (balanceNodeRef.current) balanceNodeRef.current.textContent = formatCr(value);
+      if (fuelNodeRef.current) fuelNodeRef.current.style.width = `${fuelPercent(value)}%`;
+
+      if (progress < 1) frame = requestAnimationFrame((t) => step(t, startTime));
+      else setDisplayCredits(endValue); // hand the final value back to React
+    };
+
+    // Don't start until the browser can actually DRAW it. The icon font renders
+    // its ligatures as raw text ("diamond") until it loads, and a cold main
+    // thread would eat the first frames — so on a slow phone the animation used
+    // to visibly stutter or half-play. Waiting turns that into a clean start a
+    // moment later. Fonts are cached after the first visit, so this is normally
+    // a single frame of delay.
+    const fontsSettled: Promise<unknown> =
+      typeof document !== "undefined" && "fonts" in document
+        ? Promise.race([
+            document.fonts.ready,
+            new Promise((resolve) => setTimeout(resolve, 1500)), // never hang on it
+          ])
+        : Promise.resolve();
+
+    void fontsSettled.then(() => {
+      if (cancelled) return;
+      // One idle frame of headroom, then start the clock from the real first frame.
+      frame = requestAnimationFrame(() => {
+        if (cancelled) return;
+        frame = requestAnimationFrame((t) => step(t, t));
+      });
+    });
+
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(frame);
+    };
+  }, [credits]);
 
   const redeemCooldownStorageKey = user ? `vibecraft:redeemCooldownUntil:${user.uid}` : null;
-
-  useEffect(() => {
-    if (!loading && !user) {
-      router.replace("/auth");
-    }
-  }, [loading, router, user]);
 
   const fetchBalance = useCallback(async () => {
     if (!user) return;
@@ -293,9 +380,16 @@ export default function CreditsPage() {
   }, [user]);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      if (loading) return; // don't flash the sample while auth is still resolving
+      // Anonymous preview: sample balance + history, labelled "Example" in the UI.
+      setCredits(DEMO_CREDITS);
+      setHistory(buildDemoHistory());
+      setHistoryLoading(false);
+      return;
+    }
     void Promise.all([fetchBalance(), fetchHistory()]);
-  }, [fetchBalance, fetchHistory, user]);
+  }, [fetchBalance, fetchHistory, loading, user]);
 
   useEffect(() => {
     if (!redeemCooldownStorageKey || typeof window === "undefined") return;
@@ -343,7 +437,16 @@ export default function CreditsPage() {
 
   const handleRedeem = useCallback(async (overrideCode?: string | React.MouseEvent | React.KeyboardEvent) => {
     const codeToUse = typeof overrideCode === "string" ? overrideCode : codeInput;
-    if (!user || !codeToUse.trim()) return;
+    if (!user) {
+      // Auth wall, keeping the typed code: /credits?code=... auto-redeems right
+      // after sign-in via the deep-link effect below, so the visitor doesn't
+      // have to re-type it.
+      const trimmed = codeToUse.trim();
+      const next = trimmed ? `/credits?code=${encodeURIComponent(trimmed)}` : "/credits";
+      router.push(`/auth?next=${encodeURIComponent(next)}`);
+      return;
+    }
+    if (!codeToUse.trim()) return;
     if (redeemBlockedUntil && redeemBlockedUntil > Date.now()) {
       setCodeMessage({
         text: t("This account reached 5 failed credit code attempts in 5 minutes. Please wait about 5 minutes before trying again and review the usage policy."),
@@ -376,29 +479,31 @@ export default function CreditsPage() {
 
       if (result.success) {
         const oldCredits = credits || 0;
-        previousBalanceRef.current = oldCredits;
-        
+
         // Fetch fresh profile explicitly to calculate the exact diff immediately
         const freshProfile = await api.getProfile().catch(() => null);
         let tier = 10;
-        
+        let added: number | null = null;
+
         if (freshProfile && freshProfile.credits !== undefined) {
-          const added = freshProfile.credits - oldCredits;
+          added = freshProfile.credits - oldCredits;
           if (added >= 60) tier = 70;
           else if (added >= 30) tier = 35;
           else tier = 10;
         }
 
         setRedeemedTier(tier);
-        setShowReplayButton(true);
-        fireConfetti(tier);
-
         setCodeInput("");
         setRedeemBlockedUntil(null);
         if (redeemCooldownStorageKey && typeof window !== "undefined") {
           window.localStorage.removeItem(redeemCooldownStorageKey);
         }
+
+        // The chip goes up only once the new balance has landed, so on a slow
+        // connection it rises WITH the count-up instead of hanging there alone
+        // waiting for the network.
         await fetchBalance();
+        if (added !== null && added > 0) setRedeemDelta(added);
       }
     } catch (error) {
       const message = error instanceof Error && error.message ? error.message : t("Could not redeem this code right now.");
@@ -414,13 +519,24 @@ export default function CreditsPage() {
     } finally {
       setRedeeming(false);
     }
-  }, [activateRedeemCooldown, codeInput, fetchBalance, redeemBlockedUntil, redeemCooldownStorageKey, user]);
+  }, [activateRedeemCooldown, codeInput, fetchBalance, redeemBlockedUntil, redeemCooldownStorageKey, router, user]);
 
   useEffect(() => {
-    if (typeof window === "undefined" || !user || autoRedeemProcessed) return;
+    if (typeof window === "undefined" || autoRedeemProcessed) return;
 
     const params = new URLSearchParams(window.location.search);
     const codeFromUrl = params.get("code")?.trim().toUpperCase();
+
+    if (!user) {
+      // Anon with a shared code link: prefill the input so pressing Redeem
+      // carries the code through the auth wall. Functional update so re-runs
+      // (this effect depends on handleRedeem) never clobber the visitor's own
+      // typing. Don't mark processed — after sign-in it auto-redeems as usual.
+      if (codeFromUrl && codeFromUrl.startsWith("VC-")) {
+        setCodeInput((prev) => prev || codeFromUrl);
+      }
+      return;
+    }
 
     if (codeFromUrl && codeFromUrl.startsWith("VC-")) {
       setCodeInput(codeFromUrl);
@@ -438,14 +554,17 @@ export default function CreditsPage() {
     [showAllTransactions, usageEvents],
   );
   const hiddenTransactionCount = Math.max(0, usageEvents.length - 5);
-  const progressWidth = useMemo(() => {
-    if (credits === null) return "0%";
-    const percentage = Math.max(8, Math.min(100, (credits / 5) * 100));
-    return `${percentage}%`;
-  }, [credits]);
+  // Fuel gauge, not a percentage: a balance has no maximum, so "full" is the top
+  // of the comfortable range (30 Cr) rather than a cap. Past that — 70, 500 — the
+  // tank simply reads full. Red below the smallest top-up we sell.
+  // The settled balance decides the colour, so a refuel doesn't flash through red.
+  const fuel = useMemo(
+    () => ({ low: (credits ?? 0) < FUEL_LOW_BELOW, ready: credits !== null }),
+    [credits],
+  );
 
 
-  if (loading || !user) {
+  if (loading) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#0c1324]">
         <div className="auth-loader" />
@@ -482,31 +601,38 @@ export default function CreditsPage() {
     );
   }
 
-  const getSpotlightClasses = () => {
-    if (!isAnimatingSpotlight) return "border-white/10 bg-[rgba(25,31,49,0.7)]";
-    if (redeemedTier === 70) return "relative z-50 scale-110 border-[#ffd700]/60 bg-[#1a170d] shadow-[0_0_60px_rgba(255,215,0,0.3)]";
-    if (redeemedTier === 35) return "relative z-50 scale-110 border-[#adc6ff]/60 bg-[#151b2d] shadow-[0_0_60px_rgba(173,198,255,0.3)]";
-    return "relative z-50 scale-110 border-emerald-500/60 bg-[#0f1f18] shadow-[0_0_60px_rgba(16,185,129,0.3)]";
-  };
-
   return (
     <>
-      {/* Spotlight Overlay */}
-      <div 
-        className={`fixed inset-0 z-40 bg-black/85 transition-opacity duration-700 pointer-events-none ${isAnimatingSpotlight ? "opacity-100" : "opacity-0"}`} 
-      />
       <main className="mx-auto max-w-[1440px] px-4 py-8 sm:px-8 sm:py-12">
         <section className="mb-10 sm:mb-16">
           <div className="flex flex-col justify-between gap-8 md:flex-row md:items-end">
             <div className="max-w-2xl">
               <h1 className="font-headline text-4xl font-bold tracking-tighter text-blue-50 sm:text-5xl md:text-7xl">{t("Fuel Your Vision")}</h1>
+              {/* /pricing left the sidebar in the nav redesign; this is now its way in. */}
+              <Link
+                href="/pricing"
+                className="mt-6 inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-white/10 px-5 py-3 text-sm font-semibold text-[#c2c6d6] transition-colors hover:border-white/25 hover:text-white"
+              >
+                <span className="material-symbols-outlined text-[17px]">payments</span>
+                {t("Model Pricing")}
+              </Link>
             </div>
 
-            <div className={`rounded-xl border p-4 backdrop-blur-xl sm:min-w-[260px] sm:p-6 transition-all duration-700 ${getSpotlightClasses()}`}>
+            <div className="relative rounded-xl border border-white/10 bg-[rgba(25,31,49,0.7)] p-4 backdrop-blur-xl sm:min-w-[260px] sm:p-6">
               <span className="text-xs font-semibold uppercase tracking-[0.28em] text-[#adc6ff]">{t("Available Balance")}</span>
-              <div className={`mt-2 text-3xl font-bold tracking-tight text-white sm:text-4xl transition-transform duration-300 ${codeMessage?.success || isAnimatingSpotlight ? "scale-105 drop-shadow-[0_0_15px_rgba(173,198,255,0.4)]" : ""}`}>
-                {displayCredits === null ? "..." : `${displayCredits.toFixed(2)} Cr`}
-              </div>
+              {redeemDelta !== null && (
+                <span
+                  className="vc-refuel-delta"
+                  data-top-tier={redeemedTier === 70 ? "true" : "false"}
+                  aria-live="polite"
+                >
+                  {redeemedTier === 70 && fontsReady && (
+                    <span className="material-symbols-outlined text-[15px]">diamond</span>
+                  )}
+                  +{redeemDelta.toFixed(2)} Cr
+                </span>
+              )}
+              <BalanceReadout nodeRef={balanceNodeRef} value={displayCredits} />
             {breakdown && breakdown.gifts.length > 0 && (
               <div className="mt-3">
                 <button
@@ -544,12 +670,47 @@ export default function CreditsPage() {
                 )}
               </div>
             )}
-            <div className="mt-4 h-1 w-full overflow-hidden rounded-full bg-[#2e3447]">
-              <div className="h-full bg-[#adc6ff]" style={{ width: progressWidth }} />
+            <div className="vc-fuel mt-5" data-low={fuel.low ? "true" : "false"}>
+              <div className="vc-fuel-track">
+                <FuelFill nodeRef={fuelNodeRef} value={displayCredits} />
+              </div>
+              {fuel.ready && (
+                <div className="mt-2.5 flex items-center justify-between gap-3">
+                  <span className="vc-fuel-status">
+                    {/* Always rendered so the label never shifts when the icon
+                        font lands; hidden (not absent) until it can draw. */}
+                    <span
+                      className="material-symbols-outlined vc-fuel-icon"
+                      data-ready={fontsReady ? "true" : "false"}
+                      aria-hidden="true"
+                    >
+                      {fuel.low ? "battery_alert" : "bolt"}
+                    </span>
+                    {fuel.low ? t("Running low") : t("Fueled up")}
+                  </span>
+                  {fuel.low && (
+                    <a href="#redeem-code" className="vc-fuel-cta">
+                      {t("Top up")}
+                    </a>
+                  )}
+                </div>
+              )}
             </div>
-            <p className="mt-4 text-sm text-[#c2c6d6]">
-              {profileError || t("Generation and Smart analysis draw from the same live account balance.")}
-            </p>
+            {user ? (
+              <p className="mt-4 text-sm text-[#c2c6d6]">
+                {profileError || t("Generation and Smart analysis draw from the same live account balance.")}
+              </p>
+            ) : (
+              <p className="mt-4 text-sm text-[#c2c6d6]">
+                {t("Sample data — sign in to see your real balance and history.")}{" "}
+                <Link
+                  href={`/auth?next=${encodeURIComponent("/credits")}`}
+                  className="font-semibold text-[#adc6ff] hover:underline"
+                >
+                  {t("Sign in")}
+                </Link>
+              </p>
+            )}
           </div>
         </div>
       </section>
@@ -589,42 +750,32 @@ export default function CreditsPage() {
 
           <div className="mt-6 flex flex-col items-start gap-3 border-t border-white/10 pt-5 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-[#c2c6d6]">{t("Don't have a code yet?")}</p>
-            <BuyCodesButton className="inline-flex items-center gap-2 whitespace-nowrap rounded-md border border-[#adc6ff]/40 bg-[#adc6ff]/10 px-6 py-2.5 text-sm font-bold text-[#adc6ff] transition-all hover:scale-105 hover:bg-[#adc6ff]/20 active:scale-95" />
+            <div className="flex flex-wrap items-center gap-3">
+              <BuyCodesButton className="inline-flex items-center gap-2 whitespace-nowrap rounded-md border border-[#adc6ff]/40 bg-[#adc6ff]/10 px-6 py-2.5 text-sm font-bold text-[#adc6ff] transition-all hover:scale-105 hover:bg-[#adc6ff]/20 active:scale-95" />
+            </div>
           </div>
 
           {codeMessage && (
             <div
-              className={`mt-5 rounded-md border px-5 py-4 text-sm transition-all duration-500 ${
+              className={`mt-5 rounded-md border px-5 py-4 text-sm ${
                 codeMessage.success
-                  ? redeemedTier === 70
-                    ? "border-[#ffd700]/50 bg-[#ffd700]/10 text-[#ffd700] shadow-[0_0_30px_rgba(255,215,0,0.15)]"
-                    : redeemedTier === 35
-                    ? "border-[#adc6ff]/50 bg-[#adc6ff]/10 text-[#adc6ff] shadow-[0_0_20px_rgba(77,142,255,0.15)]"
-                    : "border-emerald-500/30 bg-emerald-500/10 text-emerald-200 shadow-[0_0_15px_rgba(16,185,129,0.1)]"
+                  ? "vc-redeem-ok"
                   : "border-[#93000a]/30 bg-[#93000a]/10 text-[#ffdad6]"
               }`}
+              role={codeMessage.success ? "status" : "alert"}
             >
               <div className="flex items-center gap-2">
+                {codeMessage.success && (
+                  <span className="material-symbols-outlined text-[19px]">check_circle</span>
+                )}
                 <p className="flex-1 font-medium">{translateRedeemMessage(codeMessage.text)}</p>
-                {codeMessage.success && redeemedTier === 35 && <span className="material-symbols-outlined text-[#adc6ff] animate-pulse">star</span>}
-                {codeMessage.success && redeemedTier === 70 && <span className="material-symbols-outlined text-[#ffd700] animate-pulse">diamond</span>}
               </div>
-              
+
               {codeMessage.success && (
                 <div className="mt-4 flex flex-wrap items-center gap-3">
-                  <Link href="/studio/start" className="inline-block rounded-md bg-[linear-gradient(90deg,#adc6ff,#4d8eff)] px-5 py-2 text-xs font-bold uppercase tracking-wider text-[#002e6a] hover:scale-105 active:scale-95 transition-all shadow-lg shadow-[#adc6ff]/20">
+                  <Link href="/playground" className="inline-block rounded-md bg-[linear-gradient(90deg,#adc6ff,#4d8eff)] px-5 py-2 text-xs font-bold uppercase tracking-wider text-[#002e6a] transition-transform hover:scale-105 active:scale-95 shadow-lg shadow-[#adc6ff]/20">
                     {t("Go to Studio")}
                   </Link>
-                  {showReplayButton && (
-                    <button
-                      type="button"
-                      onClick={handleReplay}
-                      className="inline-flex items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-4 py-2 text-xs font-bold uppercase tracking-wider text-white hover:bg-white/20 transition-all active:scale-95 animate-in fade-in zoom-in duration-500"
-                    >
-                      <span className="material-symbols-outlined text-[16px]">replay</span>
-                      {t("Replay")}
-                    </button>
-                  )}
                 </div>
               )}
 

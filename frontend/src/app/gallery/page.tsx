@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
 import { useLanguage } from "../../context/LanguageContext";
 import AuthenticatedImage from "../../components/AuthenticatedImage";
@@ -62,7 +61,6 @@ const GALLERY_PAGE_SIZE = 19;
 const GALLERY_MAX = 150;
 
 export default function GalleryPage() {
-  const router = useRouter();
   const { user, loading: authLoading } = useAuth();
   const { t } = useLanguage();
   const [history, setHistory] = useState<HistoryEntry[]>([]);
@@ -75,12 +73,6 @@ export default function GalleryPage() {
   const [visibleCount, setVisibleCount] = useState(GALLERY_PAGE_SIZE);
   const [config, setConfig] = useState<SystemConfig | null>(null);
   const [plainChatModels, setPlainChatModels] = useState<PlainChatModelItem[]>([]);
-
-  useEffect(() => {
-    if (!authLoading && !user) {
-      router.replace("/auth");
-    }
-  }, [authLoading, router, user]);
 
   const fetchHistory = useCallback(async () => {
     if (!user) return;
@@ -110,9 +102,15 @@ export default function GalleryPage() {
   }, []);
 
   useEffect(() => {
-    if (!user) return;
-    void fetchHistory();
+    // Config + model names load for everyone (public /chat/models, app-key
+    // /config). Real history needs an account; anon just gets SAMPLE_HISTORY
+    // (public /public/samples images, already labelled "Example").
     void fetchConfigAndModels();
+    if (!user) {
+      setHistoryLoading(false);
+      return;
+    }
+    void fetchHistory();
   }, [fetchHistory, fetchConfigAndModels, user]);
 
   const resolveModelName = useCallback((rawModel: string | undefined) => {
@@ -170,7 +168,7 @@ export default function GalleryPage() {
     setVisibleCount(GALLERY_PAGE_SIZE);
   }, [filter]);
 
-  if (authLoading || !user) {
+  if (authLoading) {
     return (
       <main className="flex min-h-screen items-center justify-center">
         <div className="auth-loader" />
@@ -241,7 +239,7 @@ export default function GalleryPage() {
             {t("Generate something in the studio first. Once a result is saved, it will appear here automatically.")}
           </p>
           <Link
-            href="/studio"
+            href="/playground"
             className="mt-8 inline-flex rounded-sm bg-[linear-gradient(90deg,#adc6ff,#4d8eff)] px-6 py-3 text-sm font-bold text-[#002e6a]"
           >
             {t("Open Studio")}

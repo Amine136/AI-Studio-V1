@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { useAuth } from "../context/AuthContext";
@@ -27,20 +27,28 @@ export default function InteractiveAuthenticatedImage({
   imageClassName,
   wrapperClassName,
   loadingClassName,
+  loadingNode,
   errorClassName,
   controls = "all",
   controlButtonClassName = "h-9 w-9",
   controlIconClassName = "text-[18px]",
+  zoomOnClick = false,
 }: {
   src: string;
   alt: string;
   imageClassName: string;
   wrapperClassName: string;
   loadingClassName?: string;
+  // Optional custom placeholder shown while the image loads (e.g. a shimmer
+  // skeleton). Falls back to the plain "Loading image..." text when omitted.
+  loadingNode?: ReactNode;
   errorClassName?: string;
   controls?: "all" | "open";
   controlButtonClassName?: string;
   controlIconClassName?: string;
+  // When true, the tile shows no overlay icons; clicking the image opens the
+  // zoom lightbox, and the download / open-in-new-tab actions live in there.
+  zoomOnClick?: boolean;
 }) {
   const { user } = useAuth();
   const isRenderable = isRenderableImageUrl(src);
@@ -130,7 +138,7 @@ export default function InteractiveAuthenticatedImage({
   if (status === "loading") {
     return (
       <div className={loadingClassName || "flex min-h-40 min-w-40 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 py-6 text-xs text-white/60"}>
-        Loading image...
+        {loadingNode ?? "Loading image..."}
       </div>
     );
   }
@@ -145,48 +153,97 @@ export default function InteractiveAuthenticatedImage({
 
   return (
     <>
-      <div className={`group relative overflow-hidden ${wrapperClassName}`}>
+      <div
+        className={`group relative overflow-hidden ${zoomOnClick ? "cursor-zoom-in" : ""} ${wrapperClassName}`}
+        role={zoomOnClick ? "button" : undefined}
+        tabIndex={zoomOnClick ? 0 : undefined}
+        aria-label={zoomOnClick ? "Zoom image" : undefined}
+        onClick={zoomOnClick ? () => setIsZoomOpen(true) : undefined}
+        onKeyDown={
+          zoomOnClick
+            ? (event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  setIsZoomOpen(true);
+                }
+              }
+            : undefined
+        }
+      >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={activeSrc} alt={alt} className={imageClassName} />
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent opacity-100 transition-opacity duration-200" />
-        <div className="absolute right-2 top-2 flex gap-2 opacity-100 transition-opacity duration-200">
-          {controls === "all" ? (
-            <>
+        {!zoomOnClick ? (
+          <>
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent opacity-100 transition-opacity duration-200" />
+            <div className="absolute right-2 top-2 flex gap-2 opacity-100 transition-opacity duration-200">
+              {controls === "all" ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setIsZoomOpen(true)}
+                    className={`flex ${controlButtonClassName} items-center justify-center rounded-full border border-white/20 bg-black/45 text-white backdrop-blur hover:bg-black/65`}
+                    aria-label="Zoom image"
+                  >
+                    <span className={`material-symbols-outlined ${controlIconClassName}`}>zoom_in</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDownload}
+                    className={`flex ${controlButtonClassName} items-center justify-center rounded-full border border-white/20 bg-black/45 text-white backdrop-blur hover:bg-black/65`}
+                    aria-label="Download image"
+                  >
+                    <span className={`material-symbols-outlined ${controlIconClassName}`}>download</span>
+                  </button>
+                </>
+              ) : null}
               <button
                 type="button"
-                onClick={() => setIsZoomOpen(true)}
+                onClick={handleOpenInNewTab}
                 className={`flex ${controlButtonClassName} items-center justify-center rounded-full border border-white/20 bg-black/45 text-white backdrop-blur hover:bg-black/65`}
-                aria-label="Zoom image"
+                aria-label="Open image in new tab"
               >
-                <span className={`material-symbols-outlined ${controlIconClassName}`}>zoom_in</span>
+                <span className={`material-symbols-outlined ${controlIconClassName}`}>open_in_new</span>
               </button>
-              <button
-                type="button"
-                onClick={handleDownload}
-                className={`flex ${controlButtonClassName} items-center justify-center rounded-full border border-white/20 bg-black/45 text-white backdrop-blur hover:bg-black/65`}
-                aria-label="Download image"
-              >
-                <span className={`material-symbols-outlined ${controlIconClassName}`}>download</span>
-              </button>
-            </>
-          ) : null}
-          <button
-            type="button"
-            onClick={handleOpenInNewTab}
-            className={`flex ${controlButtonClassName} items-center justify-center rounded-full border border-white/20 bg-black/45 text-white backdrop-blur hover:bg-black/65`}
-            aria-label="Open image in new tab"
-          >
-            <span className={`material-symbols-outlined ${controlIconClassName}`}>open_in_new</span>
-          </button>
-        </div>
+            </div>
+          </>
+        ) : null}
       </div>
 
       {isZoomOpen && portalReady
         ? createPortal(
           <div
-            className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/75 p-4"
+            className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 p-4"
             onClick={() => setIsZoomOpen(false)}
           >
+            {/* lightbox actions — download + open in new tab live here now */}
+            <div className="absolute right-4 top-4 z-10 flex gap-2" onClick={(event) => event.stopPropagation()}>
+              {controls === "all" ? (
+                <button
+                  type="button"
+                  onClick={handleDownload}
+                  className="flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-black/50 text-white backdrop-blur hover:bg-black/70"
+                  aria-label="Download image"
+                >
+                  <span className="material-symbols-outlined text-[20px]">download</span>
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={handleOpenInNewTab}
+                className="flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-black/50 text-white backdrop-blur hover:bg-black/70"
+                aria-label="Open image in new tab"
+              >
+                <span className="material-symbols-outlined text-[20px]">open_in_new</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsZoomOpen(false)}
+                className="flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-black/50 text-white backdrop-blur hover:bg-black/70"
+                aria-label="Close"
+              >
+                <span className="material-symbols-outlined text-[20px]">close</span>
+              </button>
+            </div>
             <div className="max-h-[96vh] max-w-[96vw]" onClick={(event) => event.stopPropagation()}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={activeSrc} alt={alt} className="max-h-[96vh] max-w-[96vw] object-contain" />

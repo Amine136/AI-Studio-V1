@@ -1,9 +1,16 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useLayoutEffect, useState } from "react";
 import { translations } from "../lib/translations";
+import {
+  DEFAULT_LANGUAGE,
+  applyLanguageToDocument,
+  persistLanguage,
+  readStoredLanguage,
+  type Language,
+} from "../lib/language";
 
-export type Language = "en" | "fr" | "ar";
+export type { Language };
 
 interface LanguageContextProps {
   language: Language;
@@ -13,30 +20,45 @@ interface LanguageContextProps {
 }
 
 const LanguageContext = createContext<LanguageContextProps>({
-  language: "en",
+  language: DEFAULT_LANGUAGE,
   setLanguage: () => {},
   t: (key: string) => key,
   isRtl: false,
 });
 
-export const LanguageProvider = ({ children }: { children: React.ReactNode }) => {
-  // Arabic is the default language (primary audience). A returning visitor's
-  // saved choice still wins on mount.
-  const [language, setLanguageState] = useState<Language>("ar");
+// Runs before the browser paints, unlike useEffect. Only used for the one-time
+// localStorage migration below, so a legacy visitor doesn't see a swapped word.
+const useIsomorphicLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
-  useEffect(() => {
-    const saved = localStorage.getItem("vibecraft_lang") as Language;
-    const initial = saved && ["en", "fr", "ar"].includes(saved) ? saved : "ar";
-    setLanguageState(initial);
-    document.documentElement.dir = initial === "ar" ? "rtl" : "ltr";
-    document.documentElement.lang = initial;
+export const LanguageProvider = ({
+  children,
+  initialLanguage = DEFAULT_LANGUAGE,
+}: {
+  children: React.ReactNode;
+  /* Read from the cookie by the server layout, so the HTML we hydrate is ALREADY
+     in the right language. Starting from it is what makes the first paint correct
+     and keeps hydration matching. */
+  initialLanguage?: Language;
+}) => {
+  const [language, setLanguageState] = useState<Language>(initialLanguage);
+
+  useIsomorphicLayoutEffect(() => {
+    // The server saw the cookie, so normally this agrees and nothing happens.
+    // It only fires for a visitor who picked a language before the cookie existed
+    // (localStorage only): readStoredLanguage() adopts it and writes the cookie,
+    // so from their next load the server gets it right and this never runs again.
+    const stored = readStoredLanguage();
+    if (stored !== language) {
+      setLanguageState(stored);
+      applyLanguageToDocument(stored);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const setLanguage = (lang: Language) => {
     setLanguageState(lang);
-    localStorage.setItem("vibecraft_lang", lang);
-    document.documentElement.dir = lang === "ar" ? "rtl" : "ltr";
-    document.documentElement.lang = lang;
+    persistLanguage(lang);
+    applyLanguageToDocument(lang);
   };
 
   const t = (key: string) => {

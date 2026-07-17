@@ -25,7 +25,7 @@ export default function MetaPixel() {
         window.fbq("trackCustom", "ViewCredits");
       } else if (pathname === "/pricing") {
         window.fbq("trackCustom", "ViewPricing");
-      } else if (pathname?.startsWith("/studio")) {
+      } else if (pathname === "/create" || pathname?.startsWith("/packs")) {
         window.fbq("trackCustom", "EnterStudio");
       }
     }

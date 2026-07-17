@@ -20,7 +20,8 @@ from slowapi.errors import RateLimitExceeded
 from sqlalchemy import text
 
 from app.config import settings
-from app.core.schema import AdminAuditLogListResponse, AdminAuthFailureSummaryResponse, AdminCreditCodeBatchListResponse, AdminCreditCodeListResponse, AdminGenerationJobItem, AdminGenerationJobListResponse, AdminLoginRequest, AdminReasonRequest, AdminSessionResponse, AdminUserDetailResponse, AdminUserListResponse, CatalogUpdateNotification, CreditActivityListResponse, CreditLedgerListResponse, DashboardNewsItemResponse, DashboardNewsListResponse, DashboardNewsUpsertRequest, GenerateRequest, GenerationResult, PlainChatConversationCreateRequest, PlainChatConversationItem, PlainChatConversationListResponse, PlainChatConversationMessageCreateRequest, PlainChatConversationMessagesResponse, PlainChatConversationTurnResponse, PlainChatConversationUpdateRequest, PlainChatModelListResponse, SystemConfig, UserNotificationPreferencesUpdateRequest, UserProfileUpdateRequest, ProfileCompletionRequest
+from app.core.schema import AdminAuditLogListResponse, AdminAuthFailureSummaryResponse, AdminCreditCodeBatchListResponse, AdminCreditCodeListResponse, AdminGenerationJobItem, AdminGenerationJobListResponse, AdminLoginRequest, AdminReasonRequest, AdminSessionResponse, AdminUserDetailResponse, AdminUserListResponse, CatalogUpdateNotification, CreditActivityListResponse, CreditLedgerListResponse, DashboardNewsItemResponse, DashboardNewsListResponse, DashboardNewsUpsertRequest, GenerateRequest, GenerationResult, PlainChatConversationCreateRequest, PlainChatConversationItem, PlainChatConversationListResponse, PlainChatConversationMessageCreateRequest, PlainChatConversationMessagesResponse, PlainChatConversationTurnResponse, PlainChatConversationUpdateRequest, PlainChatModelListResponse, SystemConfig, UserNotificationPreferencesUpdateRequest, UserProfileUpdateRequest, ProfileCompletionRequest, PackEstimateRequest, PackGenerateRequest, PackPlanRequest, PackSessionCreate, PackSessionUpdate
+from app.packs import catalog as packs_catalog, service as packs_service
 from app.db.session import session_scope
 from app.db.repositories.security import SecurityRepository
 from app.graph.workflow import studio_graph_app
@@ -28,7 +29,7 @@ from app.services.admin_auth import AdminAuthRateLimitError, authenticate_admin,
 from app.services.apikeymanager_client import ApiKeyManagerProxyError, check_apikeymanager_ready
 from app.services.auth import format_suspension_detail, verify_admin_csrf, verify_admin_session, verify_api_key, verify_firebase_user
 from app.services.catalog_store import catalog_store
-from app.services.model_visibility import filter_catalog, list_model_visibility, update_model_visibility
+from app.services.model_visibility import filter_catalog, list_model_visibility, update_model_visibility, visible_model_catalog
 from app.services.chat_service import assemble_plain_chat_context, list_plain_chat_models, minimum_required_credits_for_plain_chat, normalize_plain_chat_system, prepare_plain_chat_conversation_request, preview_plain_chat_prompt, send_plain_chat, serialize_plain_chat_parts
 from app.services.security_backend import (
     add_history_entry,
@@ -40,11 +41,15 @@ from app.services.security_backend import (
     complete_analyze_session,
     consume_rate_limit,
     create_chat_conversation,
-    create_analyze_session,
+    create_pack_session,
+    count_pack_sessions,
+    list_pack_sessions,
+    get_pack_session,
+    update_pack_session,
+    delete_pack_session,
     create_analyze_session_with_charge,
     adjust_credits,
     create_credit_code,
-    create_credit_code_batch,
     create_credit_code_batch_with_title,
     create_dashboard_news_item,
     create_generation_job,
@@ -77,7 +82,6 @@ from app.services.security_backend import (
     list_credit_code_batch_status_summaries,
     list_credit_codes,
     list_gift_code_status_summaries,
-    list_users,
     search_users_with_total,
     mark_generation_job_awaiting_review,
     preload_security_store,
@@ -107,7 +111,6 @@ from app.services.user_files import (
     load_private_user_file,
     private_file_id_from_url,
     private_file_url,
-    private_file_url_prefix,
 )
 
 MAX_INPUT_IMAGES = 4
@@ -157,15 +160,20 @@ def rate_limit_key(request: Request) -> str:
 
 
 def _get_client_ip(request: Request) -> str:
-    forwarded_for = request.headers.get("x-forwarded-for", "")
-    if forwarded_for:
-        first_ip = forwarded_for.split(",", 1)[0].strip()
-        if first_ip:
-            return first_ip
-
+    # Trust X-Real-IP first: nginx sets it from $remote_addr, so clients cannot
+    # forge it. X-Forwarded-For is built with $proxy_add_x_forwarded_for, which
+    # APPENDS the real IP to any client-supplied value — taking its first entry
+    # would let a caller mint a fresh rate-limit bucket per request.
     real_ip = request.headers.get("x-real-ip", "").strip()
     if real_ip:
         return real_ip
+
+    forwarded_for = request.headers.get("x-forwarded-for", "")
+    if forwarded_for:
+        # Last entry is the one appended by our own proxy hop.
+        last_ip = forwarded_for.rsplit(",", 1)[-1].strip()
+        if last_ip:
+            return last_ip
 
     return get_remote_address(request)
 
@@ -571,6 +579,12 @@ def cleanup_uploaded_images_on_startup():
     _cleanup_expired_uploaded_images()
     catalog_store.initialize()
     preload_security_store()
+    # Eagerly refresh the live model catalog so pack model lists are complete
+    # from the very first request (before the AKM catalog webhook fires).
+    try:
+        settings.refresh_model_catalog()
+    except Exception:
+        pass
 
 
 @app.get(
@@ -697,9 +711,11 @@ def get_system_config(request: Request, _=Depends(verify_api_key)):
     description="Return available catalog models for the dedicated plain-chat flow.",
 )
 @limiter.limit("30/minute")
-def list_plain_chat_model_options(request: Request, user: Dict[str, Any] = Depends(verify_firebase_user)):
+def list_plain_chat_model_options(request: Request):
+    # Public, no auth: the catalogue is non-sensitive (ids, providers, modalities,
+    # pricing summary already shown on /pricing) and carries no per-user data. This
+    # lets the open Playground populate its model picker for anonymous visitors.
     del request
-    del user
     catalog_store.get_catalog()
     return PlainChatModelListResponse(models=list_plain_chat_models())
 
@@ -740,7 +756,12 @@ def create_plain_chat_conversation(
 ):
     _enforce_plain_chat_request_size(request)
     catalog_store.get_catalog()
-    normalized_system = normalize_plain_chat_system(payload.model, payload.system)
+    try:
+        normalized_system = normalize_plain_chat_system(payload.model, payload.system)
+    except ValueError as exc:
+        # e.g. the chosen model was disabled by an admin between selection and send:
+        # surface a clear message instead of a bare 500.
+        raise HTTPException(status_code=400, detail=_plain_chat_error_message(str(exc))) from exc
     conversation = create_chat_conversation(
         user["uid"],
         payload.model,
@@ -1929,6 +1950,17 @@ def generate_content(request: Request, payload: GenerateRequest, user: Dict[str,
     - `awaiting_review`: AI suggestions need user confirmation
     - `error`: An error occurred during generation
     """
+    return _generate_content_impl(request, payload, user)
+
+
+def _generate_content_impl(request: Request, payload: GenerateRequest, user: Dict[str, Any], price_override: float | None = None, platform_fee: float | None = None) -> GenerationResult:
+    """Core generation flow shared by the public /generate route and Packs.
+
+    Carries no @limiter decorator so internal callers (e.g. Packs) do not re-trip
+    the public 5/min route limit; the quick-mode per-user/IP limits inside still
+    apply. Expects payload.mode == "quick" / status == "generating" for the
+    deterministic direct-generation path.
+    """
     charged_cost = 0.0
     generation_job_id: str | None = None
     if not _GENERATION_GATE.acquire(blocking=False):
@@ -2043,7 +2075,12 @@ def generate_content(request: Request, payload: GenerateRequest, user: Dict[str,
             generation_job_id = str(job.get("id") or "")
         else:
             expected_required = _expected_required_credits_for_generate(payload)
-            expected_total = expected_required["total"]
+            if platform_fee is not None:
+                expected_total = round(float(expected_required["total"]) + float(platform_fee), 6)
+            elif price_override is not None:
+                expected_total = price_override
+            else:
+                expected_total = expected_required["total"]
             
             try:
                 reserve_result = reserve_generation_credits(
@@ -2148,6 +2185,10 @@ def generate_content(request: Request, payload: GenerateRequest, user: Dict[str,
                 charged_cost = round(float((final_payload.get("meta") or {}).get("total_cost") or 0), 6)
             except (TypeError, ValueError):
                 charged_cost = 0.0
+            if platform_fee is not None:
+                charged_cost = round(charged_cost + float(platform_fee), 6)
+            elif price_override is not None:
+                charged_cost = round(float(price_override), 6)
 
             if direct_generation and generation_job_id:
                 capture_result = capture_generation_credits(generation_job_id, charged_cost)
@@ -2402,7 +2443,7 @@ def _plain_chat_error_message(error_code: str) -> str:
     if error_code == "CHAT_MODEL_REQUIRED":
         return "A chat model is required."
     if error_code == "CHAT_MODEL_NOT_FOUND":
-        return "The selected chat model is no longer available. Refresh the model list and try again."
+        return "This model is no longer available - it may have been turned off. Please pick another model and try again."
     if error_code == "CHAT_MODEL_PROVIDER_MISSING" or error_code == "CHAT_MODEL_ID_MISSING":
         return "The selected chat model is misconfigured."
     if error_code == "CHAT_LAST_MESSAGE_MUST_BE_USER":
@@ -2577,7 +2618,9 @@ def _validate_generate_request(payload: GenerateRequest) -> None:
 
 
 def _resolve_model_choice(task: str, prefs: Dict[str, str]) -> str | None:
-    valid_models = settings.model_catalog.get(task, {})
+    # Visible catalog: an admin-disabled model must not be selectable or usable,
+    # including by a client that posts its id directly (bypassing the UI list).
+    valid_models = visible_model_catalog().get(task, {})
     user_choice = prefs.get(f"{task}_model") or prefs.get(task)
     if user_choice:
         return user_choice if user_choice in valid_models else None
@@ -2592,7 +2635,7 @@ def _validate_selected_model_exists(task: str, prefs: Dict[str, str], is_request
     if not user_choice:
         return
 
-    valid_models = settings.model_catalog.get(task, {})
+    valid_models = visible_model_catalog().get(task, {})
     if user_choice not in valid_models:
         raise HTTPException(
             status_code=400,
@@ -3058,16 +3101,35 @@ def _max_input_images_for_entry(model_entry: Dict[str, Any]) -> int:
     return MAX_EDITING_INPUT_IMAGES
 
 
-def _prepare_input_images(input_images, owner_uid: str) -> list[Dict[str, str]]:
+# Shared image downscaler (smart create /generate, plain chat, and packs all use
+# the SAME logic) - shrinks oversized uploads so the base64 body fits the AKM
+# gateway's 1 MiB Fastify bodyLimit. See app/services/image_downscale.py.
+from app.services.image_downscale import (  # noqa: E402
+    PROVIDER_IMAGE_MAX_DIM as _PROVIDER_IMAGE_MAX_DIM,
+    PROVIDER_TOTAL_IMAGE_BUDGET as _PROVIDER_TOTAL_IMAGE_BUDGET,
+    downscale_image_for_provider as _downscale_image_for_provider,
+    per_image_output_cap as _per_image_output_cap,
+)
+
+
+def _prepare_input_images(input_images, owner_uid: str, *, max_dim: int = _PROVIDER_IMAGE_MAX_DIM) -> list[Dict[str, str]]:
+    items = list(input_images or [])
+    output_cap = _per_image_output_cap(len(items))
     prepared: list[Dict[str, str]] = []
-    for input_image in input_images or []:
-        prepared_image = _prepare_input_image(input_image, owner_uid)
+    for input_image in items:
+        prepared_image = _prepare_input_image(input_image, owner_uid, max_dim=max_dim, output_cap=output_cap)
         if prepared_image:
             prepared.append(prepared_image)
     return prepared
 
 
-def _prepare_input_image(input_image, owner_uid: str) -> Dict[str, str] | None:
+def _prepare_input_image(
+    input_image,
+    owner_uid: str,
+    *,
+    max_dim: int = _PROVIDER_IMAGE_MAX_DIM,
+    output_cap: int = _PROVIDER_TOTAL_IMAGE_BUDGET,
+) -> Dict[str, str] | None:
     if not input_image:
         return None
 
@@ -3079,8 +3141,10 @@ def _prepare_input_image(input_image, owner_uid: str) -> Dict[str, str] | None:
             allowed_kinds={"uploaded_input", "generated_output"},
         )
         image_bytes = filepath.read_bytes()
+        mime_type = str(file_record["mime_type"] or input_image.mime_type or "")
+        image_bytes, mime_type = _downscale_image_for_provider(image_bytes, mime_type, max_dim=max_dim, output_cap=output_cap)
         return {
-            "mime_type": str(file_record["mime_type"] or input_image.mime_type or ""),
+            "mime_type": mime_type,
             "data": base64.b64encode(image_bytes).decode("ascii"),
         }
 
@@ -3292,3 +3356,255 @@ def _extension_for_mime_type(mime_type: str) -> str:
     if mime_type == "image/webp":
         return "webp"
     return "jpg"
+
+
+# ===========================================================================
+# Template / Use-Case Packs
+#
+# Packs are a deterministic way to drive the existing generation pipeline:
+# list/get read the in-code catalog; estimate is a pure pricing read; generate
+# renders the pack template and runs N single-image generations through the
+# shared core (app.packs.core -> _generate_content_impl), inheriting moderation,
+# the image-input guardrail, and server-side credit charging.
+# ===========================================================================
+
+def _require_available_pack(pack_id: str):
+    pack = packs_catalog.get_pack(pack_id)
+    if pack is None or not pack.enabled or not packs_service.pack_available(pack):
+        raise HTTPException(status_code=404, detail="Pack not found")
+    return pack
+
+
+@app.get("/packs", tags=["Packs"], summary="List Packs")
+@limiter.limit("60/minute")
+def list_packs_endpoint(
+    request: Request,
+    sector: str | None = None,
+    lang: str = "ar",
+    user: Dict[str, Any] = Depends(verify_firebase_user),
+):
+    """Enabled packs (optionally filtered by sector), localized, with any pack
+    whose capability has no live model auto-hidden."""
+    packs = [
+        packs_service.card_view(pack, lang)
+        for pack in packs_catalog.list_packs(sector)
+        if packs_service.pack_available(pack)
+    ]
+    return {"sector": sector, "lang": lang, "packs": packs}
+
+
+@app.get("/packs/{pack_id}", tags=["Packs"], summary="Get Pack")
+@limiter.limit("60/minute")
+def get_pack_endpoint(
+    request: Request,
+    pack_id: str,
+    lang: str = "ar",
+    user: Dict[str, Any] = Depends(verify_firebase_user),
+):
+    pack = _require_available_pack(pack_id)
+    return packs_service.detail_view(pack, lang)
+
+
+@app.post("/packs/{pack_id}/estimate", tags=["Packs"], summary="Estimate Pack Cost")
+@limiter.limit("60/minute")
+def estimate_pack_endpoint(
+    request: Request,
+    pack_id: str,
+    payload: PackEstimateRequest,
+    user: Dict[str, Any] = Depends(verify_firebase_user),
+):
+    pack = _require_available_pack(pack_id)
+    try:
+        est = packs_service.estimate_pack(pack, payload.n, payload.aspect_ratio, has_image=bool(payload.has_image), model=payload.model, quality=payload.quality)
+    except packs_service.PackError as exc:
+        raise HTTPException(status_code=422, detail=packs_service.pack_error_detail(exc)) from exc
+    if not est.get("available"):
+        raise HTTPException(status_code=409, detail={"error": {"code": "CAPABILITY_UNAVAILABLE"}})
+    return est
+
+
+@app.post("/packs/{pack_id}/plan", tags=["Packs"], summary="Plan A Pack Generation")
+@limiter.limit("30/minute")
+def plan_pack_endpoint(
+    request: Request,
+    pack_id: str,
+    payload: PackPlanRequest,
+    user: Dict[str, Any] = Depends(verify_firebase_user),
+):
+    """Free planning step: the agent turns the user's free text + 0..N images into
+    a ready-to-run plan (model + ratio + quality + prompt), or asks ONE clarifying
+    question. No credits are reserved or charged. The real moderation gate still
+    runs at /generate; here clearly-abusive requests get a brief decline."""
+    pack = _require_available_pack(pack_id)
+    uid = str(user["uid"])
+    # The agent is free to the user but makes real (billed) provider calls, so it is
+    # metered per user like the paid /generate path. The per-IP limit alone does not
+    # bound one account fanning out across addresses.
+    if not consume_rate_limit(
+        f"packs:plan:user:{uid}",
+        max_count=settings.packs_plan_user_limit,
+        window_seconds=settings.packs_plan_window_seconds,
+    ):
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                f"You reached the limit of {settings.packs_plan_user_limit} planning requests per "
+                f"{_format_wait_window(settings.packs_plan_window_seconds)}. Please try again later."
+            ),
+        )
+    if len(payload.image_refs or []) > MAX_INPUT_IMAGES:
+        raise HTTPException(status_code=400, detail=f"At most {MAX_INPUT_IMAGES} input images are allowed")
+    # Prepare uploads to inline base64 so the vision agent can actually SEE them
+    # (private /api/files URLs are not fetchable by the provider). Keep the file
+    # name + order so the agent can map "image 1 / image 2" to a role.
+    plan_imgs = (payload.image_refs or [])[:MAX_INPUT_IMAGES]
+    plan_cap = _per_image_output_cap(len(plan_imgs))
+    image_refs: list[Dict[str, Any]] = []
+    try:
+        for img in plan_imgs:
+            prepared = _prepare_input_image(img, str(user["uid"]), max_dim=1024, output_cap=plan_cap)
+            if prepared:
+                image_refs.append({**prepared, "name": img.name or ""})
+        result = packs_service.plan_pack(
+            pack,
+            user_text=payload.text or "",
+            image_refs=image_refs,
+            lang=payload.lang,
+            variant_id=payload.variant_id,
+            round_no=payload.round,
+            mockup_first=payload.mockup_first,
+            history=[t.model_dump() for t in (payload.history or [])],
+            use_fake=settings.packs_test_fake_provider,
+            uid=str(user["uid"]),
+        )
+    except HTTPException:
+        raise
+    except packs_service.PackError as exc:
+        raise HTTPException(status_code=422, detail=packs_service.pack_error_detail(exc)) from exc
+
+    ban = result.pop("moderation_ban", None)
+    if isinstance(ban, dict) and ban.get("banned") and not ban.get("alreadySuspended"):
+        raise HTTPException(
+            status_code=403,
+            detail=format_suspension_detail(ban.get("reason"), ban.get("until")),
+        )
+    return result
+
+
+@app.post("/packs/{pack_id}/generate", tags=["Packs"], summary="Generate From Pack")
+@limiter.limit("15/minute")
+def generate_pack_endpoint(
+    request: Request,
+    pack_id: str,
+    payload: PackGenerateRequest,
+    user: Dict[str, Any] = Depends(verify_firebase_user),
+):
+    pack = _require_available_pack(pack_id)
+    image_refs = [img.model_dump() for img in (payload.image_refs or [])]
+    try:
+        return packs_service.generate_pack(
+            pack,
+            payload.slot_values,
+            payload.n,
+            payload.aspect_ratio,
+            image_refs,
+            user,
+            request,
+            model=payload.model,
+            quality=payload.quality,
+            prompt_override=payload.prompt_override,
+            use_fake=settings.packs_test_fake_provider,
+        )
+    except packs_service.PackError as exc:
+        raise HTTPException(status_code=422, detail=packs_service.pack_error_detail(exc)) from exc
+
+
+# ----------------------- Pack sessions (saved studios) -----------------------
+# A pack session is a named, reopenable gallery of generations + the agent memory,
+# stored per user. Mirrors the plain-chat conversation list/rename/reopen UX.
+
+def _enforce_pack_session_request_size(request: Request) -> None:
+    """A session autosaves its gallery + agent memory as free-form JSON, so cap the
+    body: without this an authenticated user can push arbitrary blobs into Postgres
+    (nginx allows 25 MB, while real sessions are ~3-11 KB)."""
+    content_length = request.headers.get("content-length")
+    if not content_length:
+        return
+    try:
+        request_bytes = int(content_length)
+    except (TypeError, ValueError):
+        return
+    if request_bytes > int(settings.pack_session_max_request_bytes):
+        raise HTTPException(status_code=413, detail="Session data is too large.")
+
+
+@app.post("/pack-sessions", tags=["Packs"], summary="Create Pack Session")
+@limiter.limit("60/minute")
+def create_pack_session_endpoint(
+    request: Request,
+    payload: PackSessionCreate,
+    user: Dict[str, Any] = Depends(verify_firebase_user),
+):
+    _enforce_pack_session_request_size(request)
+    uid = str(user["uid"])
+    if count_pack_sessions(uid) >= settings.pack_sessions_per_user_limit:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"You have reached the maximum of {settings.pack_sessions_per_user_limit} saved "
+                "sessions. Delete one and try again."
+            ),
+        )
+    title = (payload.title or "New session").strip()[:120] or "New session"
+    return create_pack_session(uid, payload.pack_id, payload.variant_id, title, payload.data or {})
+
+
+@app.get("/pack-sessions", tags=["Packs"], summary="List Pack Sessions")
+@limiter.limit("120/minute")
+def list_pack_sessions_endpoint(
+    request: Request,
+    pack_id: str | None = None,
+    user: Dict[str, Any] = Depends(verify_firebase_user),
+):
+    return {"sessions": list_pack_sessions(str(user["uid"]), pack_id)}
+
+
+@app.get("/pack-sessions/{session_id}", tags=["Packs"], summary="Get Pack Session")
+@limiter.limit("120/minute")
+def get_pack_session_endpoint(
+    request: Request,
+    session_id: str,
+    user: Dict[str, Any] = Depends(verify_firebase_user),
+):
+    entry = get_pack_session(str(user["uid"]), session_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return entry
+
+
+@app.patch("/pack-sessions/{session_id}", tags=["Packs"], summary="Update Pack Session")
+@limiter.limit("120/minute")
+def update_pack_session_endpoint(
+    request: Request,
+    session_id: str,
+    payload: PackSessionUpdate,
+    user: Dict[str, Any] = Depends(verify_firebase_user),
+):
+    _enforce_pack_session_request_size(request)
+    title = payload.title.strip()[:120] if payload.title is not None else None
+    entry = update_pack_session(str(user["uid"]), session_id, title=title, data=payload.data)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return entry
+
+
+@app.delete("/pack-sessions/{session_id}", tags=["Packs"], summary="Delete Pack Session")
+@limiter.limit("60/minute")
+def delete_pack_session_endpoint(
+    request: Request,
+    session_id: str,
+    user: Dict[str, Any] = Depends(verify_firebase_user),
+):
+    if not delete_pack_session(str(user["uid"]), session_id):
+        raise HTTPException(status_code=404, detail="Session not found")
+    return {"deleted": True}

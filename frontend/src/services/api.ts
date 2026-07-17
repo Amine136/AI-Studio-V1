@@ -31,6 +31,16 @@ import {
   UserProfileUpdateRequest,
   ProfileCompletionRequest,
   UploadedImageResult,
+  PackListResponse,
+  PackDetail,
+  PackEstimate,
+  PackGenerateResponse,
+  PackGenerateBody,
+  PackPlanBody,
+  PackPlanResponse,
+  PackSessionData,
+  PackSessionFull,
+  PackSessionMeta,
 } from '../types';
 import { auth } from '../lib/firebase';
 import { signOutUser } from '../lib/auth';
@@ -54,6 +64,12 @@ export class ContentBlockedError extends Error {
 
 export function isContentBlockedError(error: unknown): boolean {
   return error instanceof ContentBlockedError;
+}
+
+// True for a dropped/interrupted connection (no HTTP response). Callers can give
+// such errors a short grace + retry instead of failing instantly on a blip.
+export function isNetworkError(error: unknown): boolean {
+  return error instanceof Error && error.message === NETWORK_ERROR_MESSAGE;
 }
 
 // Sentinel for requests blocked because the moderation backend was unreachable
@@ -620,5 +636,69 @@ export const api = {
       }
       throw normalizeApiError(error);
     }
-  }
+  },
+
+  // ---- Template / Use-Case Packs ----
+  listPacks: async (params?: { sector?: string; lang?: string }): Promise<PackListResponse> => {
+    const res = await client.get('/packs', { params });
+    return res.data;
+  },
+
+  getPack: async (packId: string, lang?: string): Promise<PackDetail> => {
+    const res = await client.get(`/packs/${packId}`, { params: lang ? { lang } : undefined });
+    return res.data;
+  },
+
+  estimatePack: async (
+    packId: string,
+    body: { slot_values?: Record<string, string>; n?: number; aspect_ratio?: string; has_image?: boolean; model?: string; quality?: string },
+  ): Promise<PackEstimate> => {
+    const res = await client.post(`/packs/${packId}/estimate`, body);
+    return res.data;
+  },
+
+  planPack: async (packId: string, body: PackPlanBody): Promise<PackPlanResponse> => {
+    try {
+      const res = await client.post(`/packs/${packId}/plan`, body);
+      return res.data;
+    } catch (error) {
+      if (shouldLogApiError(error)) {
+        console.error('Pack plan error:', error);
+      }
+      throw normalizeApiError(error);
+    }
+  },
+
+  // ---- saved studio sessions ----
+  listPackSessions: async (packId?: string): Promise<PackSessionMeta[]> => {
+    const res = await client.get('/pack-sessions', { params: packId ? { pack_id: packId } : undefined });
+    return res.data.sessions ?? [];
+  },
+  getPackSession: async (id: string): Promise<PackSessionFull> => {
+    const res = await client.get(`/pack-sessions/${id}`);
+    return res.data;
+  },
+  createPackSession: async (body: { pack_id: string; variant_id?: string | null; title?: string; data?: PackSessionData }): Promise<PackSessionFull> => {
+    const res = await client.post('/pack-sessions', body);
+    return res.data;
+  },
+  updatePackSession: async (id: string, body: { title?: string; data?: PackSessionData }): Promise<PackSessionFull> => {
+    const res = await client.patch(`/pack-sessions/${id}`, body);
+    return res.data;
+  },
+  deletePackSession: async (id: string): Promise<void> => {
+    await client.delete(`/pack-sessions/${id}`);
+  },
+
+  generatePack: async (packId: string, body: PackGenerateBody): Promise<PackGenerateResponse> => {
+    try {
+      const res = await client.post(`/packs/${packId}/generate`, body);
+      return res.data;
+    } catch (error) {
+      if (shouldLogApiError(error)) {
+        console.error('Pack generate error:', error);
+      }
+      throw normalizeApiError(error);
+    }
+  },
 };

@@ -38,38 +38,49 @@ const showcaseModels = [
 
 import { useLanguage } from "../context/LanguageContext";
 import AuthPanel from "../components/auth/AuthPanel";
+import ThemeToggle from "../components/ThemeToggle";
 
 function LandingContent() {
   const { user, loading } = useAuth();
   const { t, language, setLanguage } = useLanguage();
-  const primaryHref = user ? "/dashboard" : "/auth";
-  const primaryLabel = user ? t("Open Dashboard") : t("Get Started");
-  const loginHref = user ? "/dashboard" : "/auth";
+  // The Playground is open for anonymous browsing (auth-wall on any operation),
+  // so the primary CTA and "View Live Studio" take everyone straight there.
+  // "Log In" keeps pointing at /auth for logged-out visitors.
+  const primaryHref = "/playground?new=1";
+  const primaryLabel = user ? t("Start Creating") : t("Get Started");
+  const loginHref = user ? "/playground" : "/auth";
 
   return (
     <main className="bg-[#0c1324] text-[#dce1fb] selection:bg-[#4d8eff]/30">
       <nav className="fixed top-0 z-50 w-full bg-[#0c1324]/80 shadow-xl shadow-blue-900/10 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-3 px-4 py-4 sm:px-6 sm:py-5 lg:px-12 lg:py-6">
-          <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
+        <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-2 px-3 py-4 sm:px-6 sm:py-5 lg:px-12 lg:py-6">
+          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
             <img
               src="/best-version/logo-192.png?v=20260506-1210"
               alt="Vibecraft logo"
-              className="h-8 w-8 shrink-0 object-contain sm:h-9 sm:w-9"
+              className="h-7 w-7 shrink-0 object-contain sm:h-9 sm:w-9"
             />
-            <div className="font-headline text-xl font-bold tracking-tighter text-blue-100 sm:text-2xl">Vibecraft</div>
+            {/* Below ~400px the nav (pills + theme toggle + Log In) leaves the wordmark
+                less room than its 80px of text needs, and it spills under the pills.
+                Collapse to the "VC" monogram there (Anthropic-style ANTHROP\\C -> A\\)
+                instead of dropping the name entirely. */}
+            <div className="landing-logo font-headline truncate text-lg font-bold tracking-tighter text-blue-100 sm:text-2xl">
+              <span className="max-sm:hidden">Vibecraft</span>
+              <span className="sm:hidden">VC</span>
+            </div>
           </div>
 
           <div className="hidden items-center gap-10 md:flex">
-            <a href="#features" className="border-b-2 border-blue-400 pb-1 font-headline text-sm tracking-tight text-blue-200 transition-colors duration-300 hover:text-blue-100">
+            <a href="#features" className="landing-nav-active border-b-2 border-blue-400 pb-1 font-headline text-sm tracking-tight text-blue-200 transition-colors duration-300 hover:text-blue-100">
               {t("Features")}
             </a>
-            <a href="#models" className="font-headline text-sm tracking-tight text-slate-400 transition-colors duration-300 hover:text-blue-100">
+            <a href="#models" className="landing-nav font-headline text-sm tracking-tight text-slate-400 transition-colors duration-300 hover:text-blue-100">
               {t("Models")}
             </a>
           </div>
 
-          <div className="flex shrink-0 items-center gap-2.5 sm:gap-3 lg:gap-6">
-            <div className="flex items-center rounded-full border border-white/10 bg-[#0c1324]/80 p-0.5 sm:p-1 shadow-inner backdrop-blur-md me-1 sm:me-2" dir="ltr">
+          <div className="flex shrink-0 items-center gap-1.5 sm:gap-3 lg:gap-6">
+            <div className="flex items-center rounded-full border border-white/10 bg-[#0c1324]/80 p-0.5 sm:p-1 shadow-inner backdrop-blur-md me-0.5 sm:me-2" dir="ltr">
               {(
                 [
                   { id: "en", label: "EN" },
@@ -80,23 +91,25 @@ function LandingContent() {
                 <button
                   key={lang.id}
                   onClick={() => setLanguage(lang.id)}
-                  className={`relative px-2 sm:px-3 py-1 text-[9px] sm:text-[10px] font-bold uppercase tracking-widest transition-all duration-300 ${
+                  className={`relative px-1 sm:px-3 py-1 text-[9px] sm:text-[10px] font-bold uppercase tracking-widest transition-all duration-300 ${
                     language === lang.id
-                      ? "text-white"
+                      ? "text-white landing-lang-active"
                       : "text-slate-400 hover:text-slate-200"
                   }`}
                 >
                   {language === lang.id && (
-                    <div className="absolute inset-0 rounded-full bg-[#adc6ff]/20 shadow-[inset_0_0_10px_rgba(173,198,255,0.2)]" />
+                    <div className="landing-lang-pill absolute inset-0 rounded-full bg-[#adc6ff]/20 shadow-[inset_0_0_10px_rgba(173,198,255,0.2)]" />
                   )}
                   <span className="relative z-10">{lang.label}</span>
                 </button>
               ))}
             </div>
-            <Link href={loginHref} className="font-headline inline-flex items-center rounded-md border border-[#adc6ff]/40 bg-[#adc6ff]/5 px-3.5 py-2 text-xs font-semibold tracking-tight text-[#dce1fb] transition-all duration-200 hover:border-[#adc6ff]/70 hover:bg-[#adc6ff]/15 hover:text-white active:scale-95 sm:px-5 sm:text-sm">
+            <ThemeToggle className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/10 bg-[#0c1324]/80 text-slate-300 shadow-inner backdrop-blur-md transition-colors hover:border-white/25 hover:text-white light:border-slate-900/10 light:bg-white/80 light:text-slate-500 light:hover:border-slate-900/25 light:hover:text-slate-900 sm:h-10 sm:w-10" />
+
+            <Link href={loginHref} className="landing-login font-headline hidden sm:inline-flex items-center rounded-md border border-[#adc6ff]/40 bg-[#adc6ff]/5 px-2.5 py-2 text-xs font-semibold tracking-tight text-[#dce1fb] transition-all duration-200 hover:border-[#adc6ff]/70 hover:bg-[#adc6ff]/15 hover:text-white active:scale-95 sm:px-5 sm:text-sm">
               {t("Log In") || "Log In"}
             </Link>
-            <Link href={primaryHref} className="hidden sm:inline-flex rounded-md bg-gradient-to-br from-[#adc6ff] to-[#4d8eff] px-3.5 py-2 text-xs font-medium text-[#002e6a] transition-transform duration-100 active:scale-95 sm:px-5 sm:text-sm lg:px-6">
+            <Link href={primaryHref} className="landing-cta-primary inline-flex rounded-md bg-gradient-to-br from-[#adc6ff] to-[#4d8eff] px-2.5 py-2 text-xs font-medium text-[#002e6a] transition-transform duration-100 active:scale-95 sm:px-5 sm:text-sm lg:px-6">
               {primaryLabel}
             </Link>
           </div>
@@ -105,24 +118,24 @@ function LandingContent() {
 
       <section className="relative flex min-h-[640px] items-center overflow-hidden px-4 py-16 pt-28 sm:min-h-[716px] sm:px-6 sm:py-24 sm:pt-36 lg:px-12">
         <div className="absolute inset-0 z-0">
-          <div className="absolute right-[-10%] top-[-10%] h-[600px] w-[600px] rounded-full bg-[#adc6ff]/10 blur-[120px]" />
-          <div className="absolute bottom-[-5%] left-[-5%] h-[400px] w-[400px] rounded-full bg-[#d0bcff]/10 blur-[100px]" />
+          <div className="landing-blob-a absolute right-[-10%] top-[-10%] h-[600px] w-[600px] rounded-full bg-[#adc6ff]/10 blur-[120px]" />
+          <div className="landing-blob-b absolute bottom-[-5%] left-[-5%] h-[400px] w-[400px] rounded-full bg-[#d0bcff]/10 blur-[100px]" />
         </div>
         {user ? (
           <div className="relative z-10 mx-auto max-w-4xl text-center animate-fade-in-up stagger-children">
-            <p className="mb-4 text-sm font-bold tracking-widest text-[#adc6ff] uppercase">{t("The Premier Tunisian AI Studio")}</p>
+            <p className="landing-eyebrow mb-4 text-sm font-bold tracking-widest text-[#adc6ff] uppercase">{t("The Premier Tunisian AI Studio")}</p>
             <h1 className="font-headline text-[2.45rem] font-bold leading-[1.04] tracking-tight text-[#dce1fb] sm:text-5xl md:text-7xl lg:text-8xl">
               {t("Vibe at the speed of")}{" "}
-              <span className="bg-gradient-to-r from-[#adc6ff] to-[#d0bcff] bg-clip-text text-transparent">{t("thought.")}</span>
+              <span className="landing-grad-text bg-gradient-to-r from-[#adc6ff] to-[#d0bcff] bg-clip-text text-transparent">{t("thought.")}</span>
             </h1>
-            <p className="mx-auto mb-8 mt-6 max-w-2xl text-base font-light leading-relaxed text-[#c2c6d6] sm:mb-12 sm:mt-8 sm:text-lg md:text-xl">
+            <p className="landing-copy mx-auto mb-8 mt-6 max-w-2xl text-base font-light leading-relaxed text-[#c2c6d6] sm:mb-12 sm:mt-8 sm:text-lg md:text-xl">
               {t("Direct access to premium AI chat, image generation, and smarter creation flows built for fast creative work.")}
             </p>
             <div className="flex flex-col justify-center gap-3 sm:flex-row sm:gap-4">
-              <Link href={primaryHref} className="rounded-md bg-gradient-to-br from-[#adc6ff] to-[#4d8eff] px-8 py-3.5 text-base font-semibold text-[#002e6a] transition-all hover:shadow-[0_0_40px_-10px_rgba(173,198,255,0.5)] sm:px-10 sm:py-4 sm:text-lg">
-                {t("Launch Dashboard") || "Launch Dashboard"}
+              <Link href={primaryHref} className="landing-cta-primary rounded-md bg-gradient-to-br from-[#adc6ff] to-[#4d8eff] px-8 py-3.5 text-base font-semibold text-[#002e6a] transition-all hover:shadow-[0_0_40px_-10px_rgba(173,198,255,0.5)] sm:px-10 sm:py-4 sm:text-lg">
+                {t("Start Creating")}
               </Link>
-              <a href="#models" className="rounded-md bg-slate-800/50 px-8 py-3.5 text-base font-medium text-slate-300 backdrop-blur-sm transition-colors hover:bg-slate-700/50 hover:text-white sm:px-10 sm:py-4 sm:text-lg border border-slate-700/50">
+              <a href="#models" className="landing-cta-ghost rounded-md bg-slate-800/50 px-8 py-3.5 text-base font-medium text-slate-300 backdrop-blur-sm transition-colors hover:bg-slate-700/50 hover:text-white sm:px-10 sm:py-4 sm:text-lg border border-slate-700/50">
                 {t("View Models")}
               </a>
             </div>
@@ -132,12 +145,12 @@ function LandingContent() {
              so cold ad traffic can act immediately instead of bouncing on a slogan. */
           <div className="relative z-10 mx-auto grid w-full max-w-[1600px] grid-cols-1 items-center gap-10 lg:grid-cols-2 lg:gap-16">
             <div className="order-2 text-center animate-fade-in-up lg:order-1 lg:text-left rtl:lg:text-right">
-              <p className="mb-4 text-sm font-bold tracking-widest text-[#adc6ff] uppercase">{t("The Premier Tunisian AI Studio")}</p>
+              <p className="landing-eyebrow mb-4 text-sm font-bold tracking-widest text-[#adc6ff] uppercase">{t("The Premier Tunisian AI Studio")}</p>
               <h1 className="font-headline text-[2.3rem] font-bold leading-[1.05] tracking-tight text-[#dce1fb] sm:text-5xl md:text-6xl">
                 {t("Vibe at the speed of")}{" "}
-                <span className="bg-gradient-to-r from-[#adc6ff] to-[#d0bcff] bg-clip-text text-transparent">{t("thought.")}</span>
+                <span className="landing-grad-text bg-gradient-to-r from-[#adc6ff] to-[#d0bcff] bg-clip-text text-transparent">{t("thought.")}</span>
               </h1>
-              <p className="mx-auto mt-5 max-w-xl text-base font-light leading-relaxed text-[#c2c6d6] sm:mt-6 sm:text-lg lg:mx-0">
+              <p className="landing-copy mx-auto mt-5 max-w-xl text-base font-light leading-relaxed text-[#c2c6d6] sm:mt-6 sm:text-lg lg:mx-0">
                 {t("Direct access to premium AI chat, image generation, and smarter creation flows built for fast creative work.")}
               </p>
               <div className="mt-8 flex flex-col items-center justify-center gap-2 sm:flex-row sm:gap-4 lg:justify-start">
@@ -163,11 +176,11 @@ function LandingContent() {
         )}
       </section>
 
-      <section id="features" className="bg-[#0c1324] px-4 py-16 sm:px-6 sm:py-24 lg:px-12 lg:py-32">
+      <section id="features" className="landing-section bg-[#0c1324] px-4 py-16 sm:px-6 sm:py-24 lg:px-12 lg:py-32">
         <div className="mx-auto max-w-[1600px]">
           <div className="mb-10 sm:mb-20">
             <h2 className="font-headline text-3xl font-bold tracking-tight sm:text-4xl">{t("Core Engine")}</h2>
-            <div className="mt-4 h-1 w-20 bg-[#adc6ff]" />
+            <div className="landing-bar mt-4 h-1 w-20 bg-[#adc6ff]" />
           </div>
 
           <div className="grid grid-cols-1 gap-6 md:grid-cols-12">
@@ -179,8 +192,8 @@ function LandingContent() {
               className="group relative overflow-hidden rounded-xl border border-[#424754]/10 bg-[#151b2d] md:col-span-7"
             >
               <Image src="/landing/chat-abstract-dark.png" alt="Chat with models" width={2048} height={1152} quality={100} priority sizes="(max-width: 767px) 100vw, 58vw" className="h-[300px] w-full object-cover opacity-80 transition-transform duration-700 group-hover:scale-105 sm:h-[400px]" />
-              <div className="absolute inset-0 bg-gradient-to-t from-[#0c1324] via-[#0c1324]/20 to-transparent" />
-              <div className="absolute bottom-0 p-6 sm:p-10">
+              <div className="landing-img-shade absolute inset-0 bg-gradient-to-t from-[#0c1324] via-[#0c1324]/20 to-transparent" />
+              <div className="landing-img-caption absolute bottom-0 p-6 sm:p-10">
                 <span className="material-symbols-outlined mb-3 text-3xl text-[#adc6ff] sm:mb-4 sm:text-4xl">auto_awesome</span>
                 <h3 className="font-headline text-2xl font-bold sm:text-3xl">{t("Chat with models")}</h3>
                 <p className="mt-3 max-w-md text-sm leading-relaxed text-[#c2c6d6] sm:text-base">
@@ -197,8 +210,8 @@ function LandingContent() {
               className="group relative overflow-hidden rounded-xl border border-[#424754]/10 bg-[#151b2d] md:col-span-5"
             >
               <Image src="/landing/edit-images-v2-dark.png" alt="Edit images" width={1800} height={1350} quality={100} sizes="(max-width: 767px) 100vw, 42vw" className="h-[300px] w-full object-cover opacity-80 transition-transform duration-700 group-hover:scale-105 sm:h-[400px]" />
-              <div className="absolute inset-0 bg-gradient-to-t from-[#0c1324] via-[#0c1324]/20 to-transparent" />
-              <div className="absolute bottom-0 p-6 sm:p-10">
+              <div className="landing-img-shade absolute inset-0 bg-gradient-to-t from-[#0c1324] via-[#0c1324]/20 to-transparent" />
+              <div className="landing-img-caption absolute bottom-0 p-6 sm:p-10">
                 <span className="material-symbols-outlined mb-3 text-3xl text-[#adc6ff] sm:mb-4 sm:text-4xl">brush</span>
                 <h3 className="font-headline text-2xl font-bold">{t("Edit images")}</h3>
                 <p className="mt-3 text-sm leading-relaxed text-[#c2c6d6] sm:text-base">
@@ -212,7 +225,7 @@ function LandingContent() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ duration: 0.7 }}
-              className="group relative overflow-hidden rounded-xl border border-[#424754]/10 bg-[#23293c] md:col-span-12"
+              className="landing-card group relative overflow-hidden rounded-xl border border-[#424754]/10 bg-[#23293c] md:col-span-12"
             >
               <div className="grid items-center lg:grid-cols-5">
                 <div className="p-6 sm:p-10 lg:col-span-2 lg:p-12">
@@ -238,7 +251,7 @@ function LandingContent() {
                 </div>
 
                 <div className="p-4 pt-0 sm:p-8 lg:col-span-3 lg:p-12 lg:pl-0">
-                  <div className="relative mx-auto max-w-[800px] [perspective:1000px]">
+                  <div className="landing-mock relative mx-auto max-w-[800px] [perspective:1000px]">
                     <div className="absolute -bottom-10 left-1/2 h-4 w-[90%] -translate-x-1/2 rounded-full bg-[#adc6ff]/20 blur-2xl" />
                     <div className="relative rounded-t-3xl border-x border-t border-white/10 bg-zinc-900 p-3 shadow-[0_50px_100px_-20px_rgba(0,0,0,0.5),0_30px_60px_-30px_rgba(173,198,255,0.1)]">
                       <div className="relative flex aspect-[16/10] overflow-hidden rounded-2xl bg-black">
@@ -311,7 +324,7 @@ function LandingContent() {
         </div>
       </section>
 
-      <section id="models" className="bg-[#0c1324] px-4 py-16 sm:px-6 sm:py-24 lg:px-12 lg:py-32">
+      <section id="models" className="landing-section bg-[#0c1324] px-4 py-16 sm:px-6 sm:py-24 lg:px-12 lg:py-32">
         <div className="mx-auto max-w-[1600px]">
           <div className="mb-10 flex flex-col gap-4 sm:mb-20 sm:gap-6 md:flex-row md:items-end md:justify-between">
             <div>
@@ -335,7 +348,7 @@ function LandingContent() {
                 className="group relative aspect-[4/5] w-[66vw] max-w-[250px] shrink-0 snap-start overflow-hidden rounded-lg sm:w-auto sm:max-w-none"
               >
                 <Image src={model.image} alt={model.alt} width={1200} height={1500} quality={100} sizes="(max-width: 639px) 100vw, (max-width: 1023px) 50vw, 25vw" className="h-full w-full object-cover" />
-                <div className="absolute inset-0 bg-gradient-to-t from-[#0c1324]/90 via-[#0c1324]/20 to-transparent transition-colors group-hover:via-transparent" />
+                <div className="landing-img-shade--models absolute inset-0 bg-gradient-to-t from-[#0c1324]/90 via-[#0c1324]/20 to-transparent transition-colors group-hover:via-transparent" />
                 <div className="absolute bottom-6 left-6">
                   <span className={`mb-2 inline-block rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-widest ${model.badgeClass}`}>
                     {t(model.badge)}
@@ -351,10 +364,10 @@ function LandingContent() {
         <div className="pb-8 text-center text-sm text-[#8c909f]">Checking session…</div>
       ) : null}
 
-      <footer className="w-full border-t border-slate-800/30 bg-[#0c1324] px-4 py-12 sm:px-6 sm:py-16 lg:px-12">
+      <footer className="landing-section w-full border-t border-slate-800/30 bg-[#0c1324] px-4 py-12 sm:px-6 sm:py-16 lg:px-12">
         <div className="mx-auto flex max-w-[1600px] flex-col items-center justify-between gap-8 md:flex-row">
           <div className="flex flex-col items-center gap-2 md:items-start">
-            <div className="font-headline text-lg font-bold text-blue-100">{t("Vibecraft Tunisian AI Studio")}</div>
+            <div className="landing-logo font-headline text-lg font-bold text-blue-100">{t("Vibecraft Tunisian AI Studio")}</div>
             <p className="text-center font-body text-xs uppercase tracking-widest text-slate-500 md:text-left">
               &copy; {new Date().getFullYear()} {t("Vibecraft AI Tunis. The premier Tunisian AI studio. All rights reserved.")}
             </p>
@@ -366,7 +379,7 @@ function LandingContent() {
             <Link href="/policy" className="font-body text-xs uppercase tracking-widest text-slate-500 transition-opacity hover:text-white">
               {t("Terms")}
             </Link>
-            <Link href="/dashboard" className="font-body text-xs uppercase tracking-widest text-slate-500 transition-opacity hover:text-white">
+            <Link href="/playground" className="font-body text-xs uppercase tracking-widest text-slate-500 transition-opacity hover:text-white">
               {t("Studio")}
             </Link>
             <Link href="/credits" className="font-body text-xs uppercase tracking-widest text-slate-500 transition-opacity hover:text-white">

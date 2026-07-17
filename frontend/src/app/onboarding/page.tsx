@@ -14,7 +14,7 @@ function normalizeUsername(value: string): string {
 
 function safeNext(): string {
   const raw = new URLSearchParams(window.location.search).get("next");
-  if (!raw) return "/dashboard";
+  if (!raw) return "/playground";
   try {
     const url = new URL(raw, window.location.origin);
     const path = `${url.pathname}${url.search}`;
@@ -24,7 +24,7 @@ function safeNext(): string {
   } catch {
     /* malformed next */
   }
-  return "/dashboard";
+  return "/playground";
 }
 
 function OnboardingContent() {
