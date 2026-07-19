@@ -44,6 +44,7 @@ export default function SettingsPage() {
 
   const [emailNotifications, setEmailNotifications] = useState(true);
   const [productUpdates, setProductUpdates] = useState(false);
+  const [lifecycleEmails, setLifecycleEmails] = useState(true);
   const [accent, setAccent] = useState<AccentColorId>("blue");
   const [editableUsername, setEditableUsername] = useState("");
   const [bio, setBio] = useState("");
@@ -105,6 +106,7 @@ export default function SettingsPage() {
         setSavedBio(nextBio);
         setEmailNotifications(profile.emailGeneralNewsEnabled ?? true);
         setProductUpdates(profile.emailPlatformUpdatesEnabled ?? true);
+        setLifecycleEmails(profile.emailLifecycleEnabled ?? true);
         setProfileChangesRemaining(
           typeof profile.profileChangesRemaining === "number" ? profile.profileChangesRemaining : null,
         );
@@ -180,25 +182,30 @@ export default function SettingsPage() {
   }
 
   async function handleNotificationPreferenceChange(next: {
-    emailGeneralNewsEnabled: boolean;
-    emailPlatformUpdatesEnabled: boolean;
+    emailGeneralNewsEnabled?: boolean;
+    emailPlatformUpdatesEnabled?: boolean;
+    emailLifecycleEnabled?: boolean;
   }) {
     if (!user) return goToAuthWall();
     const previousEmailNotifications = emailNotifications;
     const previousProductUpdates = productUpdates;
+    const previousLifecycleEmails = lifecycleEmails;
     setSavingNotifications(true);
     setNotificationsError(null);
     setNotificationsSuccess(null);
-    setEmailNotifications(next.emailGeneralNewsEnabled);
-    setProductUpdates(next.emailPlatformUpdatesEnabled);
+    if (next.emailGeneralNewsEnabled !== undefined) setEmailNotifications(next.emailGeneralNewsEnabled);
+    if (next.emailPlatformUpdatesEnabled !== undefined) setProductUpdates(next.emailPlatformUpdatesEnabled);
+    if (next.emailLifecycleEnabled !== undefined) setLifecycleEmails(next.emailLifecycleEnabled);
     try {
       const profile = await api.updateNotificationPreferences(next);
-      setEmailNotifications(profile.emailGeneralNewsEnabled ?? next.emailGeneralNewsEnabled);
-      setProductUpdates(profile.emailPlatformUpdatesEnabled ?? next.emailPlatformUpdatesEnabled);
+      setEmailNotifications(profile.emailGeneralNewsEnabled ?? previousEmailNotifications);
+      setProductUpdates(profile.emailPlatformUpdatesEnabled ?? previousProductUpdates);
+      setLifecycleEmails(profile.emailLifecycleEnabled ?? previousLifecycleEmails);
       setNotificationsSuccess(t("Notification preferences updated."));
     } catch (error) {
       setEmailNotifications(previousEmailNotifications);
       setProductUpdates(previousProductUpdates);
+      setLifecycleEmails(previousLifecycleEmails);
       setNotificationsError(error instanceof Error ? error.message : t("Failed to update notification preferences."));
     } finally {
       setSavingNotifications(false);
@@ -400,7 +407,6 @@ export default function SettingsPage() {
                   disabled={savingNotifications}
                   onClick={() =>
                     void handleNotificationPreferenceChange({
-                      emailGeneralNewsEnabled: emailNotifications,
                       emailPlatformUpdatesEnabled: !productUpdates,
                     })
                   }
@@ -409,6 +415,28 @@ export default function SettingsPage() {
                   <span
                     className={`absolute top-[2px] h-5 w-5 rounded-full bg-white transition ${
                       productUpdates ? "left-[22px] rtl:left-auto rtl:right-[22px]" : "left-[2px] rtl:left-auto rtl:right-[2px]"
+                    }`}
+                  />
+                </button>
+              </div>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="font-medium text-[#dce1fb]">{t("Tips and Product Reminders")}</p>
+                  <p className="text-xs text-[#c2c6d6]">{t("Occasional onboarding tips and reminders to help you get the most out of Vibecraft.")}</p>
+                </div>
+                <button
+                  type="button"
+                  disabled={savingNotifications}
+                  onClick={() =>
+                    void handleNotificationPreferenceChange({
+                      emailLifecycleEnabled: !lifecycleEmails,
+                    })
+                  }
+                  className={`relative h-6 w-11 rounded-full transition ${lifecycleEmails ? "bg-[#adc6ff]" : "bg-[#2e3447]"} ${savingNotifications ? "cursor-not-allowed opacity-70" : ""}`}
+                >
+                  <span
+                    className={`absolute top-[2px] h-5 w-5 rounded-full bg-white transition ${
+                      lifecycleEmails ? "left-[22px] rtl:left-auto rtl:right-[22px]" : "left-[2px] rtl:left-auto rtl:right-[2px]"
                     }`}
                   />
                 </button>

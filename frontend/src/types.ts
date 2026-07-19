@@ -218,6 +218,7 @@ export interface CurrentUserProfile {
   bio?: string;
   emailGeneralNewsEnabled?: boolean;
   emailPlatformUpdatesEnabled?: boolean;
+  emailLifecycleEnabled?: boolean;
   credits?: number;
   reservedCredits?: number;
   totalCredits?: number;
@@ -273,8 +274,10 @@ export interface ProfileCompletionRequest {
 }
 
 export interface UserNotificationPreferencesUpdateRequest {
-  emailGeneralNewsEnabled: boolean;
-  emailPlatformUpdatesEnabled: boolean;
+  // All optional: a partial update leaves omitted fields unchanged server-side.
+  emailGeneralNewsEnabled?: boolean;
+  emailPlatformUpdatesEnabled?: boolean;
+  emailLifecycleEnabled?: boolean;
 }
 
 export type DashboardNewsTone = "blue" | "purple" | "slate";

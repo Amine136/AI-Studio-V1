@@ -54,6 +54,36 @@ def claim_capi_registration(uid: str) -> bool:
         return repo.claim_capi_registration(uid)
 
 
+def _fire_account_email(
+    trigger: str,
+    uid: str,
+    email: str,
+    display_name: str,
+    *,
+    ctx: dict[str, Any] | None = None,
+    dedupe_key: str | None = None,
+) -> None:
+    """Fail-safe account-status email. Call AFTER the DB transaction commits so the
+    provider network call never holds a row lock open. Idempotency/consent live in
+    email_service.dispatch, which never raises."""
+    email = (email or "").strip()
+    if not email:
+        return
+    try:
+        from app.services.email_service import dispatch as _dispatch_email
+
+        _dispatch_email(
+            trigger,
+            uid,
+            dedupe_key=dedupe_key or trigger,
+            to_email=email,
+            to_name=display_name or "",
+            ctx=ctx or {},
+        )
+    except Exception:
+        pass
+
+
 def is_email_deactivated(email: str) -> dict[str, Any] | None:
     normalized = str(email or "").strip().lower()
     if not normalized:
@@ -276,8 +306,9 @@ def complete_user_profile(uid: str, *, full_name: str, username: str) -> dict[st
 def update_user_notification_preferences(
     uid: str,
     *,
-    email_general_news_enabled: bool,
-    email_platform_updates_enabled: bool,
+    email_general_news_enabled: bool | None = None,
+    email_platform_updates_enabled: bool | None = None,
+    email_lifecycle_enabled: bool | None = None,
 ) -> dict[str, Any]:
     now = int(time.time())
     with session_scope() as session:
@@ -286,22 +317,49 @@ def update_user_notification_preferences(
         if user is None:
             user = repo.ensure_user(uid, "", "")
             session.flush()
+        # Partial update: a None field leaves the stored value unchanged, so an
+        # older client sending only some fields never resets the others.
+        next_general = (
+            bool(user.email_general_news_enabled)
+            if email_general_news_enabled is None
+            else bool(email_general_news_enabled)
+        )
+        next_platform = (
+            bool(user.email_platform_updates_enabled)
+            if email_platform_updates_enabled is None
+            else bool(email_platform_updates_enabled)
+        )
+        next_lifecycle = (
+            bool(user.email_lifecycle_enabled)
+            if email_lifecycle_enabled is None
+            else bool(email_lifecycle_enabled)
+        )
         # No-op guard: only write when a preference actually changes, so
         # repeated saves of the same values do not churn dead tuples / WAL.
         already_matches = (
-            bool(user.email_general_news_enabled) == email_general_news_enabled
-            and bool(user.email_platform_updates_enabled) == email_platform_updates_enabled
+            bool(user.email_general_news_enabled) == next_general
+            and bool(user.email_platform_updates_enabled) == next_platform
+            and bool(user.email_lifecycle_enabled) == next_lifecycle
         )
         if not already_matches:
             repo.update_user_notification_preferences(
                 user,
-                email_general_news_enabled=email_general_news_enabled,
-                email_platform_updates_enabled=email_platform_updates_enabled,
+                email_general_news_enabled=next_general,
+                email_platform_updates_enabled=next_platform,
+                email_lifecycle_enabled=next_lifecycle,
                 updated_at=now,
             )
         result = _user_dict_from_model(user)
         result.update(get_profile_change_status(uid))
         return result
+
+
+def set_email_lifecycle_enabled(uid: str, enabled: bool) -> bool:
+    """Flip the lifecycle/marketing consent flag (used by the email unsubscribe link).
+    Returns True if a user row was updated."""
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        return repo.set_email_lifecycle_enabled(uid, enabled)
 
 
 def deactivate_user_account(uid: str) -> dict[str, Any]:
@@ -333,7 +391,11 @@ def deactivate_user_account(uid: str) -> dict[str, Any]:
             metadata_json={"uid": uid, "self_serve": True},
             created_at=now,
         )
-        return _user_dict_from_model(user)
+        result = _user_dict_from_model(user)
+        recipient_email = str(user.email or "").strip()
+        recipient_name = str(user.display_name or "")
+    _fire_account_email("account_deactivated", uid, recipient_email, recipient_name)
+    return result
 
 
 def list_users() -> list[dict[str, Any]]:
@@ -404,7 +466,19 @@ def suspend_user(
             created_at=now,
         )
         session.flush()
-        return _user_dict_from_model(user)
+        result = _user_dict_from_model(user)
+        recipient_email = str(user.email or "").strip()
+        recipient_name = str(user.display_name or "")
+        until = getattr(user, "suspended_until", None)
+    _fire_account_email(
+        "account_suspended",
+        uid,
+        recipient_email,
+        recipient_name,
+        ctx={"reason": normalized_reason, "until": until},
+        dedupe_key=f"suspend:{now}",
+    )
+    return result
 
 
 def unsuspend_user(
@@ -452,7 +526,20 @@ def unsuspend_user(
         result = _user_dict_from_model(user)
         result["activeSuspensionUntil"] = None
         result["activeSuspensionIsPermanent"] = False
-        return result
+        recipient_email = str(user.email or "").strip()
+        recipient_name = str(user.display_name or "")
+        # Don't tell a deactivated account it's "reinstated" — deactivation keeps
+        # is_deactivated=True even after a suspension lift.
+        notify_reinstated = not bool(user.is_deactivated)
+    if notify_reinstated:
+        _fire_account_email(
+            "account_unsuspended",
+            uid,
+            recipient_email,
+            recipient_name,
+            dedupe_key=f"unsuspend:{now}",
+        )
+    return result
 
 
 def add_admin_audit_log(
@@ -2575,6 +2662,7 @@ def _user_dict_from_model(user: Any) -> dict[str, Any]:
         "bio": user.bio or "",
         "emailGeneralNewsEnabled": bool(user.email_general_news_enabled),
         "emailPlatformUpdatesEnabled": bool(user.email_platform_updates_enabled),
+        "emailLifecycleEnabled": bool(getattr(user, "email_lifecycle_enabled", True)),
         "credits": _minor_to_credits(int(user.credits_minor)),
         "reservedCredits": _minor_to_credits(int(user.reserved_credits_minor)),
         "totalCredits": _minor_to_credits(int(user.credits_minor + user.reserved_credits_minor)),

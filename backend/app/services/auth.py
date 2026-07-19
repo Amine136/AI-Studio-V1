@@ -108,8 +108,22 @@ async def verify_firebase_user(
         from app.services.postgres_security_store import claim_capi_registration
         from app.services.meta_capi import send_complete_registration
 
+        # claim_capi_registration wins exactly once per user (first-ever sign-in),
+        # so it doubles as the trigger for the one-time welcome email. Each side is
+        # wrapped independently so one failing never blocks the other.
         if claim_capi_registration(uid):
-            send_complete_registration(request=request, uid=uid, email=email)
+            try:
+                send_complete_registration(request=request, uid=uid, email=email)
+            except Exception:
+                pass
+            try:
+                from app.services.email_service import dispatch as _dispatch_email
+
+                _dispatch_email(
+                    "welcome", uid, dedupe_key="welcome", to_email=email, to_name=display_name
+                )
+            except Exception:
+                pass
     except Exception:
         pass
 

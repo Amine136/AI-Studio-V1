@@ -237,8 +237,11 @@ class ProfileCompletionRequest(BaseModel):
 
 
 class UserNotificationPreferencesUpdateRequest(BaseModel):
-    email_general_news_enabled: bool = Field(alias="emailGeneralNewsEnabled")
-    email_platform_updates_enabled: bool = Field(alias="emailPlatformUpdatesEnabled")
+    # All optional: a partial update leaves any omitted field unchanged, so an
+    # older client that only sends two fields never resets the third.
+    email_general_news_enabled: Optional[bool] = Field(default=None, alias="emailGeneralNewsEnabled")
+    email_platform_updates_enabled: Optional[bool] = Field(default=None, alias="emailPlatformUpdatesEnabled")
+    email_lifecycle_enabled: Optional[bool] = Field(default=None, alias="emailLifecycleEnabled")
 
     model_config = {"populate_by_name": True}
 

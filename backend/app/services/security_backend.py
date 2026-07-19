@@ -65,6 +65,7 @@ from app.services.postgres_security_store import (  # noqa: F401
     update_user_profile,
     complete_user_profile,
     update_user_notification_preferences,
+    set_email_lifecycle_enabled,
     list_users,
     mark_generation_job_awaiting_review,
     preload_postgres as preload_security_store,
