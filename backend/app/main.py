@@ -1309,7 +1309,7 @@ def complete_current_user_profile(
 
 
 @app.patch("/me/preferences", tags=["Configuration"], summary="Update Current User Notification Preferences")
-@limiter.limit("20/minute")
+@limiter.limit("10/day")
 def update_current_user_notification_preferences(
     request: Request,
     payload: UserNotificationPreferencesUpdateRequest,

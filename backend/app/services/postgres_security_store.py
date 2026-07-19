@@ -286,12 +286,19 @@ def update_user_notification_preferences(
         if user is None:
             user = repo.ensure_user(uid, "", "")
             session.flush()
-        repo.update_user_notification_preferences(
-            user,
-            email_general_news_enabled=email_general_news_enabled,
-            email_platform_updates_enabled=email_platform_updates_enabled,
-            updated_at=now,
+        # No-op guard: only write when a preference actually changes, so
+        # repeated saves of the same values do not churn dead tuples / WAL.
+        already_matches = (
+            bool(user.email_general_news_enabled) == email_general_news_enabled
+            and bool(user.email_platform_updates_enabled) == email_platform_updates_enabled
         )
+        if not already_matches:
+            repo.update_user_notification_preferences(
+                user,
+                email_general_news_enabled=email_general_news_enabled,
+                email_platform_updates_enabled=email_platform_updates_enabled,
+                updated_at=now,
+            )
         result = _user_dict_from_model(user)
         result.update(get_profile_change_status(uid))
         return result

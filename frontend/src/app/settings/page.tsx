@@ -392,29 +392,6 @@ export default function SettingsPage() {
             <div className="space-y-6 p-5 sm:p-8">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <p className="font-medium text-[#dce1fb]">{t("AI General News")}</p>
-                  <p className="text-xs text-[#c2c6d6]">{t("Email updates about major AI news and general ecosystem shifts.")}</p>
-                </div>
-                <button
-                  type="button"
-                  disabled={savingNotifications}
-                  onClick={() =>
-                    void handleNotificationPreferenceChange({
-                      emailGeneralNewsEnabled: !emailNotifications,
-                      emailPlatformUpdatesEnabled: productUpdates,
-                    })
-                  }
-                  className={`relative h-6 w-11 rounded-full transition ${emailNotifications ? "bg-[#adc6ff]" : "bg-[#2e3447]"} ${savingNotifications ? "cursor-not-allowed opacity-70" : ""}`}
-                >
-                  <span
-                    className={`absolute top-[2px] h-5 w-5 rounded-full bg-white transition ${
-                      emailNotifications ? "left-[22px] rtl:left-auto rtl:right-[22px]" : "left-[2px] rtl:left-auto rtl:right-[2px]"
-                    }`}
-                  />
-                </button>
-              </div>
-              <div className="flex items-start justify-between gap-4">
-                <div>
                   <p className="font-medium text-[#dce1fb]">{t("Platform News and Model Updates")}</p>
                   <p className="text-xs text-[#c2c6d6]">{t("New Vibecraft features, platform changes, and newly added AI models.")}</p>
                 </div>
