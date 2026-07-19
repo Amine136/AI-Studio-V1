@@ -39,6 +39,12 @@ def ensure_user(uid: str, email: str, display_name: str) -> dict[str, Any]:
     with session_scope() as session:
         repo = SecurityRepository(session)
         user = repo.ensure_user(uid, email, display_name)
+        # Brand-new account: grant the one-time welcome bonus in this same
+        # transaction so it commits atomically with the row insert. The
+        # was_created race resolves to exactly one committed insert, so the
+        # bonus is granted exactly once.
+        if getattr(user, "_is_newly_created", False):
+            _grant_signup_bonus(repo, user, int(time.time()))
         data = _user_dict_from_model(user)
         # Surface the one-shot "brand-new user" signal (see repo.ensure_user) so
         # the auth dependency can fire a server-side CompleteRegistration once.
@@ -2303,6 +2309,46 @@ def _credit_lot(
     )
     user.credits_minor += amount_minor
     return lot
+
+
+def _grant_signup_bonus(repo: SecurityRepository, user: Any, now: int) -> None:
+    """Grant a brand-new account its one-time welcome credits: a gift-style lot
+    that expires after ``settings.signup_bonus_validity_seconds`` (all gift-lot
+    mechanics apply). Distinguished from redeemed gifts by the ledger
+    reason="signup_bonus" and a NULL ``code_hash``. No-op when the configured
+    amount is <= 0. MUST run inside the account-creation transaction (see
+    ``ensure_user``) so it commits atomically with the user row and can never
+    double-grant."""
+    bonus_minor = _credits_to_minor(getattr(settings, "signup_bonus_credits", 0) or 0)
+    if bonus_minor <= 0:
+        return
+    validity = int(getattr(settings, "signup_bonus_validity_seconds", 0) or 0)
+    expires_at = (now + validity) if validity > 0 else None
+    lot = _credit_lot(
+        repo,
+        user,
+        bonus_minor,
+        now,
+        source="gift",
+        expires_at=expires_at,
+    )
+    repo.add_ledger_entry(
+        uid=user.uid,
+        delta_minor=bonus_minor,
+        reason="signup_bonus",
+        actor_uid=user.uid,
+        metadata_json=_with_activity_metadata(
+            {
+                "lot_id": lot.id,
+                "expires_at": expires_at,
+                "validity_seconds": validity or None,
+            },
+            activity_id=f"signup_bonus:{user.uid}",
+            activity_type="signup_bonus",
+            activity_label="Welcome Bonus",
+        ),
+        created_at=now,
+    )
 
 
 def _reserve_across_lots(

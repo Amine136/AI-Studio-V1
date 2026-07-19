@@ -245,6 +245,14 @@ class Config:
         # does not specify its own. 0 = redeemed credits never expire by default.
         self.default_gift_validity_seconds = int(os.getenv("DEFAULT_GIFT_VALIDITY_SECONDS", "0"))
 
+        # One-time welcome bonus granted at account creation: free credits that
+        # expire after a validity window. Created as a gift lot (so every gift-lot
+        # mechanic applies: soonest-expiry-first spend, expiry sweep, breakdown
+        # display) and distinguished in the ledger by reason="signup_bonus". Set
+        # SIGNUP_BONUS_CREDITS to 0 to disable the bonus entirely.
+        self.signup_bonus_credits = float(os.getenv("SIGNUP_BONUS_CREDITS", "1.0"))
+        self.signup_bonus_validity_seconds = int(os.getenv("SIGNUP_BONUS_VALIDITY_SECONDS", str(7 * 24 * 60 * 60)))
+
         # System model settings used for the intent-analysis step.
         self.system_llm_provider = os.getenv("SYSTEM_LLM_PROVIDER", "google-gemini")
         self.system_llm_models = [
