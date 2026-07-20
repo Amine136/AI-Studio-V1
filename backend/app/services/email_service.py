@@ -99,14 +99,12 @@ def _shell(title: str, body_html: str, *, preheader: str = "", unsubscribe_url: 
 <!doctype html><html><body style="margin:0;background:#f5f6f9;padding:32px 0;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">{preheader_html}
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
     <table role="presentation" width="520" cellpadding="0" cellspacing="0" style="max-width:520px;width:100%;background:#ffffff;border:1px solid #e7eaf0;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(30,37,49,0.06)">
-      <tr><td style="padding:36px 40px 0"><span style="font-family:Georgia,'Times New Roman',serif;font-size:23px;font-weight:700;letter-spacing:-0.01em;color:#1e2531">{_BRAND}</span></td></tr>
-      <tr><td style="padding:20px 40px 0"><h1 style="margin:0;font-family:Georgia,'Times New Roman',serif;font-size:20px;font-weight:600;line-height:1.35;color:#1e2531">{title}</h1></td></tr>
+      <tr><td style="padding:36px 40px 0"><h1 style="margin:0;font-family:Georgia,'Times New Roman',serif;font-size:20px;font-weight:600;line-height:1.35;color:#1e2531">{title}</h1></td></tr>
       <tr><td style="padding:16px 40px 36px;color:#3d4552;font-size:15px;line-height:1.65">{body_html}</td></tr>
     </table>
     <table role="presentation" width="520" cellpadding="0" cellspacing="0" style="max-width:520px;width:100%">
       <tr><td style="padding:18px 40px 8px;color:#586274;font-size:12px;line-height:1.55">
-        <p style="margin:0">{_BRAND} &mdash; AI image &amp; caption studio.</p>
-        <p style="margin:5px 0 0;font-size:11px;color:#586274">{_BRAND} &middot; Tunis, Tunisia &middot; vibecraft.ouni.space</p>{footer_unsub}
+        <p style="margin:0;font-size:11px;color:#586274">{_BRAND} &middot; Tunis, Tunisia &middot; vibecraft.ouni.space</p>{footer_unsub}
       </td></tr>
     </table>
   </td></tr></table>
