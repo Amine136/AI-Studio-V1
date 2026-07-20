@@ -2081,8 +2081,9 @@ def submit_platform_feedback(
         raise HTTPException(status_code=400, detail="Invalid feedback") from exc
     # Acknowledge receipt, deduped by the feedback item id (one ack per submission).
     recipient = str(user.get("email") or "")
+    stored = result.pop("stored", False) if isinstance(result, dict) else False
     item_id = result.get("id") if isinstance(result, dict) else None
-    if recipient and item_id:
+    if recipient and item_id and stored:
         background_tasks.add_task(
             dispatch_email,
             "feedback_ack",

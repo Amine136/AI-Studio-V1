@@ -800,6 +800,7 @@ def submit_feedback(
                 "status": "new",
                 "createdAt": now,
                 "updatedAt": now,
+                "stored": False,
             }
         item = repo.create_feedback_item(
             uid=uid,
@@ -810,7 +811,9 @@ def submit_feedback(
             language=language,
             user_agent=user_agent,
         )
-        return _feedback_dict_from_model(item)
+        result = _feedback_dict_from_model(item)
+        result["stored"] = True
+        return result
 
 
 def list_feedback_items(*, status: str | None = None, limit: int = 200) -> list[dict[str, Any]]:
