@@ -225,8 +225,8 @@ def _tpl_account_suspended(name: str, ctx: dict, uid: str) -> tuple[str, str, st
         )
         body = (
             f"<p>{_greeting(name)}</p>"
-            f"<p>Your {_BRAND} account has been temporarily suspended due to repeated policy "
-            f"violations.</p>"
+            f"<p>Your {_BRAND} account has been temporarily suspended due to repeated "
+            f"<a href='{settings.app_base_url}/policy' style='color:#3d4552;text-decoration:underline'>policy</a> violations.</p>"
             f"{reason_html}{period_html}"
             f"<p>Please note that further violations may result in a permanent ban of your "
             f"account.</p>"
@@ -243,7 +243,8 @@ def _tpl_account_suspended(name: str, ctx: dict, uid: str) -> tuple[str, str, st
     body = (
         f"<p>{_greeting(name)}</p>"
         f"<p>Following a review of your account activity, your {_BRAND} account has been "
-        f"permanently suspended due to severe or repeated violations of our Terms of Service.</p>"
+        f"permanently suspended due to severe or repeated violations of our "
+        f"<a href='{settings.app_base_url}/policy' style='color:#3d4552;text-decoration:underline'>Terms of Service</a>.</p>"
         f"{reason_html}"
         f"<p><strong>Status:</strong> Account terminated permanently.</p>"
         f"<p>As a result, your access to the platform has been revoked, and any remaining "
@@ -345,7 +346,7 @@ def _tpl_winback(name: str, ctx: dict, uid: str) -> tuple[str, str, str]:
 def _tpl_feedback_ack(name: str, ctx: dict, uid: str) -> tuple[str, str, str]:
     body = (
         f"<p>{_greeting(name)}</p>"
-        f"<p>Thanks for sharing your thoughts with us! We've received your feedback, and our "
+        f"<p>Thanks for sharing your thoughts with us! 🙌 We've received your feedback, and our "
         f"team is already taking a look.</p>"
         f"<p>We read every single note that comes through, even if we aren't always able to "
         f"reply to each one individually. Your insights are what help us make {_BRAND} better "
@@ -353,7 +354,7 @@ def _tpl_feedback_ack(name: str, ctx: dict, uid: str) -> tuple[str, str, str]:
         f"<p>Thanks for helping us build!</p>"
         f"<p style='margin:18px 0 0;color:#586274'>— The {_BRAND} Team</p>"
     )
-    return f"We've received your feedback! 🙌", _shell("Thanks for the feedback", body), \
+    return f"We've received your feedback", _shell("Thanks for the feedback", body), \
         f"Thanks for your feedback — we've received it."
 
 
