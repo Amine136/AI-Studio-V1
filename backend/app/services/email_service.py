@@ -73,21 +73,20 @@ _BRAND = "Vibecraft"
 def _shell(title: str, body_html: str, *, unsubscribe_url: Optional[str] = None) -> str:
     footer_unsub = (
         f'<p style="margin:16px 0 0">You are receiving occasional tips and reminders. '
-        f'<a href="{unsubscribe_url}" style="color:#2563eb;text-decoration:underline">Unsubscribe</a>.</p>'
+        f'<a href="{unsubscribe_url}" style="color:#586274;text-decoration:underline">Unsubscribe</a>.</p>'
         if unsubscribe_url
         else ""
     )
     return f"""\
-<!doctype html><html><body style="margin:0;background:#eef1f8;padding:24px 0;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
+<!doctype html><html><body style="margin:0;background:#f5f6f9;padding:32px 0;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
-    <table role="presentation" width="520" cellpadding="0" cellspacing="0" style="max-width:520px;width:100%;background:#ffffff;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;box-shadow:0 8px 30px rgba(15,23,42,0.08)">
-      <tr><td style="height:4px;line-height:4px;font-size:0;mso-line-height-rule:exactly;background:#2563eb;background-image:linear-gradient(90deg,#2563eb,#7c3aed)">&nbsp;</td></tr>
-      <tr><td style="padding:26px 32px 6px"><span style="font-size:20px;font-weight:800;letter-spacing:-0.02em;color:#2563eb">{_BRAND}</span></td></tr>
-      <tr><td style="padding:8px 32px 4px"><h1 style="margin:0;font-size:22px;line-height:1.3;color:#0f172a">{title}</h1></td></tr>
-      <tr><td style="padding:12px 32px 30px;color:#475569;font-size:15px;line-height:1.6">{body_html}</td></tr>
+    <table role="presentation" width="520" cellpadding="0" cellspacing="0" style="max-width:520px;width:100%;background:#ffffff;border:1px solid #e7eaf0;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(30,37,49,0.06)">
+      <tr><td style="padding:36px 40px 0"><span style="font-family:Georgia,'Times New Roman',serif;font-size:23px;font-weight:700;letter-spacing:-0.01em;color:#1e2531">{_BRAND}</span></td></tr>
+      <tr><td style="padding:20px 40px 0"><h1 style="margin:0;font-family:Georgia,'Times New Roman',serif;font-size:20px;font-weight:600;line-height:1.35;color:#1e2531">{title}</h1></td></tr>
+      <tr><td style="padding:16px 40px 36px;color:#3d4552;font-size:15px;line-height:1.65">{body_html}</td></tr>
     </table>
     <table role="presentation" width="520" cellpadding="0" cellspacing="0" style="max-width:520px;width:100%">
-      <tr><td style="padding:16px 32px;color:#475569;font-size:12px;line-height:1.5">
+      <tr><td style="padding:18px 40px 8px;color:#586274;font-size:12px;line-height:1.55">
         <p style="margin:0">{_BRAND} — AI image & caption studio.</p>{footer_unsub}
       </td></tr>
     </table>
@@ -97,8 +96,8 @@ def _shell(title: str, body_html: str, *, unsubscribe_url: Optional[str] = None)
 
 def _button(label: str, url: str) -> str:
     return (
-        f'<a href="{url}" style="display:inline-block;background-color:#2563eb;background-image:linear-gradient(135deg,#2563eb,#7c3aed);color:#ffffff;'
-        f'font-weight:700;text-decoration:none;padding:12px 22px;border-radius:9px">{label}</a>'
+        f'<a href="{url}" style="display:inline-block;background-color:#2563eb;color:#ffffff;'
+        f'font-weight:600;text-decoration:none;padding:12px 24px;border-radius:8px">{label}</a>'
     )
 
 
@@ -219,7 +218,7 @@ def _tpl_credit_receipt(name: str, ctx: dict, uid: str) -> tuple[str, str, str]:
             from datetime import datetime, timezone
 
             expiry_line = (
-                f"<p style='color:#b45309'>These gift credits expire on "
+                f"<p style='color:#1e2531;font-weight:600'>These gift credits expire on "
                 f"{datetime.fromtimestamp(int(expires_at), tz=timezone.utc):%Y-%m-%d} — use them before then.</p>"
             )
         except Exception:
