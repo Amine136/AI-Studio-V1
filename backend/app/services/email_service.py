@@ -68,17 +68,35 @@ def _unsubscribe_url(uid: str) -> str:
 # --- HTML shell ---------------------------------------------------------------
 
 _BRAND = "Vibecraft"
+_SUPPORT_EMAIL = "contact@ouni.space"
 
 
-def _shell(title: str, body_html: str, *, unsubscribe_url: Optional[str] = None) -> str:
+def _support_link() -> str:
+    return (
+        f'<a href="mailto:{_SUPPORT_EMAIL}" '
+        f'style="color:#3d4552;text-decoration:underline">{_SUPPORT_EMAIL}</a>'
+    )
+
+
+def _shell(title: str, body_html: str, *, preheader: str = "", unsubscribe_url: Optional[str] = None) -> str:
     footer_unsub = (
         f'<p style="margin:16px 0 0">You are receiving occasional tips and reminders. '
         f'<a href="{unsubscribe_url}" style="color:#586274;text-decoration:underline">Unsubscribe</a>.</p>'
         if unsubscribe_url
         else ""
     )
+    # Hidden inbox-preview text; the padding run stops body copy bleeding into it.
+    if preheader:
+        pad = "&#8199;&#65279;&#847; " * 20
+        preheader_html = (
+            '<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;'
+            'opacity:0;color:transparent;height:0;width:0;font-size:1px;line-height:1px">'
+            f"{preheader}{pad}</div>"
+        )
+    else:
+        preheader_html = ""
     return f"""\
-<!doctype html><html><body style="margin:0;background:#f5f6f9;padding:32px 0;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
+<!doctype html><html><body style="margin:0;background:#f5f6f9;padding:32px 0;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">{preheader_html}
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
     <table role="presentation" width="520" cellpadding="0" cellspacing="0" style="max-width:520px;width:100%;background:#ffffff;border:1px solid #e7eaf0;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(30,37,49,0.06)">
       <tr><td style="padding:36px 40px 0"><span style="font-family:Georgia,'Times New Roman',serif;font-size:23px;font-weight:700;letter-spacing:-0.01em;color:#1e2531">{_BRAND}</span></td></tr>
@@ -87,7 +105,8 @@ def _shell(title: str, body_html: str, *, unsubscribe_url: Optional[str] = None)
     </table>
     <table role="presentation" width="520" cellpadding="0" cellspacing="0" style="max-width:520px;width:100%">
       <tr><td style="padding:18px 40px 8px;color:#586274;font-size:12px;line-height:1.55">
-        <p style="margin:0">{_BRAND} — AI image & caption studio.</p>{footer_unsub}
+        <p style="margin:0">{_BRAND} &mdash; AI image &amp; caption studio.</p>
+        <p style="margin:5px 0 0;font-size:11px;color:#586274">{_BRAND} &middot; Tunis, Tunisia &middot; vibecraft.ouni.space</p>{footer_unsub}
       </td></tr>
     </table>
   </td></tr></table>
@@ -110,60 +129,77 @@ def _greeting(name: str) -> str:
 # Each returns (subject, html, text). `ctx` carries trigger-specific data.
 
 def _tpl_welcome(name: str, ctx: dict, uid: str) -> tuple[str, str, str]:
+    play = f"{settings.app_base_url}/playground"
     body = (
         f"<p>{_greeting(name)}</p>"
         f"<p>Welcome to {_BRAND} — your studio for AI-generated images and captions. "
-        f"Describe what you want and let the models do the work.</p>"
-        f"<p style='margin:22px 0'>{_button('Open the studio', f'{settings.app_base_url}/create')}</p>"
-        f"<p>Need credits to generate? You can grab some any time from your account.</p>"
+        f"Describe what you want, and the models do the work.</p>"
+        f"<p>Your account already has free credits to start, so you can make your first thing "
+        f"right now — no card needed.</p>"
+        f"<p style='margin:22px 0'>{_button('Open Playground', play)}</p>"
+        f"<p style='margin:16px 0 0;color:#586274;font-size:14px'>Want a whole set at once? "
+        f"<a href='{settings.app_base_url}/packs' style='color:#586274;text-decoration:underline'>Try Packs</a> "
+        f"for on-brand mockups.</p>"
     )
-    return f"Welcome to {_BRAND} 🎨", _shell(f"Welcome to {_BRAND}", body), \
-        f"Welcome to {_BRAND}. Open the studio: {settings.app_base_url}/create"
+    return f"Welcome to {_BRAND}", _shell(
+        f"Welcome to {_BRAND} 🎨", body,
+        preheader="Your first creations are on us — no card needed.",
+    ), f"Welcome to {_BRAND}. Open Playground: {play}"
 
 
 def _tpl_drip(name: str, ctx: dict, uid: str) -> tuple[str, str, str]:
     step = ctx.get("step", "day1")
     unsub = _unsubscribe_url(uid)
+    # (subject, preheader, heading, body_html, cta_label, path)
     lessons = {
         "day1": (
-            "Get the most out of Smart Generation",
-            "<p>Smart Generation writes a caption <em>and</em> an image from one prompt. "
-            "Try describing a scene, a mood, and a style together — the more specific, the better.</p>",
-            "Try Smart Generation",
-            "/create",
+            "Talk straight to the models",
+            "Playground is the heart of Vibecraft — direct, no menus.",
+            "Meet Playground",
+            "<p>Playground is the heart of Vibecraft — you talk directly to the models, like a "
+            "conversation. Ask for an image, refine it, change direction, ask again. No forms, "
+            "no long setup.</p>"
+            "<p>It's just you and the models, going back and forth until it's exactly right.</p>",
+            "Open Playground",
+            "/playground",
         ),
         "day3": (
-            "Explore Packs — batch-create on brand",
-            "<p>Packs let you generate a whole set of on-brand visuals at once — great for a launch, "
-            "a campaign, or a social calendar. Pick a pack and let the agent plan it.</p>",
+            "Packs — mockups and on-brand sets in one go",
+            "Pick a pack. The agent enhances your prompt and does the rest.",
+            "Packs — your shortcut to polished images",
+            "<p>When you need great images fast, Packs do the heavy lifting. Pick a pack and the "
+            "agent enhances your prompt, generates a whole set of on-brand visuals, and turns them "
+            "into ready-to-use mockups — perfect for a launch, a campaign, or a social calendar.</p>",
             "Browse Packs",
             "/packs",
         ),
         "day7": (
             "Make it yours",
-            "<p>Upload reference images, reuse them across generations, and switch models to match the look "
-            "you want. Small tweaks to your prompt go a long way.</p>",
-            "Keep creating",
-            "/create",
+            "Reference images, model switching, and small tweaks that go far.",
+            "Make it yours",
+            "<p>In Playground you can upload reference images, reuse them across generations, and "
+            "switch models to match the look you want. Small tweaks to your prompt go a long way.</p>",
+            "Open Playground",
+            "/playground",
         ),
     }
-    title, para, cta, path = lessons.get(step, lessons["day1"])
+    subject, preheader, heading, para, cta, path = lessons.get(step, lessons["day1"])
     body = (
         f"<p>{_greeting(name)}</p>{para}"
         f"<p style='margin:22px 0'>{_button(cta, f'{settings.app_base_url}{path}')}</p>"
     )
-    return f"{title} · {_BRAND}", _shell(title, body, unsubscribe_url=unsub), \
-        f"{title}. {settings.app_base_url}{path}"
+    return subject, _shell(heading, body, preheader=preheader, unsubscribe_url=unsub), \
+        f"{heading}. {settings.app_base_url}{path}"
 
 
 def _tpl_account_deactivated(name: str, ctx: dict, uid: str) -> tuple[str, str, str]:
     body = (
         f"<p>{_greeting(name)}</p>"
         f"<p>Your {_BRAND} account has been deactivated and access is now disabled. "
-        f"If this wasn't you or you'd like it restored, just reply to this email.</p>"
+        f"If this wasn't you or you'd like it restored, contact us at {_support_link()}.</p>"
     )
     return f"Your {_BRAND} account was deactivated", _shell("Account deactivated", body), \
-        f"Your {_BRAND} account has been deactivated."
+        f"Your {_BRAND} account has been deactivated. Contact {_SUPPORT_EMAIL} to restore it."
 
 
 def _tpl_account_suspended(name: str, ctx: dict, uid: str) -> tuple[str, str, str]:
@@ -185,18 +221,19 @@ def _tpl_account_suspended(name: str, ctx: dict, uid: str) -> tuple[str, str, st
         f"<p>{_greeting(name)}</p>"
         f"<p>Your {_BRAND} account has been suspended for a policy violation.</p>"
         f"{reason_html}{until_html}"
-        f"<p>If you believe this was a mistake, reply to this email and we'll review it.</p>"
+        f"<p>If you believe this was a mistake, contact our team at {_support_link()} "
+        f"and we'll review it.</p>"
     )
     return f"Your {_BRAND} account was suspended", _shell("Account suspended", body), \
-        f"Your {_BRAND} account has been suspended. {reason}"
+        f"Your {_BRAND} account has been suspended. {reason} Contact {_SUPPORT_EMAIL} to appeal."
 
 
 def _tpl_account_unsuspended(name: str, ctx: dict, uid: str) -> tuple[str, str, str]:
     body = (
         f"<p>{_greeting(name)}</p>"
         f"<p>Good news — your {_BRAND} account has been reinstated and you can create again. "
-        f"Thanks for keeping things within the guidelines.</p>"
-        f"<p style='margin:22px 0'>{_button('Back to the studio', f'{settings.app_base_url}/create')}</p>"
+        f"You're all set — welcome back.</p>"
+        f"<p style='margin:22px 0'>{_button('Back to the studio', f'{settings.app_base_url}/playground')}</p>"
     )
     return f"Your {_BRAND} account is active again", _shell("Account reinstated", body), \
         f"Your {_BRAND} account has been reinstated."
@@ -227,7 +264,7 @@ def _tpl_credit_receipt(name: str, ctx: dict, uid: str) -> tuple[str, str, str]:
         f"<p>{_greeting(name)}</p>"
         f"<p><strong>{credits_txt} credits</strong> have been added to your account.</p>"
         f"{balance_line}{expiry_line}"
-        f"<p style='margin:22px 0'>{_button('Start creating', f'{settings.app_base_url}/create')}</p>"
+        f"<p style='margin:22px 0'>{_button('Start creating', f'{settings.app_base_url}/playground')}</p>"
     )
     return f"You've got {credits_txt} {_BRAND} credits", _shell("Credits added", body), \
         f"{credits_txt} credits added to your {_BRAND} account."
@@ -240,26 +277,46 @@ def _tpl_credit_expiry_warn(name: str, ctx: dict, uid: str) -> tuple[str, str, s
         f"<p>{_greeting(name)}</p>"
         f"<p>Heads up — <strong>{remaining_txt} of your gift credits expire within the next 24 hours.</strong> "
         f"Use them before they're gone.</p>"
-        f"<p style='margin:22px 0'>{_button('Use my credits', f'{settings.app_base_url}/create')}</p>"
+        f"<p style='margin:22px 0'>{_button('Use my credits', f'{settings.app_base_url}/playground')}</p>"
     )
     return f"{remaining_txt} {_BRAND} credits expire soon", _shell("Your credits expire soon", body), \
-        f"{remaining_txt} gift credits expire within 24 hours. {settings.app_base_url}/create"
+        f"{remaining_txt} gift credits expire within 24 hours. {settings.app_base_url}/playground"
 
 
 def _tpl_winback(name: str, ctx: dict, uid: str) -> tuple[str, str, str]:
     unsub = _unsubscribe_url(uid)
     step = ctx.get("step", "d7")
     if step == "d14":
-        title = f"Your creations are waiting at {_BRAND}"
-        para = "<p>It's been a couple of weeks. New models and packs have landed since you last created — come see what you can make now.</p>"
+        subject = f"Your creations are waiting at {_BRAND}"
+        preheader = "See what you can make now."
+        heading = "Come back and make something"
+        recent = str(ctx.get("recent_additions") or "").strip()
+        if recent:
+            para = (
+                f"<p>It's been a couple of weeks. New models and packs have landed since you "
+                f"last created — {recent}. Come see what you can make now.</p>"
+            )
+        else:
+            para = (
+                "<p>It's been a couple of weeks. Your studio's ready whenever you are — "
+                "come see what you can make now.</p>"
+            )
+        cta, path = "See what's new", "/packs"
     else:
-        title = f"We miss you at {_BRAND}"
-        para = "<p>You haven't created in a while. Pick up where you left off — a great image is one prompt away.</p>"
+        subject = "Ready for your next one?"
+        preheader = "Your next idea is one prompt away."
+        heading = "Your studio's still warm"
+        para = (
+            "<p>It's been a few days. Your next idea is one prompt away — describe it and "
+            "let the models do the work.</p>"
+        )
+        cta, path = "Create something", "/playground"
     body = (
         f"<p>{_greeting(name)}</p>{para}"
-        f"<p style='margin:22px 0'>{_button('Create something', f'{settings.app_base_url}/create')}</p>"
+        f"<p style='margin:22px 0'>{_button(cta, f'{settings.app_base_url}{path}')}</p>"
     )
-    return title, _shell(title, body, unsubscribe_url=unsub), f"{title}. {settings.app_base_url}/create"
+    return subject, _shell(heading, body, preheader=preheader, unsubscribe_url=unsub), \
+        f"{heading}. {settings.app_base_url}{path}"
 
 
 def _tpl_feedback_ack(name: str, ctx: dict, uid: str) -> tuple[str, str, str]:
