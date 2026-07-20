@@ -130,14 +130,12 @@ def _tpl_welcome(name: str, ctx: dict, uid: str) -> tuple[str, str, str]:
     play = f"{settings.app_base_url}/playground"
     body = (
         f"<p>{_greeting(name)}</p>"
-        f"<p>Welcome to {_BRAND} — your studio for AI-generated images and captions. "
-        f"Describe what you want, and the models do the work.</p>"
-        f"<p>Your account already has free credits to start, so you can make your first thing "
-        f"right now — no card needed.</p>"
-        f"<p style='margin:22px 0'>{_button('Open Playground', play)}</p>"
-        f"<p style='margin:16px 0 0;color:#586274;font-size:14px'>Want a whole set at once? "
-        f"<a href='{settings.app_base_url}/packs' style='color:#586274;text-decoration:underline'>Try Packs</a> "
-        f"for on-brand mockups.</p>"
+        f"<p>Thanks for joining {_BRAND}! You've just unlocked a single workspace packed with "
+        f"the latest state-of-the-art AI image models.</p>"
+        f"<p>We've already dropped free credits into your account so you can start experimenting "
+        f"right away.</p>"
+        f"<p>No setup, no friction. Just pure creativity.</p>"
+        f"<p style='margin:22px 0'>{_button('Claim Your Credits &amp; Create', play)}</p>"
     )
     return f"Welcome to {_BRAND}", _shell(
         f"Welcome to {_BRAND} 🎨", body,
@@ -162,13 +160,19 @@ def _tpl_drip(name: str, ctx: dict, uid: str) -> tuple[str, str, str]:
             "/playground",
         ),
         "day3": (
-            "Packs — mockups and on-brand sets in one go",
-            "Pick a pack. The agent enhances your prompt and does the rest.",
-            "Packs — your shortcut to polished images",
-            "<p>When you need great images fast, Packs do the heavy lifting. Pick a pack and the "
-            "agent enhances your prompt, generates a whole set of on-brand visuals, and turns them "
-            "into ready-to-use mockups — perfect for a launch, a campaign, or a social calendar.</p>",
-            "Browse Packs",
+            "Transform your ideas into reality with Packs",
+            "Product mockups, packaging, ads, and social — one canvas.",
+            "Meet Packs",
+            "<p>Now that you've explored the basics of Vibecraft, it's time to see how it fits "
+            "into your actual workflow. Welcome to Packs.</p>"
+            "<p>Whether you need to showcase a physical product, drop it into a completely new "
+            "background, or design high-converting marketing assets, Packs gives you the exact "
+            "canvas you need.</p>"
+            "<p>From stunning product mockups and packaging designs to ready-to-go social media "
+            "images and high-performing ads, you can create professional-grade visuals in just a "
+            "few clicks — or simply browse them for instant inspiration.</p>"
+            "<p>Ready to see what you can build?</p>",
+            "Explore Vibecraft Packs",
             "/packs",
         ),
         "day7": (
@@ -204,26 +208,53 @@ def _tpl_account_suspended(name: str, ctx: dict, uid: str) -> tuple[str, str, st
     reason = str(ctx.get("reason") or "").strip()
     until = ctx.get("until")
     reason_html = f"<p><strong>Reason:</strong> {reason}</p>" if reason else ""
-    until_html = ""
+    sign_off = f"<p style='margin:18px 0 0;color:#586274'>— The {_BRAND} Security Team</p>"
+
     if until:
+        # Timed suspension — there is a defined end date.
         try:
             from datetime import datetime, timezone
 
-            until_html = (
-                f"<p>Your access is restricted until "
-                f"{datetime.fromtimestamp(int(until), tz=timezone.utc):%Y-%m-%d %H:%M UTC}.</p>"
-            )
+            until_txt = f"{datetime.fromtimestamp(int(until), tz=timezone.utc):%B %d, %Y, at %H:%M UTC}"
         except Exception:
-            until_html = ""
+            until_txt = ""
+        period_html = (
+            f"<p><strong>Suspension Period:</strong> Access is restricted until {until_txt}.</p>"
+            if until_txt
+            else ""
+        )
+        body = (
+            f"<p>{_greeting(name)}</p>"
+            f"<p>Your {_BRAND} account has been temporarily suspended due to repeated policy "
+            f"violations.</p>"
+            f"{reason_html}{period_html}"
+            f"<p>Please note that further violations may result in a permanent ban of your "
+            f"account.</p>"
+            f"<p>If you believe this suspension was made in error or would like to appeal the "
+            f"decision, please contact our support team at {_support_link()}, and we will "
+            f"review your case.</p>"
+            f"{sign_off}"
+        )
+        return f"Notice: Your {_BRAND} account has been suspended", \
+            _shell("Account suspended", body), \
+            f"Your {_BRAND} account has been suspended. {reason} Appeal: {_SUPPORT_EMAIL}"
+
+    # No end date → permanent termination.
     body = (
         f"<p>{_greeting(name)}</p>"
-        f"<p>Your {_BRAND} account has been suspended for a policy violation.</p>"
-        f"{reason_html}{until_html}"
-        f"<p>If you believe this was a mistake, contact our team at {_support_link()} "
-        f"and we'll review it.</p>"
+        f"<p>Following a review of your account activity, your {_BRAND} account has been "
+        f"permanently suspended due to severe or repeated violations of our Terms of Service.</p>"
+        f"{reason_html}"
+        f"<p><strong>Status:</strong> Account terminated permanently.</p>"
+        f"<p>As a result, your access to the platform has been revoked, and any remaining "
+        f"credits or active subscriptions have been canceled.</p>"
+        f"<p>If you believe this decision was made in error and wish to appeal the termination, "
+        f"you may submit a final review request to our team at {_support_link()}.</p>"
+        f"{sign_off}"
     )
-    return f"Your {_BRAND} account was suspended", _shell("Account suspended", body), \
-        f"Your {_BRAND} account has been suspended. {reason} Contact {_SUPPORT_EMAIL} to appeal."
+    return f"Notice: Your {_BRAND} account has been permanently terminated", \
+        _shell("Account permanently terminated", body), \
+        f"Your {_BRAND} account has been permanently terminated. {reason} Appeal: {_SUPPORT_EMAIL}"
 
 
 def _tpl_account_unsuspended(name: str, ctx: dict, uid: str) -> tuple[str, str, str]:
@@ -286,29 +317,23 @@ def _tpl_winback(name: str, ctx: dict, uid: str) -> tuple[str, str, str]:
     step = ctx.get("step", "d7")
     if step == "d14":
         subject = f"Your creations are waiting at {_BRAND}"
-        preheader = "See what you can make now."
-        heading = "Come back and make something"
-        recent = str(ctx.get("recent_additions") or "").strip()
-        if recent:
-            para = (
-                f"<p>It's been a couple of weeks. New models and packs have landed since you "
-                f"last created — {recent}. Come see what you can make now.</p>"
-            )
-        else:
-            para = (
-                "<p>It's been a couple of weeks. Your studio's ready whenever you are — "
-                "come see what you can make now.</p>"
-            )
+        preheader = "Fresh models and smoother workflows are waiting."
+        heading = "Missing that creative spark? ✨"
+        para = (
+            "<p>It's been a couple of weeks since your last creation. The studio has been "
+            "upgraded with fresh models and smoother workflows — come see what's waiting for "
+            "you.</p>"
+        )
         cta, path = "See what's new", "/packs"
     else:
         subject = "Ready for your next one?"
         preheader = "Your next idea is one prompt away."
-        heading = "Your studio's still warm"
+        heading = "Your studio's still warm 🔥"
         para = (
-            "<p>It's been a few days. Your next idea is one prompt away — describe it and "
-            "let the models do the work.</p>"
+            "<p>Your next big idea is just a prompt away. Drop back into the studio, describe "
+            "what's in your head, and let the models handle the rest.</p>"
         )
-        cta, path = "Create something", "/playground"
+        cta, path = "Bring it to life", "/playground"
     body = (
         f"<p>{_greeting(name)}</p>{para}"
         f"<p style='margin:22px 0'>{_button(cta, f'{settings.app_base_url}{path}')}</p>"
@@ -320,10 +345,15 @@ def _tpl_winback(name: str, ctx: dict, uid: str) -> tuple[str, str, str]:
 def _tpl_feedback_ack(name: str, ctx: dict, uid: str) -> tuple[str, str, str]:
     body = (
         f"<p>{_greeting(name)}</p>"
-        f"<p>Thanks for your feedback — we've received it and the team will take a look. "
-        f"We read everything, even when we can't reply to each note individually.</p>"
+        f"<p>Thanks for sharing your thoughts with us! We've received your feedback, and our "
+        f"team is already taking a look.</p>"
+        f"<p>We read every single note that comes through, even if we aren't always able to "
+        f"reply to each one individually. Your insights are what help us make {_BRAND} better "
+        f"every day.</p>"
+        f"<p>Thanks for helping us build!</p>"
+        f"<p style='margin:18px 0 0;color:#586274'>— The {_BRAND} Team</p>"
     )
-    return f"We got your feedback · {_BRAND}", _shell("Thanks for the feedback", body), \
+    return f"We've received your feedback! 🙌", _shell("Thanks for the feedback", body), \
         f"Thanks for your feedback — we've received it."
 
 
