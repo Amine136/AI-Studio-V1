@@ -1376,6 +1376,8 @@ def update_current_user_notification_preferences(
         email_general_news_enabled=payload.email_general_news_enabled,
         email_platform_updates_enabled=payload.email_platform_updates_enabled,
         email_lifecycle_enabled=payload.email_lifecycle_enabled,
+        preferred_language=payload.preferred_language,
+        mark_prompted=bool(payload.preferences_prompted),
     )
 
 

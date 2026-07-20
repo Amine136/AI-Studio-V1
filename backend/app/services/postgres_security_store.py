@@ -15,6 +15,7 @@ from app.db.repositories import SecurityRepository
 from app.db.session import session_scope
 
 CREDIT_SCALE = 100
+_ALLOWED_UI_LANGUAGES = {"en", "fr", "ar"}
 CHAT_COST_SCALE = 1_000_000
 CODE_PREFIX = "VC-"
 CODE_BODY_LENGTH = 30
@@ -315,6 +316,8 @@ def update_user_notification_preferences(
     email_general_news_enabled: bool | None = None,
     email_platform_updates_enabled: bool | None = None,
     email_lifecycle_enabled: bool | None = None,
+    preferred_language: str | None = None,
+    mark_prompted: bool = False,
 ) -> dict[str, Any]:
     now = int(time.time())
     with session_scope() as session:
@@ -355,6 +358,22 @@ def update_user_notification_preferences(
                 email_lifecycle_enabled=next_lifecycle,
                 updated_at=now,
             )
+        # Language + one-time first-run prompt stamp: independent of the
+        # notification flags above, so a Skip (no language) still records the
+        # stamp, and a language-only save still persists.
+        pref_changed = False
+        if preferred_language is not None:
+            lang = str(preferred_language).strip().lower()
+            if lang in _ALLOWED_UI_LANGUAGES and user.preferred_language != lang:
+                user.preferred_language = lang
+                pref_changed = True
+        # Stamp exactly once: a later Settings save must not move the timestamp.
+        if mark_prompted and user.preferences_prompted_at is None:
+            user.preferences_prompted_at = now
+            pref_changed = True
+        if pref_changed:
+            user.updated_at = now
+            session.flush()
         result = _user_dict_from_model(user)
         result.update(get_profile_change_status(uid))
         return result
@@ -2722,6 +2741,9 @@ def _user_dict_from_model(user: Any) -> dict[str, Any]:
         "isDeactivated": bool(user.is_deactivated),
         "deactivatedAt": user.deactivated_at,
         "deactivationReason": user.deactivation_reason or "",
+        "preferredLanguage": getattr(user, "preferred_language", None) or None,
+        # First-run preferences card shows exactly once: NULL prompt stamp = not shown yet.
+        "needsPreferencesSetup": getattr(user, "preferences_prompted_at", None) is None,
     }
 
 

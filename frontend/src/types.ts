@@ -219,6 +219,8 @@ export interface CurrentUserProfile {
   emailGeneralNewsEnabled?: boolean;
   emailPlatformUpdatesEnabled?: boolean;
   emailLifecycleEnabled?: boolean;
+  preferredLanguage?: string | null;
+  needsPreferencesSetup?: boolean;
   credits?: number;
   reservedCredits?: number;
   totalCredits?: number;
@@ -278,6 +280,10 @@ export interface UserNotificationPreferencesUpdateRequest {
   emailGeneralNewsEnabled?: boolean;
   emailPlatformUpdatesEnabled?: boolean;
   emailLifecycleEnabled?: boolean;
+  // First-run preferences card: chosen UI language + a flag marking the
+  // one-time card answered (Save or Skip).
+  preferredLanguage?: string;
+  preferencesPrompted?: boolean;
 }
 
 export type DashboardNewsTone = "blue" | "purple" | "slate";

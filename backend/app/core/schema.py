@@ -242,6 +242,11 @@ class UserNotificationPreferencesUpdateRequest(BaseModel):
     email_general_news_enabled: Optional[bool] = Field(default=None, alias="emailGeneralNewsEnabled")
     email_platform_updates_enabled: Optional[bool] = Field(default=None, alias="emailPlatformUpdatesEnabled")
     email_lifecycle_enabled: Optional[bool] = Field(default=None, alias="emailLifecycleEnabled")
+    # First-run preferences card: the chosen UI language (en/fr/ar) and a flag
+    # that the one-time card was answered (Save or Skip). Both optional so a
+    # plain notification-settings save never touches them.
+    preferred_language: Optional[str] = Field(default=None, alias="preferredLanguage")
+    preferences_prompted: Optional[bool] = Field(default=None, alias="preferencesPrompted")
 
     model_config = {"populate_by_name": True}
 

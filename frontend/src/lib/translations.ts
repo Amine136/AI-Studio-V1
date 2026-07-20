@@ -1,5 +1,12 @@
 export const translations = {
   en: {
+    "Welcome to Vibecraft": "Welcome to Vibecraft",
+    "Set your language and theme to get started. You can change these anytime in Settings.": "Set your language and theme to get started. You can change these anytime in Settings.",
+    "Skip for now": "Skip for now",
+    "Save preferences": "Save preferences",
+    "English": "English",
+    "French": "French",
+    "Arabic": "Arabic",
 
     // Feedback
     "Feedback": "Feedback",
@@ -578,6 +585,13 @@ export const translations = {
     "Vibecraft AI Tunis. The premier Tunisian AI studio. All rights reserved.": "Vibecraft AI Tunis. The premier Tunisian AI studio. All rights reserved."
   },
   fr: {
+    "Welcome to Vibecraft": "Bienvenue sur Vibecraft",
+    "Set your language and theme to get started. You can change these anytime in Settings.": "Choisissez votre langue et votre thème pour commencer. Vous pourrez les modifier à tout moment dans les Paramètres.",
+    "Skip for now": "Ignorer pour l'instant",
+    "Save preferences": "Enregistrer les préférences",
+    "English": "Anglais",
+    "French": "Français",
+    "Arabic": "Arabe",
 
     // Feedback
     "Feedback": "Feedback",
@@ -1295,6 +1309,13 @@ export const translations = {
     "Vibecraft AI Tunis. The premier Tunisian AI studio. All rights reserved.": "Vibecraft AI Tunis. Le premier studio d'IA tunisien. Tous droits réservés."
   },
   ar: {
+    "Welcome to Vibecraft": "مرحباً بك في Vibecraft",
+    "Set your language and theme to get started. You can change these anytime in Settings.": "اختر لغتك ومظهرك للبدء. يمكنك تغييرهما في أي وقت من الإعدادات.",
+    "Skip for now": "تخطَّ الآن",
+    "Save preferences": "حفظ التفضيلات",
+    "English": "الإنجليزية",
+    "French": "الفرنسية",
+    "Arabic": "العربية",
 
     // Feedback
     "Feedback": "الملاحظات",

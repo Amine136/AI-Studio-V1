@@ -6,6 +6,7 @@ import { useAuth } from "../../context/AuthContext";
 import { signOutUser } from "../../lib/auth";
 import { api } from "../../services/api";
 import type { CurrentUserProfile } from "../../types";
+import FirstRunPreferencesModal from "../FirstRunPreferencesModal";
 
 function resolveInactiveReason(profile?: CurrentUserProfile | null, error?: unknown): "deactivated" | "suspended" | "unauthorized" {
   if (profile?.isDeactivated) return "deactivated";
@@ -35,6 +36,7 @@ export default function RequireActiveUser({
   const pathname = usePathname();
   const { user, loading: authLoading } = useAuth();
   const [allowed, setAllowed] = useState(false);
+  const [showPrefs, setShowPrefs] = useState(false);
   const [validating, setValidating] = useState(true);
 
   useEffect(() => {
@@ -85,6 +87,8 @@ export default function RequireActiveUser({
         }
 
         setAllowed(true);
+        // First-run: surface the one-time language/theme card (server-gated).
+        if (profile.needsPreferencesSetup) setShowPrefs(true);
       } catch (error: unknown) {
         const reason = resolveInactiveReason(undefined, error);
         await signOutUser().catch(() => undefined);
@@ -114,5 +118,10 @@ export default function RequireActiveUser({
     );
   }
 
-  return <>{children}</>;
+  return (
+    <>
+      {children}
+      <FirstRunPreferencesModal open={showPrefs} onClose={() => setShowPrefs(false)} />
+    </>
+  );
 }

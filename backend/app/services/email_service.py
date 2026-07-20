@@ -316,8 +316,8 @@ def dispatch(
         # Claim + consent in one transaction so a duplicate never even renders.
         with session_scope() as session:
             repo = SecurityRepository(session)
+            user = repo.get_user(uid)
             if category == "marketing":
-                user = repo.get_user(uid)
                 if (
                     user is None
                     or bool(user.is_deactivated)
@@ -325,6 +325,12 @@ def dispatch(
                     or not bool(user.email_lifecycle_enabled)
                 ):
                     return False
+            # Localize to the recipient's stored UI language when we have it;
+            # the caller-passed `lang` (default "en") is the fallback. Templates
+            # read ctx["lang"]. Copy is English-only for now, so this is inert
+            # until localized strings land — the plumbing is here as the drop-in.
+            effective_lang = getattr(user, "preferred_language", None) or lang or "en"
+            ctx.setdefault("lang", effective_lang)
             send_id = repo.claim_email_send(uid, trigger, dedupe_key)
             if send_id is None:
                 return False  # already claimed → no double-send

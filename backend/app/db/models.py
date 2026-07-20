@@ -41,6 +41,13 @@ class User(Base):
     # One-shot stamp for the server-side Meta CompleteRegistration (CAPI). NULL =
     # not yet sent; set exactly once via an atomic claim (see claim_capi_registration).
     capi_registration_sent_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    # UI language the user picked (en/fr/ar). NULL = never chose; server-side
+    # email sends fall back to "en". Set by the first-run preferences card / Settings.
+    preferred_language: Mapped[str | None] = mapped_column(String(2), nullable=True)
+    # When the one-time first-run preferences card was answered (Save or Skip).
+    # NULL = never prompted -> the card shows exactly once. Backfilled to the
+    # migration time for pre-existing users so only new accounts see it.
+    preferences_prompted_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
 
     created_codes: Mapped[list["CreditCode"]] = relationship(
         back_populates="created_by_user",
