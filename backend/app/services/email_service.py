@@ -6,9 +6,10 @@ render the template, send via ``email_client``, and record the outcome. It never
 raises; hooks call it directly (welcome, once per user) or via BackgroundTasks
 (endpoint events), and the scheduled sweeps call it in a loop.
 
-Copy is English-only for v1. The user's UI language is not persisted server-side
-(only a cookie), so localized sends need a stored language column first; every
-render takes a ``lang`` arg already so that is a drop-in later.
+Copy is localized to en / fr / ar. ``dispatch`` resolves the recipient's stored
+``users.preferred_language`` into ``ctx["lang"]`` (falling back to "en" when the
+column is null); every template reads that and pulls its strings from a per-
+template catalog. Arabic renders right-to-left via ``_shell(lang="ar")``.
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ import hashlib
 import hmac
 import logging
 import time
+from datetime import datetime, timezone
 from typing import Optional
 
 from app.config import settings
@@ -65,10 +67,16 @@ def _unsubscribe_url(uid: str) -> str:
     return f"{settings.app_base_url}/api/email/unsubscribe?token={unsubscribe_token(uid)}"
 
 
-# --- HTML shell ---------------------------------------------------------------
+# --- Localization primitives --------------------------------------------------
 
 _BRAND = "Vibecraft"
 _SUPPORT_EMAIL = "contact@ouni.space"
+_LANGS = ("en", "fr", "ar")
+
+
+def _pick(table: dict, lang: str):
+    """Catalog lookup that degrades to English for any unexpected language."""
+    return table.get(lang) or table["en"]
 
 
 def _support_link() -> str:
@@ -78,10 +86,96 @@ def _support_link() -> str:
     )
 
 
-def _shell(title: str, body_html: str, *, preheader: str = "", unsubscribe_url: Optional[str] = None) -> str:
+def _policy_link(text: str) -> str:
+    return (
+        f"<a href='{settings.app_base_url}/policy' "
+        f"style='color:#3d4552;text-decoration:underline'>{text}</a>"
+    )
+
+
+# Month names by language — never rely on strftime locale (not generated on the
+# VPS, and it is process-global). Arabic uses Western numerals, standard online.
+_MONTHS = {
+    "en": ["January", "February", "March", "April", "May", "June", "July",
+           "August", "September", "October", "November", "December"],
+    "fr": ["janvier", "février", "mars", "avril", "mai", "juin", "juillet",
+           "août", "septembre", "octobre", "novembre", "décembre"],
+    "ar": ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو",
+           "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"],
+}
+
+
+def _fmt_datetime(ts: int, lang: str) -> str:
+    dt = datetime.fromtimestamp(int(ts), tz=timezone.utc)
+    month = _MONTHS.get(lang, _MONTHS["en"])[dt.month - 1]
+    hm = f"{dt:%H:%M}"
+    if lang == "fr":
+        return f"{dt.day} {month} {dt.year} à {hm} UTC"
+    if lang == "ar":
+        return f"{dt.day} {month} {dt.year} الساعة {hm} بالتوقيت العالمي"
+    return f"{month} {dt.day}, {dt.year}, at {hm} UTC"
+
+
+def _fmt_date(ts: int, lang: str) -> str:
+    dt = datetime.fromtimestamp(int(ts), tz=timezone.utc)
+    if lang in ("fr", "ar"):
+        month = _MONTHS.get(lang, _MONTHS["en"])[dt.month - 1]
+        return f"{dt.day} {month} {dt.year}"
+    return f"{dt:%Y-%m-%d}"
+
+
+def _greeting(name: str, lang: str = "en") -> str:
+    first = (name or "").strip().split(" ")[0]
+    has = bool(first) and "@" not in first
+    if lang == "fr":
+        return f"Bonjour {first}," if has else "Bonjour,"
+    if lang == "ar":
+        return f"مرحبًا {first}،" if has else "مرحبًا،"
+    return f"Hi {first}," if has else "Hi there,"
+
+
+# --- HTML shell ---------------------------------------------------------------
+
+# Structural strings that live in the shell, not per-template.
+_SHELL_TR = {
+    "en": {
+        "ident": f"{_BRAND} &middot; Tunis, Tunisia &middot; vibecraft.ouni.space",
+        "unsub_pre": "You are receiving occasional tips and reminders.",
+        "unsub_link": "Unsubscribe",
+    },
+    "fr": {
+        "ident": f"{_BRAND} &middot; Tunis, Tunisie &middot; vibecraft.ouni.space",
+        "unsub_pre": "Vous recevez occasionnellement des conseils et des rappels.",
+        "unsub_link": "Se désabonner",
+    },
+    "ar": {
+        "ident": f"{_BRAND} &middot; تونس &middot; vibecraft.ouni.space",
+        "unsub_pre": "أنت تتلقى من حين لآخر نصائح وتذكيرات.",
+        "unsub_link": "إلغاء الاشتراك",
+    },
+}
+
+
+def _shell(
+    title: str,
+    body_html: str,
+    *,
+    preheader: str = "",
+    unsubscribe_url: Optional[str] = None,
+    lang: str = "en",
+) -> str:
+    s = _pick(_SHELL_TR, lang)
+    rtl = lang == "ar"
+    direction = "rtl" if rtl else "ltr"
+    align = "right" if rtl else "left"
+    # Georgia has no Arabic glyphs — fall back to a system stack for the title.
+    title_font = (
+        "'Segoe UI',Tahoma,Arial,sans-serif" if rtl
+        else "Georgia,'Times New Roman',serif"
+    )
     footer_unsub = (
-        f'<p style="margin:16px 0 0">You are receiving occasional tips and reminders. '
-        f'<a href="{unsubscribe_url}" style="color:#586274;text-decoration:underline">Unsubscribe</a>.</p>'
+        f'<p style="margin:16px 0 0">{s["unsub_pre"]} '
+        f'<a href="{unsubscribe_url}" style="color:#586274;text-decoration:underline">{s["unsub_link"]}</a>.</p>'
         if unsubscribe_url
         else ""
     )
@@ -96,15 +190,15 @@ def _shell(title: str, body_html: str, *, preheader: str = "", unsubscribe_url: 
     else:
         preheader_html = ""
     return f"""\
-<!doctype html><html><body style="margin:0;background:#f5f6f9;padding:32px 0;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">{preheader_html}
+<!doctype html><html dir="{direction}" lang="{lang}"><body style="margin:0;background:#f5f6f9;padding:32px 0;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif" dir="{direction}">{preheader_html}
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
     <table role="presentation" width="520" cellpadding="0" cellspacing="0" style="max-width:520px;width:100%;background:#ffffff;border:1px solid #e7eaf0;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(30,37,49,0.06)">
-      <tr><td style="padding:36px 40px 0"><h1 style="margin:0;font-family:Georgia,'Times New Roman',serif;font-size:20px;font-weight:600;line-height:1.35;color:#1e2531">{title}</h1></td></tr>
-      <tr><td style="padding:16px 40px 36px;color:#3d4552;font-size:15px;line-height:1.65">{body_html}</td></tr>
+      <tr><td style="padding:36px 40px 0;text-align:{align}"><h1 style="margin:0;font-family:{title_font};font-size:20px;font-weight:600;line-height:1.35;color:#1e2531">{title}</h1></td></tr>
+      <tr><td style="padding:16px 40px 36px;color:#3d4552;font-size:15px;line-height:1.65;text-align:{align}">{body_html}</td></tr>
     </table>
     <table role="presentation" width="520" cellpadding="0" cellspacing="0" style="max-width:520px;width:100%">
-      <tr><td style="padding:18px 40px 8px;color:#586274;font-size:12px;line-height:1.55">
-        <p style="margin:0;font-size:11px;color:#586274">{_BRAND} &middot; Tunis, Tunisia &middot; vibecraft.ouni.space</p>{footer_unsub}
+      <tr><td style="padding:18px 40px 8px;color:#586274;font-size:12px;line-height:1.55;text-align:{align}">
+        <p style="margin:0;font-size:11px;color:#586274">{s["ident"]}</p>{footer_unsub}
       </td></tr>
     </table>
   </td></tr></table>
@@ -118,244 +212,600 @@ def _button(label: str, url: str) -> str:
     )
 
 
-def _greeting(name: str) -> str:
-    first = (name or "").strip().split(" ")[0]
-    return f"Hi {first}," if first and "@" not in first else "Hi there,"
+def _paras(items) -> str:
+    return "".join(f"<p>{p}</p>" for p in items)
 
 
 # --- Templates ----------------------------------------------------------------
-# Each returns (subject, html, text). `ctx` carries trigger-specific data.
+# Each returns (subject, html, text). `ctx` carries trigger-specific data;
+# `ctx["lang"]` (set by dispatch) selects the language. Brand name is left in
+# Latin in every language; product nouns match the shipped UI translations.
+
+_TR_WELCOME = {
+    "en": {
+        "subject": "Welcome to Vibecraft",
+        "heading": "Welcome to Vibecraft 🎨",
+        "preheader": "Your first creations are on us — no card needed.",
+        "p": [
+            "Thanks for joining Vibecraft! You've just unlocked a single workspace packed with the latest state-of-the-art AI image models.",
+            "We've already dropped free credits into your account so you can start experimenting right away.",
+            "No setup, no friction. Just pure creativity.",
+        ],
+        "cta": "Claim Your Credits &amp; Create",
+        "text": "Welcome to Vibecraft. Open Playground: {url}",
+    },
+    "fr": {
+        "subject": "Bienvenue sur Vibecraft",
+        "heading": "Bienvenue sur Vibecraft 🎨",
+        "preheader": "Vos premières créations sont offertes — sans carte bancaire.",
+        "p": [
+            "Merci d'avoir rejoint Vibecraft ! Vous venez de débloquer un espace de travail unique réunissant les tout derniers modèles d'IA de génération d'images.",
+            "Nous avons déjà ajouté des crédits gratuits à votre compte pour que vous puissiez commencer à expérimenter dès maintenant.",
+            "Aucune configuration, aucune friction. Juste de la créativité.",
+        ],
+        "cta": "Récupérez vos crédits &amp; créez",
+        "text": "Bienvenue sur Vibecraft. Ouvrir le Playground : {url}",
+    },
+    "ar": {
+        "subject": "مرحبًا بك في Vibecraft",
+        "heading": "مرحبًا بك في Vibecraft 🎨",
+        "preheader": "أولى إبداعاتك على حسابنا — دون الحاجة إلى بطاقة.",
+        "p": [
+            "شكرًا لانضمامك إلى Vibecraft! لقد فتحت للتو مساحة عمل واحدة تضم أحدث نماذج الذكاء الاصطناعي لتوليد الصور.",
+            "لقد أضفنا بالفعل أرصدة مجانية إلى حسابك حتى تتمكن من بدء التجربة على الفور.",
+            "دون أي إعداد ودون أي تعقيد. فقط إبداع خالص.",
+        ],
+        "cta": "احصل على رصيدك وابدأ الإنشاء",
+        "text": "مرحبًا بك في Vibecraft. افتح مساحة التجربة: {url}",
+    },
+}
+
 
 def _tpl_welcome(name: str, ctx: dict, uid: str) -> tuple[str, str, str]:
+    lang = ctx.get("lang", "en")
+    t = _pick(_TR_WELCOME, lang)
     play = f"{settings.app_base_url}/playground"
     body = (
-        f"<p>{_greeting(name)}</p>"
-        f"<p>Thanks for joining {_BRAND}! You've just unlocked a single workspace packed with "
-        f"the latest state-of-the-art AI image models.</p>"
-        f"<p>We've already dropped free credits into your account so you can start experimenting "
-        f"right away.</p>"
-        f"<p>No setup, no friction. Just pure creativity.</p>"
-        f"<p style='margin:22px 0'>{_button('Claim Your Credits &amp; Create', play)}</p>"
+        f"<p>{_greeting(name, lang)}</p>{_paras(t['p'])}"
+        f"<p style='margin:22px 0'>{_button(t['cta'], play)}</p>"
     )
-    return f"Welcome to {_BRAND}", _shell(
-        f"Welcome to {_BRAND} 🎨", body,
-        preheader="Your first creations are on us — no card needed.",
-    ), f"Welcome to {_BRAND}. Open Playground: {play}"
+    return t["subject"], _shell(t["heading"], body, preheader=t["preheader"], lang=lang), \
+        t["text"].format(url=play)
+
+
+_TR_DRIP = {
+    "day1": {
+        "en": {
+            "subject": "Talk straight to the models",
+            "preheader": "Playground is the heart of Vibecraft — direct, no menus.",
+            "heading": "Meet Playground",
+            "p": [
+                "Playground is the heart of Vibecraft — you talk directly to the models, like a conversation. Ask for an image, refine it, change direction, ask again. No forms, no long setup.",
+                "It's just you and the models, going back and forth until it's exactly right.",
+            ],
+            "cta": "Open Playground",
+        },
+        "fr": {
+            "subject": "Parlez directement aux modèles",
+            "preheader": "Le Playground est le cœur de Vibecraft — direct, sans menus.",
+            "heading": "Découvrez le Playground",
+            "p": [
+                "Le Playground est le cœur de Vibecraft : vous parlez directement aux modèles, comme dans une conversation. Demandez une image, affinez-la, changez de direction, redemandez. Aucun formulaire, aucune configuration.",
+                "Il n'y a que vous et les modèles, qui échangez jusqu'à obtenir exactement ce que vous voulez.",
+            ],
+            "cta": "Ouvrir le Playground",
+        },
+        "ar": {
+            "subject": "تحدّث مباشرةً إلى النماذج",
+            "preheader": "مساحة التجربة هي قلب Vibecraft — مباشرة، دون قوائم.",
+            "heading": "تعرّف على مساحة التجربة",
+            "p": [
+                "مساحة التجربة هي قلب Vibecraft — تتحدث مباشرةً إلى النماذج، كما في محادثة. اطلب صورة، حسّنها، غيّر الاتجاه، ثم اطلب من جديد. دون نماذج ودون إعداد طويل.",
+                "أنت والنماذج فقط، تتبادلان الأخذ والرد حتى تصل إلى النتيجة الصحيحة تمامًا.",
+            ],
+            "cta": "افتح مساحة التجربة",
+        },
+    },
+    "day3": {
+        "en": {
+            "subject": "Transform your ideas into reality with Packs",
+            "preheader": "Product mockups, packaging, ads, and social — one canvas.",
+            "heading": "Meet Packs",
+            "p": [
+                "Now that you've explored the basics of Vibecraft, it's time to see how it fits into your actual workflow. Welcome to Packs.",
+                "Whether you need to showcase a physical product, drop it into a completely new background, or design high-converting marketing assets, Packs gives you the exact canvas you need.",
+                "From stunning product mockups and packaging designs to ready-to-go social media images and high-performing ads, you can create professional-grade visuals in just a few clicks — or simply browse them for instant inspiration.",
+                "Ready to see what you can build?",
+            ],
+            "cta": "Explore Vibecraft Packs",
+        },
+        "fr": {
+            "subject": "Transformez vos idées en réalité avec les Packs",
+            "preheader": "Mockups produits, packaging, publicités et réseaux sociaux — un seul canevas.",
+            "heading": "Découvrez les Packs",
+            "p": [
+                "Maintenant que vous avez exploré les bases de Vibecraft, il est temps de voir comment il s'intègre à votre véritable flux de travail. Bienvenue dans les Packs.",
+                "Que vous souhaitiez mettre en valeur un produit physique, le placer dans un décor entièrement nouveau ou concevoir des visuels marketing performants, les Packs vous offrent exactement le canevas qu'il vous faut.",
+                "Des superbes mockups produits et designs de packaging jusqu'aux images prêtes à publier sur les réseaux sociaux et aux publicités performantes, vous pouvez créer des visuels de qualité professionnelle en quelques clics — ou simplement les parcourir pour une inspiration immédiate.",
+                "Prêt à découvrir ce que vous pouvez créer ?",
+            ],
+            "cta": "Explorer les Packs Vibecraft",
+        },
+        "ar": {
+            "subject": "حوّل أفكارك إلى واقع مع الحزم",
+            "preheader": "نماذج للمنتجات، وتغليف، وإعلانات، ومحتوى اجتماعي — لوحة واحدة.",
+            "heading": "تعرّف على الحزم",
+            "p": [
+                "الآن بعد أن اطّلعت على أساسيات Vibecraft، حان الوقت لترى كيف تتكامل مع سير عملك الفعلي. مرحبًا بك في الحزم.",
+                "سواء أردت إبراز منتج مادي، أو وضعه في خلفية جديدة تمامًا، أو تصميم مواد تسويقية عالية الأداء، تمنحك الحزم اللوحة المناسبة تمامًا لما تحتاجه.",
+                "من نماذج المنتجات وتصاميم التغليف المبهرة إلى صور جاهزة للنشر على وسائل التواصل وإعلانات عالية الأداء، يمكنك إنشاء تصاميم بجودة احترافية بنقرات قليلة — أو تصفّحها ببساطة للحصول على إلهام فوري.",
+                "هل أنت مستعد لاكتشاف ما يمكنك إنشاؤه؟",
+            ],
+            "cta": "استكشف حزم Vibecraft",
+        },
+    },
+    "day7": {
+        "en": {
+            "subject": "Make it yours",
+            "preheader": "Reference images, model switching, and small tweaks that go far.",
+            "heading": "Make it yours",
+            "p": [
+                "In Playground you can upload reference images, reuse them across generations, and switch models to match the look you want. Small tweaks to your prompt go a long way.",
+            ],
+            "cta": "Open Playground",
+        },
+        "fr": {
+            "subject": "Personnalisez à votre image",
+            "preheader": "Images de référence, changement de modèle et petits ajustements qui font la différence.",
+            "heading": "Personnalisez à votre image",
+            "p": [
+                "Dans le Playground, vous pouvez importer des images de référence, les réutiliser d'une génération à l'autre et changer de modèle pour obtenir le rendu souhaité. De petits ajustements à votre prompt font toute la différence.",
+            ],
+            "cta": "Ouvrir le Playground",
+        },
+        "ar": {
+            "subject": "اجعلها تعبّر عنك",
+            "preheader": "صور مرجعية، وتبديل النماذج، وتعديلات صغيرة ذات أثر كبير.",
+            "heading": "اجعلها تعبّر عنك",
+            "p": [
+                "في مساحة التجربة يمكنك رفع صور مرجعية، وإعادة استخدامها عبر عمليات التوليد، وتبديل النماذج للوصول إلى المظهر الذي تريده. التعديلات الصغيرة على وصفك تُحدث فرقًا كبيرًا.",
+            ],
+            "cta": "افتح مساحة التجربة",
+        },
+    },
+}
+
+_DRIP_PATH = {"day1": "/playground", "day3": "/packs", "day7": "/playground"}
 
 
 def _tpl_drip(name: str, ctx: dict, uid: str) -> tuple[str, str, str]:
+    lang = ctx.get("lang", "en")
     step = ctx.get("step", "day1")
+    if step not in _TR_DRIP:
+        step = "day1"
+    t = _pick(_TR_DRIP[step], lang)
+    path = _DRIP_PATH.get(step, "/playground")
+    url = f"{settings.app_base_url}{path}"
     unsub = _unsubscribe_url(uid)
-    # (subject, preheader, heading, body_html, cta_label, path)
-    lessons = {
-        "day1": (
-            "Talk straight to the models",
-            "Playground is the heart of Vibecraft — direct, no menus.",
-            "Meet Playground",
-            "<p>Playground is the heart of Vibecraft — you talk directly to the models, like a "
-            "conversation. Ask for an image, refine it, change direction, ask again. No forms, "
-            "no long setup.</p>"
-            "<p>It's just you and the models, going back and forth until it's exactly right.</p>",
-            "Open Playground",
-            "/playground",
-        ),
-        "day3": (
-            "Transform your ideas into reality with Packs",
-            "Product mockups, packaging, ads, and social — one canvas.",
-            "Meet Packs",
-            "<p>Now that you've explored the basics of Vibecraft, it's time to see how it fits "
-            "into your actual workflow. Welcome to Packs.</p>"
-            "<p>Whether you need to showcase a physical product, drop it into a completely new "
-            "background, or design high-converting marketing assets, Packs gives you the exact "
-            "canvas you need.</p>"
-            "<p>From stunning product mockups and packaging designs to ready-to-go social media "
-            "images and high-performing ads, you can create professional-grade visuals in just a "
-            "few clicks — or simply browse them for instant inspiration.</p>"
-            "<p>Ready to see what you can build?</p>",
-            "Explore Vibecraft Packs",
-            "/packs",
-        ),
-        "day7": (
-            "Make it yours",
-            "Reference images, model switching, and small tweaks that go far.",
-            "Make it yours",
-            "<p>In Playground you can upload reference images, reuse them across generations, and "
-            "switch models to match the look you want. Small tweaks to your prompt go a long way.</p>",
-            "Open Playground",
-            "/playground",
-        ),
-    }
-    subject, preheader, heading, para, cta, path = lessons.get(step, lessons["day1"])
     body = (
-        f"<p>{_greeting(name)}</p>{para}"
-        f"<p style='margin:22px 0'>{_button(cta, f'{settings.app_base_url}{path}')}</p>"
+        f"<p>{_greeting(name, lang)}</p>{_paras(t['p'])}"
+        f"<p style='margin:22px 0'>{_button(t['cta'], url)}</p>"
     )
-    return subject, _shell(heading, body, preheader=preheader, unsubscribe_url=unsub), \
-        f"{heading}. {settings.app_base_url}{path}"
+    return t["subject"], \
+        _shell(t["heading"], body, preheader=t["preheader"], unsubscribe_url=unsub, lang=lang), \
+        f"{t['heading']}. {url}"
+
+
+_TR_DEACTIVATED = {
+    "en": {
+        "subject": "Your Vibecraft account was deactivated",
+        "heading": "Account deactivated",
+        "body": "Your Vibecraft account has been deactivated and access is now disabled. If this wasn't you or you'd like it restored, contact us at {support}.",
+        "text": "Your Vibecraft account has been deactivated. Contact {email} to restore it.",
+    },
+    "fr": {
+        "subject": "Votre compte Vibecraft a été désactivé",
+        "heading": "Compte désactivé",
+        "body": "Votre compte Vibecraft a été désactivé et l'accès est désormais bloqué. Si vous n'êtes pas à l'origine de cette action ou si vous souhaitez le réactiver, contactez-nous à {support}.",
+        "text": "Votre compte Vibecraft a été désactivé. Contactez {email} pour le réactiver.",
+    },
+    "ar": {
+        "subject": "تم إلغاء تنشيط حسابك على Vibecraft",
+        "heading": "تم إلغاء تنشيط الحساب",
+        "body": "تم إلغاء تنشيط حسابك على Vibecraft، والوصول إليه معطّل الآن. إذا لم تكن أنت من قام بذلك أو كنت ترغب في استعادته، تواصل معنا عبر {support}.",
+        "text": "تم إلغاء تنشيط حسابك على Vibecraft. تواصل مع {email} لاستعادته.",
+    },
+}
 
 
 def _tpl_account_deactivated(name: str, ctx: dict, uid: str) -> tuple[str, str, str]:
+    lang = ctx.get("lang", "en")
+    t = _pick(_TR_DEACTIVATED, lang)
     body = (
-        f"<p>{_greeting(name)}</p>"
-        f"<p>Your {_BRAND} account has been deactivated and access is now disabled. "
-        f"If this wasn't you or you'd like it restored, contact us at {_support_link()}.</p>"
+        f"<p>{_greeting(name, lang)}</p>"
+        f"<p>{t['body'].format(support=_support_link())}</p>"
     )
-    return f"Your {_BRAND} account was deactivated", _shell("Account deactivated", body), \
-        f"Your {_BRAND} account has been deactivated. Contact {_SUPPORT_EMAIL} to restore it."
+    return t["subject"], _shell(t["heading"], body, lang=lang), \
+        t["text"].format(email=_SUPPORT_EMAIL)
+
+
+_TR_SUSPENDED = {
+    "temp": {
+        "en": {
+            "subject": "Notice: Your Vibecraft account has been suspended",
+            "heading": "Account suspended",
+            "policy_word": "policy",
+            "intro": "Your Vibecraft account has been temporarily suspended due to repeated {policy} violations.",
+            "reason_label": "Reason:",
+            "period": "Suspension Period: Access is restricted until {until}.",
+            "warn": "Please note that further violations may result in a permanent ban of your account.",
+            "appeal": "If you believe this suspension was made in error or would like to appeal the decision, please contact our support team at {support}, and we will review your case.",
+            "signoff": "— The Vibecraft Security Team",
+            "text": "Your Vibecraft account has been suspended. {reason} Appeal: {email}",
+        },
+        "fr": {
+            "subject": "Avis : votre compte Vibecraft a été suspendu",
+            "heading": "Compte suspendu",
+            "policy_word": "règles d'utilisation",
+            "intro": "Votre compte Vibecraft a été temporairement suspendu en raison de violations répétées de nos {policy}.",
+            "reason_label": "Motif :",
+            "period": "Durée de la suspension : l'accès est restreint jusqu'au {until}.",
+            "warn": "Veuillez noter que toute nouvelle violation pourra entraîner le bannissement définitif de votre compte.",
+            "appeal": "Si vous estimez que cette suspension est une erreur ou souhaitez la contester, veuillez contacter notre équipe d'assistance à {support}, et nous examinerons votre cas.",
+            "signoff": "— L'équipe de sécurité Vibecraft",
+            "text": "Votre compte Vibecraft a été suspendu. {reason} Contestation : {email}",
+        },
+        "ar": {
+            "subject": "إشعار: تم تعليق حسابك على Vibecraft",
+            "heading": "تم تعليق الحساب",
+            "policy_word": "سياسة الاستخدام",
+            "intro": "تم تعليق حسابك على Vibecraft مؤقتًا بسبب مخالفات متكررة لـ{policy} الخاصة بنا.",
+            "reason_label": "السبب:",
+            "period": "مدة التعليق: الوصول مقيّد حتى {until}.",
+            "warn": "يرجى العلم أن أي مخالفات إضافية قد تؤدي إلى حظر دائم لحسابك.",
+            "appeal": "إذا كنت تعتقد أن هذا التعليق قد تم عن طريق الخطأ أو ترغب في الطعن في القرار، يرجى التواصل مع فريق الدعم عبر {support}، وسنراجع حالتك.",
+            "signoff": "— فريق الأمان في Vibecraft",
+            "text": "تم تعليق حسابك على Vibecraft. {reason} للطعن: {email}",
+        },
+    },
+    "perm": {
+        "en": {
+            "subject": "Notice: Your Vibecraft account has been permanently terminated",
+            "heading": "Account permanently terminated",
+            "policy_word": "Terms of Service",
+            "intro": "Following a review of your account activity, your Vibecraft account has been permanently suspended due to severe or repeated violations of our {policy}.",
+            "reason_label": "Reason:",
+            "status": "Status: Account terminated permanently.",
+            "conseq": "As a result, your access to the platform has been revoked, and any remaining credits or active subscriptions have been canceled.",
+            "appeal": "If you believe this decision was made in error and wish to appeal the termination, you may submit a final review request to our team at {support}.",
+            "signoff": "— The Vibecraft Security Team",
+            "text": "Your Vibecraft account has been permanently terminated. {reason} Appeal: {email}",
+        },
+        "fr": {
+            "subject": "Avis : votre compte Vibecraft a été définitivement résilié",
+            "heading": "Compte définitivement résilié",
+            "policy_word": "conditions d'utilisation",
+            "intro": "À la suite d'un examen de l'activité de votre compte, votre compte Vibecraft a été définitivement suspendu en raison de violations graves ou répétées de nos {policy}.",
+            "reason_label": "Motif :",
+            "status": "Statut : compte définitivement résilié.",
+            "conseq": "Par conséquent, votre accès à la plateforme a été révoqué, et tout crédit restant ou abonnement actif a été annulé.",
+            "appeal": "Si vous estimez que cette décision est une erreur et souhaitez contester la résiliation, vous pouvez adresser une demande de réexamen final à notre équipe à {support}.",
+            "signoff": "— L'équipe de sécurité Vibecraft",
+            "text": "Votre compte Vibecraft a été définitivement résilié. {reason} Contestation : {email}",
+        },
+        "ar": {
+            "subject": "إشعار: تم إنهاء حسابك على Vibecraft نهائيًا",
+            "heading": "تم إنهاء الحساب نهائيًا",
+            "policy_word": "شروط الخدمة",
+            "intro": "بعد مراجعة نشاط حسابك، تم تعليق حسابك على Vibecraft نهائيًا بسبب مخالفات جسيمة أو متكررة لـ{policy} الخاصة بنا.",
+            "reason_label": "السبب:",
+            "status": "الحالة: تم إنهاء الحساب نهائيًا.",
+            "conseq": "نتيجة لذلك، تم إلغاء وصولك إلى المنصة، وأُلغيت أي أرصدة متبقية أو اشتراكات نشطة.",
+            "appeal": "إذا كنت تعتقد أن هذا القرار قد تم عن طريق الخطأ وترغب في الطعن في الإنهاء، يمكنك تقديم طلب مراجعة نهائية إلى فريقنا عبر {support}.",
+            "signoff": "— فريق الأمان في Vibecraft",
+            "text": "تم إنهاء حسابك على Vibecraft نهائيًا. {reason} للطعن: {email}",
+        },
+    },
+}
 
 
 def _tpl_account_suspended(name: str, ctx: dict, uid: str) -> tuple[str, str, str]:
+    lang = ctx.get("lang", "en")
     reason = str(ctx.get("reason") or "").strip()
     until = ctx.get("until")
-    reason_html = f"<p><strong>Reason:</strong> {reason}</p>" if reason else ""
-    sign_off = f"<p style='margin:18px 0 0;color:#586274'>— The {_BRAND} Security Team</p>"
+    variant = "temp" if until else "perm"
+    t = _pick(_TR_SUSPENDED[variant], lang)
 
-    if until:
-        # Timed suspension — there is a defined end date.
+    reason_html = f"<p><strong>{t['reason_label']}</strong> {reason}</p>" if reason else ""
+    intro = t["intro"].format(policy=_policy_link(t["policy_word"]))
+    sign_off = f"<p style='margin:18px 0 0;color:#586274'>{t['signoff']}</p>"
+
+    if variant == "temp":
+        until_txt = ""
         try:
-            from datetime import datetime, timezone
-
-            until_txt = f"{datetime.fromtimestamp(int(until), tz=timezone.utc):%B %d, %Y, at %H:%M UTC}"
+            until_txt = _fmt_datetime(int(until), lang)
         except Exception:
             until_txt = ""
         period_html = (
-            f"<p><strong>Suspension Period:</strong> Access is restricted until {until_txt}.</p>"
+            f"<p><strong>{t['period'].format(until=until_txt)}</strong></p>"
             if until_txt
             else ""
         )
         body = (
-            f"<p>{_greeting(name)}</p>"
-            f"<p>Your {_BRAND} account has been temporarily suspended due to repeated "
-            f"<a href='{settings.app_base_url}/policy' style='color:#3d4552;text-decoration:underline'>policy</a> violations.</p>"
-            f"{reason_html}{period_html}"
-            f"<p>Please note that further violations may result in a permanent ban of your "
-            f"account.</p>"
-            f"<p>If you believe this suspension was made in error or would like to appeal the "
-            f"decision, please contact our support team at {_support_link()}, and we will "
-            f"review your case.</p>"
+            f"<p>{_greeting(name, lang)}</p>"
+            f"<p>{intro}</p>{reason_html}{period_html}"
+            f"<p>{t['warn']}</p>"
+            f"<p>{t['appeal'].format(support=_support_link())}</p>"
             f"{sign_off}"
         )
-        return f"Notice: Your {_BRAND} account has been suspended", \
-            _shell("Account suspended", body), \
-            f"Your {_BRAND} account has been suspended. {reason} Appeal: {_SUPPORT_EMAIL}"
+    else:
+        body = (
+            f"<p>{_greeting(name, lang)}</p>"
+            f"<p>{intro}</p>{reason_html}"
+            f"<p><strong>{t['status']}</strong></p>"
+            f"<p>{t['conseq']}</p>"
+            f"<p>{t['appeal'].format(support=_support_link())}</p>"
+            f"{sign_off}"
+        )
 
-    # No end date → permanent termination.
-    body = (
-        f"<p>{_greeting(name)}</p>"
-        f"<p>Following a review of your account activity, your {_BRAND} account has been "
-        f"permanently suspended due to severe or repeated violations of our "
-        f"<a href='{settings.app_base_url}/policy' style='color:#3d4552;text-decoration:underline'>Terms of Service</a>.</p>"
-        f"{reason_html}"
-        f"<p><strong>Status:</strong> Account terminated permanently.</p>"
-        f"<p>As a result, your access to the platform has been revoked, and any remaining "
-        f"credits or active subscriptions have been canceled.</p>"
-        f"<p>If you believe this decision was made in error and wish to appeal the termination, "
-        f"you may submit a final review request to our team at {_support_link()}.</p>"
-        f"{sign_off}"
-    )
-    return f"Notice: Your {_BRAND} account has been permanently terminated", \
-        _shell("Account permanently terminated", body), \
-        f"Your {_BRAND} account has been permanently terminated. {reason} Appeal: {_SUPPORT_EMAIL}"
+    return t["subject"], _shell(t["heading"], body, lang=lang), \
+        t["text"].format(reason=reason, email=_SUPPORT_EMAIL)
+
+
+_TR_UNSUSPENDED = {
+    "en": {
+        "subject": "Your Vibecraft account is active again",
+        "heading": "Account reinstated",
+        "body": "Good news — your Vibecraft account has been reinstated and you can create again. You're all set — welcome back.",
+        "cta": "Back to the studio",
+        "text": "Your Vibecraft account has been reinstated.",
+    },
+    "fr": {
+        "subject": "Votre compte Vibecraft est de nouveau actif",
+        "heading": "Compte réactivé",
+        "body": "Bonne nouvelle — votre compte Vibecraft a été réactivé et vous pouvez de nouveau créer. Tout est prêt — bon retour parmi nous.",
+        "cta": "Retour au studio",
+        "text": "Votre compte Vibecraft a été réactivé.",
+    },
+    "ar": {
+        "subject": "أصبح حسابك على Vibecraft نشطًا من جديد",
+        "heading": "تمت إعادة تفعيل الحساب",
+        "body": "أخبار سارّة — تمت إعادة تفعيل حسابك على Vibecraft ويمكنك الإبداع من جديد. كل شيء جاهز — أهلًا بعودتك.",
+        "cta": "العودة إلى الاستوديو",
+        "text": "تمت إعادة تفعيل حسابك على Vibecraft.",
+    },
+}
 
 
 def _tpl_account_unsuspended(name: str, ctx: dict, uid: str) -> tuple[str, str, str]:
+    lang = ctx.get("lang", "en")
+    t = _pick(_TR_UNSUSPENDED, lang)
+    play = f"{settings.app_base_url}/playground"
     body = (
-        f"<p>{_greeting(name)}</p>"
-        f"<p>Good news — your {_BRAND} account has been reinstated and you can create again. "
-        f"You're all set — welcome back.</p>"
-        f"<p style='margin:22px 0'>{_button('Back to the studio', f'{settings.app_base_url}/playground')}</p>"
+        f"<p>{_greeting(name, lang)}</p>"
+        f"<p>{t['body']}</p>"
+        f"<p style='margin:22px 0'>{_button(t['cta'], play)}</p>"
     )
-    return f"Your {_BRAND} account is active again", _shell("Account reinstated", body), \
-        f"Your {_BRAND} account has been reinstated."
+    return t["subject"], _shell(t["heading"], body, lang=lang), t["text"]
+
+
+_TR_RECEIPT = {
+    "en": {
+        "subject": "You've got {n} Vibecraft credits",
+        "heading": "Credits added",
+        "added": "<strong>{n} credits</strong> have been added to your account.",
+        "balance": "New balance: {b} credits",
+        "expiry": "These gift credits expire on {date} — use them before then.",
+        "cta": "Start creating",
+        "text": "{n} credits added to your Vibecraft account.",
+    },
+    "fr": {
+        "subject": "Vous avez reçu {n} crédits Vibecraft",
+        "heading": "Crédits ajoutés",
+        "added": "<strong>{n} crédits</strong> ont été ajoutés à votre compte.",
+        "balance": "Nouveau solde : {b} crédits",
+        "expiry": "Ces crédits offerts expirent le {date} — utilisez-les avant cette date.",
+        "cta": "Commencer à créer",
+        "text": "{n} crédits ajoutés à votre compte Vibecraft.",
+    },
+    "ar": {
+        "subject": "لقد حصلت على {n} من أرصدة Vibecraft",
+        "heading": "تمت إضافة الأرصدة",
+        "added": "تمت إضافة <strong>{n} من الأرصدة</strong> إلى حسابك.",
+        "balance": "الرصيد الجديد: {b} من الأرصدة",
+        "expiry": "تنتهي صلاحية هذه الأرصدة المجانية في {date} — استخدمها قبل ذلك.",
+        "cta": "ابدأ الإنشاء",
+        "text": "تمت إضافة {n} من الأرصدة إلى حسابك على Vibecraft.",
+    },
+}
 
 
 def _tpl_credit_receipt(name: str, ctx: dict, uid: str) -> tuple[str, str, str]:
+    lang = ctx.get("lang", "en")
+    t = _pick(_TR_RECEIPT, lang)
     credits = ctx.get("credits")
     balance = ctx.get("balance")
     expires_at = ctx.get("expires_at")
     credits_txt = f"{credits:g}" if isinstance(credits, (int, float)) else str(credits)
     balance_line = (
-        f"<p><strong>New balance:</strong> {balance:g} credits</p>"
+        f"<p><strong>{t['balance'].format(b=f'{balance:g}')}</strong></p>"
         if isinstance(balance, (int, float))
         else ""
     )
     expiry_line = ""
     if expires_at:
         try:
-            from datetime import datetime, timezone
-
             expiry_line = (
-                f"<p style='color:#1e2531;font-weight:600'>These gift credits expire on "
-                f"{datetime.fromtimestamp(int(expires_at), tz=timezone.utc):%Y-%m-%d} — use them before then.</p>"
+                f"<p style='color:#1e2531;font-weight:600'>"
+                f"{t['expiry'].format(date=_fmt_date(int(expires_at), lang))}</p>"
             )
         except Exception:
             expiry_line = ""
     body = (
-        f"<p>{_greeting(name)}</p>"
-        f"<p><strong>{credits_txt} credits</strong> have been added to your account.</p>"
+        f"<p>{_greeting(name, lang)}</p>"
+        f"<p>{t['added'].format(n=credits_txt)}</p>"
         f"{balance_line}{expiry_line}"
-        f"<p style='margin:22px 0'>{_button('Start creating', f'{settings.app_base_url}/playground')}</p>"
+        f"<p style='margin:22px 0'>{_button(t['cta'], f'{settings.app_base_url}/playground')}</p>"
     )
-    return f"You've got {credits_txt} {_BRAND} credits", _shell("Credits added", body), \
-        f"{credits_txt} credits added to your {_BRAND} account."
+    return t["subject"].format(n=credits_txt), _shell(t["heading"], body, lang=lang), \
+        t["text"].format(n=credits_txt)
+
+
+_TR_EXPIRY = {
+    "en": {
+        "subject": "{n} Vibecraft credits expire soon",
+        "heading": "Your credits expire soon",
+        "body": "Heads up — <strong>{n} of your gift credits expire within the next 24 hours.</strong> Use them before they're gone.",
+        "cta": "Use my credits",
+        "text": "{n} gift credits expire within 24 hours. {url}",
+    },
+    "fr": {
+        "subject": "{n} crédits Vibecraft expirent bientôt",
+        "heading": "Vos crédits expirent bientôt",
+        "body": "Petit rappel — <strong>{n} de vos crédits offerts expirent dans les prochaines 24 heures.</strong> Utilisez-les avant qu'ils ne disparaissent.",
+        "cta": "Utiliser mes crédits",
+        "text": "{n} crédits offerts expirent dans 24 heures. {url}",
+    },
+    "ar": {
+        "subject": "{n} من أرصدة Vibecraft ستنتهي قريبًا",
+        "heading": "أرصدتك على وشك الانتهاء",
+        "body": "تنبيه — <strong>{n} من أرصدتك المجانية ستنتهي خلال الـ24 ساعة القادمة.</strong> استخدمها قبل أن تختفي.",
+        "cta": "استخدم أرصدتي",
+        "text": "{n} من الأرصدة المجانية ستنتهي خلال 24 ساعة. {url}",
+    },
+}
 
 
 def _tpl_credit_expiry_warn(name: str, ctx: dict, uid: str) -> tuple[str, str, str]:
+    lang = ctx.get("lang", "en")
+    t = _pick(_TR_EXPIRY, lang)
     remaining = ctx.get("remaining")
     remaining_txt = f"{remaining:g}" if isinstance(remaining, (int, float)) else str(remaining)
+    play = f"{settings.app_base_url}/playground"
     body = (
-        f"<p>{_greeting(name)}</p>"
-        f"<p>Heads up — <strong>{remaining_txt} of your gift credits expire within the next 24 hours.</strong> "
-        f"Use them before they're gone.</p>"
-        f"<p style='margin:22px 0'>{_button('Use my credits', f'{settings.app_base_url}/playground')}</p>"
+        f"<p>{_greeting(name, lang)}</p>"
+        f"<p>{t['body'].format(n=remaining_txt)}</p>"
+        f"<p style='margin:22px 0'>{_button(t['cta'], play)}</p>"
     )
-    return f"{remaining_txt} {_BRAND} credits expire soon", _shell("Your credits expire soon", body), \
-        f"{remaining_txt} gift credits expire within 24 hours. {settings.app_base_url}/playground"
+    return t["subject"].format(n=remaining_txt), _shell(t["heading"], body, lang=lang), \
+        t["text"].format(n=remaining_txt, url=play)
+
+
+_TR_WINBACK = {
+    "d7": {
+        "en": {
+            "subject": "Ready for your next one?",
+            "preheader": "Your next idea is one prompt away.",
+            "heading": "Your studio's still warm 🔥",
+            "p": ["Your next big idea is just a prompt away. Drop back into the studio, describe what's in your head, and let the models handle the rest."],
+            "cta": "Bring it to life",
+        },
+        "fr": {
+            "subject": "Prêt pour la prochaine ?",
+            "preheader": "Votre prochaine idée n'est qu'à un prompt.",
+            "heading": "Votre studio est encore chaud 🔥",
+            "p": ["Votre prochaine grande idée n'est qu'à un prompt. Revenez dans le studio, décrivez ce que vous avez en tête, et laissez les modèles s'occuper du reste."],
+            "cta": "Donnez-lui vie",
+        },
+        "ar": {
+            "subject": "مستعد للإبداع التالي؟",
+            "preheader": "فكرتك التالية على بُعد وصف واحد.",
+            "heading": "استوديوك ما زال متّقدًا 🔥",
+            "p": ["فكرتك الكبيرة التالية على بُعد وصف واحد فقط. عُد إلى الاستوديو، صِف ما يدور في ذهنك، ودع النماذج تتكفّل بالباقي."],
+            "cta": "حوّلها إلى واقع",
+        },
+    },
+    "d14": {
+        "en": {
+            "subject": "Your creations are waiting at Vibecraft",
+            "preheader": "Fresh models and smoother workflows are waiting.",
+            "heading": "Missing that creative spark? ✨",
+            "p": ["It's been a couple of weeks since your last creation. The studio has been upgraded with fresh models and smoother workflows — come see what's waiting for you."],
+            "cta": "See what's new",
+        },
+        "fr": {
+            "subject": "Vos créations vous attendent sur Vibecraft",
+            "preheader": "De nouveaux modèles et des flux plus fluides vous attendent.",
+            "heading": "L'étincelle créative vous manque ? ✨",
+            "p": ["Cela fait deux semaines depuis votre dernière création. Le studio a été enrichi de nouveaux modèles et de flux de travail plus fluides — venez découvrir ce qui vous attend."],
+            "cta": "Voir les nouveautés",
+        },
+        "ar": {
+            "subject": "إبداعاتك بانتظارك في Vibecraft",
+            "preheader": "نماذج جديدة وسير عمل أكثر سلاسة بانتظارك.",
+            "heading": "هل تفتقد شرارة الإبداع؟ ✨",
+            "p": ["مرّ أسبوعان منذ آخر إبداع لك. تم تطوير الاستوديو بنماذج جديدة وسير عمل أكثر سلاسة — تعال واكتشف ما ينتظرك."],
+            "cta": "اكتشف الجديد",
+        },
+    },
+}
+
+_WINBACK_PATH = {"d7": "/playground", "d14": "/packs"}
 
 
 def _tpl_winback(name: str, ctx: dict, uid: str) -> tuple[str, str, str]:
-    unsub = _unsubscribe_url(uid)
+    lang = ctx.get("lang", "en")
     step = ctx.get("step", "d7")
-    if step == "d14":
-        subject = f"Your creations are waiting at {_BRAND}"
-        preheader = "Fresh models and smoother workflows are waiting."
-        heading = "Missing that creative spark? ✨"
-        para = (
-            "<p>It's been a couple of weeks since your last creation. The studio has been "
-            "upgraded with fresh models and smoother workflows — come see what's waiting for "
-            "you.</p>"
-        )
-        cta, path = "See what's new", "/packs"
-    else:
-        subject = "Ready for your next one?"
-        preheader = "Your next idea is one prompt away."
-        heading = "Your studio's still warm 🔥"
-        para = (
-            "<p>Your next big idea is just a prompt away. Drop back into the studio, describe "
-            "what's in your head, and let the models handle the rest.</p>"
-        )
-        cta, path = "Bring it to life", "/playground"
+    if step not in _TR_WINBACK:
+        step = "d7"
+    t = _pick(_TR_WINBACK[step], lang)
+    path = _WINBACK_PATH.get(step, "/playground")
+    url = f"{settings.app_base_url}{path}"
+    unsub = _unsubscribe_url(uid)
     body = (
-        f"<p>{_greeting(name)}</p>{para}"
-        f"<p style='margin:22px 0'>{_button(cta, f'{settings.app_base_url}{path}')}</p>"
+        f"<p>{_greeting(name, lang)}</p>{_paras(t['p'])}"
+        f"<p style='margin:22px 0'>{_button(t['cta'], url)}</p>"
     )
-    return subject, _shell(heading, body, preheader=preheader, unsubscribe_url=unsub), \
-        f"{heading}. {settings.app_base_url}{path}"
+    return t["subject"], \
+        _shell(t["heading"], body, preheader=t["preheader"], unsubscribe_url=unsub, lang=lang), \
+        f"{t['heading']}. {url}"
+
+
+_TR_FEEDBACK = {
+    "en": {
+        "subject": "We've received your feedback",
+        "heading": "Thanks for the feedback",
+        "p": [
+            "Thanks for sharing your thoughts with us! 🙌 We've received your feedback, and our team is already taking a look.",
+            "We read every single note that comes through, even if we aren't always able to reply to each one individually. Your insights are what help us make Vibecraft better every day.",
+            "Thanks for helping us build!",
+        ],
+        "signoff": "— The Vibecraft Team",
+        "text": "Thanks for your feedback — we've received it.",
+    },
+    "fr": {
+        "subject": "Nous avons bien reçu votre retour",
+        "heading": "Merci pour votre retour",
+        "p": [
+            "Merci d'avoir partagé votre avis avec nous ! 🙌 Nous avons bien reçu votre retour, et notre équipe y jette déjà un œil.",
+            "Nous lisons chaque message qui nous parvient, même si nous ne pouvons pas toujours répondre à chacun individuellement. Vos retours sont ce qui nous aide à améliorer Vibecraft chaque jour.",
+            "Merci de contribuer à notre développement !",
+        ],
+        "signoff": "— L'équipe Vibecraft",
+        "text": "Merci pour votre retour — nous l'avons bien reçu.",
+    },
+    "ar": {
+        "subject": "لقد استلمنا ملاحظاتك",
+        "heading": "شكرًا على ملاحظاتك",
+        "p": [
+            "شكرًا لمشاركتنا رأيك! 🙌 لقد استلمنا ملاحظاتك، وفريقنا يطّلع عليها بالفعل.",
+            "نقرأ كل رسالة تصلنا، حتى وإن لم نتمكن دائمًا من الرد على كل واحدة على حدة. ملاحظاتك هي ما يساعدنا على تحسين Vibecraft كل يوم.",
+            "شكرًا لمساهمتك في بنائنا!",
+        ],
+        "signoff": "— فريق Vibecraft",
+        "text": "شكرًا على ملاحظاتك — لقد استلمناها.",
+    },
+}
 
 
 def _tpl_feedback_ack(name: str, ctx: dict, uid: str) -> tuple[str, str, str]:
+    lang = ctx.get("lang", "en")
+    t = _pick(_TR_FEEDBACK, lang)
     body = (
-        f"<p>{_greeting(name)}</p>"
-        f"<p>Thanks for sharing your thoughts with us! 🙌 We've received your feedback, and our "
-        f"team is already taking a look.</p>"
-        f"<p>We read every single note that comes through, even if we aren't always able to "
-        f"reply to each one individually. Your insights are what help us make {_BRAND} better "
-        f"every day.</p>"
-        f"<p>Thanks for helping us build!</p>"
-        f"<p style='margin:18px 0 0;color:#586274'>— The {_BRAND} Team</p>"
+        f"<p>{_greeting(name, lang)}</p>{_paras(t['p'])}"
+        f"<p style='margin:18px 0 0;color:#586274'>{t['signoff']}</p>"
     )
-    return f"We've received your feedback", _shell("Thanks for the feedback", body), \
-        f"Thanks for your feedback — we've received it."
+    return t["subject"], _shell(t["heading"], body, lang=lang), t["text"]
 
 
 _TEMPLATES = {
@@ -411,11 +861,13 @@ def dispatch(
                     or not bool(user.email_lifecycle_enabled)
                 ):
                     return False
-            # Localize to the recipient's stored UI language when we have it;
-            # the caller-passed `lang` (default "en") is the fallback. Templates
-            # read ctx["lang"]. Copy is English-only for now, so this is inert
-            # until localized strings land — the plumbing is here as the drop-in.
+            # Localize to the recipient's stored UI language when we have it; the
+            # caller-passed `lang` (default "en") is the fallback, and templates
+            # degrade to English for any value outside en/fr/ar. Null column =>
+            # English, per product rule.
             effective_lang = getattr(user, "preferred_language", None) or lang or "en"
+            if effective_lang not in _LANGS:
+                effective_lang = "en"
             ctx.setdefault("lang", effective_lang)
             send_id = repo.claim_email_send(uid, trigger, dedupe_key)
             if send_id is None:
