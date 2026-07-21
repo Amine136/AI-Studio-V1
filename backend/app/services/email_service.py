@@ -124,6 +124,60 @@ def _fmt_date(ts: int, lang: str) -> str:
     return f"{dt:%Y-%m-%d}"
 
 
+def _fmt_n(n) -> str:
+    return f"{n:g}" if isinstance(n, (int, float)) else str(n)
+
+
+def _ar_credits(n, gift: bool = False) -> str:
+    """Arabic counted-noun agreement for 'credit' (رصيد).
+
+    Arabic inflects the counted noun by the number: 1 singular, 2 dual, 3-10
+    plural, 11-99 singular accusative (tamyiz), 100+ singular genitive. A single
+    fixed form would read wrong for most counts.
+    """
+    txt = _fmt_n(n)
+    if isinstance(n, (int, float)) and float(n) == int(n):
+        i = int(n)
+        if i == 1:
+            return "رصيد مجاني واحد" if gift else "رصيد واحد"
+        if i == 2:
+            # Genitive dual: the phrase always follows إضافة / صلاحية / على.
+            return "رصيدين مجانيين" if gift else "رصيدين"
+        r = i % 100
+        if 3 <= r <= 10:
+            return f"{txt} أرصدة مجانية" if gift else f"{txt} أرصدة"
+        if 11 <= r <= 99:
+            return f"{txt} رصيدًا مجانيًا" if gift else f"{txt} رصيدًا"
+    # 0, 100+, and fractional counts take the singular.
+    return f"{txt} رصيد مجاني" if gift else f"{txt} رصيد"
+
+
+def _credits_phrase(n, lang: str, gift: bool = False) -> str:
+    """Counted noun phrase: '1 credit', '5 crédits offerts', '35 رصيدًا'."""
+    if lang == "ar":
+        return _ar_credits(n, gift)
+    txt = _fmt_n(n)
+    if lang == "fr":
+        # French takes the singular below 2 (0,5 crédit / 1 crédit).
+        one = isinstance(n, (int, float)) and abs(n) < 2
+        if gift:
+            return f"{txt} crédit offert" if one else f"{txt} crédits offerts"
+        return f"{txt} crédit" if one else f"{txt} crédits"
+    one = isinstance(n, (int, float)) and n == 1
+    if gift:
+        return f"{txt} gift credit" if one else f"{txt} gift credits"
+    return f"{txt} credit" if one else f"{txt} credits"
+
+
+def _verb_key(n, lang: str) -> str:
+    """Pick the sentence whose verb agrees with the count."""
+    if lang == "ar":
+        return "many"  # Arabic sentences are phrased so the verb never varies.
+    if lang == "fr":
+        return "one" if isinstance(n, (int, float)) and abs(n) < 2 else "many"
+    return "one" if isinstance(n, (int, float)) and n == 1 else "many"
+
+
 def _greeting(name: str, lang: str = "en") -> str:
     first = (name or "").strip().split(" ")[0]
     has = bool(first) and "@" not in first
@@ -441,7 +495,8 @@ _TR_SUSPENDED = {
             "warn": "Please note that further violations may result in a permanent ban of your account.",
             "appeal": "If you believe this suspension was made in error or would like to appeal the decision, please contact our support team at {support}, and we will review your case.",
             "signoff": "— The Vibecraft Security Team",
-            "text": "Your Vibecraft account has been suspended. {reason} Appeal: {email}",
+            "text": "Your Vibecraft account has been suspended.{reason} Appeal: {email}",
+            "text_reason": " Reason: {r}.",
         },
         "fr": {
             "subject": "Avis : votre compte Vibecraft a été suspendu",
@@ -453,7 +508,8 @@ _TR_SUSPENDED = {
             "warn": "Veuillez noter que toute nouvelle violation pourra entraîner le bannissement définitif de votre compte.",
             "appeal": "Si vous estimez que cette suspension est une erreur ou souhaitez la contester, veuillez contacter notre équipe d'assistance à {support}, et nous examinerons votre cas.",
             "signoff": "— L'équipe de sécurité Vibecraft",
-            "text": "Votre compte Vibecraft a été suspendu. {reason} Contestation : {email}",
+            "text": "Votre compte Vibecraft a été suspendu.{reason} Contestation : {email}",
+            "text_reason": " Motif : {r}.",
         },
         "ar": {
             "subject": "إشعار: تم تعليق حسابك على Vibecraft",
@@ -465,7 +521,8 @@ _TR_SUSPENDED = {
             "warn": "يرجى العلم أن أي مخالفات إضافية قد تؤدي إلى حظر دائم لحسابك.",
             "appeal": "إذا كنت تعتقد أن هذا التعليق قد تم عن طريق الخطأ أو ترغب في الطعن في القرار، يرجى التواصل مع فريق الدعم عبر {support}، وسنراجع حالتك.",
             "signoff": "— فريق الأمان في Vibecraft",
-            "text": "تم تعليق حسابك على Vibecraft. {reason} للطعن: {email}",
+            "text": "تم تعليق حسابك على Vibecraft.{reason} للطعن: {email}",
+            "text_reason": " السبب: {r}.",
         },
     },
     "perm": {
@@ -479,7 +536,8 @@ _TR_SUSPENDED = {
             "conseq": "As a result, your access to the platform has been revoked, and any remaining credits or active subscriptions have been canceled.",
             "appeal": "If you believe this decision was made in error and wish to appeal the termination, you may submit a final review request to our team at {support}.",
             "signoff": "— The Vibecraft Security Team",
-            "text": "Your Vibecraft account has been permanently terminated. {reason} Appeal: {email}",
+            "text": "Your Vibecraft account has been permanently terminated.{reason} Appeal: {email}",
+            "text_reason": " Reason: {r}.",
         },
         "fr": {
             "subject": "Avis : votre compte Vibecraft a été définitivement résilié",
@@ -491,7 +549,8 @@ _TR_SUSPENDED = {
             "conseq": "Par conséquent, votre accès à la plateforme a été révoqué, et tout crédit restant ou abonnement actif a été annulé.",
             "appeal": "Si vous estimez que cette décision est une erreur et souhaitez contester la résiliation, vous pouvez adresser une demande de réexamen final à notre équipe à {support}.",
             "signoff": "— L'équipe de sécurité Vibecraft",
-            "text": "Votre compte Vibecraft a été définitivement résilié. {reason} Contestation : {email}",
+            "text": "Votre compte Vibecraft a été définitivement résilié.{reason} Contestation : {email}",
+            "text_reason": " Motif : {r}.",
         },
         "ar": {
             "subject": "إشعار: تم إنهاء حسابك على Vibecraft نهائيًا",
@@ -503,7 +562,8 @@ _TR_SUSPENDED = {
             "conseq": "نتيجة لذلك، تم إلغاء وصولك إلى المنصة، وأُلغيت أي أرصدة متبقية أو اشتراكات نشطة.",
             "appeal": "إذا كنت تعتقد أن هذا القرار قد تم عن طريق الخطأ وترغب في الطعن في الإنهاء، يمكنك تقديم طلب مراجعة نهائية إلى فريقنا عبر {support}.",
             "signoff": "— فريق الأمان في Vibecraft",
-            "text": "تم إنهاء حسابك على Vibecraft نهائيًا. {reason} للطعن: {email}",
+            "text": "تم إنهاء حسابك على Vibecraft نهائيًا.{reason} للطعن: {email}",
+            "text_reason": " السبب: {r}.",
         },
     },
 }
@@ -548,8 +608,11 @@ def _tpl_account_suspended(name: str, ctx: dict, uid: str) -> tuple[str, str, st
             f"{sign_off}"
         )
 
+    # Label the admin-entered reason in plain text too (the HTML already does),
+    # and drop the clause entirely when no reason was given.
+    reason_clause = t["text_reason"].format(r=reason.rstrip(". ")) if reason else ""
     return t["subject"], _shell(t["heading"], body, lang=lang), \
-        t["text"].format(reason=reason, email=_SUPPORT_EMAIL)
+        t["text"].format(reason=reason_clause, email=_SUPPORT_EMAIL)
 
 
 _TR_UNSUSPENDED = {
@@ -591,31 +654,49 @@ def _tpl_account_unsuspended(name: str, ctx: dict, uid: str) -> tuple[str, str, 
 
 _TR_RECEIPT = {
     "en": {
-        "subject": "You've got {n} Vibecraft credits",
+        "subject": "You've got {c} on Vibecraft",
         "heading": "Credits added",
-        "added": "<strong>{n} credits</strong> have been added to your account.",
-        "balance": "New balance: {b} credits",
+        "added": {
+            "one": "<strong>{c}</strong> has been added to your account.",
+            "many": "<strong>{c}</strong> have been added to your account.",
+        },
+        "balance": "New balance: {b}",
         "expiry": "These gift credits expire on {date} — use them before then.",
         "cta": "Start creating",
-        "text": "{n} credits added to your Vibecraft account.",
+        "text": {
+            "one": "{c} added to your Vibecraft account.",
+            "many": "{c} added to your Vibecraft account.",
+        },
     },
     "fr": {
-        "subject": "Vous avez reçu {n} crédits Vibecraft",
+        "subject": "Vous avez reçu {c} sur Vibecraft",
         "heading": "Crédits ajoutés",
-        "added": "<strong>{n} crédits</strong> ont été ajoutés à votre compte.",
-        "balance": "Nouveau solde : {b} crédits",
+        "added": {
+            "one": "<strong>{c}</strong> a été ajouté à votre compte.",
+            "many": "<strong>{c}</strong> ont été ajoutés à votre compte.",
+        },
+        "balance": "Nouveau solde : {b}",
         "expiry": "Ces crédits offerts expirent le {date} — utilisez-les avant cette date.",
         "cta": "Commencer à créer",
-        "text": "{n} crédits ajoutés à votre compte Vibecraft.",
+        "text": {
+            "one": "{c} ajouté à votre compte Vibecraft.",
+            "many": "{c} ajoutés à votre compte Vibecraft.",
+        },
     },
     "ar": {
-        "subject": "لقد حصلت على {n} من أرصدة Vibecraft",
+        "subject": "لقد حصلت على {c} في Vibecraft",
         "heading": "تمت إضافة الأرصدة",
-        "added": "تمت إضافة <strong>{n} من الأرصدة</strong> إلى حسابك.",
-        "balance": "الرصيد الجديد: {b} من الأرصدة",
+        "added": {
+            "one": "تمت إضافة <strong>{c}</strong> إلى حسابك.",
+            "many": "تمت إضافة <strong>{c}</strong> إلى حسابك.",
+        },
+        "balance": "الرصيد الجديد: {b}",
         "expiry": "تنتهي صلاحية هذه الأرصدة المجانية في {date} — استخدمها قبل ذلك.",
         "cta": "ابدأ الإنشاء",
-        "text": "تمت إضافة {n} من الأرصدة إلى حسابك على Vibecraft.",
+        "text": {
+            "one": "تمت إضافة {c} إلى حسابك على Vibecraft.",
+            "many": "تمت إضافة {c} إلى حسابك على Vibecraft.",
+        },
     },
 }
 
@@ -626,9 +707,9 @@ def _tpl_credit_receipt(name: str, ctx: dict, uid: str) -> tuple[str, str, str]:
     credits = ctx.get("credits")
     balance = ctx.get("balance")
     expires_at = ctx.get("expires_at")
-    credits_txt = f"{credits:g}" if isinstance(credits, (int, float)) else str(credits)
+    phrase = _credits_phrase(credits, lang)
     balance_line = (
-        f"<p><strong>{t['balance'].format(b=f'{balance:g}')}</strong></p>"
+        f"<p><strong>{t['balance'].format(b=_credits_phrase(balance, lang))}</strong></p>"
         if isinstance(balance, (int, float))
         else ""
     )
@@ -643,35 +724,63 @@ def _tpl_credit_receipt(name: str, ctx: dict, uid: str) -> tuple[str, str, str]:
             expiry_line = ""
     body = (
         f"<p>{_greeting(name, lang)}</p>"
-        f"<p>{t['added'].format(n=credits_txt)}</p>"
+        f"<p>{t['added'][_verb_key(credits, lang)].format(c=phrase)}</p>"
         f"{balance_line}{expiry_line}"
         f"<p style='margin:22px 0'>{_button(t['cta'], f'{settings.app_base_url}/playground')}</p>"
     )
-    return t["subject"].format(n=credits_txt), _shell(t["heading"], body, lang=lang), \
-        t["text"].format(n=credits_txt)
+    return t["subject"].format(c=phrase), _shell(t["heading"], body, lang=lang), \
+        t["text"][_verb_key(credits, lang)].format(c=phrase)
 
 
 _TR_EXPIRY = {
     "en": {
-        "subject": "{n} Vibecraft credits expire soon",
+        "subject": {
+            "one": "{c} expires soon",
+            "many": "{c} expire soon",
+        },
         "heading": "Your credits expire soon",
-        "body": "Heads up — <strong>{n} of your gift credits expire within the next 24 hours.</strong> Use them before they're gone.",
+        "body": {
+            "one": "Heads up — <strong>{c} expires within the next 24 hours.</strong> Use it before it's gone.",
+            "many": "Heads up — <strong>{c} expire within the next 24 hours.</strong> Use them before they're gone.",
+        },
         "cta": "Use my credits",
-        "text": "{n} gift credits expire within 24 hours. {url}",
+        "text": {
+            "one": "{c} expires within 24 hours. {url}",
+            "many": "{c} expire within 24 hours. {url}",
+        },
     },
     "fr": {
-        "subject": "{n} crédits Vibecraft expirent bientôt",
+        "subject": {
+            "one": "{c} expire bientôt",
+            "many": "{c} expirent bientôt",
+        },
         "heading": "Vos crédits expirent bientôt",
-        "body": "Petit rappel — <strong>{n} de vos crédits offerts expirent dans les prochaines 24 heures.</strong> Utilisez-les avant qu'ils ne disparaissent.",
+        "body": {
+            "one": "Petit rappel — <strong>{c} expire dans les prochaines 24 heures.</strong> Utilisez-le avant qu'il ne disparaisse.",
+            "many": "Petit rappel — <strong>{c} expirent dans les prochaines 24 heures.</strong> Utilisez-les avant qu'ils ne disparaissent.",
+        },
         "cta": "Utiliser mes crédits",
-        "text": "{n} crédits offerts expirent dans 24 heures. {url}",
+        "text": {
+            "one": "{c} expire dans 24 heures. {url}",
+            "many": "{c} expirent dans 24 heures. {url}",
+        },
     },
     "ar": {
-        "subject": "{n} من أرصدة Vibecraft ستنتهي قريبًا",
+        # Verb fronted (تنتهي صلاحية …) so it agrees with "صلاحية", never the count.
+        "subject": {
+            "one": "تنتهي قريبًا صلاحية {c} في Vibecraft",
+            "many": "تنتهي قريبًا صلاحية {c} في Vibecraft",
+        },
         "heading": "أرصدتك على وشك الانتهاء",
-        "body": "تنبيه — <strong>{n} من أرصدتك المجانية ستنتهي خلال الـ24 ساعة القادمة.</strong> استخدمها قبل أن تختفي.",
+        "body": {
+            "one": "تنبيه — <strong>تنتهي صلاحية {c} خلال الـ24 ساعة القادمة.</strong> استخدمها قبل أن تختفي.",
+            "many": "تنبيه — <strong>تنتهي صلاحية {c} خلال الـ24 ساعة القادمة.</strong> استخدمها قبل أن تختفي.",
+        },
         "cta": "استخدم أرصدتي",
-        "text": "{n} من الأرصدة المجانية ستنتهي خلال 24 ساعة. {url}",
+        "text": {
+            "one": "تنتهي صلاحية {c} خلال 24 ساعة. {url}",
+            "many": "تنتهي صلاحية {c} خلال 24 ساعة. {url}",
+        },
     },
 }
 
@@ -680,15 +789,16 @@ def _tpl_credit_expiry_warn(name: str, ctx: dict, uid: str) -> tuple[str, str, s
     lang = ctx.get("lang", "en")
     t = _pick(_TR_EXPIRY, lang)
     remaining = ctx.get("remaining")
-    remaining_txt = f"{remaining:g}" if isinstance(remaining, (int, float)) else str(remaining)
+    k = _verb_key(remaining, lang)
+    phrase = _credits_phrase(remaining, lang, gift=True)
     play = f"{settings.app_base_url}/playground"
     body = (
         f"<p>{_greeting(name, lang)}</p>"
-        f"<p>{t['body'].format(n=remaining_txt)}</p>"
+        f"<p>{t['body'][k].format(c=phrase)}</p>"
         f"<p style='margin:22px 0'>{_button(t['cta'], play)}</p>"
     )
-    return t["subject"].format(n=remaining_txt), _shell(t["heading"], body, lang=lang), \
-        t["text"].format(n=remaining_txt, url=play)
+    return t["subject"][k].format(c=phrase), _shell(t["heading"], body, lang=lang), \
+        t["text"][k].format(c=phrase, url=play)
 
 
 _TR_WINBACK = {
