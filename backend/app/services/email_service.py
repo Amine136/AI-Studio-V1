@@ -18,6 +18,7 @@ import base64
 import hashlib
 import hmac
 import logging
+import re
 import time
 from datetime import datetime, timezone
 from typing import Optional
@@ -576,7 +577,9 @@ def _tpl_account_suspended(name: str, ctx: dict, uid: str) -> tuple[str, str, st
     variant = "temp" if until else "perm"
     t = _pick(_TR_SUSPENDED[variant], lang)
 
-    reason_html = f"<p><strong>{t['reason_label']}</strong> {reason}</p>" if reason else ""
+    # Match the surrounding lines, which all end in a full stop.
+    reason_disp = reason if reason[-1:] in ".!?؟" else f"{reason}."
+    reason_html = f"<p><strong>{t['reason_label']}</strong> {reason_disp}</p>" if reason else ""
     intro = t["intro"].format(policy=_policy_link(t["policy_word"]))
     sign_off = f"<p style='margin:18px 0 0;color:#586274'>{t['signoff']}</p>"
 
@@ -916,6 +919,40 @@ def _tpl_feedback_ack(name: str, ctx: dict, uid: str) -> tuple[str, str, str]:
         f"<p style='margin:18px 0 0;color:#586274'>{t['signoff']}</p>"
     )
     return t["subject"], _shell(t["heading"], body, lang=lang), t["text"]
+
+
+# --- French typography --------------------------------------------------------
+# French sets a non-breaking space before : ; ! ? so the mark can never wrap onto
+# the next line. Applied once, at import, to every "fr" branch of every catalog
+# so new strings inherit it automatically.
+
+_FR_NBSP = re.compile(r" ([:;!?])")
+
+
+def _fr_typography(node):
+    if isinstance(node, str):
+        return _FR_NBSP.sub("\u00a0\\1", node)
+    if isinstance(node, list):
+        return [_fr_typography(x) for x in node]
+    if isinstance(node, dict):
+        return {k: _fr_typography(v) for k, v in node.items()}
+    return node
+
+
+def _apply_fr_typography(node) -> None:
+    if isinstance(node, dict):
+        if "fr" in node and "en" in node:
+            node["fr"] = _fr_typography(node["fr"])
+        else:
+            for v in node.values():
+                _apply_fr_typography(v)
+
+
+for _catalog in (
+    _SHELL_TR, _TR_WELCOME, _TR_DRIP, _TR_DEACTIVATED, _TR_SUSPENDED,
+    _TR_UNSUSPENDED, _TR_RECEIPT, _TR_EXPIRY, _TR_WINBACK, _TR_FEEDBACK,
+):
+    _apply_fr_typography(_catalog)
 
 
 _TEMPLATES = {
