@@ -988,10 +988,13 @@ def dispatch(
     ctx = ctx or {}
     to_email = (to_email or "").strip()
     if not to_email or "@" not in to_email:
+        # Every skip below is logged: "no email arrived" must be distinguishable
+        # from "we never tried", which is invisible if these just return False.
+        logger.warning("[email] SKIP %s uid=%s: no usable recipient address", trigger, uid)
         return False
     template = _TEMPLATES.get(trigger)
     if template is None:
-        logger.error("email dispatch: unknown trigger %r", trigger)
+        logger.error("[email] SKIP %s uid=%s: unknown trigger", trigger, uid)
         return False
 
     category = _category_for(trigger)
@@ -1001,12 +1004,19 @@ def dispatch(
             repo = SecurityRepository(session)
             user = repo.get_user(uid)
             if category == "marketing":
-                if (
-                    user is None
-                    or bool(user.is_deactivated)
-                    or bool(user.is_suspended)
-                    or not bool(user.email_lifecycle_enabled)
-                ):
+                if user is None:
+                    logger.warning("[email] SKIP %s uid=%s: no such user row", trigger, uid)
+                    return False
+                if bool(user.is_deactivated) or bool(user.is_suspended):
+                    logger.info(
+                        "[email] SKIP %s uid=%s: account %s",
+                        trigger,
+                        uid,
+                        "deactivated" if user.is_deactivated else "suspended",
+                    )
+                    return False
+                if not bool(user.email_lifecycle_enabled):
+                    logger.info("[email] SKIP %s uid=%s: user opted out of lifecycle mail", trigger, uid)
                     return False
             # Localize to the recipient's stored UI language when we have it; the
             # caller-passed `lang` (default "en") is the fallback, and templates
@@ -1018,6 +1028,9 @@ def dispatch(
             ctx.setdefault("lang", effective_lang)
             send_id = repo.claim_email_send(uid, trigger, dedupe_key)
             if send_id is None:
+                logger.info(
+                    "[email] SKIP %s uid=%s: already claimed for dedupe_key=%s", trigger, uid, dedupe_key
+                )
                 return False  # already claimed → no double-send
 
         subject, html, text = template(to_name, ctx, uid)
@@ -1038,20 +1051,37 @@ def dispatch(
             )
         )
 
+        # A dry-run row is labelled `dry_run`, never `sent`: on a keyless box every
+        # send "succeeds" and an audit of the table would otherwise read as delivered.
+        if result.dry_run:
+            status = "dry_run"
+        elif result.ok:
+            status = "sent"
+        else:
+            status = "failed"
         with session_scope() as session:
             repo = SecurityRepository(session)
             repo.mark_email_send(
                 send_id,
-                status="sent" if result.ok else "failed",
+                status=status,
                 provider_message_id=result.message_id,
                 error=result.error,
                 sent_at=int(time.time()) if result.ok else None,
             )
         if not result.ok:
-            logger.warning("email %s to %s failed: %s", trigger, uid, result.error)
+            logger.error("[email] FAILED %s uid=%s to=%s: %s", trigger, uid, to_email, result.error)
+        elif not result.dry_run:
+            logger.info(
+                "[email] SENT %s uid=%s to=%s lang=%s message_id=%s",
+                trigger,
+                uid,
+                to_email,
+                ctx.get("lang"),
+                result.message_id,
+            )
         return result.ok
     except Exception:
-        logger.exception("email dispatch crashed for %s/%s", trigger, uid)
+        logger.exception("[email] CRASHED %s uid=%s to=%s", trigger, uid, to_email)
         return False
 
 

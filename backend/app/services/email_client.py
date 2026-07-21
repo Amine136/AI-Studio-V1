@@ -43,6 +43,21 @@ class OutgoingEmail:
     headers: dict[str, str] = field(default_factory=dict)
 
 
+def transport_status() -> str:
+    """One-line description of the live transport, logged once at boot.
+
+    Exists because a keyless box dry-runs *silently and successfully* — without
+    this line there is no way to tell "delivered" from "swallowed" in the logs.
+    """
+    if settings.email_dry_run:
+        cause = "EMAIL_DRY_RUN is set" if settings.brevo_api_key else "no BREVO_API_KEY in env"
+        return f"DRY-RUN — {cause}; messages are rendered and recorded but NOT delivered"
+    return (
+        f"LIVE via {settings.email_provider} "
+        f"from={settings.email_from_name} <{settings.email_from}> timeout={settings.email_timeout}s"
+    )
+
+
 def send_email(message: OutgoingEmail) -> EmailSendResult:
     """Deliver one email. Never raises — returns a result the caller records."""
     to_email = (message.to_email or "").strip()
@@ -51,7 +66,7 @@ def send_email(message: OutgoingEmail) -> EmailSendResult:
 
     if settings.email_dry_run:
         logger.info(
-            "[email dry-run] to=%s subject=%r headers=%s\n%s",
+            "[email] DRY-RUN (nothing delivered) to=%s subject=%r headers=%s\n%s",
             to_email,
             message.subject,
             message.headers or {},
@@ -86,8 +101,20 @@ def _send_brevo(message: OutgoingEmail) -> EmailSendResult:
                 headers={"api-key": settings.brevo_api_key, "accept": "application/json"},
             )
     except httpx.TimeoutException:
+        logger.error(
+            "[email] brevo TIMEOUT after %ss to=%s subject=%r",
+            settings.email_timeout,
+            message.to_email,
+            message.subject,
+        )
         return EmailSendResult(ok=False, error="provider timeout")
     except httpx.RequestError as exc:
+        logger.error(
+            "[email] brevo NETWORK ERROR to=%s subject=%r: %s",
+            message.to_email,
+            message.subject,
+            exc,
+        )
         return EmailSendResult(ok=False, error=f"network error: {exc}")
 
     if response.status_code in (200, 201, 202):
@@ -96,11 +123,42 @@ def _send_brevo(message: OutgoingEmail) -> EmailSendResult:
             message_id = str(response.json().get("messageId") or "") or None
         except Exception:
             pass
+        logger.info(
+            "[email] brevo SENT to=%s subject=%r message_id=%s",
+            message.to_email,
+            message.subject,
+            message_id or "(none returned)",
+        )
         return EmailSendResult(ok=True, message_id=message_id)
 
-    return EmailSendResult(
-        ok=False, error=f"provider HTTP {response.status_code}: {response.text[:300]}"
+    # Failures carry the raw status + body so the stored `error` stays diagnosable,
+    # prefixed with the plain-language cause (a 401 reads as "bad key", not "HTTP 401").
+    reason = _explain_http(response.status_code)
+    error = f"{reason} — provider HTTP {response.status_code}: {response.text[:300]}"
+    logger.error(
+        "[email] brevo FAILED (%s) to=%s subject=%r status=%s body=%s",
+        reason,
+        message.to_email,
+        message.subject,
+        response.status_code,
+        response.text[:600],
     )
+    return EmailSendResult(ok=False, error=error)
+
+
+def _explain_http(status_code: int) -> str:
+    """Plain-language cause for a Brevo HTTP status, so the stored error is readable."""
+    if status_code in (401, 403):
+        return "auth rejected: BREVO_API_KEY missing, wrong, or revoked"
+    if status_code == 429:
+        return "rate limited by provider (send quota or per-second cap)"
+    if status_code == 400:
+        return "payload rejected: check sender address is a verified Brevo sender"
+    if status_code == 402:
+        return "provider credit/plan limit reached"
+    if 500 <= status_code < 600:
+        return "provider outage"
+    return "unexpected provider response"
 
 
 def _strip_html(html: str) -> str:
