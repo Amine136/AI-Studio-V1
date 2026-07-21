@@ -50,7 +50,17 @@ def transport_status() -> str:
     this line there is no way to tell "delivered" from "swallowed" in the logs.
     """
     if settings.email_dry_run:
-        cause = "EMAIL_DRY_RUN is set" if settings.brevo_api_key else "no BREVO_API_KEY in env"
+        # Report the *binding* constraint first: on a non-prod box, adding a key
+        # would still not send, so naming a missing key there would mislead.
+        if settings.app_env != "prod" and not settings.email_allow_nonprod:
+            cause = (
+                f"APP_ENV={settings.app_env!r} is not prod — only production delivers mail "
+                f"(set EMAIL_ALLOW_NONPROD=1 to override)"
+            )
+        elif settings.brevo_api_key:
+            cause = "EMAIL_DRY_RUN is set"
+        else:
+            cause = "no BREVO_API_KEY in env"
         return f"DRY-RUN — {cause}; messages are rendered and recorded but NOT delivered"
     return (
         f"LIVE via {settings.email_provider} "
