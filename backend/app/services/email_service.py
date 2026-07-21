@@ -382,7 +382,7 @@ _TR_DRIP = {
                 "Maintenant que vous avez exploré les bases de Vibecraft, il est temps de voir comment il s'intègre à votre véritable flux de travail. Bienvenue dans les Packs.",
                 "Que vous souhaitiez mettre en valeur un produit physique, le placer dans un décor entièrement nouveau ou concevoir des visuels marketing performants, les Packs vous offrent exactement le canevas qu'il vous faut.",
                 "Des superbes mockups produits et designs de packaging jusqu'aux images prêtes à publier sur les réseaux sociaux et aux publicités performantes, vous pouvez créer des visuels de qualité professionnelle en quelques clics — ou simplement les parcourir pour une inspiration immédiate.",
-                "Prêt à découvrir ce que vous pouvez créer ?",
+                "Envie de découvrir ce que vous pouvez créer ?",
             ],
             "cta": "Explorer les Packs Vibecraft",
         },
@@ -814,7 +814,7 @@ _TR_WINBACK = {
             "cta": "Bring it to life",
         },
         "fr": {
-            "subject": "Prêt pour la prochaine ?",
+            "subject": "Envie d'en créer une autre ?",
             "preheader": "Votre prochaine idée n'est qu'à un prompt.",
             "heading": "Votre studio est encore chaud 🔥",
             "p": ["Votre prochaine grande idée n'est qu'à un prompt. Revenez dans le studio, décrivez ce que vous avez en tête, et laissez les modèles s'occuper du reste."],
