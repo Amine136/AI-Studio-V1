@@ -3,6 +3,8 @@ import re
 import secrets
 import json
 import base64
+import logging
+import sys
 import time
 import struct
 import threading
@@ -117,6 +119,31 @@ from app.services.user_files import (
     private_file_id_from_url,
     private_file_url,
 )
+
+def _configure_app_logging() -> None:
+    """Give the ``app.*`` loggers a real handler.
+
+    Nothing here ever configured logging, and gunicorn/uvicorn only configure
+    their own loggers — so ``app.*`` records fell through to Python's lastResort
+    handler, which drops anything below WARNING. Every logger.info in the
+    codebase was being discarded. Scoped to the "app" namespace (not root) so
+    gunicorn/uvicorn keep their own formatting, with propagate off to avoid
+    double-printing each line.
+    """
+    app_logger = logging.getLogger("app")
+    level = os.getenv("LOG_LEVEL", "INFO").strip().upper()
+    app_logger.setLevel(getattr(logging, level, logging.INFO))
+    if not app_logger.handlers:
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setFormatter(
+            logging.Formatter("[%(asctime)s] %(levelname)s %(name)s: %(message)s")
+        )
+        app_logger.addHandler(handler)
+    app_logger.propagate = False
+
+
+_configure_app_logging()
+logger = logging.getLogger(__name__)
 
 MAX_INPUT_IMAGES = 4
 # Editing models (e.g. Grok Imagine "*-editing") accept fewer source images than the
@@ -584,6 +611,14 @@ def cleanup_uploaded_images_on_startup():
     _cleanup_expired_uploaded_images()
     catalog_store.initialize()
     preload_security_store()
+    # Announce the email transport mode: DRY-RUN is silent-by-design, so without
+    # this the only way to know a box delivers nothing is to inspect the DB.
+    try:
+        from app.services.email_client import transport_status
+
+        logger.info("[email] transport: %s", transport_status())
+    except Exception:
+        logger.exception("[email] could not resolve transport status")
     # Eagerly refresh the live model catalog so pack model lists are complete
     # from the very first request (before the AKM catalog webhook fires).
     try:
