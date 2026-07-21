@@ -91,6 +91,22 @@ class Config:
         self.email_timeout = float(os.getenv("EMAIL_TIMEOUT", "20"))
         _email_dry_run_forced = os.getenv("EMAIL_DRY_RUN", "").strip().lower() in {"1", "true", "yes", "on"}
         self.email_dry_run = _email_dry_run_forced or not self.brevo_api_key
+        # ONLY production delivers mail. Staging shares the Brevo account with prod
+        # (same send quota, same sender reputation) and its DB holds real user
+        # addresses, so a test redeem or an enabled sweep there would email real
+        # people. Enforced in code rather than by keeping staging's .env keyless,
+        # so it cannot be undone by copying an .env between boxes. Note APP_ENV
+        # defaults to "prod" when unset (see app_env above), matching the existing
+        # `packs_test_fake_provider` idiom. EMAIL_ALLOW_NONPROD=1 re-enables real
+        # delivery for a deliberate, supervised test on a non-prod box.
+        self.email_allow_nonprod = os.getenv("EMAIL_ALLOW_NONPROD", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+        if self.app_env != "prod" and not self.email_allow_nonprod:
+            self.email_dry_run = True
         # Public app base used to build links in emails (unsubscribe, deep links).
         # Routes through nginx to the backend for /api/* paths.
         self.app_base_url = (
