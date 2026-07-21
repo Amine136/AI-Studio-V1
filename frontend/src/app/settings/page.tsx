@@ -15,6 +15,7 @@ import {
   readAccentColorFromCookie,
 } from "../../lib/accentColor";
 import { setTheme, useThemeMode } from "../../lib/theme";
+import FeedbackModal from "../../components/FeedbackModal";
 
 const PROFILE_SAVE_COOLDOWN_MS = 1200;
 
@@ -43,6 +44,7 @@ export default function SettingsPage() {
 
   const [emailNotifications, setEmailNotifications] = useState(true);
   const [productUpdates, setProductUpdates] = useState(false);
+  const [lifecycleEmails, setLifecycleEmails] = useState(true);
   const [accent, setAccent] = useState<AccentColorId>("blue");
   const [editableUsername, setEditableUsername] = useState("");
   const [bio, setBio] = useState("");
@@ -58,6 +60,7 @@ export default function SettingsPage() {
   const [notificationsSuccess, setNotificationsSuccess] = useState<string | null>(null);
   const [savingNotifications, setSavingNotifications] = useState(false);
   const [deactivationError, setDeactivationError] = useState<string | null>(null);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [showDeactivateConfirm, setShowDeactivateConfirm] = useState(false);
   const [deactivatingAccount, setDeactivatingAccount] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
@@ -103,6 +106,7 @@ export default function SettingsPage() {
         setSavedBio(nextBio);
         setEmailNotifications(profile.emailGeneralNewsEnabled ?? true);
         setProductUpdates(profile.emailPlatformUpdatesEnabled ?? true);
+        setLifecycleEmails(profile.emailLifecycleEnabled ?? true);
         setProfileChangesRemaining(
           typeof profile.profileChangesRemaining === "number" ? profile.profileChangesRemaining : null,
         );
@@ -178,25 +182,30 @@ export default function SettingsPage() {
   }
 
   async function handleNotificationPreferenceChange(next: {
-    emailGeneralNewsEnabled: boolean;
-    emailPlatformUpdatesEnabled: boolean;
+    emailGeneralNewsEnabled?: boolean;
+    emailPlatformUpdatesEnabled?: boolean;
+    emailLifecycleEnabled?: boolean;
   }) {
     if (!user) return goToAuthWall();
     const previousEmailNotifications = emailNotifications;
     const previousProductUpdates = productUpdates;
+    const previousLifecycleEmails = lifecycleEmails;
     setSavingNotifications(true);
     setNotificationsError(null);
     setNotificationsSuccess(null);
-    setEmailNotifications(next.emailGeneralNewsEnabled);
-    setProductUpdates(next.emailPlatformUpdatesEnabled);
+    if (next.emailGeneralNewsEnabled !== undefined) setEmailNotifications(next.emailGeneralNewsEnabled);
+    if (next.emailPlatformUpdatesEnabled !== undefined) setProductUpdates(next.emailPlatformUpdatesEnabled);
+    if (next.emailLifecycleEnabled !== undefined) setLifecycleEmails(next.emailLifecycleEnabled);
     try {
       const profile = await api.updateNotificationPreferences(next);
-      setEmailNotifications(profile.emailGeneralNewsEnabled ?? next.emailGeneralNewsEnabled);
-      setProductUpdates(profile.emailPlatformUpdatesEnabled ?? next.emailPlatformUpdatesEnabled);
+      setEmailNotifications(profile.emailGeneralNewsEnabled ?? previousEmailNotifications);
+      setProductUpdates(profile.emailPlatformUpdatesEnabled ?? previousProductUpdates);
+      setLifecycleEmails(profile.emailLifecycleEnabled ?? previousLifecycleEmails);
       setNotificationsSuccess(t("Notification preferences updated."));
     } catch (error) {
       setEmailNotifications(previousEmailNotifications);
       setProductUpdates(previousProductUpdates);
+      setLifecycleEmails(previousLifecycleEmails);
       setNotificationsError(error instanceof Error ? error.message : t("Failed to update notification preferences."));
     } finally {
       setSavingNotifications(false);
@@ -390,29 +399,6 @@ export default function SettingsPage() {
             <div className="space-y-6 p-5 sm:p-8">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <p className="font-medium text-[#dce1fb]">{t("AI General News")}</p>
-                  <p className="text-xs text-[#c2c6d6]">{t("Email updates about major AI news and general ecosystem shifts.")}</p>
-                </div>
-                <button
-                  type="button"
-                  disabled={savingNotifications}
-                  onClick={() =>
-                    void handleNotificationPreferenceChange({
-                      emailGeneralNewsEnabled: !emailNotifications,
-                      emailPlatformUpdatesEnabled: productUpdates,
-                    })
-                  }
-                  className={`relative h-6 w-11 rounded-full transition ${emailNotifications ? "bg-[#adc6ff]" : "bg-[#2e3447]"} ${savingNotifications ? "cursor-not-allowed opacity-70" : ""}`}
-                >
-                  <span
-                    className={`absolute top-[2px] h-5 w-5 rounded-full bg-white transition ${
-                      emailNotifications ? "left-[22px] rtl:left-auto rtl:right-[22px]" : "left-[2px] rtl:left-auto rtl:right-[2px]"
-                    }`}
-                  />
-                </button>
-              </div>
-              <div className="flex items-start justify-between gap-4">
-                <div>
                   <p className="font-medium text-[#dce1fb]">{t("Platform News and Model Updates")}</p>
                   <p className="text-xs text-[#c2c6d6]">{t("New Vibecraft features, platform changes, and newly added AI models.")}</p>
                 </div>
@@ -421,7 +407,6 @@ export default function SettingsPage() {
                   disabled={savingNotifications}
                   onClick={() =>
                     void handleNotificationPreferenceChange({
-                      emailGeneralNewsEnabled: emailNotifications,
                       emailPlatformUpdatesEnabled: !productUpdates,
                     })
                   }
@@ -430,6 +415,28 @@ export default function SettingsPage() {
                   <span
                     className={`absolute top-[2px] h-5 w-5 rounded-full bg-white transition ${
                       productUpdates ? "left-[22px] rtl:left-auto rtl:right-[22px]" : "left-[2px] rtl:left-auto rtl:right-[2px]"
+                    }`}
+                  />
+                </button>
+              </div>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="font-medium text-[#dce1fb]">{t("Tips and Product Reminders")}</p>
+                  <p className="text-xs text-[#c2c6d6]">{t("Occasional onboarding tips and reminders to help you get the most out of Vibecraft.")}</p>
+                </div>
+                <button
+                  type="button"
+                  disabled={savingNotifications}
+                  onClick={() =>
+                    void handleNotificationPreferenceChange({
+                      emailLifecycleEnabled: !lifecycleEmails,
+                    })
+                  }
+                  className={`relative h-6 w-11 rounded-full transition ${lifecycleEmails ? "bg-[#adc6ff]" : "bg-[#2e3447]"} ${savingNotifications ? "cursor-not-allowed opacity-70" : ""}`}
+                >
+                  <span
+                    className={`absolute top-[2px] h-5 w-5 rounded-full bg-white transition ${
+                      lifecycleEmails ? "left-[22px] rtl:left-auto rtl:right-[22px]" : "left-[2px] rtl:left-auto rtl:right-[2px]"
                     }`}
                   />
                 </button>
@@ -547,6 +554,50 @@ export default function SettingsPage() {
               </div>
             </div>
           </div>
+        </div>
+      </section>
+
+      <section id="support" className="pt-8">
+        <div className="mb-8">
+          <h3 className="font-headline text-2xl font-bold tracking-tight text-[#dce1fb] sm:text-3xl">{t("Support")}</h3>
+          <p className="mt-2 text-[#c2c6d6]">{t("Help us improve Vibecraft.")}</p>
+        </div>
+
+        <div className="overflow-hidden rounded-2xl border border-white/8 bg-[#151b2d]">
+          {user ? (
+            <button
+              type="button"
+              onClick={() => setFeedbackOpen(true)}
+              className="group flex w-full items-center justify-between p-4 text-left transition-colors hover:bg-white/[0.03] sm:p-6"
+            >
+              <div className="flex items-center gap-4">
+                <div className="flex h-10 w-10 items-center justify-center rounded-sm bg-[#2e3447] text-[#adc6ff]">
+                  <span className="material-symbols-outlined">rate_review</span>
+                </div>
+                <div>
+                  <p className="font-bold text-[#dce1fb]">{t("Share Feedback")}</p>
+                  <p className="text-xs text-[#c2c6d6]">{t("Report a bug, suggest an idea, or tell us what you think")}</p>
+                </div>
+              </div>
+              <span className="material-symbols-outlined text-[#8c909f] transition-colors group-hover:text-[#adc6ff]">chevron_right</span>
+            </button>
+          ) : (
+            <Link
+              href={`/auth?next=${encodeURIComponent("/settings")}`}
+              className="group flex items-center justify-between p-4 transition-colors hover:bg-white/[0.03] sm:p-6"
+            >
+              <div className="flex items-center gap-4">
+                <div className="flex h-10 w-10 items-center justify-center rounded-sm bg-[#2e3447] text-[#adc6ff]">
+                  <span className="material-symbols-outlined">rate_review</span>
+                </div>
+                <div>
+                  <p className="font-bold text-[#dce1fb]">{t("Share Feedback")}</p>
+                  <p className="text-xs text-[#c2c6d6]">{t("Report a bug, suggest an idea, or tell us what you think")}</p>
+                </div>
+              </div>
+              <span className="material-symbols-outlined text-[#8c909f] transition-colors group-hover:text-[#adc6ff]">chevron_right</span>
+            </Link>
+          )}
         </div>
       </section>
 
@@ -690,7 +741,9 @@ export default function SettingsPage() {
         </div>
       ) : null}
 
-      <p className="pb-8 text-center text-xs text-[#7a8197]">Vibecraft v2.0.2</p>
+      <FeedbackModal open={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
+
+      <p className="pb-8 text-center text-xs text-[#7a8197]">Vibecraft v2.0.3</p>
     </div>
   );
 }

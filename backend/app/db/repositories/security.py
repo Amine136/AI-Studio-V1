@@ -10,7 +10,7 @@ from sqlalchemy import case, delete, func, select, update
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from app.db.models import AdminAccount, AdminAuditLog, AdminSession, AnalyzeSession, ChatConversation, ChatMessage, CreditCode, CreditCodeClaim, CreditLedgerEntry, CreditLot, CreditLotAllocation, DashboardNewsItem, DeactivatedEmail, GenerationJob, HistoryEntry, ModerationRejection, PackSession, RateLimitBucket, User, UserFile
+from app.db.models import AdminAccount, AdminAuditLog, AdminSession, AnalyzeSession, ChatConversation, ChatMessage, CreditCode, CreditCodeClaim, CreditLedgerEntry, CreditLot, CreditLotAllocation, DashboardNewsItem, DeactivatedEmail, EmailSend, FeedbackItem, GenerationJob, HistoryEntry, ModerationRejection, PackSession, RateLimitBucket, User, UserFile
 
 USERNAME_ALLOWED_RE = re.compile(r"[^a-z0-9._-]+")
 
@@ -243,6 +243,61 @@ class SecurityRepository:
         self.session.delete(item)
         self.session.flush()
 
+    def create_feedback_item(
+        self,
+        *,
+        uid: str | None,
+        email: str,
+        category: str,
+        message: str,
+        route: str,
+        language: str,
+        user_agent: str,
+    ) -> FeedbackItem:
+        now = int(time.time())
+        item = FeedbackItem(
+            id=str(uuid.uuid4()),
+            uid=uid,
+            email=email,
+            category=category,
+            message=message,
+            route=route,
+            language=language,
+            user_agent=user_agent,
+            status="new",
+            created_at=now,
+            updated_at=now,
+        )
+        self.session.add(item)
+        self.session.flush()
+        return item
+
+    def list_feedback_items(self, *, status: str | None = None, limit: int = 200) -> list[FeedbackItem]:
+        stmt = select(FeedbackItem)
+        if status:
+            stmt = stmt.where(FeedbackItem.status == status)
+        stmt = stmt.order_by(FeedbackItem.created_at.desc()).limit(limit)
+        return list(self.session.execute(stmt).scalars())
+
+    def count_feedback_items_since(self, uid: str, since: int) -> int:
+        stmt = (
+            select(func.count())
+            .select_from(FeedbackItem)
+            .where(FeedbackItem.uid == uid, FeedbackItem.created_at >= since)
+        )
+        return int(self.session.execute(stmt).scalar_one())
+
+    def get_feedback_item_for_update(self, item_id: str) -> FeedbackItem | None:
+        return self.session.execute(
+            select(FeedbackItem).where(FeedbackItem.id == item_id).with_for_update()
+        ).scalar_one_or_none()
+
+    def update_feedback_item_status(self, item: FeedbackItem, *, status: str) -> FeedbackItem:
+        item.status = status
+        item.updated_at = int(time.time())
+        self.session.flush()
+        return item
+
     def _username_taken(self, username: str, *, exclude_uid: str | None = None) -> bool:
         stmt = select(User.uid).where(User.username == username)
         if exclude_uid is not None:
@@ -344,14 +399,127 @@ class SecurityRepository:
         *,
         email_general_news_enabled: bool,
         email_platform_updates_enabled: bool,
+        email_lifecycle_enabled: bool,
         updated_at: int,
     ) -> User:
         user.email_general_news_enabled = bool(email_general_news_enabled)
         user.email_platform_updates_enabled = bool(email_platform_updates_enabled)
+        user.email_lifecycle_enabled = bool(email_lifecycle_enabled)
         user.updated_at = updated_at
         user.last_seen_at = updated_at
         self.session.flush()
         return user
+
+    def set_email_lifecycle_enabled(self, uid: str, enabled: bool) -> bool:
+        """Flip the lifecycle/marketing consent flag (used by the unsubscribe link).
+
+        Returns True if a matching user row was updated."""
+        now = int(time.time())
+        result = self.session.execute(
+            update(User)
+            .where(User.uid == uid)
+            .values(email_lifecycle_enabled=bool(enabled), updated_at=now)
+        )
+        return bool(result.rowcount == 1)
+
+    # --- Automatic email idempotency / audit (email_sends) --------------------
+
+    def claim_email_send(self, uid: str, trigger_type: str, dedupe_key: str) -> str | None:
+        """Atomically claim a send. Returns the new row id for the FIRST caller,
+        or None if this (uid, trigger_type, dedupe_key) was already claimed."""
+        now = int(time.time())
+        new_id = uuid.uuid4().hex
+        stmt = (
+            pg_insert(EmailSend)
+            .values(
+                id=new_id,
+                uid=uid,
+                trigger_type=trigger_type,
+                dedupe_key=dedupe_key,
+                status="claimed",
+                created_at=now,
+            )
+            .on_conflict_do_nothing(index_elements=["uid", "trigger_type", "dedupe_key"])
+            .returning(EmailSend.id)
+        )
+        return self.session.execute(stmt).scalar_one_or_none()
+
+    def mark_email_send(
+        self,
+        send_id: str,
+        *,
+        status: str,
+        provider_message_id: str | None = None,
+        error: str | None = None,
+        sent_at: int | None = None,
+    ) -> None:
+        self.session.execute(
+            update(EmailSend)
+            .where(EmailSend.id == send_id)
+            .values(
+                status=status,
+                provider_message_id=provider_message_id,
+                error=(error[:2000] if error else None),
+                sent_at=sent_at,
+            )
+        )
+
+    # --- Phase 2 scheduled-sweep scans ----------------------------------------
+
+    def list_users_created_between(self, start_at: int, end_at: int) -> list[tuple[str, str, str]]:
+        """Active users created in [start_at, end_at). Returns (uid, email, display_name)."""
+        rows = self.session.execute(
+            select(User.uid, User.email, User.display_name).where(
+                User.created_at >= start_at,
+                User.created_at < end_at,
+                User.is_deactivated.is_(False),
+                User.is_suspended.is_(False),
+                User.email != "",
+            )
+        ).all()
+        return [(r[0], r[1], r[2]) for r in rows]
+
+    def list_lots_expiring_before(self, threshold_at: int, now: int) -> list[tuple[str, str, str, str, int, int]]:
+        """Gift lots that still hold credit and expire within the window (not yet
+        expired). Returns (lot_id, uid, email, display_name, expires_at, remaining_minor)."""
+        rows = self.session.execute(
+            select(
+                CreditLot.id,
+                CreditLot.uid,
+                User.email,
+                User.display_name,
+                CreditLot.expires_at,
+                CreditLot.remaining_minor,
+            )
+            .join(User, User.uid == CreditLot.uid)
+            .where(
+                CreditLot.expires_at.is_not(None),
+                CreditLot.expires_at > now,
+                CreditLot.expires_at <= threshold_at,
+                CreditLot.remaining_minor > 0,
+                CreditLot.expired_at.is_(None),
+                User.is_deactivated.is_(False),
+                User.is_suspended.is_(False),
+                User.email != "",
+            )
+        ).all()
+        return [(r[0], r[1], r[2], r[3], int(r[4]), int(r[5])) for r in rows]
+
+    def list_users_dormant_since(self, seen_before: int, seen_after: int) -> list[tuple[str, str, str]]:
+        """Marketing-consented, active users last seen in (seen_after, seen_before].
+        The lower bound keeps the daily win-back sweep from re-scanning long-gone
+        users. Returns (uid, email, display_name)."""
+        rows = self.session.execute(
+            select(User.uid, User.email, User.display_name).where(
+                User.last_seen_at <= seen_before,
+                User.last_seen_at > seen_after,
+                User.is_deactivated.is_(False),
+                User.is_suspended.is_(False),
+                User.email_lifecycle_enabled.is_(True),
+                User.email != "",
+            )
+        ).all()
+        return [(r[0], r[1], r[2]) for r in rows]
 
     def deactivate_user(self, user: User, *, reason: str, updated_at: int) -> User:
         user.is_deactivated = True

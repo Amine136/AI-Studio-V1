@@ -1,5 +1,25 @@
 export const translations = {
   en: {
+    "Welcome to Vibecraft": "Welcome to Vibecraft",
+    "Set your language and theme to get started. You can change these anytime in Settings.": "Set your language and theme to get started. You can change these anytime in Settings.",
+    "Skip for now": "Skip for now",
+    "Save preferences": "Save preferences",
+    "English": "English",
+    "French": "French",
+    "Arabic": "Arabic",
+
+    // Feedback
+    "Feedback": "Feedback",
+    "Share Feedback": "Share Feedback",
+    "Category": "Category",
+    "Help us improve Vibecraft.": "Help us improve Vibecraft.",
+    "Report a bug, suggest an idea, or tell us what you think": "Report a bug, suggest an idea, or tell us what you think",
+    "Bug report": "Bug report",
+    "Tell us what's working, what's broken, or what you'd love to see.": "Tell us what's working, what's broken, or what you'd love to see.",
+    "Send Feedback": "Send Feedback",
+    "Sending...": "Sending...",
+    "Thanks! Your feedback has been received.": "Thanks! Your feedback has been received.",
+    "Failed to send feedback.": "Failed to send feedback.",
 
     // Settings Page
     "Not available": "Not available",
@@ -565,6 +585,26 @@ export const translations = {
     "Vibecraft AI Tunis. The premier Tunisian AI studio. All rights reserved.": "Vibecraft AI Tunis. The premier Tunisian AI studio. All rights reserved."
   },
   fr: {
+    "Welcome to Vibecraft": "Bienvenue sur Vibecraft",
+    "Set your language and theme to get started. You can change these anytime in Settings.": "Choisissez votre langue et votre thème pour commencer. Vous pourrez les modifier à tout moment dans les Paramètres.",
+    "Skip for now": "Ignorer pour l'instant",
+    "Save preferences": "Enregistrer les préférences",
+    "English": "Anglais",
+    "French": "Français",
+    "Arabic": "Arabe",
+
+    // Feedback
+    "Feedback": "Feedback",
+    "Share Feedback": "Partager un retour",
+    "Category": "Catégorie",
+    "Help us improve Vibecraft.": "Aidez-nous à améliorer Vibecraft.",
+    "Report a bug, suggest an idea, or tell us what you think": "Signalez un bug, proposez une idée ou dites-nous ce que vous en pensez",
+    "Bug report": "Signaler un bug",
+    "Tell us what's working, what's broken, or what you'd love to see.": "Dites-nous ce qui fonctionne, ce qui ne va pas, ou ce que vous aimeriez voir.",
+    "Send Feedback": "Envoyer le retour",
+    "Sending...": "Envoi...",
+    "Thanks! Your feedback has been received.": "Merci ! Votre retour a bien été reçu.",
+    "Failed to send feedback.": "Échec de l'envoi du retour.",
 
     // Auth — passwordless email link
     "Enter your email": "Saisissez votre e-mail",
@@ -1269,6 +1309,26 @@ export const translations = {
     "Vibecraft AI Tunis. The premier Tunisian AI studio. All rights reserved.": "Vibecraft AI Tunis. Le premier studio d'IA tunisien. Tous droits réservés."
   },
   ar: {
+    "Welcome to Vibecraft": "مرحباً بك في Vibecraft",
+    "Set your language and theme to get started. You can change these anytime in Settings.": "اختر لغتك ومظهرك للبدء. يمكنك تغييرهما في أي وقت من الإعدادات.",
+    "Skip for now": "تخطَّ الآن",
+    "Save preferences": "حفظ التفضيلات",
+    "English": "الإنجليزية",
+    "French": "الفرنسية",
+    "Arabic": "العربية",
+
+    // Feedback
+    "Feedback": "الملاحظات",
+    "Share Feedback": "شارك ملاحظاتك",
+    "Category": "الفئة",
+    "Help us improve Vibecraft.": "ساعدنا في تحسين Vibecraft.",
+    "Report a bug, suggest an idea, or tell us what you think": "أبلغ عن خلل، أو اقترح فكرة، أو أخبرنا برأيك",
+    "Bug report": "بلاغ عن خلل",
+    "Tell us what's working, what's broken, or what you'd love to see.": "أخبرنا بما يعمل جيدًا، وما لا يعمل، وما تودّ رؤيته.",
+    "Send Feedback": "إرسال الملاحظات",
+    "Sending...": "جارٍ الإرسال...",
+    "Thanks! Your feedback has been received.": "شكرًا! تم استلام ملاحظاتك.",
+    "Failed to send feedback.": "تعذّر إرسال الملاحظات.",
 
     // Auth — passwordless email link
     "Enter your email": "أدخل بريدك الإلكتروني",

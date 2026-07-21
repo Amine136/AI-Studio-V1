@@ -21,6 +21,10 @@ class User(Base):
     bio: Mapped[str] = mapped_column(Text, default="", nullable=False)
     email_general_news_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     email_platform_updates_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # Consent for lifecycle/marketing mail (onboarding drip + win-back). Separate
+    # from platform_updates so product news and lifecycle nudges opt out independently.
+    # The email unsubscribe link flips this flag.
+    email_lifecycle_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     credits_minor: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     reserved_credits_minor: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     created_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
@@ -37,6 +41,13 @@ class User(Base):
     # One-shot stamp for the server-side Meta CompleteRegistration (CAPI). NULL =
     # not yet sent; set exactly once via an atomic claim (see claim_capi_registration).
     capi_registration_sent_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    # UI language the user picked (en/fr/ar). NULL = never chose; server-side
+    # email sends fall back to "en". Set by the first-run preferences card / Settings.
+    preferred_language: Mapped[str | None] = mapped_column(String(2), nullable=True)
+    # When the one-time first-run preferences card was answered (Save or Skip).
+    # NULL = never prompted -> the card shows exactly once. Backfilled to the
+    # migration time for pre-existing users so only new accounts see it.
+    preferences_prompted_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
 
     created_codes: Mapped[list["CreditCode"]] = relationship(
         back_populates="created_by_user",
@@ -519,4 +530,54 @@ class AdminAuditLog(Base):
         Index("ix_admin_audit_logs_admin_uid_created_at", "admin_uid", "created_at"),
         Index("ix_admin_audit_logs_target_created_at", "target_type", "target_id", "created_at"),
         Index("ix_admin_audit_logs_action_created_at", "action", "created_at"),
+    )
+
+
+class FeedbackItem(Base):
+    __tablename__ = "feedback_items"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    uid: Mapped[str | None] = mapped_column(ForeignKey("users.uid", ondelete="SET NULL"), nullable=True)
+    email: Mapped[str] = mapped_column(String(320), default="", nullable=False)
+    category: Mapped[str] = mapped_column(String(24), default="other", nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    route: Mapped[str] = mapped_column(String(255), default="", nullable=False)
+    language: Mapped[str] = mapped_column(String(8), default="", nullable=False)
+    user_agent: Mapped[str] = mapped_column(String(255), default="", nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="new", nullable=False)
+    created_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    updated_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+    __table_args__ = (
+        Index("ix_feedback_items_status_created_at", "status", "created_at"),
+        Index("ix_feedback_items_uid_created_at", "uid", "created_at"),
+    )
+
+
+class EmailSend(Base):
+    """One row per automatic email we attempt to send.
+
+    Idempotency + audit + suppression in one table. A send is claimed by inserting
+    a row keyed by (uid, trigger_type, dedupe_key) BEFORE dispatch: the unique
+    constraint makes a duplicate claim fail, so retries / races never double-send
+    (same pattern as User.capi_registration_sent_at). `status` tracks the outcome
+    so a later provider webhook can mark bounces/complaints for suppression.
+    """
+
+    __tablename__ = "email_sends"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    uid: Mapped[str] = mapped_column(ForeignKey("users.uid", ondelete="CASCADE"), nullable=False)
+    trigger_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    dedupe_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="claimed", nullable=False)
+    provider_message_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    sent_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+
+    __table_args__ = (
+        Index("ux_email_sends_dedupe", "uid", "trigger_type", "dedupe_key", unique=True),
+        Index("ix_email_sends_created_at", "created_at"),
+        Index("ix_email_sends_trigger_created_at", "trigger_type", "created_at"),
     )

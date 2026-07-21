@@ -11,16 +11,16 @@ from pathlib import Path
 from typing import Any, Dict
 from urllib.parse import urlparse
 
-from fastapi import FastAPI, HTTPException, Request, Depends, UploadFile, File, Header, Response
+from fastapi import FastAPI, HTTPException, Request, Depends, UploadFile, File, Header, Response, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from sqlalchemy import text
 
 from app.config import settings
-from app.core.schema import AdminAuditLogListResponse, AdminAuthFailureSummaryResponse, AdminCreditCodeBatchListResponse, AdminCreditCodeListResponse, AdminGenerationJobItem, AdminGenerationJobListResponse, AdminLoginRequest, AdminReasonRequest, AdminSessionResponse, AdminUserDetailResponse, AdminUserListResponse, CatalogUpdateNotification, CreditActivityListResponse, CreditLedgerListResponse, DashboardNewsItemResponse, DashboardNewsListResponse, DashboardNewsUpsertRequest, GenerateRequest, GenerationResult, PlainChatConversationCreateRequest, PlainChatConversationItem, PlainChatConversationListResponse, PlainChatConversationMessageCreateRequest, PlainChatConversationMessagesResponse, PlainChatConversationTurnResponse, PlainChatConversationUpdateRequest, PlainChatModelListResponse, SystemConfig, UserNotificationPreferencesUpdateRequest, UserProfileUpdateRequest, ProfileCompletionRequest, PackEstimateRequest, PackGenerateRequest, PackPlanRequest, PackSessionCreate, PackSessionUpdate
+from app.core.schema import AdminAuditLogListResponse, AdminAuthFailureSummaryResponse, AdminCreditCodeBatchListResponse, AdminCreditCodeListResponse, AdminGenerationJobItem, AdminGenerationJobListResponse, AdminLoginRequest, AdminReasonRequest, AdminSessionResponse, AdminUserDetailResponse, AdminUserListResponse, CatalogUpdateNotification, CreditActivityListResponse, CreditLedgerListResponse, DashboardNewsItemResponse, DashboardNewsListResponse, DashboardNewsUpsertRequest, FeedbackItemResponse, FeedbackListResponse, FeedbackStatusUpdateRequest, FeedbackSubmitRequest, GenerateRequest, GenerationResult, PlainChatConversationCreateRequest, PlainChatConversationItem, PlainChatConversationListResponse, PlainChatConversationMessageCreateRequest, PlainChatConversationMessagesResponse, PlainChatConversationTurnResponse, PlainChatConversationUpdateRequest, PlainChatModelListResponse, SystemConfig, UserNotificationPreferencesUpdateRequest, UserProfileUpdateRequest, ProfileCompletionRequest, PackEstimateRequest, PackGenerateRequest, PackPlanRequest, PackSessionCreate, PackSessionUpdate
 from app.packs import catalog as packs_catalog, service as packs_service
 from app.db.session import session_scope
 from app.db.repositories.security import SecurityRepository
@@ -28,6 +28,7 @@ from app.graph.workflow import studio_graph_app
 from app.services.admin_auth import AdminAuthRateLimitError, authenticate_admin, list_admin_auth_failure_summaries, revoke_admin_session
 from app.services.apikeymanager_client import ApiKeyManagerProxyError, check_apikeymanager_ready
 from app.services.auth import format_suspension_detail, verify_admin_csrf, verify_admin_session, verify_api_key, verify_firebase_user
+from app.services.email_service import dispatch as dispatch_email
 from app.services.catalog_store import catalog_store
 from app.services.model_visibility import filter_catalog, list_model_visibility, update_model_visibility, visible_model_catalog
 from app.services.chat_service import assemble_plain_chat_context, list_plain_chat_models, minimum_required_credits_for_plain_chat, normalize_plain_chat_system, prepare_plain_chat_conversation_request, preview_plain_chat_prompt, send_plain_chat, serialize_plain_chat_parts
@@ -57,6 +58,9 @@ from app.services.security_backend import (
     delete_chat_conversation,
     delete_dashboard_news_item,
     delete_history_entries_by_image_urls,
+    list_feedback_items,
+    submit_feedback,
+    update_feedback_item_status,
     disable_credit_code_batch,
     disable_credit_code,
     enable_credit_code,
@@ -95,6 +99,7 @@ from app.services.security_backend import (
     update_user_profile,
     complete_user_profile,
     update_user_notification_preferences,
+    set_email_lifecycle_enabled,
 )
 from app.services.user_files import (
     APIKEYMANAGER_GENERATED_IMAGE_DIRS,
@@ -1151,6 +1156,60 @@ def expire_credits_sweep(request: Request, x_internal_secret: str | None = Heade
     return {"status": "ok", **result}
 
 
+def _verify_internal_secret(x_internal_secret: str | None) -> None:
+    """Shared guard for internal cron/timer endpoints (see /internal/expire-credits)."""
+    expected_secret = settings.internal_sweep_secret or settings.catalog_webhook_secret
+    if not expected_secret:
+        raise HTTPException(status_code=503, detail="Internal secret is not configured")
+    if not x_internal_secret or not secrets.compare_digest(x_internal_secret, expected_secret):
+        raise HTTPException(status_code=403, detail="Invalid internal secret")
+
+
+@app.post(
+    "/internal/email/drip",
+    tags=["Configuration"],
+    summary="Onboarding Drip Email Sweep",
+    description="Internal endpoint (daily timer). Emails day-1/3/7 onboarding tips to active users.",
+)
+@limiter.limit("6/minute")
+def email_drip_sweep(request: Request, x_internal_secret: str | None = Header(default=None)):
+    del request
+    _verify_internal_secret(x_internal_secret)
+    from app.services.email_service import run_drip_sweep
+
+    return {"status": "ok", **run_drip_sweep()}
+
+
+@app.post(
+    "/internal/email/expiry-warn",
+    tags=["Configuration"],
+    summary="Gift-Credit Expiry Warning Email Sweep",
+    description="Internal endpoint (daily timer). Warns users whose gift credits expire within 24h.",
+)
+@limiter.limit("6/minute")
+def email_expiry_warn_sweep(request: Request, x_internal_secret: str | None = Header(default=None)):
+    del request
+    _verify_internal_secret(x_internal_secret)
+    from app.services.email_service import run_expiry_warn_sweep
+
+    return {"status": "ok", **run_expiry_warn_sweep()}
+
+
+@app.post(
+    "/internal/email/winback",
+    tags=["Configuration"],
+    summary="Win-Back Email Sweep",
+    description="Internal endpoint (daily timer). Re-engages consented users dormant for 7 / 14 days.",
+)
+@limiter.limit("6/minute")
+def email_winback_sweep(request: Request, x_internal_secret: str | None = Header(default=None)):
+    del request
+    _verify_internal_secret(x_internal_secret)
+    from app.services.email_service import run_winback_sweep
+
+    return {"status": "ok", **run_winback_sweep()}
+
+
 @app.get("/admin/model-visibility", tags=["Configuration"], summary="Get Model Visibility For Admin")
 @limiter.limit("20/minute")
 def admin_get_model_visibility(request: Request, _admin: Dict[str, Any] = Depends(verify_admin_session)):
@@ -1306,7 +1365,7 @@ def complete_current_user_profile(
 
 
 @app.patch("/me/preferences", tags=["Configuration"], summary="Update Current User Notification Preferences")
-@limiter.limit("20/minute")
+@limiter.limit("10/day")
 def update_current_user_notification_preferences(
     request: Request,
     payload: UserNotificationPreferencesUpdateRequest,
@@ -1316,7 +1375,57 @@ def update_current_user_notification_preferences(
         user["uid"],
         email_general_news_enabled=payload.email_general_news_enabled,
         email_platform_updates_enabled=payload.email_platform_updates_enabled,
+        email_lifecycle_enabled=payload.email_lifecycle_enabled,
+        preferred_language=payload.preferred_language,
+        mark_prompted=bool(payload.preferences_prompted),
     )
+
+
+def _handle_email_unsubscribe(token: str) -> HTMLResponse:
+    """One-click unsubscribe from lifecycle/marketing email. The signed token is the
+    only credential (no login needed), so a mail client can honour List-Unsubscribe."""
+    from app.services.email_service import verify_unsubscribe_token
+
+    parsed = verify_unsubscribe_token((token or "").strip())
+    ok = False
+    if parsed:
+        uid, _category = parsed
+        try:
+            set_email_lifecycle_enabled(uid, False)
+            ok = True
+        except Exception:
+            ok = False
+    message = (
+        "You've been unsubscribed from tips &amp; product reminders."
+        if ok
+        else "This unsubscribe link is invalid or has expired."
+    )
+    body = (
+        "<!doctype html><html><body style=\"margin:0;background:#0f1320;color:#eef1fb;"
+        "font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif\">"
+        "<div style=\"max-width:520px;margin:64px auto;padding:32px;background:#151b2d;border-radius:14px\">"
+        "<div style=\"font-size:20px;font-weight:800;color:#adc6ff;margin-bottom:12px\">Vibecraft</div>"
+        f"<p style=\"font-size:16px;line-height:1.6;color:#c2c6d6\">{message}</p>"
+        "<p style=\"font-size:14px;color:#6b7080\">You can change email preferences any time in "
+        f"<a href=\"{settings.app_base_url}/settings\" style=\"color:#adc6ff\">Settings</a>.</p>"
+        "</div></body></html>"
+    )
+    return HTMLResponse(content=body, status_code=200 if ok else 400)
+
+
+@app.get("/email/unsubscribe", tags=["Configuration"], summary="One-Click Email Unsubscribe", include_in_schema=False)
+@limiter.limit("60/hour")
+def email_unsubscribe_get(request: Request, token: str = ""):
+    del request
+    return _handle_email_unsubscribe(token)
+
+
+@app.post("/email/unsubscribe", tags=["Configuration"], summary="One-Click Email Unsubscribe (RFC 8058)", include_in_schema=False)
+@limiter.limit("60/hour")
+def email_unsubscribe_post(request: Request, token: str = ""):
+    # RFC 8058 List-Unsubscribe-Post: mail clients POST here automatically.
+    del request
+    return _handle_email_unsubscribe(token)
 
 
 @app.post("/me/deactivate", tags=["Configuration"], summary="Deactivate Current User Account")
@@ -1380,7 +1489,12 @@ def create_user_history_entry(request: Request, payload: Dict[str, Any], user: D
 
 @app.post("/credits/redeem", tags=["Configuration"], summary="Redeem Credit Code")
 @limiter.limit("20/minute")
-def redeem_user_credit_code(request: Request, payload: Dict[str, Any], user: Dict[str, Any] = Depends(verify_firebase_user)):
+def redeem_user_credit_code(
+    request: Request,
+    payload: Dict[str, Any],
+    background_tasks: BackgroundTasks,
+    user: Dict[str, Any] = Depends(verify_firebase_user),
+):
     code = str(payload.get("code", "")).strip()
     if not code:
         raise HTTPException(status_code=400, detail="Code is required")
@@ -1388,7 +1502,24 @@ def redeem_user_credit_code(request: Request, payload: Dict[str, Any], user: Dic
     per_code_key = f"redeem_code:{code_hash}"
     if not consume_rate_limit(per_code_key, max_count=20, window_seconds=900):
         raise HTTPException(status_code=429, detail="Too many attempts for this code. Try again later.")
-    return redeem_credit_code(code, user["uid"])
+    result = redeem_credit_code(code, user["uid"])
+    # Receipt email on a successful redemption (deduped by code_hash so a re-POST
+    # of the same code never double-sends). Fired off-request; never blocks.
+    if isinstance(result, dict) and result.get("success"):
+        background_tasks.add_task(
+            dispatch_email,
+            "credit_receipt",
+            user["uid"],
+            dedupe_key=code_hash,
+            to_email=str(user.get("email") or ""),
+            to_name=str(user.get("display_name") or ""),
+            ctx={
+                "credits": result.get("credits"),
+                "balance": result.get("balance"),
+                "expires_at": result.get("expiresAt"),
+            },
+        )
+    return result
 
 
 @app.get("/credits/breakdown", tags=["Configuration"], summary="Credit Balance Breakdown")
@@ -1925,6 +2056,90 @@ def admin_delete_dashboard_news(
             raise HTTPException(status_code=404, detail="Dashboard news item not found") from exc
         raise
     return {"success": True}
+
+
+@app.post("/feedback", response_model=FeedbackItemResponse, tags=["Configuration"], summary="Submit Platform Feedback")
+@limiter.limit("10/hour")
+def submit_platform_feedback(
+    request: Request,
+    payload: FeedbackSubmitRequest,
+    background_tasks: BackgroundTasks,
+    user: Dict[str, Any] = Depends(verify_firebase_user),
+):
+    user_agent = (request.headers.get("user-agent") or "")[:255]
+    try:
+        result = submit_feedback(
+            uid=user["uid"],
+            email=str(user.get("email") or ""),
+            category=payload.category,
+            message=payload.message,
+            route=payload.route,
+            language=payload.language,
+            user_agent=user_agent,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid feedback") from exc
+    # Acknowledge receipt, deduped by the feedback item id (one ack per submission).
+    recipient = str(user.get("email") or "")
+    stored = result.pop("stored", False) if isinstance(result, dict) else False
+    item_id = result.get("id") if isinstance(result, dict) else None
+    if recipient and item_id and stored:
+        background_tasks.add_task(
+            dispatch_email,
+            "feedback_ack",
+            user["uid"],
+            dedupe_key=str(item_id),
+            to_email=recipient,
+            to_name=str(user.get("display_name") or ""),
+        )
+    return result
+
+
+@app.get(
+    "/admin/feedback",
+    response_model=FeedbackListResponse,
+    tags=["Configuration"],
+    summary="List Feedback For Admin",
+)
+@limiter.limit("30/minute")
+def admin_list_feedback(
+    request: Request,
+    status: str | None = None,
+    _admin: Dict[str, Any] = Depends(verify_admin_session),
+):
+    del request
+    if status not in (None, "new", "handled"):
+        raise HTTPException(status_code=400, detail="Invalid status filter")
+    items = list_feedback_items(status=status)
+    return {"items": items, "total": len(items)}
+
+
+@app.patch(
+    "/admin/feedback/{item_id}",
+    response_model=FeedbackItemResponse,
+    tags=["Configuration"],
+    summary="Update Feedback Status For Admin",
+)
+@limiter.limit("30/minute")
+def admin_update_feedback_status(
+    request: Request,
+    item_id: str,
+    payload: FeedbackStatusUpdateRequest,
+    admin: Dict[str, Any] = Depends(verify_admin_session),
+    _csrf: None = Depends(verify_admin_csrf),
+):
+    del request
+    try:
+        return update_feedback_item_status(
+            item_id,
+            status=payload.status,
+            admin_uid=admin["uid"],
+            admin_email=admin["email"],
+        )
+    except ValueError as exc:
+        if str(exc) == "FEEDBACK_NOT_FOUND":
+            raise HTTPException(status_code=404, detail="Feedback item not found") from exc
+        raise
 
 
 @app.post(

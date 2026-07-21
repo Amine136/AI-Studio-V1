@@ -237,8 +237,16 @@ class ProfileCompletionRequest(BaseModel):
 
 
 class UserNotificationPreferencesUpdateRequest(BaseModel):
-    email_general_news_enabled: bool = Field(alias="emailGeneralNewsEnabled")
-    email_platform_updates_enabled: bool = Field(alias="emailPlatformUpdatesEnabled")
+    # All optional: a partial update leaves any omitted field unchanged, so an
+    # older client that only sends two fields never resets the third.
+    email_general_news_enabled: Optional[bool] = Field(default=None, alias="emailGeneralNewsEnabled")
+    email_platform_updates_enabled: Optional[bool] = Field(default=None, alias="emailPlatformUpdatesEnabled")
+    email_lifecycle_enabled: Optional[bool] = Field(default=None, alias="emailLifecycleEnabled")
+    # First-run preferences card: the chosen UI language (en/fr/ar) and a flag
+    # that the one-time card was answered (Save or Skip). Both optional so a
+    # plain notification-settings save never touches them.
+    preferred_language: Optional[str] = Field(default=None, alias="preferredLanguage")
+    preferences_prompted: Optional[bool] = Field(default=None, alias="preferencesPrompted")
 
     model_config = {"populate_by_name": True}
 
@@ -616,6 +624,41 @@ class DashboardNewsUpsertRequest(BaseModel):
     @classmethod
     def normalize_text_fields(cls, value: str) -> str:
         return str(value or "").strip()
+
+
+class FeedbackSubmitRequest(BaseModel):
+    category: Literal["bug", "idea", "other"] = "other"
+    message: str = Field(..., min_length=3, max_length=2000)
+    route: str = Field(default="", max_length=255)
+    language: str = Field(default="", max_length=8)
+
+    @field_validator("message", "route", "language")
+    @classmethod
+    def normalize_text_fields(cls, value: str) -> str:
+        return str(value or "").strip()
+
+
+class FeedbackItemResponse(BaseModel):
+    id: str
+    uid: Optional[str] = None
+    email: str = ""
+    category: str = "other"
+    message: str
+    route: str = ""
+    language: str = ""
+    userAgent: str = ""
+    status: str = "new"
+    createdAt: Optional[int] = None
+    updatedAt: Optional[int] = None
+
+
+class FeedbackListResponse(BaseModel):
+    items: List[FeedbackItemResponse]
+    total: int
+
+
+class FeedbackStatusUpdateRequest(BaseModel):
+    status: Literal["new", "handled"]
 
 
 class AdminAuthFailureSummaryItem(BaseModel):

@@ -15,6 +15,7 @@ from app.db.repositories import SecurityRepository
 from app.db.session import session_scope
 
 CREDIT_SCALE = 100
+_ALLOWED_UI_LANGUAGES = {"en", "fr", "ar"}
 CHAT_COST_SCALE = 1_000_000
 CODE_PREFIX = "VC-"
 CODE_BODY_LENGTH = 30
@@ -39,6 +40,12 @@ def ensure_user(uid: str, email: str, display_name: str) -> dict[str, Any]:
     with session_scope() as session:
         repo = SecurityRepository(session)
         user = repo.ensure_user(uid, email, display_name)
+        # Brand-new account: grant the one-time welcome bonus in this same
+        # transaction so it commits atomically with the row insert. The
+        # was_created race resolves to exactly one committed insert, so the
+        # bonus is granted exactly once.
+        if getattr(user, "_is_newly_created", False):
+            _grant_signup_bonus(repo, user, int(time.time()))
         data = _user_dict_from_model(user)
         # Surface the one-shot "brand-new user" signal (see repo.ensure_user) so
         # the auth dependency can fire a server-side CompleteRegistration once.
@@ -52,6 +59,36 @@ def claim_capi_registration(uid: str) -> bool:
     with session_scope() as session:
         repo = SecurityRepository(session)
         return repo.claim_capi_registration(uid)
+
+
+def _fire_account_email(
+    trigger: str,
+    uid: str,
+    email: str,
+    display_name: str,
+    *,
+    ctx: dict[str, Any] | None = None,
+    dedupe_key: str | None = None,
+) -> None:
+    """Fail-safe account-status email. Call AFTER the DB transaction commits so the
+    provider network call never holds a row lock open. Idempotency/consent live in
+    email_service.dispatch, which never raises."""
+    email = (email or "").strip()
+    if not email:
+        return
+    try:
+        from app.services.email_service import dispatch as _dispatch_email
+
+        _dispatch_email(
+            trigger,
+            uid,
+            dedupe_key=dedupe_key or trigger,
+            to_email=email,
+            to_name=display_name or "",
+            ctx=ctx or {},
+        )
+    except Exception:
+        pass
 
 
 def is_email_deactivated(email: str) -> dict[str, Any] | None:
@@ -276,8 +313,11 @@ def complete_user_profile(uid: str, *, full_name: str, username: str) -> dict[st
 def update_user_notification_preferences(
     uid: str,
     *,
-    email_general_news_enabled: bool,
-    email_platform_updates_enabled: bool,
+    email_general_news_enabled: bool | None = None,
+    email_platform_updates_enabled: bool | None = None,
+    email_lifecycle_enabled: bool | None = None,
+    preferred_language: str | None = None,
+    mark_prompted: bool = False,
 ) -> dict[str, Any]:
     now = int(time.time())
     with session_scope() as session:
@@ -286,15 +326,65 @@ def update_user_notification_preferences(
         if user is None:
             user = repo.ensure_user(uid, "", "")
             session.flush()
-        repo.update_user_notification_preferences(
-            user,
-            email_general_news_enabled=email_general_news_enabled,
-            email_platform_updates_enabled=email_platform_updates_enabled,
-            updated_at=now,
+        # Partial update: a None field leaves the stored value unchanged, so an
+        # older client sending only some fields never resets the others.
+        next_general = (
+            bool(user.email_general_news_enabled)
+            if email_general_news_enabled is None
+            else bool(email_general_news_enabled)
         )
+        next_platform = (
+            bool(user.email_platform_updates_enabled)
+            if email_platform_updates_enabled is None
+            else bool(email_platform_updates_enabled)
+        )
+        next_lifecycle = (
+            bool(user.email_lifecycle_enabled)
+            if email_lifecycle_enabled is None
+            else bool(email_lifecycle_enabled)
+        )
+        # No-op guard: only write when a preference actually changes, so
+        # repeated saves of the same values do not churn dead tuples / WAL.
+        already_matches = (
+            bool(user.email_general_news_enabled) == next_general
+            and bool(user.email_platform_updates_enabled) == next_platform
+            and bool(user.email_lifecycle_enabled) == next_lifecycle
+        )
+        if not already_matches:
+            repo.update_user_notification_preferences(
+                user,
+                email_general_news_enabled=next_general,
+                email_platform_updates_enabled=next_platform,
+                email_lifecycle_enabled=next_lifecycle,
+                updated_at=now,
+            )
+        # Language + one-time first-run prompt stamp: independent of the
+        # notification flags above, so a Skip (no language) still records the
+        # stamp, and a language-only save still persists.
+        pref_changed = False
+        if preferred_language is not None:
+            lang = str(preferred_language).strip().lower()
+            if lang in _ALLOWED_UI_LANGUAGES and user.preferred_language != lang:
+                user.preferred_language = lang
+                pref_changed = True
+        # Stamp exactly once: a later Settings save must not move the timestamp.
+        if mark_prompted and user.preferences_prompted_at is None:
+            user.preferences_prompted_at = now
+            pref_changed = True
+        if pref_changed:
+            user.updated_at = now
+            session.flush()
         result = _user_dict_from_model(user)
         result.update(get_profile_change_status(uid))
         return result
+
+
+def set_email_lifecycle_enabled(uid: str, enabled: bool) -> bool:
+    """Flip the lifecycle/marketing consent flag (used by the email unsubscribe link).
+    Returns True if a user row was updated."""
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        return repo.set_email_lifecycle_enabled(uid, enabled)
 
 
 def deactivate_user_account(uid: str) -> dict[str, Any]:
@@ -326,7 +416,11 @@ def deactivate_user_account(uid: str) -> dict[str, Any]:
             metadata_json={"uid": uid, "self_serve": True},
             created_at=now,
         )
-        return _user_dict_from_model(user)
+        result = _user_dict_from_model(user)
+        recipient_email = str(user.email or "").strip()
+        recipient_name = str(user.display_name or "")
+    _fire_account_email("account_deactivated", uid, recipient_email, recipient_name)
+    return result
 
 
 def list_users() -> list[dict[str, Any]]:
@@ -397,7 +491,19 @@ def suspend_user(
             created_at=now,
         )
         session.flush()
-        return _user_dict_from_model(user)
+        result = _user_dict_from_model(user)
+        recipient_email = str(user.email or "").strip()
+        recipient_name = str(user.display_name or "")
+        until = getattr(user, "suspended_until", None)
+    _fire_account_email(
+        "account_suspended",
+        uid,
+        recipient_email,
+        recipient_name,
+        ctx={"reason": normalized_reason, "until": until},
+        dedupe_key=f"suspend:{now}",
+    )
+    return result
 
 
 def unsuspend_user(
@@ -445,7 +551,20 @@ def unsuspend_user(
         result = _user_dict_from_model(user)
         result["activeSuspensionUntil"] = None
         result["activeSuspensionIsPermanent"] = False
-        return result
+        recipient_email = str(user.email or "").strip()
+        recipient_name = str(user.display_name or "")
+        # Don't tell a deactivated account it's "reinstated" — deactivation keeps
+        # is_deactivated=True even after a suspension lift.
+        notify_reinstated = not bool(user.is_deactivated)
+    if notify_reinstated:
+        _fire_account_email(
+            "account_unsuspended",
+            uid,
+            recipient_email,
+            recipient_name,
+            dedupe_key=f"unsuspend:{now}",
+        )
+    return result
 
 
 def add_admin_audit_log(
@@ -645,6 +764,105 @@ def delete_dashboard_news_item(
             metadata_json={"title": title},
             created_at=now,
         )
+
+
+FEEDBACK_MONTHLY_LIMIT = 3
+FEEDBACK_MONTHLY_WINDOW_SECONDS = 30 * 86400
+
+
+def submit_feedback(
+    *,
+    uid: str,
+    email: str,
+    category: str,
+    message: str,
+    route: str,
+    language: str,
+    user_agent: str,
+) -> dict[str, Any]:
+    now = int(time.time())
+    window_start = now - FEEDBACK_MONTHLY_WINDOW_SECONDS
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        if repo.count_feedback_items_since(uid, window_start) >= FEEDBACK_MONTHLY_LIMIT:
+            # Over the monthly cap: acknowledge but drop. The response is
+            # indistinguishable from a stored submission, so spamming past the
+            # cap yields nothing to probe and nothing in the admin inbox.
+            return {
+                "id": str(uuid.uuid4()),
+                "uid": uid,
+                "email": email,
+                "category": category,
+                "message": message,
+                "route": route,
+                "language": language,
+                "userAgent": user_agent,
+                "status": "new",
+                "createdAt": now,
+                "updatedAt": now,
+                "stored": False,
+            }
+        item = repo.create_feedback_item(
+            uid=uid,
+            email=email,
+            category=category,
+            message=message,
+            route=route,
+            language=language,
+            user_agent=user_agent,
+        )
+        result = _feedback_dict_from_model(item)
+        result["stored"] = True
+        return result
+
+
+def list_feedback_items(*, status: str | None = None, limit: int = 200) -> list[dict[str, Any]]:
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        return [_feedback_dict_from_model(item) for item in repo.list_feedback_items(status=status, limit=limit)]
+
+
+def update_feedback_item_status(
+    item_id: str,
+    *,
+    status: str,
+    admin_uid: str | None,
+    admin_email: str,
+) -> dict[str, Any]:
+    now = int(time.time())
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        item = repo.get_feedback_item_for_update(item_id)
+        if item is None:
+            raise ValueError("FEEDBACK_NOT_FOUND")
+        repo.update_feedback_item_status(item, status=status)
+        repo.add_admin_audit_log(
+            admin_uid=admin_uid,
+            admin_email=admin_email.strip(),
+            action="feedback_status_update",
+            target_type="feedback",
+            target_id=item_id,
+            reason=f"Marked feedback item as '{status}'.",
+            metadata_json={"status": status, "category": item.category},
+            created_at=now,
+        )
+        return _feedback_dict_from_model(item)
+
+
+def _feedback_dict_from_model(item: Any) -> dict[str, Any]:
+    return {
+        "id": item.id,
+        "uid": item.uid,
+        "email": item.email,
+        "category": item.category,
+        "message": item.message,
+        "route": item.route,
+        "language": item.language,
+        "userAgent": item.user_agent,
+        "status": item.status,
+        "createdAt": item.created_at,
+        "updatedAt": item.updated_at,
+    }
 
 
 def adjust_credits(
@@ -2115,6 +2333,46 @@ def _credit_lot(
     return lot
 
 
+def _grant_signup_bonus(repo: SecurityRepository, user: Any, now: int) -> None:
+    """Grant a brand-new account its one-time welcome credits: a gift-style lot
+    that expires after ``settings.signup_bonus_validity_seconds`` (all gift-lot
+    mechanics apply). Distinguished from redeemed gifts by the ledger
+    reason="signup_bonus" and a NULL ``code_hash``. No-op when the configured
+    amount is <= 0. MUST run inside the account-creation transaction (see
+    ``ensure_user``) so it commits atomically with the user row and can never
+    double-grant."""
+    bonus_minor = _credits_to_minor(getattr(settings, "signup_bonus_credits", 0) or 0)
+    if bonus_minor <= 0:
+        return
+    validity = int(getattr(settings, "signup_bonus_validity_seconds", 0) or 0)
+    expires_at = (now + validity) if validity > 0 else None
+    lot = _credit_lot(
+        repo,
+        user,
+        bonus_minor,
+        now,
+        source="gift",
+        expires_at=expires_at,
+    )
+    repo.add_ledger_entry(
+        uid=user.uid,
+        delta_minor=bonus_minor,
+        reason="signup_bonus",
+        actor_uid=user.uid,
+        metadata_json=_with_activity_metadata(
+            {
+                "lot_id": lot.id,
+                "expires_at": expires_at,
+                "validity_seconds": validity or None,
+            },
+            activity_id=f"signup_bonus:{user.uid}",
+            activity_type="signup_bonus",
+            activity_label="Welcome Bonus",
+        ),
+        created_at=now,
+    )
+
+
 def _reserve_across_lots(
     repo: SecurityRepository,
     user: Any,
@@ -2472,6 +2730,7 @@ def _user_dict_from_model(user: Any) -> dict[str, Any]:
         "bio": user.bio or "",
         "emailGeneralNewsEnabled": bool(user.email_general_news_enabled),
         "emailPlatformUpdatesEnabled": bool(user.email_platform_updates_enabled),
+        "emailLifecycleEnabled": bool(getattr(user, "email_lifecycle_enabled", True)),
         "credits": _minor_to_credits(int(user.credits_minor)),
         "reservedCredits": _minor_to_credits(int(user.reserved_credits_minor)),
         "totalCredits": _minor_to_credits(int(user.credits_minor + user.reserved_credits_minor)),
@@ -2485,6 +2744,9 @@ def _user_dict_from_model(user: Any) -> dict[str, Any]:
         "isDeactivated": bool(user.is_deactivated),
         "deactivatedAt": user.deactivated_at,
         "deactivationReason": user.deactivation_reason or "",
+        "preferredLanguage": getattr(user, "preferred_language", None) or None,
+        # First-run preferences card shows exactly once: NULL prompt stamp = not shown yet.
+        "needsPreferencesSetup": getattr(user, "preferences_prompted_at", None) is None,
     }
 
 

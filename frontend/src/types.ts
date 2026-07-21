@@ -218,6 +218,9 @@ export interface CurrentUserProfile {
   bio?: string;
   emailGeneralNewsEnabled?: boolean;
   emailPlatformUpdatesEnabled?: boolean;
+  emailLifecycleEnabled?: boolean;
+  preferredLanguage?: string | null;
+  needsPreferencesSetup?: boolean;
   credits?: number;
   reservedCredits?: number;
   totalCredits?: number;
@@ -273,8 +276,14 @@ export interface ProfileCompletionRequest {
 }
 
 export interface UserNotificationPreferencesUpdateRequest {
-  emailGeneralNewsEnabled: boolean;
-  emailPlatformUpdatesEnabled: boolean;
+  // All optional: a partial update leaves omitted fields unchanged server-side.
+  emailGeneralNewsEnabled?: boolean;
+  emailPlatformUpdatesEnabled?: boolean;
+  emailLifecycleEnabled?: boolean;
+  // First-run preferences card: chosen UI language + a flag marking the
+  // one-time card answered (Save or Skip).
+  preferredLanguage?: string;
+  preferencesPrompted?: boolean;
 }
 
 export type DashboardNewsTone = "blue" | "purple" | "slate";
@@ -321,6 +330,35 @@ export interface DashboardNewsUpsertRequest {
   tone: DashboardNewsTone;
   sortOrder: number;
   isActive: boolean;
+}
+
+export type FeedbackCategory = "bug" | "idea" | "other";
+export type FeedbackStatus = "new" | "handled";
+
+export interface FeedbackItem {
+  id: string;
+  uid?: string | null;
+  email: string;
+  category: FeedbackCategory;
+  message: string;
+  route: string;
+  language: string;
+  userAgent: string;
+  status: FeedbackStatus;
+  createdAt?: number | null;
+  updatedAt?: number | null;
+}
+
+export interface FeedbackListResponse {
+  items: FeedbackItem[];
+  total: number;
+}
+
+export interface FeedbackSubmitRequest {
+  category: FeedbackCategory;
+  message: string;
+  route?: string;
+  language?: string;
 }
 
 // Step 1: What we send to start

@@ -78,6 +78,32 @@ class Config:
             self.meta_capi_registration_value = 1.0
         self.app_env = os.getenv("APP_ENV", "prod").strip().lower() or "prod"
 
+        # Automatic transactional/lifecycle email (separate from Firebase magic-link).
+        # Provider is Brevo by default; the client is a thin wrapper so it can be
+        # swapped. No API key => the sender runs in DRY-RUN (logs the payload, sends
+        # nothing), so the whole system is testable before the sender domain is
+        # verified. EMAIL_DRY_RUN=1 forces dry-run even with a key configured.
+        self.email_provider = os.getenv("EMAIL_PROVIDER", "brevo").strip().lower() or "brevo"
+        self.brevo_api_key = os.getenv("BREVO_API_KEY", "").strip()
+        self.email_from = os.getenv("EMAIL_FROM", "no-reply@vibecraft.ouni.space").strip()
+        self.email_from_name = os.getenv("EMAIL_FROM_NAME", "Vibecraft").strip() or "Vibecraft"
+        self.email_reply_to = os.getenv("EMAIL_REPLY_TO", "").strip()
+        self.email_timeout = float(os.getenv("EMAIL_TIMEOUT", "20"))
+        _email_dry_run_forced = os.getenv("EMAIL_DRY_RUN", "").strip().lower() in {"1", "true", "yes", "on"}
+        self.email_dry_run = _email_dry_run_forced or not self.brevo_api_key
+        # Public app base used to build links in emails (unsubscribe, deep links).
+        # Routes through nginx to the backend for /api/* paths.
+        self.app_base_url = (
+            os.getenv("APP_BASE_URL", "").strip().rstrip("/")
+            or ("https://testvibecraft.ouni.space" if self.app_env != "prod" else "https://vibecraft.ouni.space")
+        )
+        # HMAC secret for one-click unsubscribe tokens. Falls back to the admin
+        # session secret so staging links work before a dedicated one is provisioned.
+        self.email_unsubscribe_secret = (
+            os.getenv("EMAIL_UNSUBSCRIBE_SECRET", "").strip()
+            or os.getenv("ADMIN_SESSION_SECRET", "").strip()
+        )
+
         # Staging-only test hook: when truthy, Pack GENERATIONS route through the
         # $0 fake provider (estimates stay real). Hard-gated on APP_ENV: prod ignores
         # the flag outright, so a stray copy of it in a production .env cannot silently
@@ -218,6 +244,14 @@ class Config:
         # Default validity (seconds) applied to redeemed gift credits when a code
         # does not specify its own. 0 = redeemed credits never expire by default.
         self.default_gift_validity_seconds = int(os.getenv("DEFAULT_GIFT_VALIDITY_SECONDS", "0"))
+
+        # One-time welcome bonus granted at account creation: free credits that
+        # expire after a validity window. Created as a gift lot (so every gift-lot
+        # mechanic applies: soonest-expiry-first spend, expiry sweep, breakdown
+        # display) and distinguished in the ledger by reason="signup_bonus". Set
+        # SIGNUP_BONUS_CREDITS to 0 to disable the bonus entirely.
+        self.signup_bonus_credits = float(os.getenv("SIGNUP_BONUS_CREDITS", "1.0"))
+        self.signup_bonus_validity_seconds = int(os.getenv("SIGNUP_BONUS_VALIDITY_SECONDS", str(7 * 24 * 60 * 60)))
 
         # System model settings used for the intent-analysis step.
         self.system_llm_provider = os.getenv("SYSTEM_LLM_PROVIDER", "google-gemini")

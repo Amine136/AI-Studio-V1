@@ -7,6 +7,7 @@ import { signOutUser } from "../../lib/auth";
 import { setTheme, useThemeMode } from "../../lib/theme";
 import { useLanguage } from "../../context/LanguageContext";
 import { useAuth } from "../../context/AuthContext";
+import FeedbackModal from "../FeedbackModal";
 
 type NavItem = {
   href: string;
@@ -43,6 +44,7 @@ export default function AppSidebar({ activePath, hideMobileNav = false }: { acti
   const router = useRouter();
   const [signingOut, setSigningOut] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const { t } = useLanguage();
   const theme = useThemeMode();
   // Playground is browsable while logged out, so the rail can render for anon.
@@ -122,6 +124,24 @@ export default function AppSidebar({ activePath, hideMobileNav = false }: { acti
         </nav>
 
         <div className="mt-auto shrink-0 space-y-1 border-t border-white/10 pt-4 font-headline text-sm tracking-wide light:border-slate-900/10">
+          {user ? (
+            <button
+              type="button"
+              onClick={() => setFeedbackOpen(true)}
+              className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-[#b9c8de]/70 transition-colors hover:bg-[#1a2333] hover:text-[#adc6ff] light:text-slate-500 light:hover:bg-slate-900/[0.04] light:hover:text-slate-900"
+            >
+              <span className="material-symbols-outlined text-[20px]">rate_review</span>
+              <span>{t("Feedback")}</span>
+            </button>
+          ) : (
+            <Link
+              href={`/auth?next=${encodeURIComponent(activePath)}`}
+              className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-[#b9c8de]/70 transition-colors hover:bg-[#1a2333] hover:text-[#adc6ff] light:text-slate-500 light:hover:bg-slate-900/[0.04] light:hover:text-slate-900"
+            >
+              <span className="material-symbols-outlined text-[20px]">rate_review</span>
+              <span>{t("Feedback")}</span>
+            </Link>
+          )}
           <button
             type="button"
             onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
@@ -225,6 +245,29 @@ export default function AppSidebar({ activePath, hideMobileNav = false }: { acti
 
                 <div className="my-2 h-px bg-white/[0.07] light:bg-slate-900/10" />
 
+                {user ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMoreOpen(false);
+                      setFeedbackOpen(true);
+                    }}
+                    className="app-sheet__row w-full"
+                  >
+                    <span className="material-symbols-outlined text-[21px]">rate_review</span>
+                    <span>{t("Feedback")}</span>
+                  </button>
+                ) : (
+                  <Link
+                    href={`/auth?next=${encodeURIComponent(activePath)}`}
+                    onClick={() => setMoreOpen(false)}
+                    className="app-sheet__row"
+                  >
+                    <span className="material-symbols-outlined text-[21px]">rate_review</span>
+                    <span>{t("Feedback")}</span>
+                  </Link>
+                )}
+
                 <button type="button" onClick={() => setTheme(theme === "dark" ? "light" : "dark")} className="app-sheet__row w-full">
                   <span className="material-symbols-outlined text-[21px]">{theme === "dark" ? "light_mode" : "dark_mode"}</span>
                   <span>{theme === "dark" ? t("Light Mode") : t("Dark Mode")}</span>
@@ -234,6 +277,8 @@ export default function AppSidebar({ activePath, hideMobileNav = false }: { acti
           ) : null}
         </>
       )}
+
+      <FeedbackModal open={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
     </>
   );
 }

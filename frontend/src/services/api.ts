@@ -41,6 +41,10 @@ import {
   PackSessionData,
   PackSessionFull,
   PackSessionMeta,
+  FeedbackItem,
+  FeedbackListResponse,
+  FeedbackSubmitRequest,
+  FeedbackStatus,
 } from '../types';
 import { auth } from '../lib/firebase';
 import { signOutUser } from '../lib/auth';
@@ -397,6 +401,19 @@ export const api = {
     return res.data;
   },
 
+  submitFeedback: async (payload: FeedbackSubmitRequest): Promise<FeedbackItem> => {
+    try {
+      const res = await client.post('/feedback', payload);
+      return res.data;
+    } catch (error) {
+      const detail = extractErrorMessage(error);
+      if (detail) {
+        throw new Error(detail);
+      }
+      throw error;
+    }
+  },
+
   redeemCode: async (code: string) => {
     try {
       const res = await client.post('/credits/redeem', { code });
@@ -499,6 +516,16 @@ export const api = {
 
   getAdminDashboardNews: async (): Promise<DashboardNewsListResponse> => {
     const res = await client.get('/admin/dashboard-news');
+    return res.data;
+  },
+
+  getAdminFeedback: async (status?: FeedbackStatus): Promise<FeedbackListResponse> => {
+    const res = await client.get('/admin/feedback', { params: status ? { status } : undefined });
+    return res.data;
+  },
+
+  updateAdminFeedbackStatus: async (itemId: string, status: FeedbackStatus): Promise<FeedbackItem> => {
+    const res = await client.patch(`/admin/feedback/${itemId}`, { status });
     return res.data;
   },
 
