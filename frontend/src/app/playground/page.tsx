@@ -2273,9 +2273,12 @@ export default function StudioChatPage() {
       // A segmented row only survives a handful of options; aspect ratio routinely
       // ships 6+. Past that, wrap into a chip grid instead of squeezing the row.
       const segmented = entry.values.length <= 4;
+      // A single fixed value (e.g. a locked 1K image size) shouldn't stretch to a
+      // full-width bar — render it as a compact, content-width pill instead.
+      const singleOption = entry.values.length === 1;
 
       return (
-        <div className={segmented ? "flex rounded-lg border border-white/[0.07] bg-[#0a0f1e] p-0.5" : "flex flex-wrap gap-1.5"}>
+        <div className={segmented ? `${singleOption ? "inline-flex" : "flex"} rounded-lg border border-white/[0.07] bg-[#0a0f1e] p-0.5` : "flex flex-wrap gap-1.5"}>
           {entry.values.map((option) => {
             const nextOption = String(option);
             const affordable = isOptionAffordable(nextOption);
@@ -2288,7 +2291,7 @@ export default function StudioChatPage() {
                 disabled={!affordable}
                 title={!affordable ? t("locked") : undefined}
                 onClick={() => setParameterValues((prev) => ({ ...prev, [key]: nextOption }))}
-                className={`${segmented ? "flex-1" : ""} rounded-md px-2.5 py-1.5 text-[12px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-35 ${
+                className={`${singleOption ? "flex min-w-[112px] justify-center" : segmented ? "flex-1" : ""} rounded-md px-2.5 py-1.5 text-[12px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-35 ${
                   active
                     ? "bg-white/[0.09] text-white shadow-[0_1px_2px_rgba(0,0,0,0.4)] light:!bg-[#3b82f6] light:!text-white light:shadow-none"
                     : `text-white/45 hover:text-white/80 ${segmented ? "" : "border border-white/[0.07]"}`
