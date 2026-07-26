@@ -8,7 +8,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useLanguage } from "../../context/LanguageContext";
 import { api } from "../../services/api";
 import BuyCodesButton from "../../components/BuyCodesButton";
-import type { CreditActivityEntry, CreditBreakdown } from "../../types";
+import type { CreditActivityEntry, CreditBreakdown, CreditOrder } from "../../types";
 
 
 // Balance is unbounded, so these are comfort thresholds, not limits: the gauge
@@ -76,6 +76,13 @@ type UsageEvent = {
   amount: string;
   positive: boolean;
   rawCredits: number;
+  /** Sort key. Ledger rows and order rows share one table, so both carry it. */
+  createdAt: number;
+  /* Order rows only. They are NOT ledger entries — accepting an order moves no
+     credits, the user redeems the code — so they render muted unless accepted,
+     and carry the code for the copy button. */
+  isOrder?: boolean;
+  orderCode?: string;
 };
 
 
@@ -136,6 +143,38 @@ function mapActivityToUsageEvents(entries: CreditActivityEntry[]): UsageEvent[] 
       amount: `${amountStr} Cr`,
       positive: g.deltaMinor >= 0,
       rawCredits: credits,
+      createdAt: g.createdAt || 0,
+    };
+  });
+}
+
+/* Orders are merged into the same history table CLIENT-SIDE rather than injected
+   into /credits/activity: that endpoint groups by activity id and merges
+   consecutive chat rows, and an order is not a ledger entry to begin with.
+   Note a redeemed purchase legitimately shows two rows — this receipt, and the
+   real "Credit Redeem" entry that actually moved the balance. */
+function mapOrdersToUsageEvents(orders: CreditOrder[]): UsageEvent[] {
+  return orders.map((order) => {
+    const createdAt = new Date((order.createdAt || 0) * 1000);
+    const accepted = order.status === "accepted";
+    return {
+      id: `order-${order.id}`,
+      date: createdAt.toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" }),
+      activity:
+        order.status === "accepted"
+          ? "Payment accepted"
+          : order.status === "refused"
+            ? "Payment declined"
+            : "Payment pending review",
+      status: order.status.toUpperCase(),
+      amount: `${order.credits.toFixed(2)} Cr`,
+      // Only an accepted order gets the coloured badge; pending/refused stay muted
+      // so the table never implies credits landed.
+      positive: accepted,
+      rawCredits: order.credits,
+      createdAt: order.createdAt || 0,
+      isOrder: true,
+      orderCode: accepted ? order.code : "",
     };
   });
 }
@@ -163,7 +202,7 @@ const faqItems = [
   },
   {
     title: "Can I add credits directly?",
-    body: "For the current version, top-ups happen through redeem codes only. Public checkout and auto-refill are not active yet.",
+    body: "Choose a plan under Get Credits, pay with a Tunisian method, and upload your receipt. We review it manually and send you a redeem code on this page. Card payment and auto-refill are not active yet.",
   },
   {
     title: "What happens if a task fails?",
@@ -236,6 +275,9 @@ export default function CreditsPage() {
 
   const [history, setHistory] = useState<CreditActivityEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
+  const [orders, setOrders] = useState<CreditOrder[]>([]);
+  const [copiedOrderId, setCopiedOrderId] = useState<string | null>(null);
+  const [orderPlaced, setOrderPlaced] = useState(false);
   const [credits, setCredits] = useState<number | null>(null);
   const [breakdown, setBreakdown] = useState<CreditBreakdown | null>(null);
   const [showBalanceDetails, setShowBalanceDetails] = useState(false);
@@ -379,17 +421,41 @@ export default function CreditsPage() {
     }
   }, [user]);
 
+  // The checkout wizard lands here as /credits?order=<id>. Consume the flag and
+  // strip it, same as the ?code= deep link below, so a refresh isn't a re-confirm.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (!params.get("order")) return;
+    setOrderPlaced(true);
+    params.delete("order");
+    const query = params.toString();
+    window.history.replaceState({}, document.title, `${window.location.pathname}${query ? `?${query}` : ""}`);
+  }, []);
+
+  const fetchOrders = useCallback(async () => {
+    if (!user) return;
+    try {
+      const response = await api.getCreditOrders();
+      setOrders(response.orders || []);
+    } catch {
+      // Orders are supplementary — a failure here must not blank the page.
+      setOrders([]);
+    }
+  }, [user]);
+
   useEffect(() => {
     if (!user) {
       if (loading) return; // don't flash the sample while auth is still resolving
       // Anonymous preview: sample balance + history, labelled "Example" in the UI.
       setCredits(DEMO_CREDITS);
       setHistory(buildDemoHistory());
+      setOrders([]);
       setHistoryLoading(false);
       return;
     }
-    void Promise.all([fetchBalance(), fetchHistory()]);
-  }, [fetchBalance, fetchHistory, loading, user]);
+    void Promise.all([fetchBalance(), fetchHistory(), fetchOrders()]);
+  }, [fetchBalance, fetchHistory, fetchOrders, loading, user]);
 
   useEffect(() => {
     if (!redeemCooldownStorageKey || typeof window === "undefined") return;
@@ -548,11 +614,32 @@ export default function CreditsPage() {
     }
   }, [user, autoRedeemProcessed, handleRedeem]);
 
-  const usageEvents = useMemo(() => mapActivityToUsageEvents(history), [history]);
+  const usageEvents = useMemo(
+    () =>
+      [...mapActivityToUsageEvents(history), ...mapOrdersToUsageEvents(orders)].sort(
+        (a, b) => b.createdAt - a.createdAt,
+      ),
+    [history, orders],
+  );
   const visibleUsageEvents = useMemo(
     () => (showAllTransactions ? usageEvents : usageEvents.slice(0, 5)),
     [showAllTransactions, usageEvents],
   );
+  const pendingOrders = useMemo(() => orders.filter((o) => o.status === "pending"), [orders]);
+  const resolvedOrders = useMemo(
+    () => orders.filter((o) => o.status !== "pending").slice(0, 3),
+    [orders],
+  );
+
+  const copyOrderCode = useCallback(async (orderId: string, code: string) => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopiedOrderId(orderId);
+      window.setTimeout(() => setCopiedOrderId((current) => (current === orderId ? null : current)), 1600);
+    } catch {
+      // Clipboard can be denied; the code is on screen and selectable.
+    }
+  }, []);
   const hiddenTransactionCount = Math.max(0, usageEvents.length - 5);
   // Fuel gauge, not a percentage: a balance has no maximum, so "full" is the top
   // of the comfortable range (30 Cr) rather than a cap. Past that — 70, 500 — the
@@ -789,7 +876,94 @@ export default function CreditsPage() {
         </div>
       </section>
 
+      {/* Manual purchase orders. Pending ones are the reason this section exists —
+          a user who just paid needs to see that we have their receipt. */}
+      {(pendingOrders.length > 0 || resolvedOrders.length > 0) && (
+        <section className="mb-12 sm:mb-16">
+          <h2 className="font-headline mb-5 text-2xl font-bold tracking-tight text-blue-50">
+            {t("Your orders")}
+          </h2>
+          {orderPlaced && (
+            <div className="vc-redeem-ok mb-4 flex items-center gap-2 rounded-md border px-5 py-4 text-sm" role="status">
+              <span className="material-symbols-outlined text-[19px]">check_circle</span>
+              <p className="font-medium">{t("Order received. We'll review your payment shortly.")}</p>
+            </div>
+          )}
+          <div className="space-y-3">
+            {[...pendingOrders, ...resolvedOrders].map((order) => (
+              <div
+                key={order.id}
+                className="rounded-xl border border-white/10 bg-[rgba(25,31,49,0.7)] p-4 backdrop-blur-xl sm:p-5"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-white">
+                      {order.planName} — {order.credits.toFixed(0)} Cr
+                    </p>
+                    <p className="mt-0.5 text-xs text-[#c2c6d6]">
+                      {new Date((order.createdAt || 0) * 1000).toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "2-digit",
+                        year: "numeric",
+                      })}
+                    </p>
+                  </div>
+                  <span
+                    className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold ${
+                      order.status === "pending"
+                        ? "border-[#ffb95e]/30 bg-[#ffb95e]/10 text-[#ffb95e]"
+                        : order.status === "accepted"
+                          ? "border-[#67d98f]/30 bg-[#67d98f]/10 text-[#67d98f]"
+                          : "border-[#ff9a9a]/30 bg-[#ff9a9a]/10 text-[#ff9a9a]"
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-[15px]">
+                      {order.status === "pending"
+                        ? "hourglass_top"
+                        : order.status === "accepted"
+                          ? "check_circle"
+                          : "cancel"}
+                    </span>
+                    {order.status === "pending"
+                      ? t("Pending review")
+                      : order.status === "accepted"
+                        ? t("Accepted")
+                        : t("Declined")}
+                  </span>
+                </div>
 
+                {order.status === "pending" && (
+                  <p className="mt-3 text-sm text-[#c2c6d6]">
+                    {t("We received your payment proof. Your code will appear here once it's approved.")}
+                  </p>
+                )}
+
+                {order.status === "accepted" && order.code && (
+                  <div className="mt-3 flex flex-wrap items-center gap-2 rounded-md border border-white/10 bg-[#070d1f] p-3">
+                    <span className="min-w-0 flex-1 truncate font-mono text-sm tracking-wider text-white">
+                      {order.code}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => copyOrderCode(order.id, order.code)}
+                      className="inline-flex items-center gap-1.5 rounded-md border border-[#adc6ff]/40 bg-[#adc6ff]/10 px-3 py-1.5 text-xs font-bold text-[#adc6ff] transition hover:bg-[#adc6ff]/20"
+                    >
+                      <span className="material-symbols-outlined text-[15px]">
+                        {copiedOrderId === order.id ? "check" : "content_copy"}
+                      </span>
+                      {copiedOrderId === order.id ? t("Copied") : t("Copy code")}
+                    </button>
+                  </div>
+                )}
+
+                {order.status === "refused" && order.adminMessage && (
+                  <p className="mt-3 text-sm text-[#c2c6d6]">{order.adminMessage}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="mb-12 sm:mb-24">
         <div>
@@ -817,7 +991,25 @@ export default function CreditsPage() {
                     <tr key={event.id}>
                       <td className="px-6 py-5 text-sm">{event.date}</td>
                       <td className="px-6 py-5">
-                        <p className="font-medium text-white">{translateActivity(event.activity)}</p>
+                        <p className="font-medium text-white">
+                          {translateActivity(event.activity)}
+                          {event.orderCode ? (
+                            <>
+                              {" — "}
+                              <span className="font-mono text-sm text-[#adc6ff]">{event.orderCode}</span>
+                              <button
+                                type="button"
+                                onClick={() => copyOrderCode(event.id, event.orderCode || "")}
+                                aria-label={t("Copy code")}
+                                className="ms-2 inline-flex align-middle text-[#adc6ff] transition hover:text-white"
+                              >
+                                <span className="material-symbols-outlined text-[16px]">
+                                  {copiedOrderId === event.id ? "check" : "content_copy"}
+                                </span>
+                              </button>
+                            </>
+                          ) : null}
+                        </p>
                       </td>
                       <td className="px-6 py-5 text-right">
                         <span className={getAmountBadgeClass(event.positive, event.rawCredits)}>
@@ -843,7 +1035,7 @@ export default function CreditsPage() {
               visibleUsageEvents.map((event) => (
                 <div key={event.id} className="rounded-xl border border-white/10 bg-[#151b2d]/50 p-4">
                   <div className="flex items-start justify-between gap-3">
-                    <div>
+                    <div className="min-w-0">
                       <p className="font-medium text-white">{translateActivity(event.activity)}</p>
                       <p className="mt-1 text-xs text-[#c2c6d6]">{event.date}</p>
                     </div>
@@ -853,6 +1045,23 @@ export default function CreditsPage() {
                       </span>
                     </div>
                   </div>
+                  {event.orderCode ? (
+                    <div className="mt-3 flex items-center gap-2 rounded-md border border-white/10 bg-[#070d1f] p-2.5">
+                      <span className="min-w-0 flex-1 truncate font-mono text-xs tracking-wider text-white">
+                        {event.orderCode}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => copyOrderCode(event.id, event.orderCode || "")}
+                        aria-label={t("Copy code")}
+                        className="shrink-0 text-[#adc6ff] transition hover:text-white"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">
+                          {copiedOrderId === event.id ? "check" : "content_copy"}
+                        </span>
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
               ))
             ) : (

@@ -30,6 +30,31 @@ CREATE_FLOW_TEXT_PARAM_KEYS = {
     "promptCacheKey",
 }
 
+# The credit packs a user can order. Server-authoritative on purpose: the client
+# only ever sends a plan id, and the order snapshots credits/price from here, so a
+# tampered request can never make an admin approve a number the user invented.
+# `price_minor` is millimes (TND has 3 decimals): 15000 = 15.000 DT.
+CREDIT_PLANS = [
+    {"id": "starter", "name": "Starter", "credits": 10.0, "price_minor": 15000, "currency": "TND"},
+    {"id": "pro", "name": "Pro", "credits": 35.0, "price_minor": 39000, "currency": "TND"},
+    {"id": "ultra", "name": "Ultra", "credits": 70.0, "price_minor": 69000, "currency": "TND"},
+]
+
+CREDIT_PLANS_BY_ID = {plan["id"]: plan for plan in CREDIT_PLANS}
+
+# Payment rails offered at checkout. `available` false renders the option locked
+# ("coming soon") in the UI and is rejected server-side. International card
+# payment stays locked until the automatic flow (incl. auto-redemption) is built.
+PAYMENT_METHODS = [
+    {"id": "flouci", "group": "tunisia", "available": True},
+    {"id": "bank_transfer", "group": "tunisia", "available": True},
+    {"id": "d17", "group": "tunisia", "available": False},
+    {"id": "edinar_post", "group": "tunisia", "available": False},
+    {"id": "international_card", "group": "international", "available": False},
+]
+
+AVAILABLE_PAYMENT_METHOD_IDS = {m["id"] for m in PAYMENT_METHODS if m["available"]}
+
 
 class Config:
     def __init__(self):
@@ -268,6 +293,19 @@ class Config:
         # SIGNUP_BONUS_CREDITS to 0 to disable the bonus entirely.
         self.signup_bonus_credits = float(os.getenv("SIGNUP_BONUS_CREDITS", "1.0"))
         self.signup_bonus_validity_seconds = int(os.getenv("SIGNUP_BONUS_VALIDITY_SECONDS", str(7 * 24 * 60 * 60)))
+
+        # Manual (Tunisian) checkout. Real account details live in the environment,
+        # never in the repo — the UI simply hides any field left blank, so shipping
+        # this with empty defaults is safe. Set these in the VPS .env.
+        self.payment_flouci_name = os.getenv("PAYMENT_FLOUCI_NAME", "")
+        self.payment_flouci_phone = os.getenv("PAYMENT_FLOUCI_PHONE", "")
+        self.payment_bank_name = os.getenv("PAYMENT_BANK_NAME", "")
+        self.payment_bank_holder = os.getenv("PAYMENT_BANK_HOLDER", "")
+        self.payment_bank_rib = os.getenv("PAYMENT_BANK_RIB", "")
+        self.payment_bank_iban = os.getenv("PAYMENT_BANK_IBAN", "")
+        self.payment_whatsapp_number = os.getenv("PAYMENT_WHATSAPP_NUMBER", "")
+        # How many orders a user may leave awaiting review at once.
+        self.max_open_credit_orders = int(os.getenv("MAX_OPEN_CREDIT_ORDERS", "3"))
 
         # System model settings used for the intent-analysis step.
         self.system_llm_provider = os.getenv("SYSTEM_LLM_PROVIDER", "google-gemini")

@@ -661,6 +661,97 @@ class FeedbackStatusUpdateRequest(BaseModel):
     status: Literal["new", "handled"]
 
 
+class CreditPlanResponse(BaseModel):
+    id: str
+    name: str
+    credits: float
+    priceMinor: int
+    currency: str = "TND"
+
+
+class PaymentMethodResponse(BaseModel):
+    id: str
+    group: str
+    available: bool
+
+
+class PaymentAccountsResponse(BaseModel):
+    """Where to send the money. Blank fields are hidden by the UI, so an
+    unconfigured environment degrades to "no details shown" rather than a broken page."""
+    flouciName: str = ""
+    flouciPhone: str = ""
+    bankName: str = ""
+    bankHolder: str = ""
+    bankRib: str = ""
+    bankIban: str = ""
+    whatsappNumber: str = ""
+
+
+class CheckoutConfigResponse(BaseModel):
+    plans: List[CreditPlanResponse]
+    methods: List[PaymentMethodResponse]
+    accounts: PaymentAccountsResponse
+    maxProofFiles: int
+    maxProofBytes: int
+    noteMaxLength: int
+
+
+class CreditOrderResponse(BaseModel):
+    id: str
+    planId: str
+    planName: str
+    credits: float
+    priceMinor: int
+    currency: str = "TND"
+    paymentMethod: str
+    note: str = ""
+    status: str = "pending"
+    # Only ever populated for the order's own owner, and only once accepted.
+    code: str = ""
+    adminMessage: str = ""
+    createdAt: Optional[int] = None
+    updatedAt: Optional[int] = None
+    resolvedAt: Optional[int] = None
+
+
+class CreditOrderListResponse(BaseModel):
+    orders: List[CreditOrderResponse]
+
+
+class AdminCreditOrderResponse(CreditOrderResponse):
+    uid: str = ""
+    userEmail: str = ""
+    userDisplayName: str = ""
+    resolvedByEmail: str = ""
+    proofFileIds: List[str] = Field(default_factory=list)
+
+
+class AdminCreditOrderListResponse(BaseModel):
+    orders: List[AdminCreditOrderResponse]
+    total: int
+
+
+class AdminCreditOrderAcceptRequest(BaseModel):
+    code: str = Field(..., min_length=3, max_length=64)
+    # Set once the admin has seen the "this code is worth X, the order is worth Y"
+    # warning and still wants to proceed.
+    confirmMismatch: bool = False
+
+    @field_validator("code")
+    @classmethod
+    def normalize_code(cls, value: str) -> str:
+        return str(value or "").strip().upper()
+
+
+class AdminCreditOrderRefuseRequest(BaseModel):
+    reason: str = Field(default="", max_length=400)
+
+    @field_validator("reason")
+    @classmethod
+    def normalize_reason(cls, value: str) -> str:
+        return str(value or "").strip()
+
+
 class AdminAuthFailureSummaryItem(BaseModel):
     username: str
     isActive: bool = True

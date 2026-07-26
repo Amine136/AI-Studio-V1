@@ -385,7 +385,10 @@ class UserFile(Base):
     user: Mapped[User] = relationship(back_populates="files")
 
     __table_args__ = (
-        CheckConstraint("kind IN ('uploaded_input', 'generated_output')", name="ck_user_files_kind_valid"),
+        CheckConstraint(
+            "kind IN ('uploaded_input', 'generated_output', 'payment_proof')",
+            name="ck_user_files_kind_valid",
+        ),
         Index("ix_user_files_owner_uid_created_at", "owner_uid", "created_at"),
         Index("ix_user_files_storage_path", "storage_path", unique=True),
     )
@@ -551,6 +554,79 @@ class FeedbackItem(Base):
     __table_args__ = (
         Index("ix_feedback_items_status_created_at", "status", "created_at"),
         Index("ix_feedback_items_uid_created_at", "uid", "created_at"),
+    )
+
+
+class CreditOrder(Base):
+    """One manual credit purchase awaiting (or having received) an admin decision.
+
+    The plan's credits/price are SNAPSHOT here at order time rather than looked up
+    later, so repricing a plan never rewrites what a user already agreed to pay.
+
+    `code_plain` deliberately holds the redeem code in the clear — unlike
+    `credit_codes`, which stores only a hash. The user has to be able to read and
+    copy the code the admin handed over, so there is nothing to compare against.
+    It is only ever returned to the order's own owner, and only once accepted.
+
+    Accepting does NOT move credits: the user redeems the code through the normal
+    /credits/redeem path, so a purchase reaches the ledger exactly once.
+    """
+
+    __tablename__ = "credit_orders"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    uid: Mapped[str] = mapped_column(ForeignKey("users.uid", ondelete="CASCADE"), nullable=False)
+    plan_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    plan_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    credits_minor: Mapped[int] = mapped_column(Integer, nullable=False)
+    price_minor: Mapped[int] = mapped_column(Integer, nullable=False)
+    currency: Mapped[str] = mapped_column(String(8), default="TND", nullable=False)
+    payment_method: Mapped[str] = mapped_column(String(32), nullable=False)
+    note: Mapped[str] = mapped_column(String(400), default="", nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="pending", nullable=False)
+    code_plain: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    admin_message: Mapped[str] = mapped_column(String(400), default="", nullable=False)
+    resolved_by_email: Mapped[str] = mapped_column(String(255), default="", nullable=False)
+    resolved_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    created_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    updated_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+    proofs: Mapped[list["CreditOrderProof"]] = relationship(
+        back_populates="order",
+        cascade="all, delete-orphan",
+    )
+
+    __table_args__ = (
+        CheckConstraint("credits_minor > 0", name="ck_credit_orders_credits_positive"),
+        CheckConstraint("price_minor >= 0", name="ck_credit_orders_price_non_negative"),
+        CheckConstraint(
+            "status IN ('pending', 'accepted', 'refused')",
+            name="ck_credit_orders_status_valid",
+        ),
+        Index("ix_credit_orders_uid_created_at", "uid", "created_at"),
+        Index("ix_credit_orders_status_created_at", "status", "created_at"),
+    )
+
+
+class CreditOrderProof(Base):
+    """A payment receipt attached to an order (image or PDF).
+
+    The bytes live on disk under `payment_proofs/` with a `user_files` row of kind
+    'payment_proof' — deliberately NOT 'uploaded_input', which the 30-day upload
+    reaper deletes. A financial record has to outlive that sweep.
+    """
+
+    __tablename__ = "credit_order_proofs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    order_id: Mapped[str] = mapped_column(ForeignKey("credit_orders.id", ondelete="CASCADE"), nullable=False)
+    file_id: Mapped[str] = mapped_column(ForeignKey("user_files.id", ondelete="CASCADE"), nullable=False)
+    created_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+    order: Mapped[CreditOrder] = relationship(back_populates="proofs")
+
+    __table_args__ = (
+        Index("ix_credit_order_proofs_order_id", "order_id"),
     )
 
 

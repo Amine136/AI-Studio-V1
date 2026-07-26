@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any, Dict
 from urllib.parse import urlparse
 
-from fastapi import FastAPI, HTTPException, Request, Depends, UploadFile, File, Header, Response, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Request, Depends, UploadFile, File, Form, Header, Response, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -21,8 +21,14 @@ from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from sqlalchemy import text
 
-from app.config import settings
-from app.core.schema import AdminAuditLogListResponse, AdminAuthFailureSummaryResponse, AdminCreditCodeBatchListResponse, AdminCreditCodeListResponse, AdminGenerationJobItem, AdminGenerationJobListResponse, AdminLoginRequest, AdminReasonRequest, AdminSessionResponse, AdminUserDetailResponse, AdminUserListResponse, CatalogUpdateNotification, CreditActivityListResponse, CreditLedgerListResponse, DashboardNewsItemResponse, DashboardNewsListResponse, DashboardNewsUpsertRequest, FeedbackItemResponse, FeedbackListResponse, FeedbackStatusUpdateRequest, FeedbackSubmitRequest, GenerateRequest, GenerationResult, PlainChatConversationCreateRequest, PlainChatConversationItem, PlainChatConversationListResponse, PlainChatConversationMessageCreateRequest, PlainChatConversationMessagesResponse, PlainChatConversationTurnResponse, PlainChatConversationUpdateRequest, PlainChatModelListResponse, SystemConfig, UserNotificationPreferencesUpdateRequest, UserProfileUpdateRequest, ProfileCompletionRequest, PackEstimateRequest, PackGenerateRequest, PackPlanRequest, PackSessionCreate, PackSessionUpdate
+from app.config import (
+    AVAILABLE_PAYMENT_METHOD_IDS,
+    CREDIT_PLANS,
+    CREDIT_PLANS_BY_ID,
+    PAYMENT_METHODS,
+    settings,
+)
+from app.core.schema import AdminAuditLogListResponse, AdminAuthFailureSummaryResponse, AdminCreditCodeBatchListResponse, AdminCreditCodeListResponse, AdminCreditOrderAcceptRequest, AdminCreditOrderListResponse, AdminCreditOrderRefuseRequest, AdminCreditOrderResponse, AdminGenerationJobItem, AdminGenerationJobListResponse, AdminLoginRequest, AdminReasonRequest, AdminSessionResponse, AdminUserDetailResponse, AdminUserListResponse, CatalogUpdateNotification, CheckoutConfigResponse, CreditActivityListResponse, CreditLedgerListResponse, CreditOrderListResponse, CreditOrderResponse, CreditPlanResponse, PaymentAccountsResponse, PaymentMethodResponse, DashboardNewsItemResponse, DashboardNewsListResponse, DashboardNewsUpsertRequest, FeedbackItemResponse, FeedbackListResponse, FeedbackStatusUpdateRequest, FeedbackSubmitRequest, GenerateRequest, GenerationResult, PlainChatConversationCreateRequest, PlainChatConversationItem, PlainChatConversationListResponse, PlainChatConversationMessageCreateRequest, PlainChatConversationMessagesResponse, PlainChatConversationTurnResponse, PlainChatConversationUpdateRequest, PlainChatModelListResponse, SystemConfig, UserNotificationPreferencesUpdateRequest, UserProfileUpdateRequest, ProfileCompletionRequest, PackEstimateRequest, PackGenerateRequest, PackPlanRequest, PackSessionCreate, PackSessionUpdate
 from app.packs import catalog as packs_catalog, service as packs_service
 from app.db.session import session_scope
 from app.db.repositories.security import SecurityRepository
@@ -54,6 +60,12 @@ from app.services.security_backend import (
     adjust_credits,
     create_credit_code,
     create_credit_code_batch_with_title,
+    create_credit_order,
+    list_user_credit_orders,
+    list_admin_credit_orders,
+    get_credit_order_proof_file_id,
+    accept_credit_order,
+    refuse_credit_order,
     create_dashboard_news_item,
     create_generation_job,
     deactivate_user_account,
@@ -108,13 +120,16 @@ from app.services.user_files import (
     GENERATED_IMAGES_DIR,
     GENERATED_IMAGE_SAFE_HEADERS,
     generated_image_media_type,
+    PAYMENT_PROOFS_DIR,
     SAFE_FILE_ID,
     SAFE_GENERATED_FILENAME,
     UPLOADED_IMAGES_DIR,
+    create_payment_proof_file_record,
     create_uploaded_user_file_record,
     delete_private_user_file_by_id,
     generated_image_url_prefixes,
     get_private_user_file_record,
+    load_payment_proof_file,
     load_private_user_file,
     private_file_id_from_url,
     private_file_url,
@@ -464,6 +479,13 @@ MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 MAX_UPLOAD_PIXELS = 16_000_000
 MAX_UPLOAD_DIMENSION = 8192
 UPLOAD_RETENTION_SECONDS = 30 * 24 * 60 * 60
+
+# Payment proofs. Smaller cap than a generation input (a receipt is a photo or a
+# one-page PDF), and PDF is allowed because bank-transfer receipts usually are one.
+MAX_PROOF_BYTES = 5 * 1024 * 1024
+MAX_PROOF_FILES = 3
+PROOF_CONTENT_TYPES = {"image/png", "image/jpeg", "image/webp", "application/pdf"}
+CREDIT_ORDER_NOTE_MAX_LENGTH = 400
 
 # OpenAPI Tags for endpoint grouping
 tags_metadata = [
@@ -1564,6 +1586,150 @@ def credit_balance_breakdown(request: Request, user: Dict[str, Any] = Depends(ve
     return get_credit_breakdown(user["uid"])
 
 
+# ---------------------------------------------------------------------------
+# Manual credit purchase (Tunisian payment methods)
+#
+# The user picks a plan, pays out-of-band, and uploads a receipt; the order sits
+# `pending` until an admin accepts it with a redeem code they generated in
+# /admin/codes, or refuses it. Accepting moves NO credits — the user redeems the
+# code through /credits/redeem, so a purchase reaches the ledger exactly once.
+# ---------------------------------------------------------------------------
+
+
+@app.get(
+    "/credits/checkout-config",
+    response_model=CheckoutConfigResponse,
+    tags=["Configuration"],
+    summary="Get Credit Checkout Config",
+)
+@limiter.limit("60/minute")
+def get_credit_checkout_config(request: Request, _: bool = Depends(verify_api_key)):
+    # API-key only (no Firebase): /credits is browsable logged-out, so an anonymous
+    # visitor can read the plans and is only walled when they try to order.
+    del request
+    return CheckoutConfigResponse(
+        plans=[
+            CreditPlanResponse(
+                id=str(plan["id"]),
+                name=str(plan["name"]),
+                credits=float(plan["credits"]),
+                priceMinor=int(plan["price_minor"]),
+                currency=str(plan["currency"]),
+            )
+            for plan in CREDIT_PLANS
+        ],
+        methods=[
+            PaymentMethodResponse(
+                id=str(method["id"]),
+                group=str(method["group"]),
+                available=bool(method["available"]),
+            )
+            for method in PAYMENT_METHODS
+        ],
+        accounts=PaymentAccountsResponse(
+            flouciName=settings.payment_flouci_name,
+            flouciPhone=settings.payment_flouci_phone,
+            bankName=settings.payment_bank_name,
+            bankHolder=settings.payment_bank_holder,
+            bankRib=settings.payment_bank_rib,
+            bankIban=settings.payment_bank_iban,
+            whatsappNumber=settings.payment_whatsapp_number,
+        ),
+        maxProofFiles=MAX_PROOF_FILES,
+        maxProofBytes=MAX_PROOF_BYTES,
+        noteMaxLength=CREDIT_ORDER_NOTE_MAX_LENGTH,
+    )
+
+
+@app.get(
+    "/credits/orders",
+    response_model=CreditOrderListResponse,
+    tags=["Configuration"],
+    summary="List My Credit Orders",
+)
+@limiter.limit("30/minute")
+def list_my_credit_orders(request: Request, user: Dict[str, Any] = Depends(verify_firebase_user)):
+    del request
+    return CreditOrderListResponse(orders=list_user_credit_orders(str(user["uid"]), limit=20))
+
+
+@app.post(
+    "/credits/orders",
+    response_model=CreditOrderResponse,
+    tags=["Configuration"],
+    summary="Place A Manual Credit Order",
+)
+@limiter.limit("5/minute")
+async def place_credit_order(
+    request: Request,
+    plan_id: str = Form(...),
+    payment_method: str = Form(...),
+    note: str = Form(""),
+    proofs: list[UploadFile] = File(...),
+    user: Dict[str, Any] = Depends(verify_firebase_user),
+):
+    plan = CREDIT_PLANS_BY_ID.get(str(plan_id).strip())
+    if plan is None:
+        raise HTTPException(status_code=400, detail="Unknown plan")
+    if str(payment_method).strip() not in AVAILABLE_PAYMENT_METHOD_IDS:
+        raise HTTPException(status_code=400, detail="This payment method is not available yet")
+    if len(note) > CREDIT_ORDER_NOTE_MAX_LENGTH:
+        raise HTTPException(status_code=400, detail="Note is too long")
+
+    uploads = [item for item in proofs if item is not None and item.filename]
+    if not uploads:
+        raise HTTPException(status_code=400, detail="Attach at least one proof of payment")
+    if len(uploads) > MAX_PROOF_FILES:
+        raise HTTPException(status_code=400, detail=f"Attach at most {MAX_PROOF_FILES} files")
+
+    _enforce_upload_limits(request, str(user["uid"]))
+
+    # Read and validate every file BEFORE writing any of them, so a rejected
+    # second file never leaves the first one orphaned on disk.
+    validated: list[tuple[str, bytes]] = []
+    for upload in uploads:
+        if upload.content_type not in PROOF_CONTENT_TYPES:
+            raise HTTPException(status_code=400, detail="Proof must be a PNG, JPEG, WEBP, or PDF file")
+        file_bytes = await upload.read()
+        if not file_bytes:
+            raise HTTPException(status_code=400, detail="One of the uploaded files is empty")
+        if len(file_bytes) > MAX_PROOF_BYTES:
+            raise HTTPException(status_code=400, detail="Each file must be 5 MB or smaller")
+        detected_type = _inspect_payment_proof_bytes(file_bytes)
+        if detected_type != upload.content_type:
+            raise HTTPException(status_code=400, detail="Uploaded file content does not match its declared type")
+        validated.append((detected_type, file_bytes))
+
+    file_ids: list[str] = []
+    for mime_type, file_bytes in validated:
+        filename = _save_payment_proof_bytes(mime_type, file_bytes)
+        file_ids.append(create_payment_proof_file_record(str(user["uid"]), filename, mime_type))
+
+    try:
+        return create_credit_order(
+            uid=str(user["uid"]),
+            plan_id=str(plan["id"]),
+            plan_name=str(plan["name"]),
+            credits=float(plan["credits"]),
+            price_minor=int(plan["price_minor"]),
+            currency=str(plan["currency"]),
+            payment_method=str(payment_method).strip(),
+            note=note,
+            proof_file_ids=file_ids,
+        )
+    except ValueError as exc:
+        # The order was rejected, so the files we just wrote have no owner record
+        # to reach them — drop them rather than leaking disk.
+        for file_id in file_ids:
+            delete_private_user_file_by_id(file_id)
+        if str(exc) == "TOO_MANY_OPEN_ORDERS":
+            raise HTTPException(
+                status_code=429,
+                detail="You already have orders awaiting review. Please wait for them to be processed.",
+            ) from exc
+        raise HTTPException(status_code=400, detail="Could not place this order") from exc
+
+
 @app.post("/analyze-sessions/{session_id}/complete", tags=["Configuration"], summary="Complete Analyze Session")
 def complete_pending_analyze_session(session_id: str, user: Dict[str, Any] = Depends(verify_firebase_user)):
     try:
@@ -2175,6 +2341,126 @@ def admin_update_feedback_status(
         if str(exc) == "FEEDBACK_NOT_FOUND":
             raise HTTPException(status_code=404, detail="Feedback item not found") from exc
         raise
+
+
+# Maps a service-layer rejection to the status + message the admin UI shows.
+CREDIT_ORDER_ERRORS = {
+    "ORDER_NOT_FOUND": (404, "Order not found"),
+    "ORDER_NOT_PENDING": (409, "This order has already been resolved"),
+    "CODE_REQUIRED": (400, "A redeem code is required"),
+    "CODE_NOT_FOUND": (400, "That code does not exist. Generate it in Codes first."),
+    "CODE_INACTIVE": (400, "That code has been disabled"),
+    "CODE_EXPIRED": (400, "That code has expired"),
+    "CODE_EXHAUSTED": (400, "That code has already been claimed"),
+    "CODE_CREDITS_MISMATCH": (409, "That code is worth a different number of credits than this order"),
+}
+
+
+def _raise_credit_order_error(exc: ValueError) -> None:
+    status_code, detail = CREDIT_ORDER_ERRORS.get(str(exc), (400, "Could not update this order"))
+    raise HTTPException(status_code=status_code, detail=detail) from exc
+
+
+@app.get(
+    "/admin/orders",
+    response_model=AdminCreditOrderListResponse,
+    tags=["Configuration"],
+    summary="List Credit Orders For Admin",
+)
+@limiter.limit("30/minute")
+def admin_list_credit_orders(
+    request: Request,
+    status: str | None = None,
+    _admin: Dict[str, Any] = Depends(verify_admin_session),
+):
+    del request
+    if status not in (None, "pending", "accepted", "refused"):
+        raise HTTPException(status_code=400, detail="Invalid status filter")
+    orders = list_admin_credit_orders(status=status)
+    return {"orders": orders, "total": len(orders)}
+
+
+@app.get(
+    "/admin/orders/{order_id}/proof/{file_id}",
+    tags=["Configuration"],
+    summary="Get Credit Order Proof For Admin",
+)
+@limiter.limit("60/minute")
+def admin_get_credit_order_proof(
+    request: Request,
+    order_id: str,
+    file_id: str,
+    _admin: Dict[str, Any] = Depends(verify_admin_session),
+):
+    # /files/{id} is owner-scoped, so an admin cannot read a user's proof through
+    # it. This route is the admin-side equivalent, and it only serves a file that
+    # is actually attached to the order named in the path.
+    del request
+    if get_credit_order_proof_file_id(order_id, file_id) is None:
+        raise HTTPException(status_code=404, detail="Proof not found")
+    file_record, filepath = load_payment_proof_file(file_id)
+    return FileResponse(
+        filepath,
+        media_type=str(file_record["mime_type"]),
+        headers={
+            "Cache-Control": "private, max-age=3600",
+            "Content-Disposition": "inline",
+            **GENERATED_IMAGE_SAFE_HEADERS,
+        },
+    )
+
+
+@app.post(
+    "/admin/orders/{order_id}/accept",
+    response_model=AdminCreditOrderResponse,
+    tags=["Configuration"],
+    summary="Accept Credit Order For Admin",
+)
+@limiter.limit("30/minute")
+def admin_accept_credit_order(
+    request: Request,
+    order_id: str,
+    payload: AdminCreditOrderAcceptRequest,
+    admin: Dict[str, Any] = Depends(verify_admin_session),
+    _csrf: None = Depends(verify_admin_csrf),
+):
+    del request
+    try:
+        return accept_credit_order(
+            order_id,
+            code=payload.code,
+            admin_uid=admin["uid"],
+            admin_email=admin["email"],
+            confirm_mismatch=payload.confirmMismatch,
+        )
+    except ValueError as exc:
+        _raise_credit_order_error(exc)
+
+
+@app.post(
+    "/admin/orders/{order_id}/refuse",
+    response_model=AdminCreditOrderResponse,
+    tags=["Configuration"],
+    summary="Refuse Credit Order For Admin",
+)
+@limiter.limit("30/minute")
+def admin_refuse_credit_order(
+    request: Request,
+    order_id: str,
+    payload: AdminCreditOrderRefuseRequest,
+    admin: Dict[str, Any] = Depends(verify_admin_session),
+    _csrf: None = Depends(verify_admin_csrf),
+):
+    del request
+    try:
+        return refuse_credit_order(
+            order_id,
+            reason=payload.reason,
+            admin_uid=admin["uid"],
+            admin_email=admin["email"],
+        )
+    except ValueError as exc:
+        _raise_credit_order_error(exc)
 
 
 @app.post(
@@ -3605,7 +3891,36 @@ def _extension_for_mime_type(mime_type: str) -> str:
         return "png"
     if mime_type == "image/webp":
         return "webp"
+    if mime_type == "application/pdf":
+        return "pdf"
     return "jpg"
+
+
+def _inspect_payment_proof_bytes(file_bytes: bytes) -> str:
+    """Return the real content type of a proof, or 400.
+
+    Same declared-vs-detected principle as image uploads: the browser's
+    Content-Type is a hint, the magic bytes decide. Dimensions are irrelevant
+    here — nobody feeds a receipt to a model — so only the type is checked.
+    """
+    if file_bytes.startswith(b"%PDF-"):
+        return "application/pdf"
+    if file_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if file_bytes.startswith(b"\xff\xd8"):
+        return "image/jpeg"
+    if file_bytes.startswith(b"RIFF") and file_bytes[8:12] == b"WEBP":
+        return "image/webp"
+    raise HTTPException(status_code=400, detail="Proof must be a PNG, JPEG, WEBP, or PDF file")
+
+
+def _save_payment_proof_bytes(mime_type: str, file_bytes: bytes) -> str:
+    extension = _extension_for_mime_type(mime_type)
+    filename = f"{os.urandom(16).hex()}.{extension}"
+    save_path = PAYMENT_PROOFS_DIR / filename
+    with open(save_path, "wb") as proof_file:
+        proof_file.write(file_bytes)
+    return filename
 
 
 # ===========================================================================

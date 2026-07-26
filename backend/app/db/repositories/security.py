@@ -10,7 +10,7 @@ from sqlalchemy import case, delete, func, select, update
 from sqlalchemy.orm import Session
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from app.db.models import AdminAccount, AdminAuditLog, AdminSession, AnalyzeSession, ChatConversation, ChatMessage, CreditCode, CreditCodeClaim, CreditLedgerEntry, CreditLot, CreditLotAllocation, DashboardNewsItem, DeactivatedEmail, EmailSend, FeedbackItem, GenerationJob, HistoryEntry, ModerationRejection, PackSession, RateLimitBucket, User, UserFile
+from app.db.models import AdminAccount, AdminAuditLog, AdminSession, AnalyzeSession, ChatConversation, ChatMessage, CreditCode, CreditCodeClaim, CreditLedgerEntry, CreditLot, CreditLotAllocation, CreditOrder, CreditOrderProof, DashboardNewsItem, DeactivatedEmail, EmailSend, FeedbackItem, GenerationJob, HistoryEntry, ModerationRejection, PackSession, RateLimitBucket, User, UserFile
 
 USERNAME_ALLOWED_RE = re.compile(r"[^a-z0-9._-]+")
 
@@ -297,6 +297,96 @@ class SecurityRepository:
         item.updated_at = int(time.time())
         self.session.flush()
         return item
+
+    def create_credit_order(
+        self,
+        *,
+        uid: str,
+        plan_id: str,
+        plan_name: str,
+        credits_minor: int,
+        price_minor: int,
+        currency: str,
+        payment_method: str,
+        note: str,
+    ) -> CreditOrder:
+        now = int(time.time())
+        order = CreditOrder(
+            id=str(uuid.uuid4()),
+            uid=uid,
+            plan_id=plan_id,
+            plan_name=plan_name,
+            credits_minor=credits_minor,
+            price_minor=price_minor,
+            currency=currency,
+            payment_method=payment_method,
+            note=note,
+            status="pending",
+            created_at=now,
+            updated_at=now,
+        )
+        self.session.add(order)
+        self.session.flush()
+        return order
+
+    def add_credit_order_proof(self, *, order_id: str, file_id: str) -> CreditOrderProof:
+        proof = CreditOrderProof(
+            id=str(uuid.uuid4()),
+            order_id=order_id,
+            file_id=file_id,
+            created_at=int(time.time()),
+        )
+        self.session.add(proof)
+        self.session.flush()
+        return proof
+
+    def list_credit_orders_for_user(self, uid: str, *, limit: int = 20) -> list[CreditOrder]:
+        stmt = (
+            select(CreditOrder)
+            .where(CreditOrder.uid == uid)
+            .order_by(CreditOrder.created_at.desc())
+            .limit(limit)
+        )
+        return list(self.session.execute(stmt).scalars())
+
+    def list_credit_orders(self, *, status: str | None = None, limit: int = 200) -> list[CreditOrder]:
+        stmt = select(CreditOrder)
+        if status:
+            stmt = stmt.where(CreditOrder.status == status)
+        stmt = stmt.order_by(CreditOrder.created_at.desc()).limit(limit)
+        return list(self.session.execute(stmt).scalars())
+
+    def count_open_credit_orders(self, uid: str) -> int:
+        stmt = (
+            select(func.count())
+            .select_from(CreditOrder)
+            .where(CreditOrder.uid == uid, CreditOrder.status == "pending")
+        )
+        return int(self.session.execute(stmt).scalar_one())
+
+    def get_credit_order_for_update(self, order_id: str) -> CreditOrder | None:
+        return self.session.execute(
+            select(CreditOrder).where(CreditOrder.id == order_id).with_for_update()
+        ).scalar_one_or_none()
+
+    def get_credit_order(self, order_id: str) -> CreditOrder | None:
+        return self.session.get(CreditOrder, order_id)
+
+    def list_credit_order_proofs(self, order_id: str) -> list[CreditOrderProof]:
+        stmt = (
+            select(CreditOrderProof)
+            .where(CreditOrderProof.order_id == order_id)
+            .order_by(CreditOrderProof.created_at.asc())
+        )
+        return list(self.session.execute(stmt).scalars())
+
+    def get_credit_order_proof(self, order_id: str, file_id: str) -> CreditOrderProof | None:
+        return self.session.execute(
+            select(CreditOrderProof).where(
+                CreditOrderProof.order_id == order_id,
+                CreditOrderProof.file_id == file_id,
+            )
+        ).scalar_one_or_none()
 
     def _username_taken(self, username: str, *, exclude_uid: str | None = None) -> bool:
         stmt = select(User.uid).where(User.username == username)

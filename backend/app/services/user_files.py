@@ -24,14 +24,20 @@ APIKEYMANAGER_GENERATED_IMAGE_DIRS = (
     BASE_DIR.parent / "ApiKeyManager" / "backend" / "generated_images",
 )
 
+# Payment receipts live in their own directory, apart from `uploaded_images`,
+# because the 30-day upload reaper sweeps that one by kind='uploaded_input'. A
+# proof attached to a purchase has to outlive the sweep.
+PAYMENT_PROOFS_DIR = BASE_DIR / "payment_proofs"
+
 GENERATED_IMAGES_DIR.mkdir(exist_ok=True)
 UPLOADED_IMAGES_DIR.mkdir(exist_ok=True)
+PAYMENT_PROOFS_DIR.mkdir(exist_ok=True)
 
 SAFE_GENERATED_FILENAME = re.compile(r"^[a-f0-9\-]{36}\.(jpg|png|webp|svg)$")
 SAFE_UPLOADED_FILENAME = re.compile(r"^[a-f0-9]{32}\.(jpg|png|webp)$")
 SAFE_FILE_ID = re.compile(r"^[0-9a-f\-]{36}$")
 
-PRIVATE_FILE_KINDS = {"uploaded_input", "generated_output"}
+PRIVATE_FILE_KINDS = {"uploaded_input", "generated_output", "payment_proof"}
 
 GENERATED_IMAGE_MIME_BY_EXT = {
     "jpg": "image/jpeg",
@@ -225,6 +231,43 @@ def create_uploaded_user_file_record(owner_uid: str, filename: str, mime_type: s
     )
 
 
+def create_payment_proof_file_record(owner_uid: str, filename: str, mime_type: str) -> str:
+    return _create_user_file_record(
+        owner_uid=owner_uid,
+        storage_path=filename,
+        kind="payment_proof",
+        mime_type=mime_type,
+    )
+
+
+def load_payment_proof_file(file_id: str) -> tuple[dict[str, Any], Path]:
+    """Load a proof without an owner check — for admin review only.
+
+    The caller MUST have already proven the file belongs to the order it is
+    serving (see get_credit_order_proof_file_id); this deliberately skips the
+    ownership filter that /files/{id} applies, since the reviewer is not the owner.
+    """
+    if not SAFE_FILE_ID.match(file_id):
+        raise HTTPException(status_code=400, detail="Invalid file id")
+
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        entry = repo.get_user_file(file_id)
+        if entry is None or str(entry.kind) != "payment_proof":
+            raise HTTPException(status_code=404, detail="File not found")
+        filepath = _filepath_for_record(str(entry.kind), str(entry.storage_path))
+        if not filepath.exists():
+            raise HTTPException(status_code=404, detail="File not found")
+        return {
+            "id": str(entry.id),
+            "owner_uid": str(entry.owner_uid),
+            "storage_path": str(entry.storage_path),
+            "kind": str(entry.kind),
+            "mime_type": str(entry.mime_type),
+            "created_at": int(entry.created_at),
+        }, filepath
+
+
 def _create_user_file_record(*, owner_uid: str, storage_path: str, kind: str, mime_type: str) -> str:
     with session_scope() as session:
         repo = SecurityRepository(session)
@@ -269,6 +312,8 @@ def _filepath_for_record(kind: str, storage_path: str) -> Path:
         return UPLOADED_IMAGES_DIR / storage_path
     if kind == "generated_output":
         return GENERATED_IMAGES_DIR / storage_path
+    if kind == "payment_proof":
+        return PAYMENT_PROOFS_DIR / storage_path
     raise HTTPException(status_code=404, detail="File not found")
 
 

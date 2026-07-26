@@ -1,12 +1,11 @@
 // Destination for the "Buy Codes" buttons (where users purchase credit codes).
-// The external payment platform is not live yet, so the buttons are LOCKED and
-// render a "Coming soon" remark instead of navigating anywhere.
-// TODO: set PAYMENT_LINK to the external payment URL and flip PAYMENT_LINK_LOCKED
-// to false once the store is live, e.g. "https://store.example.com/checkout".
-export const PAYMENT_LINK = "";
+// Points at the in-app manual checkout: pick a plan, pay through a Tunisian
+// method, upload proof. International card payment is a separate, still-locked
+// option inside that flow rather than a different destination.
+export const PAYMENT_LINK = "/credits/buy";
 
 // While true, the Buy Codes button is disabled/locked and shows "Coming soon".
-export const PAYMENT_LINK_LOCKED = true;
+export const PAYMENT_LINK_LOCKED = false;
 
 // True when PAYMENT_LINK is an absolute external URL. When external, the button
 // renders as an <a> and opens in a new tab; otherwise it uses Next.js <Link>.
