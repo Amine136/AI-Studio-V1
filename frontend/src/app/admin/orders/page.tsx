@@ -48,6 +48,7 @@ export default function AdminOrdersPage() {
     const [confirmMismatch, setConfirmMismatch] = useState(false);
     const [rowError, setRowError] = useState("");
     const [submitting, setSubmitting] = useState(false);
+    const [generating, setGenerating] = useState(false);
     // Proof ids that failed to render as an image (PDFs).
     const [unrenderable, setUnrenderable] = useState<Set<string>>(new Set());
 
@@ -104,6 +105,25 @@ export default function AdminOrdersPage() {
         setRowError("");
     };
 
+    // Mint a code for exactly this order's amount, single use, no expiry, and drop
+    // it into the field. Saves the round trip to Codes; accepting still goes
+    // through the same validation as a hand-pasted code.
+    const generateCode = async (order: AdminCreditOrder) => {
+        if (generating) return;
+        setGenerating(true);
+        setRowError("");
+        try {
+            const created = await api.createAdminCode(order.credits, 1, 0, 0);
+            const code = String(created?.code || "");
+            if (!code) throw new Error("Code generation returned no code.");
+            setCodeInput(code);
+        } catch (err) {
+            setRowError(err instanceof Error ? err.message : "Failed to generate a code.");
+        } finally {
+            setGenerating(false);
+        }
+    };
+
     const submitAction = async (order: AdminCreditOrder) => {
         if (submitting) return;
         setSubmitting(true);
@@ -145,8 +165,9 @@ export default function AdminOrdersPage() {
                         ) : null}
                     </div>
                     <p className="font-body-lg text-on-surface-variant max-w-2xl">
-                        Manual credit purchases awaiting review. Generate the code in{" "}
-                        <Link href="/admin/codes" className="text-primary hover:underline">Codes</Link>, then paste it here to accept.
+                        Manual credit purchases awaiting review. Accepting issues a redeem code to the buyer —
+                        generate one in place, or paste a code you made in{" "}
+                        <Link href="/admin/codes" className="text-primary hover:underline">Codes</Link>.
                     </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -311,13 +332,28 @@ export default function AdminOrdersPage() {
                                                         <label className="block font-label-caps text-[10px] text-on-surface-variant mb-2">
                                                             REDEEM CODE ({order.credits.toFixed(2)} Cr)
                                                         </label>
-                                                        <input
-                                                            type="text"
-                                                            value={codeInput}
-                                                            onChange={(e) => setCodeInput(e.target.value.toUpperCase())}
-                                                            placeholder="VC-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
-                                                            className="w-full max-w-xl px-3 py-2 rounded-lg bg-surface-container-lowest border border-outline-variant font-code-sm text-sm text-on-surface outline-none focus:border-primary/50"
-                                                        />
+                                                        <div className="flex flex-wrap items-center gap-2">
+                                                            <input
+                                                                type="text"
+                                                                value={codeInput}
+                                                                onChange={(e) => setCodeInput(e.target.value.toUpperCase())}
+                                                                placeholder="VC-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+                                                                className="flex-1 min-w-[20rem] max-w-xl px-3 py-2 rounded-lg bg-surface-container-lowest border border-outline-variant font-code-sm text-sm text-on-surface outline-none focus:border-primary/50"
+                                                            />
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => void generateCode(order)}
+                                                                disabled={generating || submitting}
+                                                                className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg font-label-caps text-label-caps border border-outline-variant text-on-surface-variant hover:bg-surface-container-highest disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                                                            >
+                                                                <span className="material-symbols-outlined text-[16px]">bolt</span>
+                                                                {generating ? "Generating…" : "Generate"}
+                                                            </button>
+                                                        </div>
+                                                        <p className="text-[11px] text-on-surface-variant mt-2">
+                                                            Generate creates a single-use code worth exactly {order.credits.toFixed(2)} Cr that never
+                                                            expires, and drops it in the field. Or paste one you made in Codes.
+                                                        </p>
                                                         {/different number of credits/i.test(rowError) ? (
                                                             <label className="flex items-center gap-2 mt-3 text-sm text-on-surface-variant">
                                                                 <input
