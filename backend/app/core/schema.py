@@ -670,27 +670,26 @@ class CreditPlanResponse(BaseModel):
 
 
 class PaymentMethodResponse(BaseModel):
+    """One rail the customer can send money through.
+
+    `primaryValue` is the single string they copy (account number / IBAN) and
+    `meta` is the supporting line beneath it. Blank values are hidden by the UI,
+    so a half-configured method degrades to just its name.
+    """
     id: str
     group: str
     available: bool
-
-
-class PaymentAccountsResponse(BaseModel):
-    """Where to send the money. Blank fields are hidden by the UI, so an
-    unconfigured environment degrades to "no details shown" rather than a broken page."""
-    flouciName: str = ""
-    flouciPhone: str = ""
-    bankName: str = ""
-    bankHolder: str = ""
-    bankRib: str = ""
-    bankIban: str = ""
-    whatsappNumber: str = ""
+    label: str = ""
+    icon: str = ""
+    primaryLabel: str = ""
+    primaryValue: str = ""
+    meta: List[str] = Field(default_factory=list)
 
 
 class CheckoutConfigResponse(BaseModel):
     plans: List[CreditPlanResponse]
     methods: List[PaymentMethodResponse]
-    accounts: PaymentAccountsResponse
+    whatsappNumber: str = ""
     maxProofFiles: int
     maxProofBytes: int
     noteMaxLength: int

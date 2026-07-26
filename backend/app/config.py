@@ -42,17 +42,89 @@ CREDIT_PLANS = [
 
 CREDIT_PLANS_BY_ID = {plan["id"]: plan for plan in CREDIT_PLANS}
 
+# ---------------------------------------------------------------------------
+# Where customers send the money.
+#
+# Static on purpose: these are the business's own published account details, they
+# change about never, and keeping them here means the checkout page is complete
+# straight out of a deploy. Fill each value in once and it shows up everywhere.
+# ---------------------------------------------------------------------------
+PAYMENT_ACCOUNT_HOLDER = ""      # full name on the account
+PAYMENT_FLOUCI_PHONE = ""        # Flouci number, spaced for readability
+PAYMENT_BANK_IBAN = ""           # IBAN, spaced in groups as printed on the RIB
+PAYMENT_BANK_BIC = ""            # BIC / SWIFT
+PAYMENT_BANK_NAME = ""           # bank name
+PAYMENT_WHATSAPP_NUMBER = ""     # country code + number, digits only
+
 # Payment rails offered at checkout. `available` false renders the option locked
 # ("coming soon") in the UI and is rejected server-side. International card
 # payment stays locked until the automatic flow (incl. auto-redemption) is built.
+#
+# `primary_value` is the one string a customer copies (account number / IBAN);
+# `meta` is the supporting line under it. Blank values are hidden by the UI, so a
+# half-configured method degrades to just its name rather than showing gaps.
 PAYMENT_METHODS = [
-    {"id": "flouci", "group": "tunisia", "available": True},
-    {"id": "bank_transfer", "group": "tunisia", "available": True},
-    {"id": "d17", "group": "tunisia", "available": False},
-    {"id": "edinar_post", "group": "tunisia", "available": False},
-    {"id": "international_card", "group": "international", "available": False},
+    {
+        "id": "flouci",
+        "group": "tunisia",
+        "available": True,
+        "label": "Flouci",
+        "icon": "smartphone",
+        "primary_label": "Number",
+        "primary_value": PAYMENT_FLOUCI_PHONE,
+        "meta": [m for m in ("Flouci app", PAYMENT_ACCOUNT_HOLDER) if m],
+    },
+    {
+        "id": "bank_transfer",
+        "group": "tunisia",
+        "available": True,
+        "label": "Bank transfer / RIB",
+        "icon": "account_balance",
+        "primary_label": "IBAN",
+        "primary_value": PAYMENT_BANK_IBAN,
+        "meta": [
+            m
+            for m in (
+                f"BIC: {PAYMENT_BANK_BIC}" if PAYMENT_BANK_BIC else "",
+                PAYMENT_BANK_NAME,
+                PAYMENT_ACCOUNT_HOLDER,
+            )
+            if m
+        ],
+    },
+    {
+        "id": "d17",
+        "group": "tunisia",
+        "available": False,
+        "label": "D17",
+        "icon": "credit_card",
+        "primary_label": "Number",
+        "primary_value": "",
+        "meta": [],
+    },
+    {
+        "id": "edinar_post",
+        "group": "tunisia",
+        "available": False,
+        "label": "E-dinar Post",
+        "icon": "local_post_office",
+        "primary_label": "Account",
+        "primary_value": "",
+        "meta": [],
+    },
+    {
+        "id": "international_card",
+        "group": "international",
+        "available": False,
+        "label": "International cards",
+        "icon": "credit_card",
+        "primary_label": "",
+        "primary_value": "",
+        "meta": [],
+    },
 ]
 
+PAYMENT_METHODS_BY_ID = {m["id"]: m for m in PAYMENT_METHODS}
 AVAILABLE_PAYMENT_METHOD_IDS = {m["id"] for m in PAYMENT_METHODS if m["available"]}
 
 
@@ -294,17 +366,8 @@ class Config:
         self.signup_bonus_credits = float(os.getenv("SIGNUP_BONUS_CREDITS", "1.0"))
         self.signup_bonus_validity_seconds = int(os.getenv("SIGNUP_BONUS_VALIDITY_SECONDS", str(7 * 24 * 60 * 60)))
 
-        # Manual (Tunisian) checkout. Real account details live in the environment,
-        # never in the repo — the UI simply hides any field left blank, so shipping
-        # this with empty defaults is safe. Set these in the VPS .env.
-        self.payment_flouci_name = os.getenv("PAYMENT_FLOUCI_NAME", "")
-        self.payment_flouci_phone = os.getenv("PAYMENT_FLOUCI_PHONE", "")
-        self.payment_bank_name = os.getenv("PAYMENT_BANK_NAME", "")
-        self.payment_bank_holder = os.getenv("PAYMENT_BANK_HOLDER", "")
-        self.payment_bank_rib = os.getenv("PAYMENT_BANK_RIB", "")
-        self.payment_bank_iban = os.getenv("PAYMENT_BANK_IBAN", "")
-        self.payment_whatsapp_number = os.getenv("PAYMENT_WHATSAPP_NUMBER", "")
-        # How many orders a user may leave awaiting review at once.
+        # Manual (Tunisian) checkout. Account details are static constants at the
+        # top of this module; only the abuse cap is tunable per environment.
         self.max_open_credit_orders = int(os.getenv("MAX_OPEN_CREDIT_ORDERS", "3"))
 
         # System model settings used for the intent-analysis step.

@@ -15,7 +15,7 @@ const STATUS_STYLES: Record<CreditOrderStatus, string> = {
 
 const METHOD_LABELS: Record<string, string> = {
     flouci: "Flouci",
-    bank_transfer: "Bank transfer",
+    bank_transfer: "Bank transfer / RIB",
     d17: "D17",
     edinar_post: "E-dinar Post",
 };

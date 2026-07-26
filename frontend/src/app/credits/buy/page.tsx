@@ -6,14 +6,13 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { useAuth } from "../../../context/AuthContext";
 import { useLanguage } from "../../../context/LanguageContext";
 import { api } from "../../../services/api";
-import StepIndicator, { type Step } from "../../../components/StepIndicator";
-import type { CheckoutConfig, CreditPlan } from "../../../types";
+import type { CheckoutConfig, CreditPlan, PaymentMethodOption } from "../../../types";
 
-const WIZARD_STEPS: readonly Step[] = [
-  { key: "plan", label: "Plan", icon: "✦" },
-  { key: "method", label: "Payment", icon: "◎" },
-  { key: "pay", label: "Confirm", icon: "✓" },
-];
+const WIZARD_STEPS = [
+  { key: "plan", label: "Plan" },
+  { key: "method", label: "Payment" },
+  { key: "pay", label: "Confirm" },
+] as const;
 
 const PROOF_ACCEPT = "image/png,image/jpeg,image/webp,application/pdf";
 const PROOF_TYPES = ["image/png", "image/jpeg", "image/webp", "application/pdf"];
@@ -39,7 +38,53 @@ interface ProofFile {
   previewUrl: string | null;
 }
 
-function CopyableValue({ label, value }: { label: string; value: string }) {
+/* Segmented progress rather than circles-and-connectors: at three steps the
+   circles were mostly empty space, and a filled bar reads as "how far along"
+   at a glance. Each segment owns its own label, so it stays legible on a phone
+   and mirrors correctly in Arabic without any physical-direction CSS. */
+function CheckoutSteps({ current }: { current: string }) {
+  const { t } = useLanguage();
+  const currentIndex = Math.max(
+    0,
+    WIZARD_STEPS.findIndex((s) => s.key === current),
+  );
+
+  return (
+    <div className="mb-8 flex items-start gap-2 sm:gap-3">
+      {WIZARD_STEPS.map((step, i) => {
+        const isDone = i < currentIndex;
+        const isActive = i === currentIndex;
+        return (
+          <div key={step.key} className="flex flex-1 flex-col gap-2">
+            <div
+              className={`h-1 rounded-full transition-all duration-500 ${
+                isActive
+                  ? "bg-[linear-gradient(90deg,#adc6ff,#4d8eff)]"
+                  : isDone
+                    ? "bg-[#adc6ff]/50"
+                    : "bg-white/10"
+              }`}
+            />
+            <span
+              className={`flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] transition-colors sm:text-xs ${
+                isActive ? "text-white" : isDone ? "text-[#adc6ff]" : "text-[#c2c6d6]/50"
+              }`}
+            >
+              {isDone ? (
+                <span className="material-symbols-outlined text-[14px]">check</span>
+              ) : (
+                <span className="tabular-nums">{i + 1}</span>
+              )}
+              {t(step.label)}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function CopyButton({ value }: { value: string }) {
   const { t } = useLanguage();
   const [copied, setCopied] = useState(false);
 
@@ -55,22 +100,15 @@ function CopyableValue({ label, value }: { label: string; value: string }) {
   }, [value]);
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-white/5 py-2.5 first:border-t-0">
-      <span className="text-xs uppercase tracking-[0.18em] text-[#c2c6d6]/70">{label}</span>
-      <span className="flex items-center gap-2">
-        <span className="font-mono text-sm text-white">{value}</span>
-        <button
-          type="button"
-          onClick={copy}
-          aria-label={t("Copy")}
-          className="rounded-md border border-white/10 bg-white/5 p-1.5 text-[#adc6ff] transition hover:bg-white/10"
-        >
-          <span className="material-symbols-outlined text-[15px]">
-            {copied ? "check" : "content_copy"}
-          </span>
-        </button>
-      </span>
-    </div>
+    <button
+      type="button"
+      onClick={copy}
+      aria-label={t("Copy")}
+      className="inline-flex items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-2.5 py-1.5 text-xs font-semibold text-[#adc6ff] transition hover:bg-white/10"
+    >
+      <span className="material-symbols-outlined text-[15px]">{copied ? "check" : "content_copy"}</span>
+      {copied ? t("Copied") : t("Copy")}
+    </button>
   );
 }
 
@@ -132,7 +170,12 @@ function BuyCreditsWizard() {
   const maxProofFiles = config?.maxProofFiles ?? 3;
   const maxProofBytes = config?.maxProofBytes ?? 5 * 1024 * 1024;
   const noteMaxLength = config?.noteMaxLength ?? 400;
-  const accounts = config?.accounts;
+  const whatsappNumber = config?.whatsappNumber ?? "";
+
+  const tunisianMethods = useMemo<PaymentMethodOption[]>(
+    () => (config?.methods ?? []).filter((m) => m.group === "tunisia"),
+    [config],
+  );
 
   const goTo = useCallback(
     (next: Record<string, string>) => {
@@ -143,9 +186,15 @@ function BuyCreditsWizard() {
     [router],
   );
 
-  const isMethodAvailable = useCallback(
-    (id: string) => Boolean(config?.methods.find((m) => m.id === id)?.available),
-    [config],
+  // The URL may carry no method (arriving from step 2) or a locked one (a stale
+  // link). Fall back to the first available rail so step 3 always has a valid
+  // selection, and submit whatever is actually selected.
+  const selectedMethod = useMemo(
+    () =>
+      tunisianMethods.find((m) => m.id === method && m.available) ??
+      tunisianMethods.find((m) => m.available) ??
+      null,
+    [method, tunisianMethods],
   );
 
   const addFiles = useCallback(
@@ -191,11 +240,11 @@ function BuyCreditsWizard() {
   }, []);
 
   const submit = useCallback(async () => {
-    if (!selectedPlan || submitting) return;
+    if (!selectedPlan || !selectedMethod || submitting) return;
 
     if (!user) {
       // Carry the whole wizard state through the wall so they land back here.
-      const next = `/credits/buy?step=pay&plan=${selectedPlan.id}&method=${method}`;
+      const next = `/credits/buy?step=pay&plan=${selectedPlan.id}&method=${selectedMethod.id}`;
       router.push(`/auth?next=${encodeURIComponent(next)}`);
       return;
     }
@@ -209,7 +258,7 @@ function BuyCreditsWizard() {
     try {
       const order = await api.placeCreditOrder({
         planId: selectedPlan.id,
-        paymentMethod: method,
+        paymentMethod: selectedMethod.id,
         note,
         proofs: proofs.map((p) => p.file),
       });
@@ -218,7 +267,7 @@ function BuyCreditsWizard() {
       setError(err instanceof Error ? err.message : t("Could not place this order."));
       setSubmitting(false);
     }
-  }, [method, note, proofs, router, selectedPlan, submitting, t, user]);
+  }, [note, proofs, router, selectedMethod, selectedPlan, submitting, t, user]);
 
   if (loading) {
     return (
@@ -256,7 +305,7 @@ function BuyCreditsWizard() {
         </h1>
       </div>
 
-      <StepIndicator currentStep={step} steps={WIZARD_STEPS} />
+      <CheckoutSteps current={step} />
 
       {/* ---------------------------------------------------------------- Step 1 */}
       {step === "plan" && (
@@ -304,7 +353,7 @@ function BuyCreditsWizard() {
           <div className="grid gap-4 sm:grid-cols-2">
             <button
               type="button"
-              onClick={() => goTo({ step: "pay", plan: selectedPlan.id, method: "flouci" })}
+              onClick={() => goTo({ step: "pay", plan: selectedPlan.id })}
               className="flex flex-col items-start gap-2 rounded-xl border border-white/10 bg-[rgba(25,31,49,0.7)] p-5 text-start transition hover:-translate-y-0.5 hover:border-[#adc6ff]/40"
             >
               <span className="material-symbols-outlined text-[24px] text-[#adc6ff]">payments</span>
@@ -337,7 +386,7 @@ function BuyCreditsWizard() {
       )}
 
       {/* ---------------------------------------------------------------- Step 3 */}
-      {step === "pay" && selectedPlan && isMethodAvailable(method) && (
+      {step === "pay" && selectedPlan && selectedMethod && (
         <section className="space-y-5">
           {/* Order summary */}
           <div className={CARD_CLASS}>
@@ -354,56 +403,88 @@ function BuyCreditsWizard() {
             </div>
           </div>
 
-          {/* Where to pay */}
+          {/* Pick the rail, then read its details. The selected method is what the
+              order records, so the admin knows which account to check. */}
           <div className={CARD_CLASS}>
             <h2 className="text-lg font-bold text-white">{t("Send your payment")}</h2>
             <p className="mt-1 text-sm text-[#c2c6d6]">
-              {t("Pay the amount above using one of the methods below, then upload your receipt.")}
+              {t("Choose how you'll send the money, pay the amount above, then upload your receipt.")}
             </p>
 
-            <div className="mt-5 space-y-4">
-              {(accounts?.flouciName || accounts?.flouciPhone) && (
-                <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
-                  <p className="mb-1 flex items-center gap-2 font-semibold text-white">
-                    <span className="material-symbols-outlined text-[19px] text-[#adc6ff]">smartphone</span>
-                    {t("Flouci app")}
-                  </p>
-                  {accounts.flouciName && <CopyableValue label={t("Name")} value={accounts.flouciName} />}
-                  {accounts.flouciPhone && <CopyableValue label={t("Phone")} value={accounts.flouciPhone} />}
-                </div>
-              )}
-
-              {(accounts?.bankRib || accounts?.bankIban) && (
-                <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
-                  <p className="mb-1 flex items-center gap-2 font-semibold text-white">
-                    <span className="material-symbols-outlined text-[19px] text-[#adc6ff]">account_balance</span>
-                    {t("Bank transfer")}
-                  </p>
-                  {accounts.bankName && <CopyableValue label={t("Bank")} value={accounts.bankName} />}
-                  {accounts.bankHolder && <CopyableValue label={t("Account holder")} value={accounts.bankHolder} />}
-                  {accounts.bankRib && <CopyableValue label={t("RIB")} value={accounts.bankRib} />}
-                  {accounts.bankIban && <CopyableValue label={t("IBAN")} value={accounts.bankIban} />}
-                </div>
-              )}
-
-              {/* Locked rails, shown so users know they are planned */}
-              <div className="grid gap-3 sm:grid-cols-2">
-                {[
-                  { id: "d17", label: t("D17"), icon: "credit_card" },
-                  { id: "edinar_post", label: t("E-dinar Post"), icon: "local_post_office" },
-                ].map((locked) => (
+            <div className="mt-5 space-y-3">
+              {tunisianMethods.map((option) => {
+                const isSelected = option.id === selectedMethod.id;
+                const isLocked = !option.available;
+                return (
                   <div
-                    key={locked.id}
-                    className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.02] p-3 opacity-60"
+                    key={option.id}
+                    className={`rounded-lg border transition ${
+                      isLocked
+                        ? "border-white/10 bg-white/[0.02] opacity-60"
+                        : isSelected
+                          ? "border-[#adc6ff]/50 bg-[#adc6ff]/[0.06]"
+                          : "border-white/10 bg-white/[0.03] hover:border-white/20"
+                    }`}
                   >
-                    <span className="material-symbols-outlined text-[19px] text-[#c2c6d6]">{locked.icon}</span>
-                    <span className="text-sm font-semibold text-white">{locked.label}</span>
-                    <span className="ms-auto text-[10px] font-semibold uppercase tracking-[0.2em] text-[#c2c6d6]/60">
-                      {t("Coming soon")}
-                    </span>
+                    <button
+                      type="button"
+                      disabled={isLocked}
+                      aria-pressed={isSelected}
+                      onClick={() => goTo({ step: "pay", plan: selectedPlan.id, method: option.id })}
+                      className={`flex w-full items-center gap-3 p-4 text-start ${
+                        isLocked ? "cursor-not-allowed" : "cursor-pointer"
+                      }`}
+                    >
+                      <span
+                        className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
+                          isSelected ? "border-[#adc6ff]" : "border-white/25"
+                        }`}
+                      >
+                        {isSelected && <span className="h-2 w-2 rounded-full bg-[#adc6ff]" />}
+                      </span>
+                      <span className="material-symbols-outlined text-[20px] text-[#adc6ff]">
+                        {isLocked ? "lock" : option.icon || "payments"}
+                      </span>
+                      <span className="flex-1 font-semibold text-white">{t(option.label)}</span>
+                      {isLocked && (
+                        <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#c2c6d6]/60">
+                          {t("Coming soon")}
+                        </span>
+                      )}
+                    </button>
+
+                    {isSelected && option.primaryValue && (
+                      <div className="border-t border-white/10 px-4 pb-4 pt-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#c2c6d6]/70">
+                            {t(option.primaryLabel)}
+                          </span>
+                          <CopyButton value={option.primaryValue} />
+                        </div>
+                        <p className="mt-1 select-all break-all font-mono text-base font-bold text-white sm:text-lg">
+                          {option.primaryValue}
+                        </p>
+                        {option.meta.length > 0 && (
+                          <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[#c2c6d6]">
+                            {option.meta.map((entry, i) => (
+                              <span key={entry} className="flex items-center gap-2">
+                                {i > 0 && <span className="text-[#c2c6d6]/40">•</span>}
+                                {entry}
+                              </span>
+                            ))}
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    {isSelected && !option.primaryValue && (
+                      <p className="border-t border-white/10 px-4 pb-4 pt-3 text-sm text-[#c2c6d6]">
+                        {t("Account details are being set up. Contact us on WhatsApp to complete this payment.")}
+                      </p>
+                    )}
                   </div>
-                ))}
-              </div>
+                );
+              })}
             </div>
           </div>
 
@@ -516,17 +597,15 @@ function BuyCreditsWizard() {
               </button>
             </div>
 
-            <p className="mt-4 text-xs text-[#c2c6d6]">
-              {t("We review orders manually. You'll get your code on this page once it's approved.")}
-            </p>
+            <p className="mt-4 text-xs text-[#c2c6d6]">{t("You'll get your code in 1h max")}</p>
           </div>
 
           {/* Help */}
-          {accounts?.whatsappNumber && (
+          {whatsappNumber && (
             <div className={`${CARD_CLASS} flex flex-wrap items-center justify-between gap-3`}>
               <p className="text-sm text-[#c2c6d6]">{t("Having trouble with your payment?")}</p>
               <a
-                href={`https://wa.me/${accounts.whatsappNumber.replace(/[^0-9]/g, "")}`}
+                href={`https://wa.me/${whatsappNumber.replace(/[^0-9]/g, "")}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-2 rounded-md border border-[#25d366]/40 bg-[#25d366]/10 px-4 py-2 text-sm font-bold text-[#25d366] transition hover:bg-[#25d366]/20"
@@ -539,9 +618,9 @@ function BuyCreditsWizard() {
         </section>
       )}
 
-      {/* A stale/hand-edited URL (unknown plan, locked method) lands here. */}
+      {/* A stale/hand-edited URL (unknown plan, or no rail open at all) lands here. */}
       {((step === "method" || step === "pay") && !selectedPlan) ||
-      (step === "pay" && selectedPlan && !isMethodAvailable(method)) ? (
+      (step === "pay" && selectedPlan && !selectedMethod) ? (
         <div className={CARD_CLASS}>
           <p className="text-sm text-[#c2c6d6]">{t("Pick a plan to continue.")}</p>
           <button type="button" onClick={() => goTo({ step: "plan" })} className={`${SECONDARY_BUTTON_CLASS} mt-4`}>

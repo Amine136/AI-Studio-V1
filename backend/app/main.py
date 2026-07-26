@@ -26,9 +26,10 @@ from app.config import (
     CREDIT_PLANS,
     CREDIT_PLANS_BY_ID,
     PAYMENT_METHODS,
+    PAYMENT_WHATSAPP_NUMBER,
     settings,
 )
-from app.core.schema import AdminAuditLogListResponse, AdminAuthFailureSummaryResponse, AdminCreditCodeBatchListResponse, AdminCreditCodeListResponse, AdminCreditOrderAcceptRequest, AdminCreditOrderListResponse, AdminCreditOrderRefuseRequest, AdminCreditOrderResponse, AdminGenerationJobItem, AdminGenerationJobListResponse, AdminLoginRequest, AdminReasonRequest, AdminSessionResponse, AdminUserDetailResponse, AdminUserListResponse, CatalogUpdateNotification, CheckoutConfigResponse, CreditActivityListResponse, CreditLedgerListResponse, CreditOrderListResponse, CreditOrderResponse, CreditPlanResponse, PaymentAccountsResponse, PaymentMethodResponse, DashboardNewsItemResponse, DashboardNewsListResponse, DashboardNewsUpsertRequest, FeedbackItemResponse, FeedbackListResponse, FeedbackStatusUpdateRequest, FeedbackSubmitRequest, GenerateRequest, GenerationResult, PlainChatConversationCreateRequest, PlainChatConversationItem, PlainChatConversationListResponse, PlainChatConversationMessageCreateRequest, PlainChatConversationMessagesResponse, PlainChatConversationTurnResponse, PlainChatConversationUpdateRequest, PlainChatModelListResponse, SystemConfig, UserNotificationPreferencesUpdateRequest, UserProfileUpdateRequest, ProfileCompletionRequest, PackEstimateRequest, PackGenerateRequest, PackPlanRequest, PackSessionCreate, PackSessionUpdate
+from app.core.schema import AdminAuditLogListResponse, AdminAuthFailureSummaryResponse, AdminCreditCodeBatchListResponse, AdminCreditCodeListResponse, AdminCreditOrderAcceptRequest, AdminCreditOrderListResponse, AdminCreditOrderRefuseRequest, AdminCreditOrderResponse, AdminGenerationJobItem, AdminGenerationJobListResponse, AdminLoginRequest, AdminReasonRequest, AdminSessionResponse, AdminUserDetailResponse, AdminUserListResponse, CatalogUpdateNotification, CheckoutConfigResponse, CreditActivityListResponse, CreditLedgerListResponse, CreditOrderListResponse, CreditOrderResponse, CreditPlanResponse, PaymentMethodResponse, DashboardNewsItemResponse, DashboardNewsListResponse, DashboardNewsUpsertRequest, FeedbackItemResponse, FeedbackListResponse, FeedbackStatusUpdateRequest, FeedbackSubmitRequest, GenerateRequest, GenerationResult, PlainChatConversationCreateRequest, PlainChatConversationItem, PlainChatConversationListResponse, PlainChatConversationMessageCreateRequest, PlainChatConversationMessagesResponse, PlainChatConversationTurnResponse, PlainChatConversationUpdateRequest, PlainChatModelListResponse, SystemConfig, UserNotificationPreferencesUpdateRequest, UserProfileUpdateRequest, ProfileCompletionRequest, PackEstimateRequest, PackGenerateRequest, PackPlanRequest, PackSessionCreate, PackSessionUpdate
 from app.packs import catalog as packs_catalog, service as packs_service
 from app.db.session import session_scope
 from app.db.repositories.security import SecurityRepository
@@ -1623,18 +1624,15 @@ def get_credit_checkout_config(request: Request, _: bool = Depends(verify_api_ke
                 id=str(method["id"]),
                 group=str(method["group"]),
                 available=bool(method["available"]),
+                label=str(method.get("label") or ""),
+                icon=str(method.get("icon") or ""),
+                primaryLabel=str(method.get("primary_label") or ""),
+                primaryValue=str(method.get("primary_value") or ""),
+                meta=[str(m) for m in method.get("meta") or []],
             )
             for method in PAYMENT_METHODS
         ],
-        accounts=PaymentAccountsResponse(
-            flouciName=settings.payment_flouci_name,
-            flouciPhone=settings.payment_flouci_phone,
-            bankName=settings.payment_bank_name,
-            bankHolder=settings.payment_bank_holder,
-            bankRib=settings.payment_bank_rib,
-            bankIban=settings.payment_bank_iban,
-            whatsappNumber=settings.payment_whatsapp_number,
-        ),
+        whatsappNumber=PAYMENT_WHATSAPP_NUMBER,
         maxProofFiles=MAX_PROOF_FILES,
         maxProofBytes=MAX_PROOF_BYTES,
         noteMaxLength=CREDIT_ORDER_NOTE_MAX_LENGTH,

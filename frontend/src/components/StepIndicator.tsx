@@ -2,25 +2,17 @@
 
 import { useLanguage } from "../context/LanguageContext";
 
-export interface Step {
-    key: string;
-    label: string;
-    icon: string;
-}
-
 interface StepIndicatorProps {
-    currentStep: string;
-    /** Defaults to the Smart Studio create flow. */
-    steps?: readonly Step[];
+    currentStep: "INPUT" | "REVIEW" | "RESULT";
 }
 
-const CREATE_FLOW_STEPS: readonly Step[] = [
+const steps = [
     { key: "INPUT", label: "Idea", icon: "✦" },
     { key: "REVIEW", label: "Optimize", icon: "◎" },
     { key: "RESULT", label: "Result", icon: "✓" },
-];
+] as const;
 
-export default function StepIndicator({ currentStep, steps = CREATE_FLOW_STEPS }: StepIndicatorProps) {
+export default function StepIndicator({ currentStep }: StepIndicatorProps) {
     const { t } = useLanguage();
     const currentIndex = steps.findIndex((s) => s.key === currentStep);
 

@@ -277,22 +277,19 @@ export interface PaymentMethodOption {
   id: string;
   group: string;
   available: boolean;
-}
-
-export interface PaymentAccounts {
-  flouciName: string;
-  flouciPhone: string;
-  bankName: string;
-  bankHolder: string;
-  bankRib: string;
-  bankIban: string;
-  whatsappNumber: string;
+  label: string;
+  icon: string;
+  /** The one string a customer copies (account number / IBAN). */
+  primaryLabel: string;
+  primaryValue: string;
+  /** Supporting line under the primary value (BIC, bank, holder). */
+  meta: string[];
 }
 
 export interface CheckoutConfig {
   plans: CreditPlan[];
   methods: PaymentMethodOption[];
-  accounts: PaymentAccounts;
+  whatsappNumber: string;
   maxProofFiles: number;
   maxProofBytes: number;
   noteMaxLength: number;
