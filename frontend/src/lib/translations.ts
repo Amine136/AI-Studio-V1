@@ -636,7 +636,8 @@ export const translations = {
     "Account details are being set up. Contact us on WhatsApp to complete this payment.": "Account details are being set up. Contact us on WhatsApp to complete this payment.",
     "Bank transfer / RIB": "Bank transfer / RIB",
     "Number": "Number",
-    "Flouci": "Flouci"
+    "Flouci": "Flouci",
+    "WhatsApp": "WhatsApp"
   },
   fr: {
     "Welcome to Vibecraft": "Bienvenue sur Vibecraft",
@@ -1413,7 +1414,8 @@ export const translations = {
     "Account details are being set up. Contact us on WhatsApp to complete this payment.": "Les coordonnées sont en cours de configuration. Contactez-nous sur WhatsApp pour finaliser ce paiement.",
     "Bank transfer / RIB": "Virement bancaire / RIB",
     "Number": "Numéro",
-    "Flouci": "Flouci"
+    "Flouci": "Flouci",
+    "WhatsApp": "WhatsApp"
   },
   ar: {
     "Welcome to Vibecraft": "مرحباً بك في Vibecraft",
@@ -2189,6 +2191,7 @@ export const translations = {
     "Account details are being set up. Contact us on WhatsApp to complete this payment.": "يتم إعداد بيانات الحساب. تواصل معنا عبر واتساب لإتمام هذا الدفع.",
     "Bank transfer / RIB": "تحويل بنكي / RIB",
     "Number": "الرقم",
-    "Flouci": "فلوسي"
+    "Flouci": "فلوسي",
+    "WhatsApp": "WhatsApp"
   }
 };

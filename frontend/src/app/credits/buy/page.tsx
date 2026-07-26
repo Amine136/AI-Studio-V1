@@ -31,6 +31,8 @@ const PRIMARY_BUTTON_CLASS =
   "rounded-md bg-[linear-gradient(90deg,#adc6ff,#4d8eff)] px-8 py-3 font-bold text-[#002e6a] shadow-lg shadow-[#adc6ff]/10 transition-all active:scale-95 disabled:cursor-not-allowed disabled:opacity-60";
 const SECONDARY_BUTTON_CLASS =
   "rounded-md border border-white/10 bg-white/5 px-4 py-2 text-sm text-[#adc6ff] transition hover:bg-white/10";
+const WHATSAPP_BUTTON_CLASS =
+  "inline-flex items-center gap-2 rounded-md border border-[#25d366]/40 bg-[#25d366]/10 px-4 py-2 text-sm font-bold text-[#25d366] transition hover:bg-[#25d366]/20";
 
 interface ProofFile {
   id: string;
@@ -171,6 +173,8 @@ function BuyCreditsWizard() {
   const maxProofBytes = config?.maxProofBytes ?? 5 * 1024 * 1024;
   const noteMaxLength = config?.noteMaxLength ?? 400;
   const whatsappNumber = config?.whatsappNumber ?? "";
+  // A placeholder like "+216 XXXXXXXX" has too few real digits to dial.
+  const whatsappDialable = whatsappNumber.replace(/[^0-9]/g, "").length >= 8;
 
   const tunisianMethods = useMemo<PaymentMethodOption[]>(
     () => (config?.methods ?? []).filter((m) => m.group === "tunisia"),
@@ -603,16 +607,30 @@ function BuyCreditsWizard() {
           {/* Help */}
           {whatsappNumber && (
             <div className={`${CARD_CLASS} flex flex-wrap items-center justify-between gap-3`}>
-              <p className="text-sm text-[#c2c6d6]">{t("Having trouble with your payment?")}</p>
-              <a
-                href={`https://wa.me/${whatsappNumber.replace(/[^0-9]/g, "")}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 rounded-md border border-[#25d366]/40 bg-[#25d366]/10 px-4 py-2 text-sm font-bold text-[#25d366] transition hover:bg-[#25d366]/20"
-              >
-                <span className="material-symbols-outlined text-[18px]">chat</span>
-                {t("Contact us on WhatsApp")}
-              </a>
+              <div>
+                <p className="text-sm text-[#c2c6d6]">{t("Having trouble with your payment?")}</p>
+                <p className="mt-1 font-mono text-sm text-white">
+                  {t("WhatsApp")}: {whatsappNumber}
+                </p>
+              </div>
+              {whatsappDialable ? (
+                <a
+                  href={`https://wa.me/${whatsappNumber.replace(/[^0-9]/g, "")}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={WHATSAPP_BUTTON_CLASS}
+                >
+                  <span className="material-symbols-outlined text-[18px]">chat</span>
+                  {t("Contact us on WhatsApp")}
+                </a>
+              ) : (
+                // Placeholder number: show the button so the page reads as
+                // finished, but don't link to a wa.me URL that cannot resolve.
+                <span className={`${WHATSAPP_BUTTON_CLASS} cursor-default opacity-70`}>
+                  <span className="material-symbols-outlined text-[18px]">chat</span>
+                  {t("Contact us on WhatsApp")}
+                </span>
+              )}
             </div>
           )}
         </section>

@@ -48,13 +48,18 @@ CREDIT_PLANS_BY_ID = {plan["id"]: plan for plan in CREDIT_PLANS}
 # Static on purpose: these are the business's own published account details, they
 # change about never, and keeping them here means the checkout page is complete
 # straight out of a deploy. Fill each value in once and it shows up everywhere.
+#
+# !!! PLACEHOLDERS — REPLACE BEFORE TAKING REAL PAYMENTS !!!
+# The X-shaped values below are deliberate: they keep every field visible so the
+# checkout page reads as finished, while being impossible to mistake for a real
+# account. Swap each one for the true value; nothing else needs to change.
 # ---------------------------------------------------------------------------
-PAYMENT_ACCOUNT_HOLDER = ""      # full name on the account
-PAYMENT_FLOUCI_PHONE = ""        # Flouci number, spaced for readability
-PAYMENT_BANK_IBAN = ""           # IBAN, spaced in groups as printed on the RIB
-PAYMENT_BANK_BIC = ""            # BIC / SWIFT
-PAYMENT_BANK_NAME = ""           # bank name
-PAYMENT_WHATSAPP_NUMBER = ""     # country code + number, digits only
+PAYMENT_ACCOUNT_HOLDER = "NAME SURNAME"                    # full name on the account
+PAYMENT_FLOUCI_PHONE = "+216 XX XXX XXX"                   # Flouci number
+PAYMENT_BANK_IBAN = "TNXX XX XXX XXXXXXXXXXXXX XX"         # as printed on the RIB
+PAYMENT_BANK_BIC = "XXXXXXXX"                              # BIC / SWIFT
+PAYMENT_BANK_NAME = "BANK NAME"                            # bank name
+PAYMENT_WHATSAPP_NUMBER = "+216 XXXXXXXX"                  # country code + number
 
 # Payment rails offered at checkout. `available` false renders the option locked
 # ("coming soon") in the UI and is rejected server-side. International card
