@@ -6,7 +6,12 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { useAuth } from "../../../context/AuthContext";
 import { useLanguage } from "../../../context/LanguageContext";
 import { api } from "../../../services/api";
-import type { CheckoutConfig, CreditPlan, PaymentMethodOption } from "../../../types";
+import type {
+  CheckoutConfig,
+  CreditPlan,
+  PaymentMethodOption,
+  SystemConfig,
+} from "../../../types";
 
 const WIZARD_STEPS = [
   { key: "plan", label: "Plan" },
@@ -26,6 +31,57 @@ const formatPrice = (priceMinor: number, currency: string) => {
 };
 
 const perCreditMinor = (plan: CreditPlan) => (plan.credits > 0 ? plan.priceMinor / plan.credits : 0);
+
+/* The per-credit rate is a comparison figure, not a charge, so it takes a fixed
+   2 decimals: formatPrice trims zeros, which left the three plans reading
+   "1.5 / 1.114 / 0.986" — a ragged column is a column nobody compares. */
+const formatRate = (rateMinor: number, currency: string) => {
+  const text = (rateMinor / 1000).toFixed(2);
+  return currency === "TND" ? `${text} DT` : `${text} ${currency}`;
+};
+
+/* What a credit actually buys, taken from the live model catalogue rather than a
+   marketing number that would drift the moment pricing changes. Each model is
+   reduced to its cheapest tier (what you pay at that model's standard setting),
+   and the median of those is "a typical image" — a mean would be dragged around
+   by the one 4K premium model. Returns null when the catalogue is unavailable,
+   and the estimate is simply not rendered. */
+const typicalImageRate = (config: SystemConfig | null): number | null => {
+  const catalog = config?.model_catalog?.image;
+  if (!catalog || typeof catalog !== "object") return null;
+
+  const perModel: number[] = [];
+  for (const entry of Object.values(catalog)) {
+    const billing = (entry as { billing?: Record<string, any> })?.billing;
+    if (!billing) continue;
+    const image = billing.image || billing;
+    const prices: number[] = [];
+    for (const key of ["imageSizePrices", "sampleImageSizePrices"]) {
+      if (image?.[key] && typeof image[key] === "object") {
+        prices.push(...Object.values(image[key] as Record<string, unknown>).map(Number));
+      }
+    }
+    if (!prices.length && image?.basePrice != null) prices.push(Number(image.basePrice));
+    if (!prices.length && billing.fixed?.amount != null) prices.push(Number(billing.fixed.amount));
+    const valid = prices.filter((n) => Number.isFinite(n) && n > 0);
+    if (valid.length) perModel.push(Math.min(...valid));
+  }
+
+  if (!perModel.length) return null;
+  perModel.sort((a, b) => a - b);
+  const mid = perModel.length / 2;
+  return perModel.length % 2
+    ? perModel[Math.floor(mid)]
+    : (perModel[mid - 1] + perModel[mid]) / 2;
+};
+
+/* Rounded down to a round number: the median sits between two catalogue prices,
+   so an exact figure would swing on any model being added. Down, never up — an
+   estimate that overshoots what you actually get is worse than no estimate. */
+const estimateImages = (credits: number, rate: number) => {
+  const raw = Math.floor(credits / rate);
+  return raw >= 20 ? Math.floor(raw / 5) * 5 : raw;
+};
 
 /* Every literal below is a class token the light-theme remap in globals.css knows
    about ([data-theme="light"] [class~="…"]). Introducing a new hex/alpha token
@@ -184,6 +240,10 @@ function BuyCreditsWizard() {
   const [config, setConfig] = useState<CheckoutConfig | null>(null);
   const [configError, setConfigError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [imageRate, setImageRate] = useState<number | null>(null);
+  // Bars grow from empty once mounted, so the size difference between the plans
+  // is something you watch happen rather than three static lengths.
+  const [barsIn, setBarsIn] = useState(false);
 
   const [proofs, setProofs] = useState<ProofFile[]>([]);
   const [note, setNote] = useState("");
@@ -215,6 +275,29 @@ function BuyCreditsWizard() {
       cancelled = true;
     };
   }, [t]);
+
+  /* Strictly additive, and deliberately not part of the gate above: the model
+     catalogue is a big payload on a page whose job is taking a payment. If it is
+     slow or down, checkout still renders and the estimate just never appears. */
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const system = await api.getConfig();
+        if (!cancelled) setImageRate(typicalImageRate(system));
+      } catch {
+        // No estimate is a better answer than a made-up one.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const id = window.setTimeout(() => setBarsIn(true), 60);
+    return () => window.clearTimeout(id);
+  }, []);
 
   // Object URLs for the local previews are revoked on unmount; the per-file remove
   // path revokes its own.
@@ -255,6 +338,22 @@ function BuyCreditsWizard() {
   // arithmetic on the server's own prices, never a claim we invent.
   const worstRate = useMemo(
     () => Math.max(0, ...(config?.plans ?? []).map(perCreditMinor)),
+    [config],
+  );
+
+  // The "Best rate" chip is only meaningful if exactly one plan holds it — two
+  // plans wearing the same badge says nothing.
+  const soleBestRate = useMemo(() => {
+    const rates = (config?.plans ?? []).map(perCreditMinor).filter((r) => r > 0);
+    if (rates.length < 2) return null;
+    const best = Math.min(...rates);
+    return rates.filter((r) => r === best).length === 1 ? best : null;
+  }, [config]);
+
+  // Bar lengths are relative to the biggest plan, so the jump from 10 to 70 Cr
+  // is a length you can see instead of arithmetic you have to do.
+  const maxCredits = useMemo(
+    () => Math.max(1, ...(config?.plans ?? []).map((p) => p.credits)),
     [config],
   );
 
@@ -478,21 +577,27 @@ function BuyCreditsWizard() {
       {/* ---------------------------------------------------------------- Step 1 */}
       {step === "plan" && (
         <section>
-          <h2 className="mb-5 text-lg font-bold text-white">{t("Choose a plan")}</h2>
+          <h2 className="text-lg font-bold text-white">{t("Choose a plan")}</h2>
+          <p className="mb-5 mt-1 text-sm text-[#c2c6d6]">
+            {t("Bigger plans cost less per credit.")}
+          </p>
 
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {config.plans.map((plan) => {
               const isPopular = plan.id === "pro";
               const rate = perCreditMinor(plan);
               const savePct = worstRate > 0 ? Math.round((1 - rate / worstRate) * 100) : 0;
+              const isBestRate = soleBestRate != null && rate === soleBestRate;
+              const images = imageRate ? estimateImages(plan.credits, imageRate) : null;
+              const fill = Math.max(0.06, plan.credits / maxCredits);
               return (
                 <button
                   key={plan.id}
                   type="button"
                   onClick={() => goTo({ step: "method", plan: plan.id })}
-                  className={`group relative flex flex-col rounded-xl border p-4 text-start transition sm:p-5 sm:hover:-translate-y-0.5 ${
+                  className={`group relative flex flex-col rounded-xl border p-4 text-start transition sm:p-5 sm:hover:-translate-y-1 ${
                     isPopular
-                      ? "border-[#adc6ff]/40 bg-[#adc6ff]/10"
+                      ? "border-[#adc6ff]/40 bg-[#adc6ff]/10 shadow-lg shadow-[#adc6ff]/10 lg:-translate-y-2"
                       : "border-white/10 bg-[rgba(25,31,49,0.7)] hover:border-[#adc6ff]/30"
                   }`}
                 >
@@ -505,7 +610,11 @@ function BuyCreditsWizard() {
                           whether or not the card carries a badge. */}
                       <span className="flex items-center gap-2 sm:min-h-[22px] sm:justify-between">
                         <span className={EYEBROW_CLASS}>{plan.name}</span>
-                        {isPopular && <span className={CHIP_CLASS}>{t("Popular")}</span>}
+                        {isPopular ? (
+                          <span className={CHIP_CLASS}>{t("Popular")}</span>
+                        ) : isBestRate ? (
+                          <span className={CHIP_CLASS}>{t("Best rate")}</span>
+                        ) : null}
                       </span>
 
                       <span className="mt-1.5 block text-3xl font-bold leading-none text-white sm:mt-4 sm:text-4xl">
@@ -516,14 +625,28 @@ function BuyCreditsWizard() {
                           </span>
                         </span>
                       </span>
+
+                      {/* What the credits are actually for. Reserved height so the
+                          cards don't shift when the catalogue lands. */}
+                      <span className="mt-1 block min-h-[18px] text-sm font-semibold text-[#adc6ff]">
+                        {images ? (
+                          <span dir="ltr">{t("~{n} images").replace("{n}", String(images))}</span>
+                        ) : (
+                          ""
+                        )}
+                      </span>
                     </span>
 
                     <span className="shrink-0 text-end sm:block sm:text-start">
-                      <span className="block text-xl font-bold text-white sm:mt-3">
+                      <span className="block text-xl font-bold text-white sm:mt-4">
                         <span dir="ltr">{formatPrice(plan.priceMinor, plan.currency)}</span>
                       </span>
 
-                      <span className="mt-0.5 block text-xs font-bold text-[#adc6ff] sm:mt-1 sm:min-h-[16px]">
+                      <span className="mt-0.5 block text-[11px] tabular-nums text-[#93a0bd] sm:mt-1">
+                        <span dir="ltr">{formatRate(rate, plan.currency)}</span> {t("per credit")}
+                      </span>
+
+                      <span className="mt-0.5 block text-xs font-bold text-[#adc6ff] sm:min-h-[16px]">
                         {savePct >= 5 ? t("Save {n}%").replace("{n}", String(savePct)) : ""}
                       </span>
                     </span>
@@ -540,9 +663,24 @@ function BuyCreditsWizard() {
                     </span>
                   </div>
 
-                  <span className="mt-5 hidden items-center gap-1.5 self-start rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-bold text-[#adc6ff] transition group-hover:bg-white/10 sm:inline-flex">
+                  {/* How much you're buying, as a length. scaleX rather than an
+                      animated width so it composites; the origin is set from the
+                      language, since in Arabic the bar has to grow from the right. */}
+                  <span className="mt-3 mb-1 block h-2 overflow-hidden rounded-full bg-white/10 sm:mt-4 sm:mb-2">
+                    <span
+                      className="block h-full w-full rounded-full bg-[linear-gradient(90deg,#adc6ff,#4d8eff)] transition-transform duration-700 ease-out motion-reduce:transition-none"
+                      style={{
+                        transform: `scaleX(${barsIn ? fill : 0})`,
+                        transformOrigin: isRtl ? "right" : "left",
+                      }}
+                    />
+                  </span>
+
+                  {/* Full-width footer CTA: the card is the button, so this reads
+                      as the card's own action rather than a chip floating in it. */}
+                  <span className="mt-4 hidden items-center justify-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm font-bold text-[#adc6ff] transition group-hover:border-[#adc6ff]/30 group-hover:bg-white/10 sm:mt-auto sm:flex">
                     {t("Choose")}
-                    <span className="material-symbols-outlined text-[15px] rtl:rotate-180">
+                    <span className="material-symbols-outlined text-[16px] rtl:rotate-180">
                       arrow_forward
                     </span>
                   </span>
@@ -550,6 +688,24 @@ function BuyCreditsWizard() {
               );
             })}
           </div>
+
+          {/* The estimate above is an estimate, and says so here rather than in a
+              per-card asterisk: the rate it assumes, and where to check the real
+              per-model prices. */}
+          {imageRate && (
+            <p className="mt-3 text-xs text-[#93a0bd]">
+              <span dir="ltr">
+                {t("Typical image ≈ {n} Cr").replace("{n}", imageRate.toFixed(2))}
+              </span>{" "}
+              {t("Cost varies by model.")}{" "}
+              <Link
+                href="/pricing"
+                className="font-semibold text-[#adc6ff] underline-offset-4 hover:underline"
+              >
+                {t("See full pricing")}
+              </Link>
+            </p>
+          )}
 
           <HowItWorks />
         </section>
