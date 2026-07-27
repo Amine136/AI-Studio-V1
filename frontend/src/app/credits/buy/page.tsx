@@ -68,7 +68,7 @@ function CheckoutSteps({
   );
 
   return (
-    <div className="mb-7 flex items-start gap-2 sm:gap-3">
+    <div className="mb-5 flex items-start gap-2 sm:mb-7 sm:gap-3">
       {WIZARD_STEPS.map((step, i) => {
         const isDone = i < currentIndex;
         const isActive = i === currentIndex;
@@ -154,7 +154,7 @@ function HowItWorks() {
   ];
 
   return (
-    <div className={`${CARD_CLASS} mt-8 p-5 sm:p-6`}>
+    <div className={`${CARD_CLASS} mt-6 p-5 sm:mt-8 sm:p-6`}>
       <p className={EYEBROW_CLASS}>{t("How it works")}</p>
       <ol className="mt-4 grid gap-4 sm:grid-cols-3 sm:gap-5">
         {steps.map((s, i) => (
@@ -218,6 +218,7 @@ function BuyCreditsWizard() {
 
   // Object URLs for the local previews are revoked on unmount; the per-file remove
   // path revokes its own.
+  const uploadRef = useRef<HTMLDivElement | null>(null);
   const proofsRef = useRef<ProofFile[]>([]);
   proofsRef.current = proofs;
   useEffect(
@@ -330,6 +331,9 @@ function BuyCreditsWizard() {
     }
     if (!proofs.length) {
       setError(t("Attach at least one proof of payment."));
+      // The phone CTA is a fixed bar, so the upload card it complains about can
+      // be off-screen. Without this the tap looks like it did nothing.
+      uploadRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
       return;
     }
 
@@ -371,6 +375,34 @@ function BuyCreditsWizard() {
       </div>
     );
   }
+
+  /* Rendered twice — in the desktop aside, and last on a phone. Support belongs
+     after the thing it supports: DOM-ordering the aside first put "Having trouble
+     with your payment?" between the order and the account number. */
+  const helpCard = whatsappNumber ? (
+    <div className={CARD_PADDED}>
+      <p className="text-sm text-[#c2c6d6]">{t("Having trouble with your payment?")}</p>
+      <p className="mt-1 break-all font-mono text-sm text-white">{whatsappNumber}</p>
+      {whatsappDialable ? (
+        <a
+          href={`https://wa.me/${whatsappNumber.replace(/[^0-9]/g, "")}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={`${WHATSAPP_BUTTON_CLASS} mt-3 w-full`}
+        >
+          <span className="material-symbols-outlined text-[18px]">chat</span>
+          {t("Contact us on WhatsApp")}
+        </a>
+      ) : (
+        // Placeholder number: show the button so the page reads as finished, but
+        // don't link to a wa.me URL that cannot resolve.
+        <span className={`${WHATSAPP_BUTTON_CLASS} mt-3 w-full cursor-default opacity-70`}>
+          <span className="material-symbols-outlined text-[18px]">chat</span>
+          {t("Contact us on WhatsApp")}
+        </span>
+      )}
+    </div>
+  ) : null;
 
   const methodRow = (option: PaymentMethodOption) => {
     const isLocked = !option.available;
@@ -422,8 +454,8 @@ function BuyCreditsWizard() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-8 sm:py-12" dir={isRtl ? "rtl" : "ltr"}>
-      <div className="mb-6">
+    <div className="mx-auto w-full max-w-5xl px-4 py-5 sm:px-8 sm:py-12" dir={isRtl ? "rtl" : "ltr"}>
+      <div className="mb-5 sm:mb-6">
         <Link
           href="/credits"
           className="inline-flex items-center gap-1.5 text-sm text-[#c2c6d6] transition hover:text-white"
@@ -431,7 +463,9 @@ function BuyCreditsWizard() {
           <span className="material-symbols-outlined text-[18px] rtl:rotate-180">arrow_back</span>
           {t("Back to Credits")}
         </Link>
-        <h1 className="font-headline mt-3 text-3xl font-bold tracking-tight text-blue-50 sm:text-4xl">
+        {/* Smaller on a phone: the old 3xl title plus py-8 ate a third of the
+            viewport before the first plan. */}
+        <h1 className="font-headline mt-2 text-2xl font-bold tracking-tight text-blue-50 sm:mt-3 sm:text-4xl">
           {t("Get Credits")}
         </h1>
       </div>
@@ -456,35 +490,57 @@ function BuyCreditsWizard() {
                   key={plan.id}
                   type="button"
                   onClick={() => goTo({ step: "method", plan: plan.id })}
-                  className={`group relative flex flex-col rounded-xl border p-5 text-start transition hover:-translate-y-0.5 ${
+                  className={`group relative flex flex-col rounded-xl border p-4 text-start transition sm:p-5 sm:hover:-translate-y-0.5 ${
                     isPopular
                       ? "border-[#adc6ff]/40 bg-[#adc6ff]/10"
                       : "border-white/10 bg-[rgba(25,31,49,0.7)] hover:border-[#adc6ff]/30"
                   }`}
                 >
-                  {/* Fixed height so the three cards' numbers line up whether or
-                      not the card carries a badge. */}
-                  <div className="flex min-h-[22px] items-center justify-between gap-2">
-                    <span className={EYEBROW_CLASS}>{plan.name}</span>
-                    {isPopular && <span className={CHIP_CLASS}>{t("Popular")}</span>}
+                  {/* On a phone the card is a row — credits at the start, price at
+                      the end — so all three plans fit one screen and can actually
+                      be compared. From sm it unwraps back into the tall card. */}
+                  <div className="flex items-center justify-between gap-3 sm:block">
+                    <span className="min-w-0">
+                      {/* Fixed height from sm so the three cards' numbers line up
+                          whether or not the card carries a badge. */}
+                      <span className="flex items-center gap-2 sm:min-h-[22px] sm:justify-between">
+                        <span className={EYEBROW_CLASS}>{plan.name}</span>
+                        {isPopular && <span className={CHIP_CLASS}>{t("Popular")}</span>}
+                      </span>
+
+                      <span className="mt-1.5 block text-3xl font-bold leading-none text-white sm:mt-4 sm:text-4xl">
+                        <span dir="ltr">
+                          {plan.credits.toFixed(0)}
+                          <span className="ms-1.5 text-base font-bold text-[#adc6ff] sm:text-lg">
+                            Cr
+                          </span>
+                        </span>
+                      </span>
+                    </span>
+
+                    <span className="shrink-0 text-end sm:block sm:text-start">
+                      <span className="block text-xl font-bold text-white sm:mt-3">
+                        <span dir="ltr">{formatPrice(plan.priceMinor, plan.currency)}</span>
+                      </span>
+
+                      <span className="mt-0.5 block text-xs font-bold text-[#adc6ff] sm:mt-1 sm:min-h-[16px]">
+                        {savePct >= 5 ? t("Save {n}%").replace("{n}", String(savePct)) : ""}
+                      </span>
+                    </span>
+
+                    {/* The whole card is the button, so on a phone a chevron says
+                        "tappable" in the space a repeated Choose button wanted.
+                        The `sm:hidden` has to sit on a plain wrapper: the Material
+                        Symbols stylesheet sets `display:inline-block` unlayered,
+                        which beats the utility on the icon itself. */}
+                    <span className="shrink-0 sm:hidden">
+                      <span className="material-symbols-outlined text-[20px] text-[#adc6ff] rtl:rotate-180">
+                        arrow_forward
+                      </span>
+                    </span>
                   </div>
 
-                  <span className="mt-4 text-4xl font-bold leading-none text-white">
-                    <span dir="ltr">
-                      {plan.credits.toFixed(0)}
-                      <span className="ms-1.5 text-lg font-bold text-[#adc6ff]">Cr</span>
-                    </span>
-                  </span>
-
-                  <span className="mt-3 text-xl font-bold text-white">
-                    <span dir="ltr">{formatPrice(plan.priceMinor, plan.currency)}</span>
-                  </span>
-
-                  <span className="mt-1 block min-h-[16px] text-xs font-bold text-[#adc6ff]">
-                    {savePct >= 5 ? t("Save {n}%").replace("{n}", String(savePct)) : ""}
-                  </span>
-
-                  <span className="mt-5 inline-flex items-center gap-1.5 self-start rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-bold text-[#adc6ff] transition group-hover:bg-white/10">
+                  <span className="mt-5 hidden items-center gap-1.5 self-start rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-bold text-[#adc6ff] transition group-hover:bg-white/10 sm:inline-flex">
                     {t("Choose")}
                     <span className="material-symbols-outlined text-[15px] rtl:rotate-180">
                       arrow_forward
@@ -552,10 +608,12 @@ function BuyCreditsWizard() {
       {step === "pay" && selectedPlan && selectedMethod && (
         /* Two columns from lg: the money (what you owe, what happens next, how to
            reach us) stays pinned while the long half — details + upload — scrolls.
-           On a phone the aside is first in the DOM, so the order summary is the
-           first thing you see; `lg:order-2` moves it to the side on a desktop. */
-        <section className="flex flex-col gap-5 lg:flex-row lg:items-start">
-          <aside className="flex flex-col gap-5 lg:order-2 lg:w-[17rem] lg:shrink-0 xl:w-[19rem]">
+           The aside is desktop-only; a phone gets a one-line recap on top, the
+           help card at the bottom, and the total in the fixed action bar, because
+           stacking the full aside first pushed the actual payment steps below
+           three cards the buyer had already answered. */
+        <section className="flex flex-col gap-5 pb-20 lg:flex-row lg:items-start lg:pb-0">
+          <aside className="hidden flex-col gap-5 lg:order-2 lg:flex lg:w-[17rem] lg:shrink-0 xl:w-[19rem]">
             <div className="lg:sticky lg:top-8 lg:flex lg:flex-col lg:gap-5">
               {/* Order summary */}
               <div className={CARD_PADDED}>
@@ -611,35 +669,38 @@ function BuyCreditsWizard() {
                 </p>
               </div>
 
-              {/* Help */}
-              {whatsappNumber && (
-                <div className={CARD_PADDED}>
-                  <p className="text-sm text-[#c2c6d6]">{t("Having trouble with your payment?")}</p>
-                  <p className="mt-1 break-all font-mono text-sm text-white">{whatsappNumber}</p>
-                  {whatsappDialable ? (
-                    <a
-                      href={`https://wa.me/${whatsappNumber.replace(/[^0-9]/g, "")}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={`${WHATSAPP_BUTTON_CLASS} mt-3 w-full`}
-                    >
-                      <span className="material-symbols-outlined text-[18px]">chat</span>
-                      {t("Contact us on WhatsApp")}
-                    </a>
-                  ) : (
-                    // Placeholder number: show the button so the page reads as
-                    // finished, but don't link to a wa.me URL that cannot resolve.
-                    <span className={`${WHATSAPP_BUTTON_CLASS} mt-3 w-full cursor-default opacity-70`}>
-                      <span className="material-symbols-outlined text-[18px]">chat</span>
-                      {t("Contact us on WhatsApp")}
-                    </span>
-                  )}
-                </div>
-              )}
+              {helpCard}
             </div>
           </aside>
 
           <div className="flex min-w-0 flex-1 flex-col gap-5 lg:order-1">
+            {/* Phone recap: what you picked, in one line. The total lives in the
+                action bar, where it is on screen the whole way down. */}
+            <div className={`${CARD_CLASS} flex items-center justify-between gap-3 p-4 lg:hidden`}>
+              <span className="min-w-0">
+                <span className="flex items-baseline gap-2">
+                  <span dir="ltr" className="text-lg font-bold text-white">
+                    {selectedPlan.credits.toFixed(0)}
+                    <span className="ms-1 text-sm font-bold text-[#adc6ff]">Cr</span>
+                  </span>
+                  <span className="truncate text-sm text-[#c2c6d6]">{selectedPlan.name}</span>
+                </span>
+                <span className="mt-0.5 flex items-center gap-1.5 text-xs text-[#c2c6d6]">
+                  <span className="material-symbols-outlined shrink-0 text-[14px] text-[#adc6ff]">
+                    {selectedMethod.icon || "payments"}
+                  </span>
+                  <span className="truncate">{t(selectedMethod.label)}</span>
+                </span>
+              </span>
+              <button
+                type="button"
+                onClick={() => goTo({ step: "plan" })}
+                className="shrink-0 text-xs font-semibold text-[#adc6ff] underline-offset-4 hover:underline"
+              >
+                {t("Change plan")}
+              </button>
+            </div>
+
             {/* The chosen rail's details. Step 2 already asked which one, so this
                 shows one account and a way back rather than re-asking. */}
             <div className={CARD_PADDED}>
@@ -710,7 +771,7 @@ function BuyCreditsWizard() {
             </div>
 
             {/* Proof upload */}
-            <div className={CARD_PADDED}>
+            <div ref={uploadRef} className={CARD_PADDED}>
               <h2 className="text-lg font-bold text-white">{t("Upload your payment proof")}</h2>
               <p className="mt-1 text-sm text-[#c2c6d6]">
                 {t("Screenshot or PDF receipt. Up to {n} files, 5 MB each.").replace(
@@ -811,12 +872,15 @@ function BuyCreditsWizard() {
                 </p>
               )}
 
+              {/* Below lg the primary button lives in the fixed bar, so this one
+                  is desktop-only — two identical CTAs on one screen is worse than
+                  the scroll it saves. */}
               <div className="mt-5 flex flex-wrap items-center gap-3">
                 <button
                   type="button"
                   onClick={submit}
                   disabled={submitting}
-                  className={`${PRIMARY_BUTTON_CLASS} w-full sm:w-auto`}
+                  className={`${PRIMARY_BUTTON_CLASS} hidden lg:inline-block`}
                 >
                   {submitting ? t("Sending…") : t("Place order")}
                 </button>
@@ -835,6 +899,36 @@ function BuyCreditsWizard() {
                 </span>
                 {t("You'll get your code in 1h max")}
               </p>
+            </div>
+
+            <div className="lg:hidden">{helpCard}</div>
+          </div>
+
+          {/* Phone action bar. It rides above the app's bottom tab bar (which owns
+              the safe-area inset) and carries the total, so the amount and the way
+              to pay it are on screen at every scroll position. z-40 keeps it under
+              the nav's z-50. */}
+          <div
+            className="fixed inset-x-0 z-40 border-t border-white/10 bg-[rgba(25,31,49,0.7)] px-4 py-3 backdrop-blur-xl lg:hidden"
+            style={{ bottom: "calc(var(--app-nav-h) + var(--app-safe-b))" }}
+          >
+            <div className="mx-auto flex max-w-5xl items-center gap-4">
+              <span className="min-w-0 shrink-0">
+                <span className="block text-[10px] font-semibold uppercase tracking-[0.16em] text-[#93a0bd]">
+                  {t("Total")}
+                </span>
+                <span dir="ltr" className="block text-lg font-bold leading-tight text-[#adc6ff]">
+                  {formatPrice(selectedPlan.priceMinor, selectedPlan.currency)}
+                </span>
+              </span>
+              <button
+                type="button"
+                onClick={submit}
+                disabled={submitting}
+                className={`${PRIMARY_BUTTON_CLASS} min-w-0 flex-1 px-4 py-2.5`}
+              >
+                {submitting ? t("Sending…") : t("Place order")}
+              </button>
             </div>
           </div>
         </section>
