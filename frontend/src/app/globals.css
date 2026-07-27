@@ -5673,3 +5673,24 @@ body {
     padding: 0;
   }
 }
+
+
+/* =============================================================
+   LIGHT — CHECKOUT PASS (/credits/buy redesign). Six class tokens
+   the vocabulary remap above never covered. Appended last so it
+   wins at equal specificity; dark mode is untouched.
+   ============================================================= */
+
+/* WhatsApp green had NO light rule at all: #25d366 on a 10%-green fill is
+   ~1.9:1 on white. Recolour to the teal already used for the Packs family
+   (#0f766e, 5.5:1 on white) — still reads as WhatsApp, passes AA as bold text. */
+[data-theme="light"] [class~="text-[#25d366]"] { color: #0f766e; }
+[data-theme="light"] [class~="border-[#25d366]/40"] { border-color: rgba(15, 118, 110, 0.35); }
+[data-theme="light"] [class~="bg-[#25d366]/10"] { background-color: rgba(15, 118, 110, 0.08); }
+[data-theme="light"] [class~="hover:bg-[#25d366]/20"]:hover { background-color: rgba(15, 118, 110, 0.14); }
+
+/* The plan card's "Choose" pill brightens with the card, not on its own hover. */
+[data-theme="light"] .group:hover [class~="group-hover:bg-white/10"] { background-color: rgba(15, 23, 42, 0.08); }
+
+/* Matches the text-[#93a0bd] rule; placeholder is a separate class token. */
+[data-theme="light"] [class~="placeholder:text-[#93a0bd]"]::placeholder { color: #64748b; }
