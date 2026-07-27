@@ -2211,7 +2211,9 @@ export const translations = {
     "Change": "تغيير",
     "Send the exact amount, then upload your receipt below.": "أرسل المبلغ بالضبط، ثم حمّل الوصل أدناه.",
     "Amount to send": "المبلغ المطلوب",
-    "IBAN": "الآيبان",
+    // Left in Latin on purpose: an IBAN is labelled "IBAN" on every Tunisian bank
+    // statement and RIB, so the transliteration reads as a different field.
+    "IBAN": "IBAN",
     "Back to Credits": "العودة إلى الأرصدة",
     "Plan": "الباقة",
     "Payment": "الدفع",

@@ -481,7 +481,11 @@ function BuyCreditsWizard() {
   const helpCard = whatsappNumber ? (
     <div className={CARD_PADDED}>
       <p className="text-sm text-[#c2c6d6]">{t("Having trouble with your payment?")}</p>
-      <p className="mt-1 break-all font-mono text-sm text-white">{whatsappNumber}</p>
+      {/* Same bidi trap as the account number above: without dir="ltr" this shows
+          as "039 190 48 216+" in Arabic. */}
+      <p className="mt-1 break-all font-mono text-sm text-white">
+        <span dir="ltr">{whatsappNumber}</span>
+      </p>
       {whatsappDialable ? (
         <a
           href={`https://wa.me/${whatsappNumber.replace(/[^0-9]/g, "")}`}
@@ -900,9 +904,15 @@ function BuyCreditsWizard() {
                         and must wrap between them. break-all split it mid-group
                         ("…511101 7" / "5"), which is how a digit gets dropped when
                         someone copies it by hand. Long unspaced values still break
-                        rather than overflow. */}
+                        rather than overflow.
+                        dir="ltr" on the value, not the <p>: an account number is
+                        LTR in every language, and "+216 27 666 467" opens with a
+                        neutral "+" and weak digits, so Arabic's bidi order flipped
+                        it to "467 666 27 216+" — a number a customer would then
+                        pay to. Keeping it on the inner span leaves the paragraph
+                        RTL, so the value still aligns with the rest of the card. */}
                     <p className="mt-1 select-all break-words font-mono text-base font-bold text-white sm:text-lg">
-                      {selectedMethod.primaryValue}
+                      <span dir="ltr">{selectedMethod.primaryValue}</span>
                     </p>
                     {selectedMethod.meta.length > 0 && (
                       <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[#c2c6d6]">
