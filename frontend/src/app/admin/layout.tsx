@@ -79,7 +79,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             { name: "Users", icon: "group", path: "/admin/users" },
             { name: "Codes", icon: "terminal", path: "/admin/codes" },
             { name: "Orders", icon: "receipt_long", path: "/admin/orders" },
-            { name: "News", icon: "newspaper", path: "/admin/news" },
             { name: "Feedback", icon: "rate_review", path: "/admin/feedback" },
             { name: "Models", icon: "view_in_ar", path: "/admin/models" },
             { name: "Finance", icon: "account_balance", path: "/admin/finance" },

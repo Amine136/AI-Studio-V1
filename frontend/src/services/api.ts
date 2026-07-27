@@ -9,9 +9,6 @@ import {
   AdminGenerationJobListResponse,
   AdminModelVisibilityResponse,
   AdminUserListResponse,
-  DashboardNewsListResponse,
-  DashboardNewsItem,
-  DashboardNewsUpsertRequest,
   GenerateRequest,
   GenerationResult,
   PlainChatConversationCreateRequest,
@@ -454,11 +451,6 @@ export const api = {
     return res.data;
   },
 
-  getDashboardNews: async (): Promise<DashboardNewsListResponse> => {
-    const res = await client.get('/dashboard-news');
-    return res.data;
-  },
-
   submitFeedback: async (payload: FeedbackSubmitRequest): Promise<FeedbackItem> => {
     try {
       const res = await client.post('/feedback', payload);
@@ -572,11 +564,6 @@ export const api = {
     return res.data;
   },
 
-  getAdminDashboardNews: async (): Promise<DashboardNewsListResponse> => {
-    const res = await client.get('/admin/dashboard-news');
-    return res.data;
-  },
-
   getAdminFeedback: async (status?: FeedbackStatus): Promise<FeedbackListResponse> => {
     const res = await client.get('/admin/feedback', { params: status ? { status } : undefined });
     return res.data;
@@ -620,20 +607,6 @@ export const api = {
       }
       throw error;
     }
-  },
-
-  createAdminDashboardNews: async (payload: DashboardNewsUpsertRequest): Promise<DashboardNewsItem> => {
-    const res = await client.post('/admin/dashboard-news', payload);
-    return res.data;
-  },
-
-  updateAdminDashboardNews: async (itemId: string, payload: DashboardNewsUpsertRequest): Promise<DashboardNewsItem> => {
-    const res = await client.patch(`/admin/dashboard-news/${itemId}`, payload);
-    return res.data;
-  },
-
-  deleteAdminDashboardNews: async (itemId: string): Promise<void> => {
-    await client.delete(`/admin/dashboard-news/${itemId}`);
   },
 
   createAdminCode: async (credits: number, maxClaims: number, validityDays = 0, validityHours = 0) => {
