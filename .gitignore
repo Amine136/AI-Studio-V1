@@ -19,6 +19,10 @@ backend/generated_images/*
 !backend/generated_images/.gitkeep
 backend/uploaded_images/*
 !backend/uploaded_images/.gitkeep
+# Customer payment receipts. Never commit these: they are financial documents
+# belonging to real buyers.
+backend/payment_proofs/*
+!backend/payment_proofs/.gitkeep
 backend/app/data/*.sqlite3
 backend/app/data/model_catalog.live.json
 
