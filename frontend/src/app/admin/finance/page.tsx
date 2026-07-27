@@ -66,7 +66,7 @@ export default function FinancePage() {
     };
 
     return (
-        <main className="flex-1 overflow-y-auto p-6 custom-scrollbar relative">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-6 custom-scrollbar relative">
             <div className="max-w-[1200px] mx-auto space-y-8">
                 <div>
                     <h1 className="font-headline-md text-headline-md text-on-surface">Finance & Profitability</h1>
@@ -75,7 +75,7 @@ export default function FinancePage() {
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                     {/* Margin Calculator */}
-                    <div className="glass-panel p-8 rounded-lg flex flex-col relative overflow-hidden group">
+                    <div className="glass-panel p-5 sm:p-8 rounded-lg flex flex-col relative overflow-hidden group">
                         <div className="absolute -right-10 -top-10 w-40 h-40 bg-primary/5 rounded-full blur-3xl pointer-events-none"></div>
                         <h2 className="font-title-lg text-title-lg text-on-surface flex items-center gap-2 mb-6">
                             <span className="material-symbols-outlined text-primary">calculate</span>
@@ -83,7 +83,7 @@ export default function FinancePage() {
                         </h2>
 
                         <div className="space-y-6">
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
                                     <label className="block font-label-caps text-[11px] text-on-surface-variant mb-2">Provider Cost (USD)</label>
                                     <div className="relative">
@@ -114,7 +114,7 @@ export default function FinancePage() {
 
                             <div>
                                 <label className="block font-label-caps text-[11px] text-on-surface-variant mb-2">Rate Limit Penalty</label>
-                                <div className="flex gap-4">
+                                <div className="flex flex-wrap gap-3 sm:gap-4">
                                     <label className="flex items-center gap-2 cursor-pointer">
                                         <input 
                                             type="radio" 
@@ -194,7 +194,7 @@ export default function FinancePage() {
                     </div>
 
                     {/* Balance Monitor */}
-                    <div className="glass-panel p-8 rounded-lg flex flex-col relative overflow-hidden group">
+                    <div className="glass-panel p-5 sm:p-8 rounded-lg flex flex-col relative overflow-hidden group">
                         <div className="absolute -right-10 -top-10 w-40 h-40 bg-secondary/5 rounded-full blur-3xl pointer-events-none"></div>
                         <div className="flex justify-between items-center mb-6">
                             <h2 className="font-title-lg text-title-lg text-on-surface flex items-center gap-2">

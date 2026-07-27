@@ -59,7 +59,7 @@ export default function AdminLogsPage() {
     }
 
     return (
-        <main className="flex-1 overflow-y-auto p-8 custom-scrollbar min-h-screen relative">
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 custom-scrollbar min-h-screen relative overflow-x-hidden">
             <div className="max-w-[1440px] mx-auto space-y-6 pb-10">
                 {/* Page Title & Stats Overview */}
                 <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-2">
@@ -77,8 +77,9 @@ export default function AdminLogsPage() {
 
                 {/* High Density Audit Table */}
                 <div className="glass-panel rounded-lg overflow-hidden">
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left border-collapse">
+                    <p className="admin-table-hint"><span className="material-symbols-outlined text-[13px]">swipe_left</span>Swipe the table sideways for more columns</p>
+                    <div className="overflow-x-auto admin-table-scroll">
+                        <table className="w-full min-w-[56rem] text-left border-collapse">
                             <thead>
                                 <tr className="bg-surface-container-highest/50 border-b border-outline-variant">
                                     <th className="px-6 py-4 font-label-caps text-label-caps text-on-surface-variant">Event & Status</th>
@@ -179,7 +180,7 @@ export default function AdminLogsPage() {
                     
                     {/* Pagination/Footer */}
                     {logs.length > 0 && (
-                        <div className="p-6 bg-surface-container-low flex items-center justify-between border-t border-outline-variant">
+                        <div className="p-4 sm:p-6 bg-surface-container-low flex items-center justify-between border-t border-outline-variant">
                             <p className="text-[12px] font-body-sm text-on-surface-variant hidden sm:block">
                                 Showing {(currentPage - 1) * logsPerPage + 1} to {Math.min(currentPage * logsPerPage, logs.length)} of {logs.length} events
                             </p>

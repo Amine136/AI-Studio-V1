@@ -154,11 +154,11 @@ export default function AdminOrdersPage() {
     }
 
     return (
-        <main className="flex-1 overflow-y-auto p-6 custom-scrollbar relative">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-6 custom-scrollbar relative">
             {/* Header */}
-            <section className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10 max-w-[1440px] mx-auto">
+            <section className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8 sm:mb-10 max-w-[1440px] mx-auto">
                 <div>
-                    <div className="flex items-center gap-4 mb-2">
+                    <div className="flex flex-wrap items-center gap-3 sm:gap-4 mb-2">
                         <h2 className="font-headline-lg text-headline-lg text-primary">Credit Orders</h2>
                         {pendingCount > 0 ? (
                             <span className="px-2 py-1 bg-primary/10 border border-primary/20 text-primary text-[10px] font-bold rounded uppercase tracking-tighter">{pendingCount} Pending</span>
@@ -170,13 +170,13 @@ export default function AdminOrdersPage() {
                         <Link href="/admin/codes" className="text-primary hover:underline">Codes</Link>.
                     </p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                     {(["all", "pending", "accepted", "refused"] as StatusFilter[]).map((option) => (
                         <button
                             key={option}
                             type="button"
                             onClick={() => setStatusFilter(option)}
-                            className={`px-4 py-2 rounded-lg font-label-caps text-label-caps border transition-colors ${
+                            className={`px-3 sm:px-4 py-2 rounded-lg font-label-caps text-label-caps border transition-colors ${
                                 filter === option
                                     ? "bg-primary-container text-on-primary-container border-primary/20"
                                     : "text-on-surface-variant border-outline-variant hover:bg-surface-container-highest"
@@ -189,8 +189,8 @@ export default function AdminOrdersPage() {
             </section>
 
             <div className="max-w-[1440px] mx-auto">
-                <section className="nebula-glass rounded-2xl p-6">
-                    <div className="flex items-center justify-between mb-6 pb-4 border-b border-outline-variant">
+                <section className="nebula-glass rounded-2xl p-4 sm:p-6">
+                    <div className="flex flex-wrap items-center gap-3 justify-between mb-6 pb-4 border-b border-outline-variant">
                         <div className="flex items-center gap-2">
                             <span className="material-symbols-outlined text-primary">receipt_long</span>
                             <h3 className="font-title-md text-title-md text-on-surface">Orders</h3>
