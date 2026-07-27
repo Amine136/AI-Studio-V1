@@ -54,7 +54,7 @@ CREDIT_PLANS_BY_ID = {plan["id"]: plan for plan in CREDIT_PLANS}
 # are the two values that lose money silently when mistyped.
 # ---------------------------------------------------------------------------
 PAYMENT_ACCOUNT_HOLDER = "Mohamed Amine Ouni"              # full name on the account
-PAYMENT_FLOUCI_PHONE = "+216 27 666 467"                   # Flouci number
+PAYMENT_FLOUCI_PHONE = "27 666 467"                        # Flouci number, local format
 PAYMENT_BANK_IBAN = "TN59 24 031 122 2342 511101 75"       # as printed on the RIB
 PAYMENT_BANK_BIC = "BTEXTNTT"                              # BIC / SWIFT
 PAYMENT_BANK_NAME = "BTE"                                  # bank name

@@ -174,7 +174,12 @@ function CopyButton({ value }: { value: string }) {
 
   const copy = useCallback(async () => {
     try {
-      await navigator.clipboard.writeText(value);
+      /* The spaces in these values are print formatting — "27 666 467" is grouped
+         to be read off a screen, and an IBAN is grouped on the RIB. Nothing you
+         paste into pays attention to them: Flouci wants 8 digits and the IBAN's
+         electronic form is unspaced. Copy the machine form and leave the grouped
+         one on screen. */
+      await navigator.clipboard.writeText(value.replace(/\s+/g, ""));
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1600);
     } catch {
