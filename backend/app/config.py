@@ -49,17 +49,16 @@ CREDIT_PLANS_BY_ID = {plan["id"]: plan for plan in CREDIT_PLANS}
 # change about never, and keeping them here means the checkout page is complete
 # straight out of a deploy. Fill each value in once and it shows up everywhere.
 #
-# !!! PLACEHOLDERS — REPLACE BEFORE TAKING REAL PAYMENTS !!!
-# The X-shaped values below are deliberate: they keep every field visible so the
-# checkout page reads as finished, while being impossible to mistake for a real
-# account. Swap each one for the true value; nothing else needs to change.
+# These are LIVE account details — customers send real money to them. Treat any
+# edit here as a payment change: the IBAN's mod-97 checksum and the Flouci number
+# are the two values that lose money silently when mistyped.
 # ---------------------------------------------------------------------------
-PAYMENT_ACCOUNT_HOLDER = "NAME SURNAME"                    # full name on the account
-PAYMENT_FLOUCI_PHONE = "+216 XX XXX XXX"                   # Flouci number
-PAYMENT_BANK_IBAN = "TNXX XX XXX XXXXXXXXXXXXX XX"         # as printed on the RIB
-PAYMENT_BANK_BIC = "XXXXXXXX"                              # BIC / SWIFT
-PAYMENT_BANK_NAME = "BANK NAME"                            # bank name
-PAYMENT_WHATSAPP_NUMBER = "+216 XXXXXXXX"                  # country code + number
+PAYMENT_ACCOUNT_HOLDER = "Mohamed Amine Ouni"              # full name on the account
+PAYMENT_FLOUCI_PHONE = "+216 27 666 467"                   # Flouci number
+PAYMENT_BANK_IBAN = "TN59 24 031 122 2342 511101 75"       # as printed on the RIB
+PAYMENT_BANK_BIC = "BTEXTNTT"                              # BIC / SWIFT
+PAYMENT_BANK_NAME = "BTE"                                  # bank name
+PAYMENT_WHATSAPP_NUMBER = "+216 48 190 039"                # country code + number
 
 # Payment rails offered at checkout. `available` false renders the option locked
 # ("coming soon") in the UI and is rejected server-side. International card

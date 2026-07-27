@@ -896,7 +896,12 @@ function BuyCreditsWizard() {
                       </span>
                       <CopyButton value={selectedMethod.primaryValue} />
                     </div>
-                    <p className="mt-1 select-all break-all font-mono text-base font-bold text-white sm:text-lg">
+                    {/* break-words, not break-all: an IBAN is printed in groups
+                        and must wrap between them. break-all split it mid-group
+                        ("…511101 7" / "5"), which is how a digit gets dropped when
+                        someone copies it by hand. Long unspaced values still break
+                        rather than overflow. */}
+                    <p className="mt-1 select-all break-words font-mono text-base font-bold text-white sm:text-lg">
                       {selectedMethod.primaryValue}
                     </p>
                     {selectedMethod.meta.length > 0 && (
