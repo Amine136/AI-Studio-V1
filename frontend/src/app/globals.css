@@ -5694,3 +5694,21 @@ body {
 
 /* Matches the text-[#93a0bd] rule; placeholder is a separate class token. */
 [data-theme="light"] [class~="placeholder:text-[#93a0bd]"]::placeholder { color: #64748b; }
+
+
+/* Order status chips on /credits (pending / accepted / declined). The three hues
+   were dark-theme pastels — on white they run 1.7–2.2:1 and the three read as one
+   washed-out blur. Retinted to the light palette's own gold / green / red, all
+   ≥4.9:1 as bold text; the 10% fills stay tints of the same hue so the chips keep
+   their traffic-light coding. These 9 tokens appear only on that page. */
+[data-theme="light"] [class~="text-[#ffb95e]"] { color: #a16207; }
+[data-theme="light"] [class~="bg-[#ffb95e]/10"] { background-color: rgba(161, 98, 7, 0.1); }
+[data-theme="light"] [class~="border-[#ffb95e]/30"] { border-color: rgba(161, 98, 7, 0.35); }
+
+[data-theme="light"] [class~="text-[#67d98f]"] { color: #047857; }
+[data-theme="light"] [class~="bg-[#67d98f]/10"] { background-color: rgba(4, 120, 87, 0.1); }
+[data-theme="light"] [class~="border-[#67d98f]/30"] { border-color: rgba(4, 120, 87, 0.35); }
+
+[data-theme="light"] [class~="text-[#ff9a9a]"] { color: #b91c1c; }
+[data-theme="light"] [class~="bg-[#ff9a9a]/10"] { background-color: rgba(185, 28, 28, 0.09); }
+[data-theme="light"] [class~="border-[#ff9a9a]/30"] { border-color: rgba(185, 28, 28, 0.3); }
