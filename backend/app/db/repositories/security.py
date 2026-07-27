@@ -380,6 +380,11 @@ class SecurityRepository:
         )
         return list(self.session.execute(stmt).scalars())
 
+    def mark_credit_orders_seen(self, orders: list[CreditOrder], *, seen_at: int) -> None:
+        for order in orders:
+            order.seen_at = seen_at
+        self.session.flush()
+
     def get_credit_order_proof(self, order_id: str, file_id: str) -> CreditOrderProof | None:
         return self.session.execute(
             select(CreditOrderProof).where(

@@ -310,6 +310,8 @@ export interface CreditOrder {
   /** Only present for the order's own owner, once accepted. */
   code: string;
   adminMessage: string;
+  /** False on the one response that first reveals a resolved order. */
+  seen: boolean;
   createdAt: number;
   updatedAt: number;
   resolvedAt: number | null;

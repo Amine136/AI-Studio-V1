@@ -588,6 +588,11 @@ class CreditOrder(Base):
     admin_message: Mapped[str] = mapped_column(String(400), default="", nullable=False)
     resolved_by_email: Mapped[str] = mapped_column(String(255), default="", nullable=False)
     resolved_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    # Set the first time the buyer loads their orders after this one was resolved.
+    # The "Your orders" card is a notification, not an archive: once it has been
+    # seen it drops out of that card. The row stays in Recent History forever, so
+    # the code is never actually lost.
+    seen_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     created_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
     updated_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
 

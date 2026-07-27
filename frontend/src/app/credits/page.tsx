@@ -625,9 +625,13 @@ export default function CreditsPage() {
     () => (showAllTransactions ? usageEvents : usageEvents.slice(0, 5)),
     [showAllTransactions, usageEvents],
   );
+  /* "Your orders" is a notification, not an archive. Pending orders stay until
+     resolved; a resolved one appears for exactly the load that first reveals it
+     (the server stamps seen_at as it hands it over) and then drops out. The row
+     and its code live on in Recent History, so nothing is lost. */
   const pendingOrders = useMemo(() => orders.filter((o) => o.status === "pending"), [orders]);
   const resolvedOrders = useMemo(
-    () => orders.filter((o) => o.status !== "pending").slice(0, 3),
+    () => orders.filter((o) => o.status !== "pending" && !o.seen),
     [orders],
   );
 

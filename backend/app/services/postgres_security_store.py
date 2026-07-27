@@ -905,12 +905,27 @@ def create_credit_order(
 
 
 def list_user_credit_orders(uid: str, *, limit: int = 20) -> list[dict[str, Any]]:
+    """The buyer's own orders, newest first.
+
+    Returns every order — Recent History needs the full list — but stamps
+    `seen_at` on any resolved order the buyer had not seen yet. The response
+    reports the state as it was BEFORE stamping, so this call is the one showing
+    an accepted order gets in the "Your orders" card; from the next load on it
+    lives only in Recent History, where its code is still copyable.
+    """
+    now = int(time.time())
     with session_scope() as session:
         repo = SecurityRepository(session)
-        return [
-            _credit_order_dict(repo, order)
-            for order in repo.list_credit_orders_for_user(uid, limit=limit)
+        orders = repo.list_credit_orders_for_user(uid, limit=limit)
+        results = [_credit_order_dict(repo, order) for order in orders]
+        newly_seen = [
+            order
+            for order in orders
+            if str(order.status) != "pending" and order.seen_at is None
         ]
+        if newly_seen:
+            repo.mark_credit_orders_seen(newly_seen, seen_at=now)
+        return results
 
 
 def list_admin_credit_orders(*, status: str | None = None, limit: int = 200) -> list[dict[str, Any]]:
@@ -1067,6 +1082,7 @@ def _credit_order_dict(repo: SecurityRepository, order: Any) -> dict[str, Any]:
         "adminMessage": str(order.admin_message or ""),
         "resolvedByEmail": str(order.resolved_by_email or ""),
         "resolvedAt": int(order.resolved_at) if order.resolved_at is not None else None,
+        "seen": order.seen_at is not None,
         "createdAt": int(order.created_at),
         "updatedAt": int(order.updated_at),
         "proofFileIds": [str(proof.file_id) for proof in proofs],

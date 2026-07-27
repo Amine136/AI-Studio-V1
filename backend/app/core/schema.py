@@ -708,6 +708,9 @@ class CreditOrderResponse(BaseModel):
     # Only ever populated for the order's own owner, and only once accepted.
     code: str = ""
     adminMessage: str = ""
+    # False only on the one response that first reveals a resolved order, which is
+    # what keeps it in the "Your orders" card for exactly that load.
+    seen: bool = False
     createdAt: Optional[int] = None
     updatedAt: Optional[int] = None
     resolvedAt: Optional[int] = None
