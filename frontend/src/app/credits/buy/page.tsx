@@ -909,7 +909,9 @@ function BuyCreditsWizard() {
               to pay it are on screen at every scroll position. z-40 keeps it under
               the nav's z-50. */}
           <div
-            className="fixed inset-x-0 z-40 border-t border-white/10 bg-[rgba(25,31,49,0.7)] px-4 py-3 backdrop-blur-xl lg:hidden"
+            /* px matches the page's own gutter so the bar's edges line up with
+               the cards above it at every width below lg. */
+            className="fixed inset-x-0 z-40 border-t border-white/10 bg-[rgba(25,31,49,0.7)] px-4 py-3 backdrop-blur-xl sm:px-8 lg:hidden"
             style={{ bottom: "calc(var(--app-nav-h) + var(--app-safe-b))" }}
           >
             <div className="mx-auto flex max-w-5xl items-center gap-4">
