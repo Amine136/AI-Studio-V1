@@ -32,6 +32,14 @@ function formatPrice(priceMinor: number, currency: string): string {
     return currency === "TND" ? `${text} DT` : `${text} ${currency}`;
 }
 
+// Amount bounds are typed in whole currency units (DT); orders carry millimes.
+// Rounded, because TND has three decimals and a typed 1.005 floats to
+// 1004.9999… — which would quietly exclude an order priced at exactly 1005.
+function parseAmountBound(raw: string): number | null {
+    const value = Number(raw.trim());
+    return raw.trim() !== "" && Number.isFinite(value) ? Math.round(value * 1000) : null;
+}
+
 export default function AdminOrdersPage() {
     const [orders, setOrders] = useState<AdminCreditOrder[]>([]);
     const [loading, setLoading] = useState(true);
@@ -39,6 +47,18 @@ export default function AdminOrdersPage() {
     const [filter, setFilter] = useState<StatusFilter>("pending");
     const [page, setPage] = useState(1);
     const itemsPerPage = 10;
+
+    // Secondary filters, hidden behind a toggle so the default view stays the
+    // plain queue. All three narrow client-side — the list endpoint returns
+    // every order already.
+    const [filtersOpen, setFiltersOpen] = useState(false);
+    const [methodFilter, setMethodFilter] = useState("all");
+    const [minAmount, setMinAmount] = useState("");
+    const [maxAmount, setMaxAmount] = useState("");
+    const [userQuery, setUserQuery] = useState("");
+
+    // Proof opened in the lightbox, so a receipt can be read without a new tab.
+    const [lightbox, setLightbox] = useState<string | null>(null);
 
     // Per-row editing state, keyed by order id so two open rows don't fight.
     const [activeId, setActiveId] = useState<string | null>(null);
@@ -69,15 +89,56 @@ export default function AdminOrdersPage() {
         void loadOrders();
     }, [loadOrders]);
 
-    const filteredOrders = useMemo(
-        () => (filter === "all" ? orders : orders.filter((order) => order.status === filter)),
-        [orders, filter],
-    );
+    useEffect(() => {
+        if (!lightbox) return;
+        const onKey = (event: KeyboardEvent) => {
+            if (event.key === "Escape") setLightbox(null);
+        };
+        window.addEventListener("keydown", onKey);
+        return () => window.removeEventListener("keydown", onKey);
+    }, [lightbox]);
 
+    // Built from the data, not METHOD_LABELS: paymentMethod is a free string and
+    // a method we don't have a label for still has to be filterable.
+    const methodOptions = useMemo(() => {
+        const seen = new Set(orders.map((order) => order.paymentMethod).filter(Boolean));
+        return [...seen].sort((a, b) =>
+            (METHOD_LABELS[a] ?? a).localeCompare(METHOD_LABELS[b] ?? b),
+        );
+    }, [orders]);
+
+    const filteredOrders = useMemo(() => {
+        const min = parseAmountBound(minAmount);
+        const max = parseAmountBound(maxAmount);
+        const needle = userQuery.trim().toLowerCase();
+        return orders.filter((order) => {
+            if (filter !== "all" && order.status !== filter) return false;
+            if (methodFilter !== "all" && order.paymentMethod !== methodFilter) return false;
+            if (min !== null && order.priceMinor < min) return false;
+            if (max !== null && order.priceMinor > max) return false;
+            if (needle) {
+                const haystack = [order.userEmail, order.userDisplayName, order.uid]
+                    .filter(Boolean)
+                    .join(" ")
+                    .toLowerCase();
+                if (!haystack.includes(needle)) return false;
+            }
+            return true;
+        });
+    }, [orders, filter, methodFilter, minAmount, maxAmount, userQuery]);
+
+    // Deliberately over all orders, not the filtered set — this is the global
+    // "you have work waiting" signal.
     const pendingCount = useMemo(
         () => orders.filter((order) => order.status === "pending").length,
         [orders],
     );
+
+    const activeFilterCount =
+        (methodFilter !== "all" ? 1 : 0) +
+        (minAmount.trim() ? 1 : 0) +
+        (maxAmount.trim() ? 1 : 0) +
+        (userQuery.trim() ? 1 : 0);
 
     const totalPages = Math.max(1, Math.ceil(filteredOrders.length / itemsPerPage));
     const paginatedOrders = useMemo(() => {
@@ -87,6 +148,21 @@ export default function AdminOrdersPage() {
 
     const setStatusFilter = (next: StatusFilter) => {
         setFilter(next);
+        setPage(1);
+    };
+
+    // Every filter change has to rewind the page, or narrowing the list while on
+    // page 3 lands on an empty one.
+    const applyFilter = <T,>(setter: (value: T) => void) => (value: T) => {
+        setter(value);
+        setPage(1);
+    };
+
+    const clearFilters = () => {
+        setMethodFilter("all");
+        setMinAmount("");
+        setMaxAmount("");
+        setUserQuery("");
         setPage(1);
     };
 
@@ -170,7 +246,7 @@ export default function AdminOrdersPage() {
                         <Link href="/admin/codes" className="text-primary hover:underline">Codes</Link>.
                     </p>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 shrink-0">
                     {(["all", "pending", "accepted", "refused"] as StatusFilter[]).map((option) => (
                         <button
                             key={option}
@@ -190,19 +266,112 @@ export default function AdminOrdersPage() {
 
             <div className="max-w-[1440px] mx-auto">
                 <section className="nebula-glass rounded-2xl p-4 sm:p-6">
-                    <div className="flex flex-wrap items-center gap-3 justify-between mb-6 pb-4 border-b border-outline-variant">
+                    <div className="flex flex-wrap items-center gap-3 justify-between mb-4 pb-4 border-b border-outline-variant">
                         <div className="flex items-center gap-2">
                             <span className="material-symbols-outlined text-primary">receipt_long</span>
                             <h3 className="font-title-md text-title-md text-on-surface">Orders</h3>
+                            <span className="font-label-caps text-secondary bg-secondary/10 px-3 py-1 rounded-full border border-secondary/20">{filteredOrders.length} ITEMS</span>
                         </div>
-                        <span className="font-label-caps text-secondary bg-secondary/10 px-3 py-1 rounded-full border border-secondary/20">{filteredOrders.length} ITEMS</span>
+                        <button
+                            type="button"
+                            onClick={() => setFiltersOpen((open) => !open)}
+                            aria-expanded={filtersOpen}
+                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border font-label-caps text-label-caps transition-colors ${
+                                filtersOpen || activeFilterCount > 0
+                                    ? "bg-primary-container text-on-primary-container border-primary/20"
+                                    : "text-on-surface-variant border-outline-variant hover:bg-surface-container-highest"
+                            }`}
+                        >
+                            <span className="material-symbols-outlined text-[16px]">tune</span>
+                            Filters
+                            {activeFilterCount > 0 ? (
+                                <span className="ms-0.5 rounded-full bg-primary/20 px-1.5 text-[10px] font-bold">{activeFilterCount}</span>
+                            ) : null}
+                        </button>
                     </div>
+
+                    {/* Collapse is a conditional render, not a `hidden` class: admin.css
+                        carries unlayered `display` rules that beat Tailwind here. */}
+                    {filtersOpen ? (
+                        <div className="mb-6 rounded-lg border border-outline-variant bg-surface-container-lowest/60 p-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+                                <label className="flex flex-col gap-1.5 min-w-0">
+                                    <span className="font-label-caps text-[10px] text-on-surface-variant">PAYMENT METHOD</span>
+                                    <select
+                                        value={methodFilter}
+                                        onChange={(e) => applyFilter(setMethodFilter)(e.target.value)}
+                                        className="w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 text-body-sm text-on-surface outline-none focus:border-primary/50"
+                                    >
+                                        <option value="all">All methods</option>
+                                        {methodOptions.map((method) => (
+                                            <option key={method} value={method}>
+                                                {METHOD_LABELS[method] ?? method}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </label>
+
+                                <label className="flex flex-col gap-1.5 min-w-0">
+                                    <span className="font-label-caps text-[10px] text-on-surface-variant">USER</span>
+                                    <input
+                                        type="text"
+                                        value={userQuery}
+                                        onChange={(e) => applyFilter(setUserQuery)(e.target.value)}
+                                        placeholder="Email, name or uid…"
+                                        className="w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 text-body-sm text-on-surface placeholder:text-on-surface-variant/40 outline-none focus:border-primary/50"
+                                    />
+                                </label>
+
+                                {/* Bounds are in DT and inclusive; orders store millimes. */}
+                                <label className="flex flex-col gap-1.5 min-w-0">
+                                    <span className="font-label-caps text-[10px] text-on-surface-variant">MIN AMOUNT (DT)</span>
+                                    <input
+                                        type="number"
+                                        inputMode="decimal"
+                                        min={0}
+                                        value={minAmount}
+                                        onChange={(e) => applyFilter(setMinAmount)(e.target.value)}
+                                        placeholder="0"
+                                        className="w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 text-body-sm text-on-surface placeholder:text-on-surface-variant/40 outline-none focus:border-primary/50"
+                                    />
+                                </label>
+
+                                <label className="flex flex-col gap-1.5 min-w-0">
+                                    <span className="font-label-caps text-[10px] text-on-surface-variant">MAX AMOUNT (DT)</span>
+                                    <input
+                                        type="number"
+                                        inputMode="decimal"
+                                        min={0}
+                                        value={maxAmount}
+                                        onChange={(e) => applyFilter(setMaxAmount)(e.target.value)}
+                                        placeholder="Any"
+                                        className="w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 text-body-sm text-on-surface placeholder:text-on-surface-variant/40 outline-none focus:border-primary/50"
+                                    />
+                                </label>
+                            </div>
+
+                            {activeFilterCount > 0 ? (
+                                <button
+                                    type="button"
+                                    onClick={clearFilters}
+                                    className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-outline-variant font-label-caps text-label-caps text-on-surface-variant hover:bg-surface-container-highest transition-colors"
+                                >
+                                    <span className="material-symbols-outlined text-[16px]">close</span>
+                                    Clear filters
+                                </button>
+                            ) : null}
+                        </div>
+                    ) : null}
 
                     {error ? <p className="text-sm text-error mb-4">{error}</p> : null}
 
                     <div className="grid grid-cols-1 gap-4">
                         {paginatedOrders.length === 0 ? (
-                            <p className="text-sm text-on-surface-variant">No orders here yet.</p>
+                            <p className="text-sm text-on-surface-variant">
+                                {activeFilterCount > 0
+                                    ? "No orders match these filters."
+                                    : "No orders here yet."}
+                            </p>
                         ) : (
                             paginatedOrders.map((order) => {
                                 const isPending = order.status === "pending";
@@ -210,13 +379,13 @@ export default function AdminOrdersPage() {
                                 return (
                                     <div
                                         key={order.id}
-                                        className={`bg-surface-container-high rounded-lg p-5 border border-outline-variant transition-all ${
+                                        className={`bg-surface-container-high rounded-lg p-4 sm:p-5 border border-outline-variant transition-all ${
                                             isPending ? "border-l-4 border-l-primary" : "opacity-80"
                                         }`}
                                     >
-                                        <div className="flex flex-wrap items-start justify-between gap-4">
+                                        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 sm:gap-4">
                                             <div className="flex-1 min-w-0">
-                                                <div className="flex flex-wrap items-center gap-3 mb-2">
+                                                <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mb-2">
                                                     <span className={`px-2 py-0.5 rounded-full border text-[9px] font-bold uppercase tracking-widest ${STATUS_STYLES[order.status]}`}>
                                                         {order.status}
                                                     </span>
@@ -226,27 +395,22 @@ export default function AdminOrdersPage() {
                                                     </span>
                                                 </div>
 
-                                                <p className="text-on-surface font-body-sm mb-3">
-                                                    <span className="font-bold">{order.planName}</span>
-                                                    {" — "}
-                                                    {order.credits.toFixed(2)} Cr for{" "}
-                                                    <span className="text-primary font-bold">{formatPrice(order.priceMinor, order.currency)}</span>
-                                                </p>
-
-                                                <div className="flex flex-wrap gap-4 mb-3">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="font-label-caps text-[10px] text-on-surface-variant">FROM</span>
-                                                        <span className="px-2 py-0.5 bg-surface-container-lowest rounded border border-outline-variant font-code-sm text-[11px] text-on-surface">
-                                                            {order.userEmail || order.uid || "unknown"}
-                                                        </span>
-                                                    </div>
+                                                {/* Plan, price and buyer read as one line on a wide screen and
+                                                    wrap to their own rows on a phone. */}
+                                                <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mb-2">
+                                                    <p className="text-on-surface font-body-sm">
+                                                        <span className="font-bold">{order.planName}</span>
+                                                        {" — "}
+                                                        {order.credits.toFixed(2)} Cr for{" "}
+                                                        <span className="text-primary font-bold">{formatPrice(order.priceMinor, order.currency)}</span>
+                                                    </p>
+                                                    <span className="min-w-0 max-w-full truncate px-2 py-0.5 bg-surface-container-lowest rounded border border-outline-variant font-code-sm text-[11px] text-on-surface">
+                                                        {order.userEmail || order.uid || "unknown"}
+                                                    </span>
                                                     {order.resolvedByEmail ? (
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="font-label-caps text-[10px] text-on-surface-variant">BY</span>
-                                                            <span className="px-2 py-0.5 bg-surface-container-lowest rounded border border-outline-variant font-code-sm text-[11px] text-on-surface">
-                                                                {order.resolvedByEmail}
-                                                            </span>
-                                                        </div>
+                                                        <span className="min-w-0 max-w-full truncate font-code-sm text-[11px] text-on-surface-variant">
+                                                            by {order.resolvedByEmail}
+                                                        </span>
                                                     ) : null}
                                                 </div>
 
@@ -275,39 +439,55 @@ export default function AdminOrdersPage() {
                                                     </div>
                                                 ) : null}
 
-                                                {/* Proofs. Admin auth is a same-origin cookie, so these load directly. */}
+                                                {/* Proofs. Admin auth is a same-origin cookie, so these load directly.
+                                                    Reading the receipt is the whole job, so an image opens in the
+                                                    lightbox rather than costing a tab round trip. */}
                                                 {order.proofFileIds.length > 0 ? (
                                                     <div className="flex flex-wrap gap-3 mb-1">
                                                         {order.proofFileIds.map((fileId) => {
                                                             const src = `/api/admin/orders/${order.id}/proof/${fileId}`;
                                                             // A PDF proof can't render in <img>, so it falls back to a
-                                                            // labelled tile that still opens the file.
+                                                            // labelled tile that still opens the file in a tab.
                                                             const isFile = unrenderable.has(fileId);
-                                                            return (
-                                                                <a
-                                                                    key={fileId}
-                                                                    href={src}
-                                                                    target="_blank"
-                                                                    rel="noopener noreferrer"
-                                                                    className="flex h-24 w-24 items-center justify-center rounded-lg border border-outline-variant overflow-hidden bg-surface-container-lowest hover:border-primary/40 transition-colors"
-                                                                >
-                                                                    {isFile ? (
+                                                            const tile =
+                                                                "group relative flex h-28 w-28 sm:h-36 sm:w-36 items-center justify-center rounded-lg border border-outline-variant overflow-hidden bg-surface-container-lowest hover:border-primary/40 transition-colors";
+                                                            if (isFile) {
+                                                                return (
+                                                                    <a
+                                                                        key={fileId}
+                                                                        href={src}
+                                                                        target="_blank"
+                                                                        rel="noopener noreferrer"
+                                                                        className={tile}
+                                                                    >
                                                                         <span className="flex flex-col items-center gap-1 text-primary">
                                                                             <span className="material-symbols-outlined text-[26px]">description</span>
                                                                             <span className="font-code-sm text-[10px]">Open file</span>
                                                                         </span>
-                                                                    ) : (
-                                                                        /* eslint-disable-next-line @next/next/no-img-element */
-                                                                        <img
-                                                                            src={src}
-                                                                            alt="Payment proof"
-                                                                            className="h-24 w-24 object-cover"
-                                                                            onError={() =>
-                                                                                setUnrenderable((current) => new Set(current).add(fileId))
-                                                                            }
-                                                                        />
-                                                                    )}
-                                                                </a>
+                                                                    </a>
+                                                                );
+                                                            }
+                                                            return (
+                                                                <button
+                                                                    key={fileId}
+                                                                    type="button"
+                                                                    onClick={() => setLightbox(src)}
+                                                                    className={tile}
+                                                                    aria-label="Enlarge payment proof"
+                                                                >
+                                                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                                    <img
+                                                                        src={src}
+                                                                        alt="Payment proof"
+                                                                        className="h-full w-full object-cover"
+                                                                        onError={() =>
+                                                                            setUnrenderable((current) => new Set(current).add(fileId))
+                                                                        }
+                                                                    />
+                                                                    <span className="absolute inset-0 hidden items-center justify-center bg-black/45 text-white group-hover:flex">
+                                                                        <span className="material-symbols-outlined text-[22px]">zoom_in</span>
+                                                                    </span>
+                                                                </button>
                                                             );
                                                         })}
                                                     </div>
@@ -324,7 +504,7 @@ export default function AdminOrdersPage() {
                                             </div>
 
                                             {isPending && !isActive ? (
-                                                <div className="flex shrink-0 gap-2">
+                                                <div className="grid grid-cols-2 sm:flex shrink-0 gap-2">
                                                     <button
                                                         type="button"
                                                         onClick={() => openAction(order.id, "accept")}
@@ -357,7 +537,7 @@ export default function AdminOrdersPage() {
                                                                 value={codeInput}
                                                                 onChange={(e) => setCodeInput(e.target.value.toUpperCase())}
                                                                 placeholder="VC-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
-                                                                className="flex-1 min-w-[20rem] max-w-xl px-3 py-2 rounded-lg bg-surface-container-lowest border border-outline-variant font-code-sm text-sm text-on-surface outline-none focus:border-primary/50"
+                                                                className="w-full sm:w-auto sm:flex-1 sm:min-w-[20rem] max-w-xl px-3 py-2 rounded-lg bg-surface-container-lowest border border-outline-variant font-code-sm text-sm text-on-surface outline-none focus:border-primary/50"
                                                             />
                                                             <button
                                                                 type="button"
@@ -449,6 +629,45 @@ export default function AdminOrdersPage() {
                     ) : null}
                 </section>
             </div>
+
+            {/* Proof lightbox. Click anywhere or Esc closes; the original stays
+                one click away for zooming past the viewport. It sits above the
+                mobile bottom nav (z-50) and the More sheet (z-60). */}
+            {lightbox ? (
+                <div
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label="Payment proof"
+                    onClick={() => setLightbox(null)}
+                    className="fixed inset-0 z-[70] flex flex-col items-center justify-center gap-4 bg-black/80 p-4 pb-24 lg:pb-4 backdrop-blur-sm"
+                >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                        src={lightbox}
+                        alt="Payment proof"
+                        className="max-h-[80vh] max-w-full rounded-lg object-contain shadow-2xl"
+                    />
+                    <div className="flex items-center gap-2">
+                        <a
+                            href={lightbox}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-white/20 bg-white/10 font-label-caps text-label-caps text-white hover:bg-white/20 transition-colors"
+                        >
+                            <span className="material-symbols-outlined text-[16px]">open_in_new</span>
+                            Open original
+                        </a>
+                        <button
+                            type="button"
+                            onClick={() => setLightbox(null)}
+                            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-white/20 font-label-caps text-label-caps text-white hover:bg-white/10 transition-colors"
+                        >
+                            Close
+                        </button>
+                    </div>
+                </div>
+            ) : null}
         </main>
     );
 }
