@@ -720,12 +720,24 @@ class CreditOrderListResponse(BaseModel):
     orders: List[CreditOrderResponse]
 
 
+class DuplicateProofRef(BaseModel):
+    """Another order carrying a receipt with the same bytes as this one's."""
+
+    orderId: str
+    status: str
+    createdAt: int
+
+
 class AdminCreditOrderResponse(CreditOrderResponse):
     uid: str = ""
     userEmail: str = ""
     userDisplayName: str = ""
     resolvedByEmail: str = ""
     proofFileIds: List[str] = Field(default_factory=list)
+    # Admin-only, like every other field added here: the buyer's own
+    # CreditOrderResponse does not declare it, so Pydantic drops it from their
+    # response and a buyer never learns their receipt was recognised.
+    duplicateProofs: List[DuplicateProofRef] = Field(default_factory=list)
 
 
 class AdminCreditOrderListResponse(BaseModel):

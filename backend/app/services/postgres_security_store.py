@@ -887,6 +887,13 @@ def create_credit_order(
 
     with session_scope() as session:
         repo = SecurityRepository(session)
+        # Weekly first. When an account trips both caps, "you have reached this
+        # week's limit" is the honest message — clearing the pending queue would
+        # not let them order again, so the open-orders wording would send them to
+        # wait for something that does not help.
+        week_ago = int(time.time()) - (7 * 24 * 60 * 60)
+        if repo.count_credit_orders_since(uid, since_ts=week_ago) >= int(settings.max_credit_orders_per_week):
+            raise ValueError("TOO_MANY_ORDERS_THIS_WEEK")
         if repo.count_open_credit_orders(uid) >= int(settings.max_open_credit_orders):
             raise ValueError("TOO_MANY_OPEN_ORDERS")
         order = repo.create_credit_order(
@@ -928,6 +935,27 @@ def list_user_credit_orders(uid: str, *, limit: int = 20) -> list[dict[str, Any]
         return results
 
 
+def _attach_duplicate_proofs(repo: SecurityRepository, entries: list[dict[str, Any]]) -> None:
+    """Annotate each entry with the other orders sharing one of its receipts.
+
+    One query for the whole batch (see `find_duplicate_proof_orders`), mapped back
+    in Python. Every entry gets the key, so a reviewer's UI can rely on it being
+    present and empty rather than absent.
+    """
+    for entry in entries:
+        entry["duplicateProofs"] = []
+    if not entries:
+        return
+
+    by_id = {str(entry["id"]): entry for entry in entries}
+    for order_id, other_id, other_status, other_created_at in repo.find_duplicate_proof_orders(list(by_id)):
+        entry = by_id.get(order_id)
+        if entry is not None:
+            entry["duplicateProofs"].append(
+                {"orderId": other_id, "status": other_status, "createdAt": other_created_at}
+            )
+
+
 def list_admin_credit_orders(*, status: str | None = None, limit: int = 200) -> list[dict[str, Any]]:
     with session_scope() as session:
         repo = SecurityRepository(session)
@@ -938,6 +966,7 @@ def list_admin_credit_orders(*, status: str | None = None, limit: int = 200) -> 
             entry["userEmail"] = str(getattr(user, "email", "") or "")
             entry["userDisplayName"] = str(getattr(user, "display_name", "") or "")
             results.append(entry)
+        _attach_duplicate_proofs(repo, results)
         return results
 
 
@@ -956,7 +985,10 @@ def get_admin_credit_order(order_id: str) -> dict[str, Any] | None:
         user = repo.get_user(str(order.uid))
         entry["userEmail"] = str(getattr(user, "email", "") or "")
         entry["userDisplayName"] = str(getattr(user, "display_name", "") or "")
+        _attach_duplicate_proofs(repo, [entry])
         return entry
+
+
 
 
 def set_credit_order_discord_message_id(order_id: str, message_id: str) -> None:

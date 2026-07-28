@@ -162,12 +162,34 @@ def _payment_label(method_id: str) -> str:
     return str(method["label"]) if method else (method_id or "—")
 
 
+# Discord renders markdown inside embed field VALUES, so any buyer-supplied
+# string reaching a field can otherwise forge the card: a display name of
+# "Sami\n**Amount** 69.000 TND ✅ Verified" prints as extra structure, and a note
+# of "[Receipt 1](https://evil.tld)" prints as a link indistinguishable from the
+# real receipt links below it. A reviewer on a phone approves what the card says,
+# so the card must only ever say what WE put in it.
+#
+# Exactly the characters Discord treats as markdown controls, no more: escaping
+# something like "-" or "#" would leave a visible backslash in ordinary names.
+# The backslash itself goes first, or every later escape gets double-escaped.
+_MARKDOWN_SPECIALS = "\\*_~`|>[]()"
+
+
+def _escape(text: str) -> str:
+    """Neutralise buyer-controlled markdown. Newlines collapse to spaces so a
+    single-line field cannot be made to look like several."""
+    escaped = str(text or "")
+    for char in _MARKDOWN_SPECIALS:
+        escaped = escaped.replace(char, f"\\{char}")
+    return " ".join(escaped.split())
+
+
 def _customer_line(order: dict[str, Any]) -> str:
-    name = str(order.get("userDisplayName") or "").strip()
-    email = str(order.get("userEmail") or "").strip()
+    name = _escape(str(order.get("userDisplayName") or "").strip())
+    email = _escape(str(order.get("userEmail") or "").strip())
     if name and email:
         return f"{name}\n{email}"
-    return email or name or str(order.get("uid") or "—")
+    return email or name or _escape(str(order.get("uid") or "")) or "—"
 
 
 def build_card(order: dict[str, Any]) -> dict[str, Any]:
@@ -204,7 +226,26 @@ def build_card(order: dict[str, Any]) -> dict[str, Any]:
 
     note = str(order.get("note") or "").strip()
     if note:
-        fields.append({"name": "Customer note", "value": note[:1000], "inline": False})
+        fields.append({"name": "Customer note", "value": _escape(note)[:1000], "inline": False})
+
+    # Loud, and directly above the receipt links, because it is the one thing on
+    # the card that argues against approving. Escaped like everything else even
+    # though the ids are ours — a field that is only sometimes safe is a field
+    # someone eventually gets wrong.
+    duplicates = list(order.get("duplicateProofs") or [])
+    if duplicates:
+        lines = "\n".join(
+            f"• order `{_escape(str(dup.get('orderId') or ''))[:36]}` "
+            f"({_escape(str(dup.get('status') or 'unknown'))}, {_relative_age(int(dup.get('createdAt') or 0))})"
+            for dup in duplicates[:5]
+        )
+        fields.append(
+            {
+                "name": "⚠️ Receipt already submitted",
+                "value": f"The same file was attached to:\n{lines}",
+                "inline": False,
+            }
+        )
 
     proof_ids = list(order.get("proofFileIds") or [])
     if proof_ids and not settings.discord_proof_secret:
@@ -237,9 +278,9 @@ def build_card(order: dict[str, Any]) -> dict[str, Any]:
         # field is only here to confirm which code went out.
         fields.append({"name": "Code issued", "value": _mask_code(str(order.get("code") or "")), "inline": False})
     if status == "refused" and str(order.get("adminMessage") or "").strip():
-        fields.append({"name": "Reason", "value": str(order["adminMessage"])[:1000], "inline": False})
+        fields.append({"name": "Reason", "value": _escape(str(order["adminMessage"]))[:1000], "inline": False})
     if status != "pending" and str(order.get("resolvedByEmail") or "").strip():
-        fields.append({"name": "Resolved by", "value": str(order["resolvedByEmail"]), "inline": False})
+        fields.append({"name": "Resolved by", "value": _escape(str(order["resolvedByEmail"])), "inline": False})
 
     embed = {
         "title": title,
@@ -286,6 +327,21 @@ def _mask_code(code: str) -> str:
 
 def _iso(epoch_seconds: int) -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(epoch_seconds))
+
+
+def _relative_age(epoch_seconds: int) -> str:
+    """"3 days ago" beats a timestamp when the question is "is this the same
+    receipt I just approved?"."""
+    if epoch_seconds <= 0:
+        return "unknown date"
+    delta = max(0, int(time.time()) - epoch_seconds)
+    if delta < 3600:
+        return "under an hour ago"
+    if delta < 86400:
+        hours = delta // 3600
+        return f"{hours}h ago"
+    days = delta // 86400
+    return "yesterday" if days == 1 else f"{days} days ago"
 
 
 # --------------------------------------------------------------------------
