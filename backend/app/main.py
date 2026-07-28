@@ -38,6 +38,7 @@ from app.services.admin_auth import AdminAuthRateLimitError, authenticate_admin,
 from app.services.apikeymanager_client import ApiKeyManagerProxyError, check_apikeymanager_ready
 from app.services.auth import format_suspension_detail, verify_admin_csrf, verify_admin_session, verify_api_key, verify_firebase_user
 from app.services.email_service import dispatch as dispatch_email
+from app.services import discord_orders
 from app.services.catalog_store import catalog_store
 from app.services.model_visibility import filter_catalog, list_model_visibility, update_model_visibility, visible_model_catalog
 from app.services.chat_service import assemble_plain_chat_context, list_plain_chat_models, minimum_required_credits_for_plain_chat, normalize_plain_chat_system, prepare_plain_chat_conversation_request, preview_plain_chat_prompt, send_plain_chat, serialize_plain_chat_parts
@@ -65,6 +66,7 @@ from app.services.security_backend import (
     list_user_credit_orders,
     list_admin_credit_orders,
     get_credit_order_proof_file_id,
+    get_admin_credit_order,
     accept_credit_order,
     refuse_credit_order,
     create_dashboard_news_item,
@@ -642,6 +644,14 @@ def cleanup_uploaded_images_on_startup():
         logger.info("[email] transport: %s", transport_status())
     except Exception:
         logger.exception("[email] could not resolve transport status")
+    # Same reasoning for the Discord order channel: a token-less box logs cards
+    # instead of posting them, and that failure mode is otherwise invisible.
+    try:
+        from app.services.discord_client import transport_status as discord_transport_status
+
+        logger.info("[discord] transport: %s", discord_transport_status())
+    except Exception:
+        logger.exception("[discord] could not resolve transport status")
     # Eagerly refresh the live model catalog so pack model lists are complete
     # from the very first request (before the AKM catalog webhook fires).
     try:
@@ -1660,6 +1670,7 @@ def list_my_credit_orders(request: Request, user: Dict[str, Any] = Depends(verif
 @limiter.limit("5/minute")
 async def place_credit_order(
     request: Request,
+    background_tasks: BackgroundTasks,
     plan_id: str = Form(...),
     payment_method: str = Form(...),
     note: str = Form(""),
@@ -1704,7 +1715,7 @@ async def place_credit_order(
         file_ids.append(create_payment_proof_file_record(str(user["uid"]), filename, mime_type))
 
     try:
-        return create_credit_order(
+        order = create_credit_order(
             uid=str(user["uid"]),
             plan_id=str(plan["id"]),
             plan_name=str(plan["name"]),
@@ -1715,6 +1726,11 @@ async def place_credit_order(
             note=note,
             proof_file_ids=file_ids,
         )
+        # Announce it in the Discord review channel after the response is sent.
+        # Deliberately fail-open and out-of-band: a Discord outage must never
+        # turn a paid-for order into a failed checkout.
+        background_tasks.add_task(discord_orders.announce_credit_order, str(order["id"]))
+        return order
     except ValueError as exc:
         # The order was rejected, so the files we just wrote have no owner record
         # to reach them — drop them rather than leaking disk.
@@ -1726,6 +1742,47 @@ async def place_credit_order(
                 detail="You already have orders awaiting review. Please wait for them to be processed.",
             ) from exc
         raise HTTPException(status_code=400, detail="Could not place this order") from exc
+
+
+@app.get(
+    "/credits/orders/{order_id}/proof/{file_id}",
+    tags=["Configuration"],
+    summary="Get Credit Order Proof From A Signed Link",
+)
+@limiter.limit("60/minute")
+def get_credit_order_proof_signed(
+    request: Request,
+    order_id: str,
+    file_id: str,
+    exp: int = 0,
+    sig: str = "",
+):
+    """Serve one payment proof to whoever holds a valid, unexpired signed link.
+
+    This exists so a reviewer can open a receipt from the Discord card on their
+    phone: the admin route next to it needs an admin session cookie, which a
+    Discord embed has no way to carry. The signature covers order + file + expiry
+    together, so a link cannot be re-pointed at another order's proof, and it
+    stops working on its own — an old card in the channel scrollback is not a
+    permanent key to a customer's receipt.
+    """
+    del request
+    if not discord_orders.verify_proof_link(order_id, file_id, int(exp or 0), str(sig or "")):
+        # One message for expired, tampered, and unsigned alike — a distinct
+        # "expired" response would confirm that the order/file pair is real.
+        raise HTTPException(status_code=403, detail="This link is no longer valid. Open the admin panel instead.")
+    if get_credit_order_proof_file_id(order_id, file_id) is None:
+        raise HTTPException(status_code=404, detail="Proof not found")
+    file_record, filepath = load_payment_proof_file(file_id)
+    return FileResponse(
+        filepath,
+        media_type=str(file_record["mime_type"]),
+        headers={
+            "Cache-Control": "private, no-store",
+            "Content-Disposition": "inline",
+            **GENERATED_IMAGE_SAFE_HEADERS,
+        },
+    )
 
 
 @app.post("/analyze-sessions/{session_id}/complete", tags=["Configuration"], summary="Complete Analyze Session")
@@ -2419,12 +2476,13 @@ def admin_accept_credit_order(
     request: Request,
     order_id: str,
     payload: AdminCreditOrderAcceptRequest,
+    background_tasks: BackgroundTasks,
     admin: Dict[str, Any] = Depends(verify_admin_session),
     _csrf: None = Depends(verify_admin_csrf),
 ):
     del request
     try:
-        return accept_credit_order(
+        result = accept_credit_order(
             order_id,
             code=payload.code,
             admin_uid=admin["uid"],
@@ -2433,6 +2491,10 @@ def admin_accept_credit_order(
         )
     except ValueError as exc:
         _raise_credit_order_error(exc)
+    # Repaint the Discord card so it stops offering buttons for an order that is
+    # already done. A no-op when the order was never announced there.
+    background_tasks.add_task(discord_orders.sync_credit_order_card, order_id)
+    return result
 
 
 @app.post(
@@ -2446,12 +2508,13 @@ def admin_refuse_credit_order(
     request: Request,
     order_id: str,
     payload: AdminCreditOrderRefuseRequest,
+    background_tasks: BackgroundTasks,
     admin: Dict[str, Any] = Depends(verify_admin_session),
     _csrf: None = Depends(verify_admin_csrf),
 ):
     del request
     try:
-        return refuse_credit_order(
+        result = refuse_credit_order(
             order_id,
             reason=payload.reason,
             admin_uid=admin["uid"],
@@ -2459,6 +2522,56 @@ def admin_refuse_credit_order(
         )
     except ValueError as exc:
         _raise_credit_order_error(exc)
+    background_tasks.add_task(discord_orders.sync_credit_order_card, order_id)
+    return result
+
+
+@app.post(
+    "/discord/interactions",
+    tags=["Configuration"],
+    summary="Handle A Discord Interaction",
+    include_in_schema=False,
+)
+@limiter.limit("240/minute")
+async def handle_discord_interaction(request: Request):
+    """Discord's webhook for button presses on order cards.
+
+    Unauthenticated by design: the Ed25519 signature over the raw body IS the
+    authentication, and Discord cannot send a session cookie or a CSRF token.
+    Authorization (which channel, which Discord account) is enforced in
+    ``discord_orders.handle_interaction``, on top of this.
+
+    The body is read as raw bytes rather than through a Pydantic model because
+    the signature covers the exact bytes Discord sent — re-serializing a parsed
+    dict changes them and every verification would fail.
+    """
+    body = await request.body()
+    signature = request.headers.get("x-signature-ed25519", "")
+    timestamp = request.headers.get("x-signature-timestamp", "")
+
+    if not discord_orders.verify_interaction_signature(signature, timestamp, body):
+        # Must be 401: Discord probes a newly-registered interactions URL with
+        # deliberately invalid signatures and refuses to save it unless they are
+        # rejected. Logged because the alternative — a silent 401 — is
+        # indistinguishable from "Discord never called us" when a button press
+        # fails, and the two have completely different fixes.
+        logger.warning(
+            "[discord] interaction signature REJECTED (bad DISCORD_PUBLIC_KEY, or a probe): "
+            "sig_present=%s ts_present=%s public_key_configured=%s",
+            bool(signature),
+            bool(timestamp),
+            bool(settings.discord_public_key),
+        )
+        raise HTTPException(status_code=401, detail="invalid request signature")
+
+    try:
+        payload = json.loads(body or b"{}")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="malformed interaction payload") from exc
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="malformed interaction payload")
+
+    return discord_orders.handle_interaction(payload)
 
 
 @app.post(

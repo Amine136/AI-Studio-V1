@@ -240,6 +240,39 @@ class Config:
                 "$0 fake provider and are NOT billed.",
                 self.app_env,
             )
+        # Manual credit orders can also be reviewed from a private Discord
+        # channel. No bot token => the whole thing is a no-op that only logs, so
+        # the flow is testable before the bot exists.
+        #
+        # SECURITY: there is deliberately no way to MINT a code from Discord —
+        # approving requires typing a code that was already generated in the web
+        # admin panel. A stolen Discord account can therefore attach existing
+        # codes, but cannot create credits. See services/discord_orders.py.
+        self.discord_bot_token = os.getenv("DISCORD_BOT_TOKEN", "").strip()
+        self.discord_public_key = os.getenv("DISCORD_PUBLIC_KEY", "").strip()
+        self.discord_channel_id = os.getenv("DISCORD_CHANNEL_ID", "").strip()
+        self.discord_guild_id = os.getenv("DISCORD_GUILD_ID", "").strip()
+        # Comma-separated so a second reviewer can be added without a code change.
+        self.discord_admin_ids = {
+            part.strip()
+            for part in os.getenv("DISCORD_ADMIN_ID", "").split(",")
+            if part.strip()
+        }
+        self.discord_timeout = float(os.getenv("DISCORD_TIMEOUT", "15"))
+        # Proof-of-payment links in a card are HMAC-signed and expire, so
+        # scrolling back through channel history does not hand over a pile of
+        # customer receipts. Falls back to the admin session secret so staging
+        # works before a dedicated one is provisioned (same idiom as
+        # EMAIL_UNSUBSCRIBE_SECRET above).
+        self.discord_proof_secret = (
+            os.getenv("DISCORD_PROOF_SECRET", "").strip()
+            or os.getenv("ADMIN_SESSION_SECRET", "").strip()
+        )
+        try:
+            self.discord_proof_link_ttl = max(300, int(os.getenv("DISCORD_PROOF_LINK_TTL", "86400")))
+        except ValueError:
+            self.discord_proof_link_ttl = 86400
+
         self.admin_session_secret = os.getenv("ADMIN_SESSION_SECRET", "").strip()
         self.admin_session_cookie_name = os.getenv("ADMIN_SESSION_COOKIE_NAME", "vibecraft_admin_session").strip() or "vibecraft_admin_session"
         self.admin_csrf_cookie_name = os.getenv("ADMIN_CSRF_COOKIE_NAME", "vibecraft_admin_csrf").strip() or "vibecraft_admin_csrf"

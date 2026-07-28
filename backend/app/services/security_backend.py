@@ -24,6 +24,8 @@ from app.services.postgres_security_store import (  # noqa: F401
     list_user_credit_orders,
     list_admin_credit_orders,
     get_credit_order_proof_file_id,
+    get_admin_credit_order,
+    set_credit_order_discord_message_id,
     accept_credit_order,
     refuse_credit_order,
     create_dashboard_news_item,

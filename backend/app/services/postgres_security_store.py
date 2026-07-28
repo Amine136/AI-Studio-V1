@@ -941,6 +941,38 @@ def list_admin_credit_orders(*, status: str | None = None, limit: int = 200) -> 
         return results
 
 
+def get_admin_credit_order(order_id: str) -> dict[str, Any] | None:
+    """One order with the buyer's identity attached, as the admin surfaces see it.
+
+    Same shape as an entry from `list_admin_credit_orders`; exists so the Discord
+    card can be rendered from a single id without pulling the whole list.
+    """
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        order = repo.get_credit_order(order_id)
+        if order is None:
+            return None
+        entry = _credit_order_dict(repo, order)
+        user = repo.get_user(str(order.uid))
+        entry["userEmail"] = str(getattr(user, "email", "") or "")
+        entry["userDisplayName"] = str(getattr(user, "display_name", "") or "")
+        return entry
+
+
+def set_credit_order_discord_message_id(order_id: str, message_id: str) -> None:
+    """Remember which Discord card belongs to this order, so it can be repainted.
+
+    Best-effort bookkeeping for a fail-open integration: a missing order here is
+    not worth raising over, since the card has already been posted either way.
+    """
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        order = repo.get_credit_order(order_id)
+        if order is None:
+            return
+        order.discord_message_id = str(message_id)[:32]
+
+
 def get_credit_order_proof_file_id(order_id: str, file_id: str) -> str | None:
     """Confirm `file_id` really is a proof attached to `order_id` before it is served."""
     with session_scope() as session:
@@ -1083,6 +1115,7 @@ def _credit_order_dict(repo: SecurityRepository, order: Any) -> dict[str, Any]:
         "resolvedByEmail": str(order.resolved_by_email or ""),
         "resolvedAt": int(order.resolved_at) if order.resolved_at is not None else None,
         "seen": order.seen_at is not None,
+        "discordMessageId": str(order.discord_message_id or ""),
         "createdAt": int(order.created_at),
         "updatedAt": int(order.updated_at),
         "proofFileIds": [str(proof.file_id) for proof in proofs],

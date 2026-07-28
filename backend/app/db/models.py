@@ -593,6 +593,11 @@ class CreditOrder(Base):
     # seen it drops out of that card. The row stays in Recent History forever, so
     # the code is never actually lost.
     seen_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    # Set when the order was announced in the Discord approval channel, so a
+    # decision taken in the web panel can go back and repaint that card. Null
+    # whenever Discord is unconfigured or the post failed — the integration is
+    # fail-open, so that is a normal state, not an error.
+    discord_message_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
     updated_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
 
