@@ -13,11 +13,16 @@ import type {
   SystemConfig,
 } from "../../../types";
 
+/* The progress bar covers the checkout itself. The two screens before it — the
+   Tunisian/international choice and the card "coming soon" panel — are not steps
+   of a purchase, so they render without the bar. */
 const WIZARD_STEPS = [
   { key: "plan", label: "Plan" },
   { key: "method", label: "Payment" },
   { key: "pay", label: "Confirm" },
 ] as const;
+
+const STEP_KEYS = ["rail", "card", ...WIZARD_STEPS.map((s) => s.key)] as string[];
 
 const PROOF_ACCEPT = "image/png,image/jpeg,image/webp,application/pdf";
 const PROOF_TYPES = ["image/png", "image/jpeg", "image/webp", "application/pdf"];
@@ -256,7 +261,11 @@ function BuyCreditsWizard() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
-  const step = searchParams.get("step") || "plan";
+  /* "rail" is the landing screen — which family of payment you want — and it is
+     also where anything unrecognised lands. Falling back to "plan" would have a
+     hand-edited or stale ?step= silently skip the choice. */
+  const requestedStep = searchParams.get("step") || "rail";
+  const step = STEP_KEYS.includes(requestedStep) ? requestedStep : "rail";
   const planId = searchParams.get("plan") || "";
   const method = searchParams.get("method") || "";
 
@@ -328,14 +337,11 @@ function BuyCreditsWizard() {
   // A placeholder like "+216 XXXXXXXX" has too few real digits to dial.
   const whatsappDialable = whatsappNumber.replace(/[^0-9]/g, "").length >= 8;
 
+  /* Step 2 is now reached only from the Tunisian branch, so it lists Tunisian
+     rails and nothing else. International cards are answered one screen earlier,
+     where they are a branch rather than a row you can't press. */
   const tunisianMethods = useMemo<PaymentMethodOption[]>(
     () => (config?.methods ?? []).filter((m) => m.group === "tunisia"),
-    [config],
-  );
-  // Anything not on a Tunisian rail (today: international cards) is listed after
-  // them, straight from the server config rather than hardcoded in the page.
-  const otherMethods = useMemo<PaymentMethodOption[]>(
-    () => (config?.methods ?? []).filter((m) => m.group !== "tunisia"),
     [config],
   );
 
@@ -512,6 +518,55 @@ function BuyCreditsWizard() {
     </div>
   ) : null;
 
+  /* The two branches on the landing screen. A tall card rather than a method
+     row: this is the choice that decides how the whole purchase works, so each
+     branch gets room to say what paying that way is actually like, and the two
+     sit side by side as a fork rather than a list you scan. */
+  const railCard = ({
+    icon,
+    title,
+    body,
+    soon,
+    onClick,
+  }: {
+    icon: string;
+    title: string;
+    body: string;
+    soon?: boolean;
+    onClick: () => void;
+  }) => (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex flex-col rounded-xl border p-5 text-start transition sm:p-6 ${
+        soon
+          ? "border-white/10 bg-[rgba(25,31,49,0.7)] hover:border-white/20 hover:bg-white/5"
+          : "border-[#adc6ff]/40 bg-[#adc6ff]/10 shadow-lg shadow-[#adc6ff]/10 hover:border-[#adc6ff]/60"
+      }`}
+    >
+      <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#adc6ff]/10">
+        <span className="material-symbols-outlined text-[22px] text-[#adc6ff]">{icon}</span>
+      </span>
+      <span className="mt-4 block text-lg font-bold text-white">{title}</span>
+      {/* flex-1 so the footer line sits on the same baseline in both cards
+          however long the description runs. */}
+      <span className="mt-2 block flex-1 text-sm text-[#c2c6d6]">{body}</span>
+      {soon ? (
+        <span className="mt-5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#93a0bd]">
+          <span className="material-symbols-outlined text-[15px]">lock</span>
+          {t("Coming soon")}
+        </span>
+      ) : (
+        <span className="mt-5 flex items-center gap-1.5 text-sm font-bold text-[#adc6ff]">
+          {t("Choose")}
+          <span className="material-symbols-outlined text-[16px] rtl:rotate-180">
+            arrow_forward
+          </span>
+        </span>
+      )}
+    </button>
+  );
+
   const methodRow = (option: PaymentMethodOption) => {
     const isLocked = !option.available;
     // Highlight only what the URL actually carries. `selectedMethod` falls back to
@@ -538,15 +593,10 @@ function BuyCreditsWizard() {
             {isLocked ? "lock" : option.icon || "payments"}
           </span>
         </span>
+        {/* Only the rail's own name: a locked row carries the "Coming soon"
+            badge, which says everything a subtitle would. */}
         <span className="min-w-0 flex-1">
           <span className="block font-bold text-white">{t(option.label)}</span>
-          {/* Only say something the row's own name doesn't already say. A locked
-              Tunisian rail carries the "Coming soon" badge and nothing else. */}
-          {isLocked && option.group !== "tunisia" && (
-            <span className="mt-0.5 block text-xs text-[#c2c6d6]">
-              {t("Pay by card in USD, credited automatically.")}
-            </span>
-          )}
         </span>
         {isLocked ? (
           <span className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#93a0bd]">
@@ -578,10 +628,91 @@ function BuyCreditsWizard() {
         </h1>
       </div>
 
-      <CheckoutSteps
-        current={step}
-        onJump={(key) => goTo(key === "plan" ? { step: "plan" } : { step: key, plan: planId })}
-      />
+      {/* Only over the checkout itself. CheckoutSteps clamps an unknown step to
+          index 0, so rendering it on "rail" or "card" would light up PLAN on a
+          screen that is not Plan. */}
+      {WIZARD_STEPS.some((s) => s.key === step) && (
+        <CheckoutSteps
+          current={step}
+          onJump={(key) => goTo(key === "plan" ? { step: "plan" } : { step: key, plan: planId })}
+        />
+      )}
+
+      {/* ---------------------------------------------------------------- Rail */}
+      {step === "rail" && (
+        /* Narrower than the wizard behind it: two cards stretched across the
+           full 5xl read as a half-empty page, and a fork is easier to answer
+           when both options are in one glance. */
+        <section className="mx-auto w-full max-w-3xl">
+          <h2 className="text-lg font-bold text-white">{t("How do you want to pay?")}</h2>
+          <p className="mb-5 mt-1 text-sm text-[#c2c6d6]">
+            {t("Tunisian methods are live today. Card payment is on the way.")}
+          </p>
+
+          <div className="grid items-stretch gap-4 sm:grid-cols-2">
+            {railCard({
+              icon: "account_balance_wallet",
+              title: t("Tunisian methods"),
+              body: t("Flouci, bank transfer. Pay, upload your receipt, and we review it manually."),
+              onClick: () => goTo({ step: "plan" }),
+            })}
+            {/* Pressable, unlike the locked row it replaces: the badge says the
+                rail isn't open, and the screen behind it says when and what to
+                do instead. A dead button answers neither. */}
+            {railCard({
+              icon: "credit_card",
+              title: t("International cards"),
+              body: t("Pay by card in USD, credited automatically."),
+              soon: true,
+              onClick: () => goTo({ step: "card" }),
+            })}
+          </div>
+          {/* No "How it works" here: it describes the manual Tunisian flow —
+              pay, upload, wait for review — which is only one of these two
+              branches. It belongs after the branch is chosen. */}
+        </section>
+      )}
+
+      {/* ------------------------------------------------------- Cards: not yet */}
+      {step === "card" && (
+        <section className="mx-auto w-full max-w-xl">
+          <div className={`${CARD_PADDED} text-center`}>
+            <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#adc6ff]/10">
+              <span className="material-symbols-outlined text-[28px] text-[#adc6ff]">
+                credit_card
+              </span>
+            </span>
+            <p className={`${EYEBROW_CLASS} mt-4`}>{t("Coming soon")}</p>
+            <h2 className="mt-2 text-xl font-bold text-white sm:text-2xl">
+              {t("International cards")}
+            </h2>
+            <p className="mx-auto mt-2 max-w-md text-sm text-[#c2c6d6]">
+              {t(
+                "We're building card payment in USD, with credits added automatically. Until then you can pay with a Tunisian method.",
+              )}
+            </p>
+
+            <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+              <button
+                type="button"
+                onClick={() => goTo({ step: "plan" })}
+                className={PRIMARY_BUTTON_CLASS}
+              >
+                {t("Pay with a Tunisian method")}
+              </button>
+              <button
+                type="button"
+                onClick={() => goTo({ step: "rail" })}
+                className={SECONDARY_BUTTON_CLASS}
+              >
+                {t("Back")}
+              </button>
+            </div>
+          </div>
+
+          {whatsappNumber && <div className="mt-5">{helpCard}</div>}
+        </section>
+      )}
 
       {/* ---------------------------------------------------------------- Step 1 */}
       {step === "plan" && (
@@ -717,6 +848,16 @@ function BuyCreditsWizard() {
           )}
 
           <HowItWorks />
+
+          {/* Step 1 is no longer the first screen, so it needs the same way back
+              the later steps have. */}
+          <button
+            type="button"
+            onClick={() => goTo({ step: "rail" })}
+            className={`${SECONDARY_BUTTON_CLASS} mt-6`}
+          >
+            {t("Back")}
+          </button>
         </section>
       )}
 
@@ -752,12 +893,7 @@ function BuyCreditsWizard() {
             </span>
           </div>
 
-          {/* One grid, config order: the lock badge already says which rails are
-              open, so a Tunisia/International split would only add a heading that
-              repeats the row beneath it. */}
-          <div className="grid gap-3 sm:grid-cols-2">
-            {[...tunisianMethods, ...otherMethods].map(methodRow)}
-          </div>
+          <div className="grid gap-3 sm:grid-cols-2">{tunisianMethods.map(methodRow)}</div>
 
           <button
             type="button"
