@@ -7,7 +7,7 @@ import uuid
 from typing import Any
 
 from sqlalchemy import case, delete, func, select, update
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.db.models import AdminAccount, AdminAuditLog, AdminSession, AnalyzeSession, ChatConversation, ChatMessage, CreditCode, CreditCodeClaim, CreditLedgerEntry, CreditLot, CreditLotAllocation, CreditOrder, CreditOrderProof, DashboardNewsItem, DeactivatedEmail, EmailSend, FeedbackItem, GenerationJob, HistoryEntry, ModerationRejection, PackSession, RateLimitBucket, User, UserFile
@@ -363,6 +363,99 @@ class SecurityRepository:
             .where(CreditOrder.uid == uid, CreditOrder.status == "pending")
         )
         return int(self.session.execute(stmt).scalar_one())
+
+    def count_credit_orders_since(self, uid: str, *, since_ts: int) -> int:
+        """Every order this account placed in the window, whatever became of it.
+
+        Refused and accepted orders count: the cap exists so an account cannot
+        keep a reviewer busy indefinitely by cycling through refusals, and a
+        status filter here would defeat exactly that.
+        """
+        stmt = (
+            select(func.count())
+            .select_from(CreditOrder)
+            .where(CreditOrder.uid == uid, CreditOrder.created_at >= since_ts)
+        )
+        return int(self.session.execute(stmt).scalar_one())
+
+    def find_duplicate_proof_orders(self, order_ids: list[str]) -> list[tuple[str, str, str, int]]:
+        """Cross-order receipt collisions for a page of orders, in ONE query.
+
+        Returns `(order_id, other_order_id, other_status, other_created_at)` — the
+        orders in `order_ids` that carry a proof whose bytes also appear on some
+        OTHER order. Resolved for the whole page at once because the admin list
+        already runs a per-order user lookup, and a per-order duplicate query on
+        top of it would be a third round trip per row.
+
+        Two proofs with identical bytes on the SAME order are not a collision
+        (a buyer attaching one screenshot twice), hence the id inequality. NULL
+        hashes are excluded explicitly: they predate the column and are unknown,
+        not equal to each other.
+
+        DISTINCT because an order carrying two copies of the same receipt would
+        otherwise join to the other order once per copy, and the caller wants to
+        know *which order* collided, not how many files did.
+        """
+        if not order_ids:
+            return []
+
+        mine = aliased(UserFile)
+        theirs = aliased(UserFile)
+        my_proof = aliased(CreditOrderProof)
+        their_proof = aliased(CreditOrderProof)
+
+        stmt = (
+            select(
+                my_proof.order_id,
+                their_proof.order_id,
+                CreditOrder.status,
+                CreditOrder.created_at,
+            )
+            .join(mine, mine.id == my_proof.file_id)
+            .join(theirs, theirs.content_sha256 == mine.content_sha256)
+            .join(their_proof, their_proof.file_id == theirs.id)
+            .join(CreditOrder, CreditOrder.id == their_proof.order_id)
+            .where(
+                my_proof.order_id.in_(order_ids),
+                # Both kind predicates are load-bearing, not decoration: they are
+                # what lets the (kind, content_sha256) index serve the self-join.
+                # Without a constraint on the leading column Postgres cannot use
+                # it, and this degrades to a seq scan over every user_files row —
+                # generated outputs and uploads included, not just proofs.
+                mine.kind == "payment_proof",
+                theirs.kind == "payment_proof",
+                mine.content_sha256.isnot(None),
+                their_proof.order_id != my_proof.order_id,
+            )
+            .distinct()
+            .order_by(CreditOrder.created_at.desc())
+        )
+        return [
+            (str(row[0]), str(row[1]), str(row[2]), int(row[3]))
+            for row in self.session.execute(stmt)
+        ]
+
+    def list_payment_proofs_for_orders_resolved_before(self, *, resolved_before: int) -> list[UserFile]:
+        """Proof files whose order was resolved longer ago than the cutoff.
+
+        Keyed on the ORDER's `resolved_at`, never the file's `created_at`: a
+        pending order is a live review item however old its upload is, and must
+        keep its receipt. Deleting the returned rows also drops the
+        `credit_order_proofs` link (DB-level ON DELETE CASCADE, verified); the
+        order row itself is a financial record and stays.
+        """
+        stmt = (
+            select(UserFile)
+            .join(CreditOrderProof, CreditOrderProof.file_id == UserFile.id)
+            .join(CreditOrder, CreditOrder.id == CreditOrderProof.order_id)
+            .where(
+                UserFile.kind == "payment_proof",
+                CreditOrder.status != "pending",
+                CreditOrder.resolved_at.isnot(None),
+                CreditOrder.resolved_at < resolved_before,
+            )
+        )
+        return list(self.session.execute(stmt).scalars())
 
     def get_credit_order_for_update(self, order_id: str) -> CreditOrder | None:
         return self.session.execute(
@@ -722,6 +815,7 @@ class SecurityRepository:
         storage_path: str,
         kind: str,
         mime_type: str,
+        content_sha256: str | None = None,
         file_id: str | None = None,
         created_at: int | None = None,
     ) -> UserFile:
@@ -731,6 +825,7 @@ class SecurityRepository:
             storage_path=storage_path,
             kind=kind,
             mime_type=mime_type,
+            content_sha256=content_sha256,
             created_at=created_at or int(time.time()),
         )
         self.session.add(entry)

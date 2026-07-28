@@ -256,6 +256,25 @@ export default function AdminOrdersPage() {
                                                     </p>
                                                 ) : null}
 
+                                                {/* Sits directly above the receipts it is talking about — this is
+                                                    the one thing on the row that argues against approving. */}
+                                                {order.duplicateProofs && order.duplicateProofs.length > 0 ? (
+                                                    <div className="mb-3 flex gap-2 rounded-lg border border-error/40 bg-error/5 p-3 text-error">
+                                                        <span className="material-symbols-outlined text-[18px] leading-none">warning</span>
+                                                        <div className="font-body-sm">
+                                                            <p className="font-medium">This receipt was already submitted.</p>
+                                                            <ul className="mt-1 space-y-0.5">
+                                                                {order.duplicateProofs.map((dup) => (
+                                                                    <li key={dup.orderId} className="font-code-sm text-[11px]">
+                                                                        order {dup.orderId} — {dup.status},{" "}
+                                                                        {new Date(dup.createdAt * 1000).toLocaleDateString()}
+                                                                    </li>
+                                                                ))}
+                                                            </ul>
+                                                        </div>
+                                                    </div>
+                                                ) : null}
+
                                                 {/* Proofs. Admin auth is a same-origin cookie, so these load directly. */}
                                                 {order.proofFileIds.length > 0 ? (
                                                     <div className="flex flex-wrap gap-3 mb-1">

@@ -380,6 +380,12 @@ class UserFile(Base):
     storage_path: Mapped[str] = mapped_column(Text, nullable=False)
     kind: Mapped[str] = mapped_column(String(32), nullable=False)
     mime_type: Mapped[str] = mapped_column(String(128), nullable=False)
+    # SHA-256 of the stored bytes. Only written for payment proofs, where it
+    # answers "have we seen this exact receipt before?" — the same image can
+    # otherwise be submitted on order after order with nothing to notice it by.
+    # Nullable because files predating the column have no hash and must not be
+    # mistaken for duplicates of each other.
+    content_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
 
     user: Mapped[User] = relationship(back_populates="files")
@@ -391,6 +397,7 @@ class UserFile(Base):
         ),
         Index("ix_user_files_owner_uid_created_at", "owner_uid", "created_at"),
         Index("ix_user_files_storage_path", "storage_path", unique=True),
+        Index("ix_user_files_kind_content_sha256", "kind", "content_sha256"),
     )
 
 

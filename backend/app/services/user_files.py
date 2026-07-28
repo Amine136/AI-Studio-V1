@@ -231,12 +231,20 @@ def create_uploaded_user_file_record(owner_uid: str, filename: str, mime_type: s
     )
 
 
-def create_payment_proof_file_record(owner_uid: str, filename: str, mime_type: str) -> str:
+def create_payment_proof_file_record(
+    owner_uid: str,
+    filename: str,
+    mime_type: str,
+    content_sha256: str | None = None,
+) -> str:
+    """Record a receipt. `content_sha256` is what makes a re-submitted receipt
+    visible to the reviewer — see `find_duplicate_proof_orders`."""
     return _create_user_file_record(
         owner_uid=owner_uid,
         storage_path=filename,
         kind="payment_proof",
         mime_type=mime_type,
+        content_sha256=content_sha256,
     )
 
 
@@ -268,7 +276,14 @@ def load_payment_proof_file(file_id: str) -> tuple[dict[str, Any], Path]:
         }, filepath
 
 
-def _create_user_file_record(*, owner_uid: str, storage_path: str, kind: str, mime_type: str) -> str:
+def _create_user_file_record(
+    *,
+    owner_uid: str,
+    storage_path: str,
+    kind: str,
+    mime_type: str,
+    content_sha256: str | None = None,
+) -> str:
     with session_scope() as session:
         repo = SecurityRepository(session)
         entry = repo.create_user_file(
@@ -276,6 +291,7 @@ def _create_user_file_record(*, owner_uid: str, storage_path: str, kind: str, mi
             storage_path=storage_path,
             kind=kind,
             mime_type=mime_type,
+            content_sha256=content_sha256,
         )
         return str(entry.id)
 

@@ -404,8 +404,24 @@ class Config:
         self.signup_bonus_validity_seconds = int(os.getenv("SIGNUP_BONUS_VALIDITY_SECONDS", str(7 * 24 * 60 * 60)))
 
         # Manual (Tunisian) checkout. Account details are static constants at the
-        # top of this module; only the abuse cap is tunable per environment.
+        # top of this module; only the abuse caps are tunable per environment.
+        #
+        # Two caps, doing different jobs. The open cap bounds the REVIEW QUEUE —
+        # how much one account can put in front of a human at once — and clears as
+        # soon as those orders are resolved. The weekly cap bounds TOTAL VOLUME
+        # over a rolling 7 days regardless of outcome, so an account cannot cycle
+        # "submit 3, get refused, submit 3 more" indefinitely.
         self.max_open_credit_orders = int(os.getenv("MAX_OPEN_CREDIT_ORDERS", "3"))
+        self.max_credit_orders_per_week = int(os.getenv("MAX_CREDIT_ORDERS_PER_WEEK", "10"))
+
+        # How long a payment proof survives after its order is resolved. Proofs on
+        # PENDING orders are never swept, whatever this is set to — a reviewer must
+        # always be able to see what they are approving.
+        #
+        # This is the number that replaces "kept forever". It is a data-retention
+        # decision, not a disk one: these files are customer bank receipts. 0
+        # disables the sweep and restores the old keep-everything behaviour.
+        self.payment_proof_retention_days = int(os.getenv("PAYMENT_PROOF_RETENTION_DAYS", "90"))
 
         # System model settings used for the intent-analysis step.
         self.system_llm_provider = os.getenv("SYSTEM_LLM_PROVIDER", "google-gemini")

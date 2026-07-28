@@ -321,12 +321,21 @@ export interface CreditOrderListResponse {
   orders: CreditOrder[];
 }
 
+/** Another order carrying a receipt with the same bytes as this one's. */
+export interface DuplicateProofRef {
+  orderId: string;
+  status: CreditOrderStatus;
+  createdAt: number;
+}
+
 export interface AdminCreditOrder extends CreditOrder {
   uid: string;
   userEmail: string;
   userDisplayName: string;
   resolvedByEmail: string;
   proofFileIds: string[];
+  /** Admin-only: the buyer's own CreditOrder never carries this. */
+  duplicateProofs: DuplicateProofRef[];
 }
 
 export interface AdminCreditOrderListResponse {

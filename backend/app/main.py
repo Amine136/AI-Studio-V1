@@ -3,6 +3,7 @@ import re
 import secrets
 import json
 import base64
+import hashlib
 import logging
 import sys
 import time
@@ -634,6 +635,7 @@ def dependency_health_check():
 @app.on_event("startup")
 def cleanup_uploaded_images_on_startup():
     _cleanup_expired_uploaded_images()
+    _cleanup_expired_payment_proofs()
     catalog_store.initialize()
     preload_security_store()
     # Announce the email transport mode: DRY-RUN is silent-by-design, so without
@@ -1693,6 +1695,11 @@ async def place_credit_order(
 
     _enforce_upload_limits(request, str(user["uid"]))
 
+    # Sweep expired receipts from the path that creates them, the same way the
+    # upload endpoint sweeps expired uploads. Startup alone would mean the
+    # retention window only advances when the backend restarts.
+    _cleanup_expired_payment_proofs()
+
     # Read and validate every file BEFORE writing any of them, so a rejected
     # second file never leaves the first one orphaned on disk.
     validated: list[tuple[str, bytes]] = []
@@ -1709,10 +1716,20 @@ async def place_credit_order(
             raise HTTPException(status_code=400, detail="Uploaded file content does not match its declared type")
         validated.append((detected_type, file_bytes))
 
+    # A re-submitted receipt is NOT rejected here — a buyer refused over a wrong
+    # amount may legitimately re-send the same correct receipt. The hash is what
+    # lets the reviewer see it happened; the decision stays theirs.
     file_ids: list[str] = []
     for mime_type, file_bytes in validated:
         filename = _save_payment_proof_bytes(mime_type, file_bytes)
-        file_ids.append(create_payment_proof_file_record(str(user["uid"]), filename, mime_type))
+        file_ids.append(
+            create_payment_proof_file_record(
+                str(user["uid"]),
+                filename,
+                mime_type,
+                hashlib.sha256(file_bytes).hexdigest(),
+            )
+        )
 
     try:
         order = create_credit_order(
@@ -1736,6 +1753,16 @@ async def place_credit_order(
         # to reach them — drop them rather than leaking disk.
         for file_id in file_ids:
             delete_private_user_file_by_id(file_id)
+        if str(exc) == "TOO_MANY_ORDERS_THIS_WEEK":
+            # Deliberately worded differently from the open-orders case below:
+            # this one does not clear when a reviewer works through the queue.
+            raise HTTPException(
+                status_code=429,
+                detail=(
+                    f"You have reached the limit of {settings.max_credit_orders_per_week} orders per week. "
+                    "Please try again in a few days, or contact us on WhatsApp if you need more."
+                ),
+            ) from exc
         if str(exc) == "TOO_MANY_OPEN_ORDERS":
             raise HTTPException(
                 status_code=429,
@@ -3859,6 +3886,50 @@ def _cleanup_expired_uploaded_images() -> None:
             except OSError:
                 pass
             repo.delete_user_file(entry)
+
+
+def _cleanup_expired_payment_proofs() -> None:
+    """Drop receipts whose order was resolved longer ago than the retention window.
+
+    Keyed on the ORDER's `resolved_at`, never the file's `created_at`: a pending
+    order is a live review item however old its upload is, and a reviewer must
+    always be able to see what they are approving.
+
+    Only the bytes and the `user_files` row go — deleting that row also drops the
+    `credit_order_proofs` link through the DB-level cascade. The `credit_orders`
+    row itself (plan, price, who approved it, which code) is the financial record
+    and is never touched here, which is why `CreditOrderProof` still keeps proofs
+    out of the 30-day upload reaper.
+    """
+    retention_days = int(settings.payment_proof_retention_days)
+    if retention_days <= 0:
+        # 0 restores the original keep-forever behaviour, for a business that
+        # wants every receipt on file.
+        return
+
+    cutoff = int(time.time()) - (retention_days * 24 * 60 * 60)
+    removed = 0
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        for entry in repo.list_payment_proofs_for_orders_resolved_before(resolved_before=cutoff):
+            filepath = PAYMENT_PROOFS_DIR / str(entry.storage_path)
+            try:
+                filepath.unlink(missing_ok=True)
+            except OSError:
+                # A file we cannot unlink still loses its row: keeping the row
+                # would mean retrying this forever, and the row is the only thing
+                # that makes those bytes reachable through the proof routes.
+                logger.warning("[proofs] could not unlink expired payment proof %s", filepath)
+            repo.delete_user_file(entry)
+            removed += 1
+
+    if removed:
+        logger.info(
+            "[proofs] swept %s payment proof(s) for orders resolved before %s (retention=%sd)",
+            removed,
+            cutoff,
+            retention_days,
+        )
 
 
 def _verify_uploaded_image_cleanup_health() -> None:
