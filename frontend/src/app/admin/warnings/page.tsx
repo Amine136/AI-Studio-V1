@@ -132,11 +132,13 @@ export default function AdminWarningsPage() {
     }
 
     return (
-        <main className="flex-1 overflow-y-auto p-6 custom-scrollbar relative">
+        /* overflow-x-hidden keeps the decorative blur blobs at the foot of this file
+           from widening the page on phones -- they are wider than a 360px viewport. */
+        <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-6 custom-scrollbar relative">
             {/* Header Section */}
-            <section className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10 max-w-[1440px] mx-auto">
+            <section className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8 sm:mb-10 max-w-[1440px] mx-auto">
                 <div>
-                    <div className="flex items-center gap-4 mb-2">
+                    <div className="flex flex-wrap items-center gap-3 sm:gap-4 mb-2">
                         <h2 className="font-headline-lg text-headline-lg text-primary">Admin Warnings</h2>
                         <span className="px-2 py-1 bg-primary/10 border border-primary/20 text-primary text-[10px] font-bold rounded uppercase tracking-tighter">Critical View</span>
                     </div>
@@ -147,8 +149,8 @@ export default function AdminWarningsPage() {
             {/* Content Canvas */}
             <div className="space-y-8 max-w-[1440px] mx-auto">
                 {/* Catalog Warnings Section */}
-                <section className="nebula-glass rounded-2xl p-6">
-                    <div className="flex items-center justify-between mb-6 pb-4 border-b border-outline-variant">
+                <section className="nebula-glass rounded-2xl p-4 sm:p-6">
+                    <div className="flex flex-wrap items-center gap-3 justify-between mb-6 pb-4 border-b border-outline-variant">
                         <div className="flex items-center gap-2">
                             <span className="material-symbols-outlined text-error">inventory_2</span>
                             <h3 className="font-title-md text-title-md text-on-surface">Catalog Warnings</h3>
@@ -163,12 +165,12 @@ export default function AdminWarningsPage() {
                         ) : (
                             catalogWarnings.map(warning => (
                                 <div key={`${warning.task}-${warning.model}`} className="group bg-surface-container-high border-l-4 border-l-secondary rounded-lg p-5 border border-outline-variant hover:bg-surface-bright transition-all">
-                                    <div className="flex items-start gap-4">
+                                    <div className="flex items-start gap-4 min-w-0">
                                         <div className="w-12 h-12 rounded-lg overflow-hidden bg-background flex items-center justify-center shrink-0 border border-outline-variant">
                                             <span className="material-symbols-outlined text-secondary opacity-70 group-hover:scale-110 transition-transform">image</span>
                                         </div>
-                                        <div className="flex-1">
-                                            <div className="flex items-center gap-3 mb-1">
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex flex-wrap items-center gap-3 mb-1">
                                                 <span className="px-1.5 py-0.5 bg-secondary/10 text-secondary border border-secondary/20 rounded text-[9px] font-bold tracking-widest uppercase">{warning.task}</span>
                                                 <h5 className="font-bold text-on-surface text-lg">{warning.display_name || warning.model}</h5>
                                             </div>
@@ -198,8 +200,8 @@ export default function AdminWarningsPage() {
                     </div>
                 </section>
 
-                <section className="nebula-glass rounded-2xl p-6">
-                    <div className="flex items-center justify-between mb-6 pb-4 border-b border-outline-variant">
+                <section className="nebula-glass rounded-2xl p-4 sm:p-6">
+                    <div className="flex flex-wrap items-center gap-3 justify-between mb-6 pb-4 border-b border-outline-variant">
                         <div className="flex items-center gap-2">
                             <span className="material-symbols-outlined text-primary">analytics</span>
                             <h3 className="font-title-md text-title-md text-on-surface">Warnings Overview</h3>
@@ -210,7 +212,7 @@ export default function AdminWarningsPage() {
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                         {/* Admin Auth Events */}
                         <div className="bg-surface-container-low rounded-lg border border-outline-variant p-5">
-                            <div className="flex items-center justify-between mb-4">
+                            <div className="flex flex-wrap items-start gap-3 justify-between mb-4">
                                 <div>
                                     <h4 className="font-bold text-on-surface">Admin Auth Events</h4>
                                     <p className="text-xs text-on-surface-variant mt-0.5">Successful sign-ins, lockouts, and critical deactivations</p>
@@ -275,7 +277,7 @@ export default function AdminWarningsPage() {
 
                         {/* Admin Wrong Password Counts */}
                         <div className="bg-surface-container-low rounded-lg border border-outline-variant p-5 flex flex-col">
-                            <div className="flex items-center justify-between mb-4">
+                            <div className="flex flex-wrap items-start gap-3 justify-between mb-4">
                                 <div>
                                     <h4 className="font-bold text-on-surface">Admin Wrong Password Counts</h4>
                                     <p className="text-xs text-on-surface-variant mt-0.5">Aggregated failed-password counts for real admin usernames</p>

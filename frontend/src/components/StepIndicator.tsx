@@ -1,5 +1,7 @@
 "use client";
 
+import { useLanguage } from "../context/LanguageContext";
+
 interface StepIndicatorProps {
     currentStep: "INPUT" | "REVIEW" | "RESULT";
 }
@@ -11,6 +13,7 @@ const steps = [
 ] as const;
 
 export default function StepIndicator({ currentStep }: StepIndicatorProps) {
+    const { t } = useLanguage();
     const currentIndex = steps.findIndex((s) => s.key === currentStep);
 
     return (
@@ -41,16 +44,17 @@ export default function StepIndicator({ currentStep }: StepIndicatorProps) {
                                 className={`text-[11px] sm:text-xs font-medium tracking-wide transition-colors duration-300 ${isActive ? "text-white" : isCompleted ? "text-green-400" : "text-gray-500"
                                     }`}
                             >
-                                {step.label}
+                                {t(step.label)}
                             </span>
                         </div>
 
-                        {/* Connector line */}
+                        {/* Connector line. Logical inset so it fills from the
+                            reading-start edge in Arabic too. */}
                         {i < steps.length - 1 && (
                             <div className="w-10 sm:w-24 h-px mx-2 sm:mx-3 mb-6 relative">
                                 <div className="absolute inset-0 bg-white/10 rounded-full" />
                                 <div
-                                    className={`absolute inset-y-0 left-0 rounded-full transition-all duration-500 ${isCompleted ? "w-full bg-green-500/50" : "w-0"
+                                    className={`absolute inset-y-0 start-0 rounded-full transition-all duration-500 ${isCompleted ? "w-full bg-green-500/50" : "w-0"
                                         }`}
                                 />
                             </div>

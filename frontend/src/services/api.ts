@@ -9,9 +9,6 @@ import {
   AdminGenerationJobListResponse,
   AdminModelVisibilityResponse,
   AdminUserListResponse,
-  DashboardNewsListResponse,
-  DashboardNewsItem,
-  DashboardNewsUpsertRequest,
   GenerateRequest,
   GenerationResult,
   PlainChatConversationCreateRequest,
@@ -27,6 +24,12 @@ import {
   CreditActivityListResponse,
   CreditBreakdown,
   CreditLedgerListResponse,
+  CheckoutConfig,
+  CreditOrder,
+  CreditOrderListResponse,
+  CreditOrderStatus,
+  AdminCreditOrder,
+  AdminCreditOrderListResponse,
   UserNotificationPreferencesUpdateRequest,
   UserProfileUpdateRequest,
   ProfileCompletionRequest,
@@ -386,6 +389,58 @@ export const api = {
     return res.data;
   },
 
+  getCheckoutConfig: async (): Promise<CheckoutConfig> => {
+    const res = await client.get('/credits/checkout-config');
+    return res.data;
+  },
+
+  getCreditOrders: async (): Promise<CreditOrderListResponse> => {
+    const res = await client.get('/credits/orders');
+    return res.data;
+  },
+
+  placeCreditOrder: async (payload: {
+    planId: string;
+    paymentMethod: string;
+    note: string;
+    proofs: File[];
+  }): Promise<CreditOrder> => {
+    // Multipart, so this bypasses the axios client and re-attaches the headers by
+    // hand — same shape as uploadInputImage. Do NOT set Content-Type: the browser
+    // has to pick the multipart boundary itself.
+    try {
+      const formData = new FormData();
+      formData.append('plan_id', payload.planId);
+      formData.append('payment_method', payload.paymentMethod);
+      formData.append('note', payload.note);
+      payload.proofs.forEach((file) => formData.append('proofs', file));
+
+      const user = auth.currentUser;
+      const headers: Record<string, string> = {
+        'X-API-Key': process.env.NEXT_PUBLIC_API_KEY || '',
+      };
+      if (user) {
+        headers.Authorization = `Bearer ${await user.getIdToken()}`;
+      }
+
+      const res = await fetch(`${API_BASE}/credits/orders`, {
+        method: 'POST',
+        headers,
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        const detail = typeof data?.detail === 'string' ? data.detail : 'Could not place this order';
+        throw new Error(detail);
+      }
+      return data;
+    } catch (error) {
+      if (shouldLogApiError(error)) console.error("Order Error:", error);
+      throw normalizeApiError(error);
+    }
+  },
+
   addHistoryEntry: async (payload: {
     imageUrl?: string;
     caption?: string;
@@ -393,11 +448,6 @@ export const api = {
     model: string;
   }) => {
     const res = await client.post('/history', payload);
-    return res.data;
-  },
-
-  getDashboardNews: async (): Promise<DashboardNewsListResponse> => {
-    const res = await client.get('/dashboard-news');
     return res.data;
   },
 
@@ -514,11 +564,6 @@ export const api = {
     return res.data;
   },
 
-  getAdminDashboardNews: async (): Promise<DashboardNewsListResponse> => {
-    const res = await client.get('/admin/dashboard-news');
-    return res.data;
-  },
-
   getAdminFeedback: async (status?: FeedbackStatus): Promise<FeedbackListResponse> => {
     const res = await client.get('/admin/feedback', { params: status ? { status } : undefined });
     return res.data;
@@ -529,18 +574,39 @@ export const api = {
     return res.data;
   },
 
-  createAdminDashboardNews: async (payload: DashboardNewsUpsertRequest): Promise<DashboardNewsItem> => {
-    const res = await client.post('/admin/dashboard-news', payload);
+  getAdminCreditOrders: async (status?: CreditOrderStatus): Promise<AdminCreditOrderListResponse> => {
+    const res = await client.get('/admin/orders', { params: status ? { status } : undefined });
     return res.data;
   },
 
-  updateAdminDashboardNews: async (itemId: string, payload: DashboardNewsUpsertRequest): Promise<DashboardNewsItem> => {
-    const res = await client.patch(`/admin/dashboard-news/${itemId}`, payload);
-    return res.data;
+  acceptAdminCreditOrder: async (
+    orderId: string,
+    code: string,
+    confirmMismatch = false,
+  ): Promise<AdminCreditOrder> => {
+    try {
+      const res = await client.post(`/admin/orders/${orderId}/accept`, { code, confirmMismatch });
+      return res.data;
+    } catch (error) {
+      const detail = extractErrorMessage(error);
+      if (detail) {
+        throw new Error(detail);
+      }
+      throw error;
+    }
   },
 
-  deleteAdminDashboardNews: async (itemId: string): Promise<void> => {
-    await client.delete(`/admin/dashboard-news/${itemId}`);
+  refuseAdminCreditOrder: async (orderId: string, reason: string): Promise<AdminCreditOrder> => {
+    try {
+      const res = await client.post(`/admin/orders/${orderId}/refuse`, { reason });
+      return res.data;
+    } catch (error) {
+      const detail = extractErrorMessage(error);
+      if (detail) {
+        throw new Error(detail);
+      }
+      throw error;
+    }
   },
 
   createAdminCode: async (credits: number, maxClaims: number, validityDays = 0, validityHours = 0) => {

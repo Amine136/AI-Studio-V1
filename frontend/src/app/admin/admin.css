@@ -116,6 +116,213 @@
     box-shadow: 0 0 15px rgba(128, 131, 255, 0.4);
     opacity: 0.9;
 }
-.news-card:hover {
-    border-color: #c0c1ff;
+
+/* =============================================================
+   MOBILE SHELL — bottom tab bar + "More" sheet (below lg)
+   Mirrors the user app's mobile navigation idiom, but every rule is
+   scoped to .admin-root and defined here rather than reusing the
+   .app-bottom-nav classes from globals.css: the admin panel is on the
+   Nebula palette, not the app's slate/blue, and this keeps the two
+   shells independent.
+   ============================================================= */
+.admin-root {
+    --admin-nav-h: 3.75rem; /* 60px of content; the safe-area inset is added on top */
+    --admin-safe-b: env(safe-area-inset-bottom, 0px);
+}
+
+.admin-root .admin-bottom-nav {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    z-index: 50;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    width: 100%;
+    height: calc(var(--admin-nav-h) + var(--admin-safe-b));
+    padding-bottom: var(--admin-safe-b);
+    border-top: 1px solid rgba(144, 143, 160, 0.18);
+    background: rgba(19, 27, 46, 0.96);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+}
+
+/* Each cell is a full-height touch target (~72 x 60px at 360px wide), so the
+   label never has to be the thing you aim at. */
+.admin-root .admin-bottom-nav__item {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    height: var(--admin-nav-h);
+    color: #908fa0;
+    transition: color 160ms ease;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.admin-root .admin-bottom-nav__item:active {
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.admin-root .admin-bottom-nav__item--active {
+    color: #c0c1ff;
+}
+
+.admin-root .admin-bottom-nav__label {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+}
+
+/* Clearance for content sitting above the fixed bar. */
+.admin-root .admin-nav-clear {
+    padding-bottom: calc(var(--admin-nav-h) + var(--admin-safe-b) + 0.5rem);
+}
+
+.admin-root .admin-sheet-layer {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+}
+
+.admin-root .admin-sheet__scrim {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    background: rgba(6, 14, 32, 0.6);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+    animation: admin-sheet-fade 180ms ease-out;
+}
+
+.admin-root .admin-sheet {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    padding: 0.5rem 0.75rem calc(1rem + var(--admin-safe-b));
+    border-top: 1px solid rgba(144, 143, 160, 0.18);
+    border-radius: 1rem 1rem 0 0;
+    background: #131b2e;
+    animation: admin-sheet-up 240ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.admin-root .admin-sheet__grab {
+    width: 2.25rem;
+    height: 0.25rem;
+    margin: 0.25rem auto 0.75rem;
+    border-radius: 9999px;
+    background: #464554;
+}
+
+.admin-root .admin-sheet__row {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.875rem 0.75rem;
+    border-radius: 0.5rem;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 13px;
+    text-align: left;
+    color: #c7c4d7;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.admin-root .admin-sheet__row:active {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.admin-root .admin-sheet__row--active {
+    background: #8083ff;
+    color: #0d0096;
+    font-weight: 700;
+}
+
+@keyframes admin-sheet-up {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+}
+
+@keyframes admin-sheet-fade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .admin-root .admin-sheet,
+    .admin-root .admin-sheet__scrim {
+        animation: none;
+    }
+}
+
+/* From lg the desktop rail takes over. This must be a media query rather than
+   `lg:hidden` on the element: Tailwind utilities sit in @layer utilities and
+   lose to the unlayered `display: grid` above. */
+@media (min-width: 1024px) {
+    .admin-root .admin-bottom-nav,
+    .admin-root .admin-sheet-layer {
+        display: none;
+    }
+
+    .admin-root .admin-nav-clear {
+        padding-bottom: 0;
+    }
+}
+
+/* =============================================================
+   RESPONSIVE PAGE HELPERS
+   ============================================================= */
+
+/* Wide data tables stay tabular and scroll sideways inside their own card
+   rather than stretching the page. Each table carries its own min-w-[…] so its
+   columns keep their shape instead of collapsing into unreadable slivers --
+   the widths differ too much per page for one number to fit all of them. */
+.admin-root .admin-table-scroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scrollbar-color: #464554 transparent;
+}
+
+/* A permanently visible bar, not the overlay one: on a phone the columns past
+   the fold are otherwise invisible until you happen to swipe. */
+.admin-root .admin-table-scroll::-webkit-scrollbar {
+    height: 6px;
+}
+
+.admin-root .admin-table-scroll::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.admin-root .admin-table-scroll::-webkit-scrollbar-thumb {
+    background: #464554;
+    border-radius: 10px;
+}
+
+/* Says out loud what the scrollbar only hints at. Hidden from lg up, not sm: the
+   widest tables are min-w-[56rem]/[60rem] and still need the swipe well past
+   640px, so hiding it earlier would drop the hint while it is still true. */
+.admin-root .admin-table-hint {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding-bottom: 0.5rem;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #908fa0;
+}
+
+@media (min-width: 1024px) {
+    .admin-root .admin-table-hint {
+        display: none;
+    }
 }

@@ -30,6 +30,107 @@ CREATE_FLOW_TEXT_PARAM_KEYS = {
     "promptCacheKey",
 }
 
+# The credit packs a user can order. Server-authoritative on purpose: the client
+# only ever sends a plan id, and the order snapshots credits/price from here, so a
+# tampered request can never make an admin approve a number the user invented.
+# `price_minor` is millimes (TND has 3 decimals): 15000 = 15.000 DT.
+CREDIT_PLANS = [
+    {"id": "starter", "name": "Starter", "credits": 10.0, "price_minor": 15000, "currency": "TND"},
+    {"id": "pro", "name": "Pro", "credits": 35.0, "price_minor": 39000, "currency": "TND"},
+    {"id": "ultra", "name": "Ultra", "credits": 70.0, "price_minor": 69000, "currency": "TND"},
+]
+
+CREDIT_PLANS_BY_ID = {plan["id"]: plan for plan in CREDIT_PLANS}
+
+# ---------------------------------------------------------------------------
+# Where customers send the money.
+#
+# Static on purpose: these are the business's own published account details, they
+# change about never, and keeping them here means the checkout page is complete
+# straight out of a deploy. Fill each value in once and it shows up everywhere.
+#
+# These are LIVE account details — customers send real money to them. Treat any
+# edit here as a payment change: the IBAN's mod-97 checksum and the Flouci number
+# are the two values that lose money silently when mistyped.
+# ---------------------------------------------------------------------------
+PAYMENT_ACCOUNT_HOLDER = "Mohamed Amine Ouni"              # full name on the account
+PAYMENT_FLOUCI_PHONE = "27 666 467"                        # Flouci number, local format
+PAYMENT_BANK_IBAN = "TN59 24 031 122 2342 511101 75"       # as printed on the RIB
+PAYMENT_BANK_BIC = "BTEXTNTT"                              # BIC / SWIFT
+PAYMENT_BANK_NAME = "BTE"                                  # bank name
+PAYMENT_WHATSAPP_NUMBER = "+216 48 190 039"                # country code + number
+
+# Payment rails offered at checkout. `available` false renders the option locked
+# ("coming soon") in the UI and is rejected server-side. International card
+# payment stays locked until the automatic flow (incl. auto-redemption) is built.
+#
+# `primary_value` is the one string a customer copies (account number / IBAN);
+# `meta` is the supporting line under it. Blank values are hidden by the UI, so a
+# half-configured method degrades to just its name rather than showing gaps.
+PAYMENT_METHODS = [
+    {
+        "id": "flouci",
+        "group": "tunisia",
+        "available": True,
+        "label": "Flouci",
+        "icon": "smartphone",
+        "primary_label": "Number",
+        "primary_value": PAYMENT_FLOUCI_PHONE,
+        "meta": [m for m in ("Flouci app", PAYMENT_ACCOUNT_HOLDER) if m],
+    },
+    {
+        "id": "bank_transfer",
+        "group": "tunisia",
+        "available": True,
+        "label": "Bank transfer / RIB",
+        "icon": "account_balance",
+        "primary_label": "IBAN",
+        "primary_value": PAYMENT_BANK_IBAN,
+        "meta": [
+            m
+            for m in (
+                f"BIC: {PAYMENT_BANK_BIC}" if PAYMENT_BANK_BIC else "",
+                PAYMENT_BANK_NAME,
+                PAYMENT_ACCOUNT_HOLDER,
+            )
+            if m
+        ],
+    },
+    {
+        "id": "d17",
+        "group": "tunisia",
+        "available": False,
+        "label": "D17",
+        "icon": "credit_card",
+        "primary_label": "Number",
+        "primary_value": "",
+        "meta": [],
+    },
+    {
+        "id": "edinar_post",
+        "group": "tunisia",
+        "available": False,
+        "label": "E-dinar Post",
+        "icon": "local_post_office",
+        "primary_label": "Account",
+        "primary_value": "",
+        "meta": [],
+    },
+    {
+        "id": "international_card",
+        "group": "international",
+        "available": False,
+        "label": "International cards",
+        "icon": "credit_card",
+        "primary_label": "",
+        "primary_value": "",
+        "meta": [],
+    },
+]
+
+PAYMENT_METHODS_BY_ID = {m["id"]: m for m in PAYMENT_METHODS}
+AVAILABLE_PAYMENT_METHOD_IDS = {m["id"] for m in PAYMENT_METHODS if m["available"]}
+
 
 class Config:
     def __init__(self):
@@ -139,6 +240,39 @@ class Config:
                 "$0 fake provider and are NOT billed.",
                 self.app_env,
             )
+        # Manual credit orders can also be reviewed from a private Discord
+        # channel. No bot token => the whole thing is a no-op that only logs, so
+        # the flow is testable before the bot exists.
+        #
+        # SECURITY: there is deliberately no way to MINT a code from Discord —
+        # approving requires typing a code that was already generated in the web
+        # admin panel. A stolen Discord account can therefore attach existing
+        # codes, but cannot create credits. See services/discord_orders.py.
+        self.discord_bot_token = os.getenv("DISCORD_BOT_TOKEN", "").strip()
+        self.discord_public_key = os.getenv("DISCORD_PUBLIC_KEY", "").strip()
+        self.discord_channel_id = os.getenv("DISCORD_CHANNEL_ID", "").strip()
+        self.discord_guild_id = os.getenv("DISCORD_GUILD_ID", "").strip()
+        # Comma-separated so a second reviewer can be added without a code change.
+        self.discord_admin_ids = {
+            part.strip()
+            for part in os.getenv("DISCORD_ADMIN_ID", "").split(",")
+            if part.strip()
+        }
+        self.discord_timeout = float(os.getenv("DISCORD_TIMEOUT", "15"))
+        # Proof-of-payment links in a card are HMAC-signed and expire, so
+        # scrolling back through channel history does not hand over a pile of
+        # customer receipts. Falls back to the admin session secret so staging
+        # works before a dedicated one is provisioned (same idiom as
+        # EMAIL_UNSUBSCRIBE_SECRET above).
+        self.discord_proof_secret = (
+            os.getenv("DISCORD_PROOF_SECRET", "").strip()
+            or os.getenv("ADMIN_SESSION_SECRET", "").strip()
+        )
+        try:
+            self.discord_proof_link_ttl = max(300, int(os.getenv("DISCORD_PROOF_LINK_TTL", "86400")))
+        except ValueError:
+            self.discord_proof_link_ttl = 86400
+
         self.admin_session_secret = os.getenv("ADMIN_SESSION_SECRET", "").strip()
         self.admin_session_cookie_name = os.getenv("ADMIN_SESSION_COOKIE_NAME", "vibecraft_admin_session").strip() or "vibecraft_admin_session"
         self.admin_csrf_cookie_name = os.getenv("ADMIN_CSRF_COOKIE_NAME", "vibecraft_admin_csrf").strip() or "vibecraft_admin_csrf"
@@ -268,6 +402,10 @@ class Config:
         # SIGNUP_BONUS_CREDITS to 0 to disable the bonus entirely.
         self.signup_bonus_credits = float(os.getenv("SIGNUP_BONUS_CREDITS", "1.0"))
         self.signup_bonus_validity_seconds = int(os.getenv("SIGNUP_BONUS_VALIDITY_SECONDS", str(7 * 24 * 60 * 60)))
+
+        # Manual (Tunisian) checkout. Account details are static constants at the
+        # top of this module; only the abuse cap is tunable per environment.
+        self.max_open_credit_orders = int(os.getenv("MAX_OPEN_CREDIT_ORDERS", "3"))
 
         # System model settings used for the intent-analysis step.
         self.system_llm_provider = os.getenv("SYSTEM_LLM_PROVIDER", "google-gemini")

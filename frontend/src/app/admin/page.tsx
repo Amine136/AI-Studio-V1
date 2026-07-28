@@ -115,7 +115,7 @@ export default function AdminPage() {
     };
 
     return (
-        <main className="flex-1 overflow-y-auto p-6 custom-scrollbar relative">
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 custom-scrollbar relative">
             <div className="max-w-[1440px] mx-auto space-y-6">
                 {/* Summary Stats */}
                 <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -215,8 +215,9 @@ export default function AdminPage() {
                             </h3>
                             <button onClick={() => router.push("/admin/users")} className="text-primary font-label-caps text-[11px] hover:underline">View All</button>
                         </div>
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-left">
+                        <p className="admin-table-hint"><span className="material-symbols-outlined text-[13px]">swipe_left</span>Swipe the table sideways for more columns</p>
+                        <div className="overflow-x-auto admin-table-scroll">
+                            <table className="w-full min-w-[30rem] text-left">
                                 <thead>
                                     <tr className="bg-surface-container-high/30">
                                         <th className="px-6 py-3 font-label-caps text-label-caps text-on-surface-variant uppercase text-[10px]">User</th>
@@ -296,11 +297,11 @@ export default function AdminPage() {
                     {warnings.map((warning) => (
                         <div key={`${warning.task}-${warning.model}`} className="lg:col-span-12 glass-panel rounded-lg p-6 border-l-4 border-error/80 bg-error-container/5 relative overflow-hidden group hover:border-error transition-colors" style={{ boxShadow: "none" }}>
                             <div className="absolute right-0 top-0 w-32 h-32 bg-error/5 rounded-full blur-3xl group-hover:bg-error/10 transition-colors pointer-events-none"></div>
-                            <div className="flex items-start gap-4 relative z-10">
+                            <div className="flex items-start gap-4 relative z-10 min-w-0">
                                 <div className="w-12 h-12 rounded-lg bg-error/10 flex items-center justify-center text-error flex-shrink-0 shadow-inner">
                                     <span className="material-symbols-outlined text-2xl" style={{ fontVariationSettings: "'FILL' 1" }}>error</span>
                                 </div>
-                                <div className="flex-1">
+                                <div className="flex-1 min-w-0">
                                     <div className="flex justify-between items-center mb-1">
                                         <h3 className="font-title-md text-[18px] text-error font-bold flex items-center gap-2">
                                             Pricing Alert: {warning.task.charAt(0).toUpperCase() + warning.task.slice(1)} Configuration
@@ -323,7 +324,7 @@ export default function AdminPage() {
                                         </span>
                                     </div>
                                     
-                                    <div className="mt-5 flex gap-3">
+                                    <div className="mt-5 flex flex-wrap gap-3">
                                         <button onClick={() => router.push("/admin/warnings")} className="bg-error hover:bg-error/90 text-white shadow-lg shadow-error/20 px-5 py-2 rounded-lg font-label-caps text-[12px] font-bold transition-all flex items-center gap-2 active:scale-[0.98]">
                                             <span className="material-symbols-outlined text-[16px]">manage_search</span>
                                             Resolve Issue

@@ -31,7 +31,8 @@ const primaryItems: NavItem[] = [
 
 // Secondary destinations — a second group on the desktop rail, the "More" sheet on mobile.
 const secondaryItems: NavItem[] = [
-  { href: "/credits", label: "Credits", icon: "account_balance_wallet" },
+  // /credits/buy is the checkout wizard — it must keep Credits highlighted.
+  { href: "/credits", label: "Credits", icon: "account_balance_wallet", matchPrefix: true },
   { href: "/pricing", label: "Pricing", icon: "sell" },
   { href: "/settings", label: "Settings", icon: "tune" },
 ];

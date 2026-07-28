@@ -265,6 +265,75 @@ export interface CreditActivityListResponse {
   entries: CreditActivityEntry[];
 }
 
+export interface CreditPlan {
+  id: string;
+  name: string;
+  credits: number;
+  priceMinor: number;
+  currency: string;
+}
+
+export interface PaymentMethodOption {
+  id: string;
+  group: string;
+  available: boolean;
+  label: string;
+  icon: string;
+  /** The one string a customer copies (account number / IBAN). */
+  primaryLabel: string;
+  primaryValue: string;
+  /** Supporting line under the primary value (BIC, bank, holder). */
+  meta: string[];
+}
+
+export interface CheckoutConfig {
+  plans: CreditPlan[];
+  methods: PaymentMethodOption[];
+  whatsappNumber: string;
+  maxProofFiles: number;
+  maxProofBytes: number;
+  noteMaxLength: number;
+}
+
+export type CreditOrderStatus = "pending" | "accepted" | "refused";
+
+export interface CreditOrder {
+  id: string;
+  planId: string;
+  planName: string;
+  credits: number;
+  priceMinor: number;
+  currency: string;
+  paymentMethod: string;
+  note: string;
+  status: CreditOrderStatus;
+  /** Only present for the order's own owner, once accepted. */
+  code: string;
+  adminMessage: string;
+  /** False on the one response that first reveals a resolved order. */
+  seen: boolean;
+  createdAt: number;
+  updatedAt: number;
+  resolvedAt: number | null;
+}
+
+export interface CreditOrderListResponse {
+  orders: CreditOrder[];
+}
+
+export interface AdminCreditOrder extends CreditOrder {
+  uid: string;
+  userEmail: string;
+  userDisplayName: string;
+  resolvedByEmail: string;
+  proofFileIds: string[];
+}
+
+export interface AdminCreditOrderListResponse {
+  orders: AdminCreditOrder[];
+  total: number;
+}
+
 export interface UserProfileUpdateRequest {
   username: string;
   bio: string;
@@ -284,52 +353,6 @@ export interface UserNotificationPreferencesUpdateRequest {
   // one-time card answered (Save or Skip).
   preferredLanguage?: string;
   preferencesPrompted?: boolean;
-}
-
-export type DashboardNewsTone = "blue" | "purple" | "slate";
-export type DashboardNewsBadge = "AI News" | "Platform Updates" | "New Features";
-
-export interface DashboardNewsItem {
-  id: string;
-  badge: DashboardNewsBadge;
-  when: string;
-  title: string;
-  titleFr?: string;
-  titleAr?: string;
-  description: string;
-  descriptionFr?: string;
-  descriptionAr?: string;
-  linkLabel: string;
-  linkLabelFr?: string;
-  linkLabelAr?: string;
-  linkHref: string;
-  tone: DashboardNewsTone;
-  sortOrder: number;
-  isActive: boolean;
-  createdAt?: number | null;
-  updatedAt?: number | null;
-}
-
-export interface DashboardNewsListResponse {
-  items: DashboardNewsItem[];
-  total: number;
-}
-
-export interface DashboardNewsUpsertRequest {
-  badge: DashboardNewsBadge;
-  title: string;
-  titleFr?: string;
-  titleAr?: string;
-  description: string;
-  descriptionFr?: string;
-  descriptionAr?: string;
-  linkLabel: string;
-  linkLabelFr?: string;
-  linkLabelAr?: string;
-  linkHref: string;
-  tone: DashboardNewsTone;
-  sortOrder: number;
-  isActive: boolean;
 }
 
 export type FeedbackCategory = "bug" | "idea" | "other";

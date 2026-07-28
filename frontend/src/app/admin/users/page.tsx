@@ -175,10 +175,10 @@ export default function AdminUsersPage() {
     }
 
     return (
-        <main className="flex-1 overflow-y-auto p-6 custom-scrollbar relative">
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 custom-scrollbar relative">
             <div className="max-w-[1440px] mx-auto space-y-6">
                 {/* Hero Section */}
-                <div className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-6">
+                <div className="mb-6 sm:mb-8 flex flex-col md:flex-row md:items-end justify-between gap-6">
                     <div>
                         <div className="flex items-center gap-3 mb-2">
                             <div className="w-12 h-12 rounded-lg bg-primary-container/20 flex items-center justify-center border border-primary/20">
@@ -193,15 +193,15 @@ export default function AdminUsersPage() {
                 {/* Main Data Table Container */}
                 <div className="glass-panel rounded-lg overflow-hidden shadow-2xl">
                     {/* Table Controls */}
-                    <div className="px-6 py-6 border-b border-outline-variant flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div className="px-4 sm:px-6 py-4 sm:py-6 border-b border-outline-variant flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                         <div className="flex items-center gap-3">
                             <h3 className="font-title-md text-title-md text-on-surface">All Users</h3>
                             <span className="bg-secondary-container/20 text-secondary px-3 py-1 rounded-full font-label-caps text-[10px] border border-secondary/30">
                                 {filteredUsers.length} users
                             </span>
                         </div>
-                        <div className="flex items-center gap-4 w-full sm:w-auto">
-                            <div className="flex-1 sm:w-64 relative">
+                        <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+                            <div className="flex-1 basis-full sm:basis-auto sm:w-64 relative">
                                 <input 
                                     value={query}
                                     onChange={(e) => setQuery(e.target.value)}
@@ -213,22 +213,25 @@ export default function AdminUsersPage() {
                             <select 
                                 value={statusFilter}
                                 onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-                                className="bg-surface-container-lowest border border-outline-variant rounded-lg px-4 py-2 text-body-sm focus:ring-2 focus:ring-primary outline-none"
+                                className="flex-1 sm:flex-none bg-surface-container-lowest border border-outline-variant rounded-lg px-4 py-2 text-body-sm focus:ring-2 focus:ring-primary outline-none"
                             >
                                 <option value="all">All users</option>
                                 <option value="active">Active</option>
                                 <option value="suspended">Suspended</option>
                             </select>
-                            <button onClick={exportCsv} className="flex items-center gap-2 bg-primary text-on-primary px-4 py-2 rounded-lg font-label-caps text-label-caps hover:brightness-110 transition-all">
+                            <button onClick={exportCsv} className="flex items-center justify-center gap-2 bg-primary text-on-primary px-4 py-2 rounded-lg font-label-caps text-label-caps hover:brightness-110 transition-all whitespace-nowrap">
                                 <span className="material-symbols-outlined text-sm">download</span>
                                 Export CSV
                             </button>
                         </div>
                     </div>
 
-                    {/* Data Table */}
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left">
+                    {/* Data Table — scrolls sideways inside the card on narrow screens
+                        rather than stretching the page; the suspend control needs the
+                        room a phone can't give it. */}
+                    <p className="admin-table-hint"><span className="material-symbols-outlined text-[13px]">swipe_left</span>Swipe the table sideways for more columns</p>
+                    <div className="overflow-x-auto admin-table-scroll">
+                        <table className="w-full min-w-[60rem] text-left">
                             <thead>
                                 <tr className="bg-surface-container-highest/30">
                                     <th className="px-6 py-4 font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider">User</th>
@@ -305,11 +308,11 @@ export default function AdminUsersPage() {
 
                     {/* Pagination */}
                     {filteredUsers.length > 0 && (
-                        <div className="px-6 py-4 border-t border-outline-variant flex items-center justify-between">
+                        <div className="px-4 sm:px-6 py-4 border-t border-outline-variant flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
                             <p className="font-body-sm text-on-surface-variant text-xs">
                                 Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, filteredUsers.length)} of {filteredUsers.length} users
                             </p>
-                            <div className="flex items-center gap-2">
+                            <div className="flex flex-wrap items-center gap-2">
                                 <button 
                                     disabled={currentPage === 1}
                                     onClick={() => setCurrentPage(p => p - 1)}

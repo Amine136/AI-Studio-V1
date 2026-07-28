@@ -138,8 +138,10 @@ export default function AdminCodesPage() {
     const getCodeSummary = (status: string) => compactSummaries.find(s => s.status === status) || { codeCount: 0, totalCredits: 0, averageCredits: 0 };
 
     const renderBatchTable = (list: AdminCreditCodeBatchItem[], emptyLabel: string) => (
-        <div className="overflow-x-auto">
-            <table className="w-full text-left">
+        <>
+        <p className="admin-table-hint"><span className="material-symbols-outlined text-[13px]">swipe_left</span>Swipe the table sideways for more columns</p>
+        <div className="overflow-x-auto admin-table-scroll">
+            <table className="w-full min-w-[40rem] text-left">
                 <thead>
                     <tr className="font-label-caps text-label-caps text-on-surface-variant">
                         <th className="pb-6">TITLE</th>
@@ -195,6 +197,7 @@ export default function AdminCodesPage() {
                 </tbody>
             </table>
         </div>
+        </>
     );
 
     const handleCreateGiftCode = async () => {
@@ -335,11 +338,11 @@ export default function AdminCodesPage() {
     }
 
     return (
-        <main className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar relative">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-6 lg:p-8 space-y-8 custom-scrollbar relative">
             <div className="max-w-[1440px] mx-auto space-y-8">
                 {/* Header Section */}
                 <section className="flex flex-col gap-2">
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-3 sm:gap-4">
                         <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-primary to-secondary-container flex items-center justify-center">
                             <span className="material-symbols-outlined text-on-primary text-[28px]" style={{ fontVariationSettings: "'FILL' 1" }}>terminal</span>
                         </div>
@@ -359,8 +362,8 @@ export default function AdminCodesPage() {
                 {/* Generation Section (Top Row) */}
                 <section className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                     {/* Gift Code Generator */}
-                    <div className="glass-panel rounded-lg p-6 flex flex-col gap-6">
-                        <div className="flex items-start gap-6">
+                    <div className="glass-panel rounded-lg p-4 sm:p-6 flex flex-col gap-6">
+                        <div className="flex items-start gap-4 sm:gap-6">
                             <div className="w-10 h-10 rounded-lg bg-surface-container-highest flex items-center justify-center text-primary">
                                 <span className="material-symbols-outlined">attach_money</span>
                             </div>
@@ -369,11 +372,11 @@ export default function AdminCodesPage() {
                                 <p className="text-body-sm text-on-surface-variant">Create one redeem code where the first {maxClaims} users receive {credits} credit{credits !== 1 ? "s" : ""}.</p>
                             </div>
                         </div>
-                        <div className="grid grid-cols-2 gap-6">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
                             <div className="flex flex-col gap-2">
                                 <label className="font-label-caps text-label-caps text-on-surface-variant">CREDITS PER USER</label>
                                 <input 
-                                    className="bg-surface-container-lowest border border-outline-variant rounded-lg p-6 text-on-surface focus:border-primary focus:ring-0 outline-none transition-all" 
+                                    className="bg-surface-container-lowest border border-outline-variant rounded-lg p-4 sm:p-6 text-on-surface focus:border-primary focus:ring-0 outline-none transition-all" 
                                     type="number" 
                                     min={1} max={5}
                                     value={credits}
@@ -383,7 +386,7 @@ export default function AdminCodesPage() {
                             <div className="flex flex-col gap-2">
                                 <label className="font-label-caps text-label-caps text-on-surface-variant">MAX USERS</label>
                                 <input 
-                                    className="bg-surface-container-lowest border border-outline-variant rounded-lg p-6 text-on-surface focus:border-primary focus:ring-0 outline-none transition-all" 
+                                    className="bg-surface-container-lowest border border-outline-variant rounded-lg p-4 sm:p-6 text-on-surface focus:border-primary focus:ring-0 outline-none transition-all" 
                                     type="number" 
                                     min={1} max={20}
                                     value={maxClaims}
@@ -391,11 +394,11 @@ export default function AdminCodesPage() {
                                 />
                             </div>
                         </div>
-                        <div className="grid grid-cols-2 gap-6">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
                             <div className="flex flex-col gap-2">
                                 <label className="font-label-caps text-label-caps text-on-surface-variant">VALID FOR (DAYS)</label>
                                 <input
-                                    className="bg-surface-container-lowest border border-outline-variant rounded-lg p-6 text-on-surface focus:border-primary focus:ring-0 outline-none transition-all"
+                                    className="bg-surface-container-lowest border border-outline-variant rounded-lg p-4 sm:p-6 text-on-surface focus:border-primary focus:ring-0 outline-none transition-all"
                                     type="number"
                                     min={0}
                                     value={validityDays}
@@ -405,7 +408,7 @@ export default function AdminCodesPage() {
                             <div className="flex flex-col gap-2">
                                 <label className="font-label-caps text-label-caps text-on-surface-variant">+ HOURS</label>
                                 <input
-                                    className="bg-surface-container-lowest border border-outline-variant rounded-lg p-6 text-on-surface focus:border-primary focus:ring-0 outline-none transition-all"
+                                    className="bg-surface-container-lowest border border-outline-variant rounded-lg p-4 sm:p-6 text-on-surface focus:border-primary focus:ring-0 outline-none transition-all"
                                     type="number"
                                     min={0} max={23}
                                     value={validityHours}
@@ -445,8 +448,8 @@ export default function AdminCodesPage() {
                     </div>
 
                     {/* One-Time Code Batch */}
-                    <div className="glass-panel rounded-lg p-6 flex flex-col gap-6">
-                        <div className="flex items-start gap-6">
+                    <div className="glass-panel rounded-lg p-4 sm:p-6 flex flex-col gap-6">
+                        <div className="flex items-start gap-4 sm:gap-6">
                             <div className="w-10 h-10 rounded-lg bg-surface-container-highest flex items-center justify-center text-tertiary">
                                 <span className="material-symbols-outlined">article</span>
                             </div>
@@ -465,7 +468,7 @@ export default function AdminCodesPage() {
                                 onChange={(e) => setBatchTitle(e.target.value)}
                             />
                         </div>
-                        <div className="grid grid-cols-2 gap-6">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
                             <div className="flex flex-col gap-2">
                                 <label className="font-label-caps text-label-caps text-on-surface-variant">QUANTITY</label>
                                 <input 
@@ -491,7 +494,7 @@ export default function AdminCodesPage() {
                                 </select>
                             </div>
                         </div>
-                        <div className="grid grid-cols-2 gap-6">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
                             <div className="flex flex-col gap-2">
                                 <label className="font-label-caps text-label-caps text-on-surface-variant">VALID FOR (DAYS)</label>
                                 <input
@@ -540,10 +543,10 @@ export default function AdminCodesPage() {
                         </div>
                         <p className="font-label-caps text-[11px] text-on-surface-variant">{batches.length} batches</p>
                     </div>
-                    <div className="p-6 space-y-8">
+                    <div className="p-4 sm:p-6 space-y-8">
                         {/* Summary Metrics */}
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                            <div className="bg-surface-container-high rounded-lg p-6 border border-outline-variant">
+                            <div className="bg-surface-container-high rounded-lg p-4 sm:p-6 border border-outline-variant">
                                 <p className="font-label-caps text-[10px] text-primary mb-2">ACTIVE</p>
                                 <h4 className="text-[28px] font-bold text-on-surface">{getBatchSummary('active').codeCount} <span className="text-body-sm text-on-surface-variant font-normal">codes</span></h4>
                                 <div className="mt-6 space-y-2 pt-2 border-t border-outline-variant">
@@ -551,7 +554,7 @@ export default function AdminCodesPage() {
                                     <div className="flex justify-between text-[11px]"><span className="text-on-surface-variant">Average credits</span><span className="">{getBatchSummary('active').averageCredits.toFixed(2)}</span></div>
                                 </div>
                             </div>
-                            <div className="bg-surface-container-high rounded-lg p-6 border border-outline-variant">
+                            <div className="bg-surface-container-high rounded-lg p-4 sm:p-6 border border-outline-variant">
                                 <p className="font-label-caps text-[10px] text-on-surface-variant mb-2">INACTIVE</p>
                                 <h4 className="text-[28px] font-bold text-on-surface">{getBatchSummary('inactive').codeCount} <span className="text-body-sm text-on-surface-variant font-normal">codes</span></h4>
                                 <div className="mt-6 space-y-2 pt-2 border-t border-outline-variant">
@@ -559,7 +562,7 @@ export default function AdminCodesPage() {
                                     <div className="flex justify-between text-[11px]"><span className="text-on-surface-variant">Average credits</span><span className="">{getBatchSummary('inactive').averageCredits.toFixed(2)}</span></div>
                                 </div>
                             </div>
-                            <div className="bg-surface-container-high rounded-lg p-6 border border-outline-variant">
+                            <div className="bg-surface-container-high rounded-lg p-4 sm:p-6 border border-outline-variant">
                                 <p className="font-label-caps text-[10px] text-error mb-2">EXHAUSTED</p>
                                 <h4 className="text-[28px] font-bold text-on-surface">{getBatchSummary('claimed').codeCount} <span className="text-body-sm text-on-surface-variant font-normal">codes</span></h4>
                                 <div className="mt-6 space-y-2 pt-2 border-t border-outline-variant">
@@ -590,7 +593,7 @@ export default function AdminCodesPage() {
                                     <p className="font-title-md text-on-surface text-[16px] font-bold leading-none mb-1">Disabled Batches</p>
                                     <p className="text-[11px] text-on-surface-variant">Manually disabled bulk exports</p>
                                 </div>
-                                <div className="flex items-center gap-6">
+                                <div className="flex flex-wrap items-center gap-3 sm:gap-6">
                                     <span className="text-[11px] text-on-surface-variant">{disabledBatches.length} batches</span>
                                     {disabledBatches.length > 5 && (
                                         <button
@@ -619,7 +622,7 @@ export default function AdminCodesPage() {
                                     <p className="font-title-md text-on-surface text-[16px] font-bold leading-none mb-1">Claimed Batches</p>
                                     <p className="text-[11px] text-on-surface-variant">Fully redeemed / exhausted bulk exports</p>
                                 </div>
-                                <div className="flex items-center gap-6">
+                                <div className="flex flex-wrap items-center gap-3 sm:gap-6">
                                     <span className="text-[11px] text-on-surface-variant">{claimedBatches.length} batches</span>
                                     {claimedBatches.length > 5 && (
                                         <button
@@ -652,7 +655,7 @@ export default function AdminCodesPage() {
                         </div>
                         <p className="font-label-caps text-[11px] text-on-surface-variant">{codes.length} total</p>
                     </div>
-                    <div className="p-6 space-y-8">
+                    <div className="p-4 sm:p-6 space-y-8">
                         {/* Active Gift Codes Container */}
                         <div className="bg-surface-container-low border border-outline-variant rounded-lg overflow-hidden">
                             <div className="p-6 bg-surface-container-high/50 flex justify-between items-center">
@@ -660,7 +663,7 @@ export default function AdminCodesPage() {
                                     <p className="font-title-md text-on-surface text-[16px] font-bold leading-none mb-1">Active Gift Codes</p>
                                     <p className="text-[11px] text-on-surface-variant">Currently redeemable shared codes</p>
                                 </div>
-                                <div className="flex items-center gap-6">
+                                <div className="flex flex-wrap items-center gap-3 sm:gap-6">
                                     <span className="text-[11px] text-on-surface-variant">{activeGiftCodes.length} codes</span>
                                     {activeGiftCodes.length > 5 && (
                                         <button 
@@ -673,8 +676,9 @@ export default function AdminCodesPage() {
                                 </div>
                             </div>
                             <div className="p-6">
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-left">
+                                <p className="admin-table-hint"><span className="material-symbols-outlined text-[13px]">swipe_left</span>Swipe the table sideways for more columns</p>
+                                <div className="overflow-x-auto admin-table-scroll">
+                                    <table className="w-full min-w-[40rem] text-left">
                                         <thead>
                                             <tr className="font-label-caps text-[10px] text-on-surface-variant tracking-widest border-b border-outline-variant">
                                                 <th className="pb-6">PREVIEW</th>
@@ -728,7 +732,7 @@ export default function AdminCodesPage() {
                                     <p className="text-on-surface font-bold text-[16px]">Inactive Gift Codes</p>
                                     <p className="text-[11px] text-on-surface-variant">Hidden by default, available for reactivation</p>
                                 </div>
-                                <div className="flex items-center gap-6">
+                                <div className="flex flex-wrap items-center gap-3 sm:gap-6">
                                     <span className="text-[11px] text-on-surface-variant">{inactiveGiftCodes.length} codes</span>
                                     {inactiveGiftCodes.length > 0 && (
                                         <button 
@@ -742,8 +746,10 @@ export default function AdminCodesPage() {
                             </div>
                             
                             {showInactiveGiftCodes ? (
-                                <div className="overflow-x-auto mt-4">
-                                    <table className="w-full text-left">
+                                <>
+                                <p className="admin-table-hint"><span className="material-symbols-outlined text-[13px]">swipe_left</span>Swipe the table sideways for more columns</p>
+                                <div className="overflow-x-auto admin-table-scroll mt-4">
+                                    <table className="w-full min-w-[40rem] text-left">
                                         <thead>
                                             <tr className="font-label-caps text-[10px] text-on-surface-variant tracking-widest border-b border-outline-variant/50">
                                                 <th className="pb-6">PREVIEW</th>
@@ -779,6 +785,7 @@ export default function AdminCodesPage() {
                                         </tbody>
                                     </table>
                                 </div>
+                                </>
                             ) : (
                                 <p className="text-[12px] text-outline italic">Inactive gift codes are hidden.</p>
                             )}
@@ -786,7 +793,7 @@ export default function AdminCodesPage() {
 
                         {/* Inactive Codes Summary Metrics */}
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pb-6">
-                            <div className="bg-surface-container-high/40 rounded-lg p-6 border border-outline-variant">
+                            <div className="bg-surface-container-high/40 rounded-lg p-4 sm:p-6 border border-outline-variant">
                                 <p className="font-label-caps text-[10px] text-primary mb-2">ACTIVE</p>
                                 <h4 className="text-[28px] font-bold text-on-surface">{getCodeSummary('active').codeCount} <span className="text-body-sm text-on-surface-variant font-normal">codes</span></h4>
                                 <div className="mt-6 space-y-2 pt-2 border-t border-outline-variant/30">
@@ -794,7 +801,7 @@ export default function AdminCodesPage() {
                                     <div className="flex justify-between text-[11px] font-code-sm"><span className="text-on-surface-variant">Average credits</span><span className="">{getCodeSummary('active').averageCredits.toFixed(2)}</span></div>
                                 </div>
                             </div>
-                            <div className="bg-surface-container-high/40 rounded-lg p-6 border border-outline-variant">
+                            <div className="bg-surface-container-high/40 rounded-lg p-4 sm:p-6 border border-outline-variant">
                                 <p className="font-label-caps text-[10px] text-on-surface-variant mb-2">INACTIVE</p>
                                 <h4 className="text-[28px] font-bold text-on-surface">{getCodeSummary('inactive').codeCount} <span className="text-body-sm text-on-surface-variant font-normal">codes</span></h4>
                                 <div className="mt-6 space-y-2 pt-2 border-t border-outline-variant/30">
@@ -802,7 +809,7 @@ export default function AdminCodesPage() {
                                     <div className="flex justify-between text-[11px] font-code-sm"><span className="text-on-surface-variant">Average credits</span><span className="">{getCodeSummary('inactive').averageCredits.toFixed(2)}</span></div>
                                 </div>
                             </div>
-                            <div className="bg-surface-container-high/40 rounded-lg p-6 border border-outline-variant">
+                            <div className="bg-surface-container-high/40 rounded-lg p-4 sm:p-6 border border-outline-variant">
                                 <p className="font-label-caps text-[10px] text-error mb-2">EXHAUSTED</p>
                                 <h4 className="text-[28px] font-bold text-on-surface">{getCodeSummary('exhausted').codeCount} <span className="text-body-sm text-on-surface-variant font-normal">codes</span></h4>
                                 <div className="mt-6 space-y-2 pt-2 border-t border-outline-variant/30">

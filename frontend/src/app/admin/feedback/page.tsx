@@ -84,11 +84,11 @@ export default function AdminFeedbackPage() {
     }
 
     return (
-        <main className="flex-1 overflow-y-auto p-6 custom-scrollbar relative">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-6 custom-scrollbar relative">
             {/* Header Section */}
-            <section className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10 max-w-[1440px] mx-auto">
+            <section className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8 sm:mb-10 max-w-[1440px] mx-auto">
                 <div>
-                    <div className="flex items-center gap-4 mb-2">
+                    <div className="flex flex-wrap items-center gap-3 sm:gap-4 mb-2">
                         <h2 className="font-headline-lg text-headline-lg text-primary">User Feedback</h2>
                         {newCount > 0 ? (
                             <span className="px-2 py-1 bg-primary/10 border border-primary/20 text-primary text-[10px] font-bold rounded uppercase tracking-tighter">{newCount} New</span>
@@ -96,13 +96,13 @@ export default function AdminFeedbackPage() {
                     </div>
                     <p className="font-body-lg text-on-surface-variant max-w-2xl">Bug reports, ideas, and messages submitted from the in-app feedback form.</p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                     {(["all", "new", "handled"] as StatusFilter[]).map((option) => (
                         <button
                             key={option}
                             type="button"
                             onClick={() => setStatusFilter(option)}
-                            className={`px-4 py-2 rounded-lg font-label-caps text-label-caps border transition-colors ${
+                            className={`px-3 sm:px-4 py-2 rounded-lg font-label-caps text-label-caps border transition-colors ${
                                 filter === option
                                     ? "bg-primary-container text-on-primary-container border-primary/20"
                                     : "text-on-surface-variant border-outline-variant hover:bg-surface-container-highest"
@@ -116,8 +116,8 @@ export default function AdminFeedbackPage() {
 
             {/* Content Canvas */}
             <div className="max-w-[1440px] mx-auto">
-                <section className="nebula-glass rounded-2xl p-6">
-                    <div className="flex items-center justify-between mb-6 pb-4 border-b border-outline-variant">
+                <section className="nebula-glass rounded-2xl p-4 sm:p-6">
+                    <div className="flex flex-wrap items-center gap-3 justify-between mb-6 pb-4 border-b border-outline-variant">
                         <div className="flex items-center gap-2">
                             <span className="material-symbols-outlined text-primary">rate_review</span>
                             <h3 className="font-title-md text-title-md text-on-surface">Inbox</h3>
@@ -141,7 +141,7 @@ export default function AdminFeedbackPage() {
                                             handled ? "opacity-70" : "border-l-4 border-l-primary"
                                         }`}
                                     >
-                                        <div className="flex items-start justify-between gap-4">
+                                        <div className="flex flex-col sm:flex-row items-start justify-between gap-4">
                                             <div className="flex-1 min-w-0">
                                                 <div className="flex flex-wrap items-center gap-3 mb-2">
                                                     <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 border rounded text-[9px] font-bold tracking-widest uppercase ${category.classes}`}>

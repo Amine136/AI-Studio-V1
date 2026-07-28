@@ -865,6 +865,263 @@ def _feedback_dict_from_model(item: Any) -> dict[str, Any]:
     }
 
 
+def create_credit_order(
+    *,
+    uid: str,
+    plan_id: str,
+    plan_name: str,
+    credits: float,
+    price_minor: int,
+    currency: str,
+    payment_method: str,
+    note: str,
+    proof_file_ids: list[str],
+) -> dict[str, Any]:
+    """Record a manual purchase awaiting review. Credits/price come from the caller,
+    which must have read them from CREDIT_PLANS — never from the request body."""
+    credits_minor = _credits_to_minor(credits)
+    if credits_minor <= 0:
+        raise ValueError("INVALID_PLAN")
+    if not proof_file_ids:
+        raise ValueError("PROOF_REQUIRED")
+
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        if repo.count_open_credit_orders(uid) >= int(settings.max_open_credit_orders):
+            raise ValueError("TOO_MANY_OPEN_ORDERS")
+        order = repo.create_credit_order(
+            uid=uid,
+            plan_id=plan_id,
+            plan_name=plan_name,
+            credits_minor=credits_minor,
+            price_minor=int(price_minor),
+            currency=currency,
+            payment_method=payment_method,
+            note=note.strip()[:400],
+        )
+        for file_id in proof_file_ids:
+            repo.add_credit_order_proof(order_id=order.id, file_id=file_id)
+        return _credit_order_dict(repo, order)
+
+
+def list_user_credit_orders(uid: str, *, limit: int = 20) -> list[dict[str, Any]]:
+    """The buyer's own orders, newest first.
+
+    Returns every order — Recent History needs the full list — but stamps
+    `seen_at` on any resolved order the buyer had not seen yet. The response
+    reports the state as it was BEFORE stamping, so this call is the one showing
+    an accepted order gets in the "Your orders" card; from the next load on it
+    lives only in Recent History, where its code is still copyable.
+    """
+    now = int(time.time())
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        orders = repo.list_credit_orders_for_user(uid, limit=limit)
+        results = [_credit_order_dict(repo, order) for order in orders]
+        newly_seen = [
+            order
+            for order in orders
+            if str(order.status) != "pending" and order.seen_at is None
+        ]
+        if newly_seen:
+            repo.mark_credit_orders_seen(newly_seen, seen_at=now)
+        return results
+
+
+def list_admin_credit_orders(*, status: str | None = None, limit: int = 200) -> list[dict[str, Any]]:
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        results: list[dict[str, Any]] = []
+        for order in repo.list_credit_orders(status=status, limit=limit):
+            entry = _credit_order_dict(repo, order)
+            user = repo.get_user(str(order.uid))
+            entry["userEmail"] = str(getattr(user, "email", "") or "")
+            entry["userDisplayName"] = str(getattr(user, "display_name", "") or "")
+            results.append(entry)
+        return results
+
+
+def get_admin_credit_order(order_id: str) -> dict[str, Any] | None:
+    """One order with the buyer's identity attached, as the admin surfaces see it.
+
+    Same shape as an entry from `list_admin_credit_orders`; exists so the Discord
+    card can be rendered from a single id without pulling the whole list.
+    """
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        order = repo.get_credit_order(order_id)
+        if order is None:
+            return None
+        entry = _credit_order_dict(repo, order)
+        user = repo.get_user(str(order.uid))
+        entry["userEmail"] = str(getattr(user, "email", "") or "")
+        entry["userDisplayName"] = str(getattr(user, "display_name", "") or "")
+        return entry
+
+
+def set_credit_order_discord_message_id(order_id: str, message_id: str) -> None:
+    """Remember which Discord card belongs to this order, so it can be repainted.
+
+    Best-effort bookkeeping for a fail-open integration: a missing order here is
+    not worth raising over, since the card has already been posted either way.
+    """
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        order = repo.get_credit_order(order_id)
+        if order is None:
+            return
+        order.discord_message_id = str(message_id)[:32]
+
+
+def get_credit_order_proof_file_id(order_id: str, file_id: str) -> str | None:
+    """Confirm `file_id` really is a proof attached to `order_id` before it is served."""
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        proof = repo.get_credit_order_proof(order_id, file_id)
+        return str(proof.file_id) if proof is not None else None
+
+
+def accept_credit_order(
+    order_id: str,
+    *,
+    code: str,
+    admin_uid: str | None,
+    admin_email: str,
+    confirm_mismatch: bool = False,
+) -> dict[str, Any]:
+    """Attach an admin-generated redeem code to a pending order.
+
+    Deliberately does NOT move credits: the user redeems the code through the
+    normal path, so a purchase reaches the ledger exactly once. The code is
+    validated against `credit_codes` first, so a typo is caught here rather than
+    by the user pasting a dead code days later.
+    """
+    normalized_code = code.strip().upper()
+    if not normalized_code:
+        raise ValueError("CODE_REQUIRED")
+
+    now = int(time.time())
+    code_hash = hash_credit_code(normalized_code)
+
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        order = repo.get_credit_order_for_update(order_id)
+        if order is None:
+            raise ValueError("ORDER_NOT_FOUND")
+        if str(order.status) != "pending":
+            # A double-clicked Accept must not burn a second code.
+            raise ValueError("ORDER_NOT_PENDING")
+
+        credit_code = repo.get_credit_code(code_hash)
+        if credit_code is None:
+            raise ValueError("CODE_NOT_FOUND")
+        if not bool(credit_code.is_active):
+            raise ValueError("CODE_INACTIVE")
+        if credit_code.expires_at is not None and int(credit_code.expires_at) <= now:
+            raise ValueError("CODE_EXPIRED")
+        if int(credit_code.claimed_count) >= int(credit_code.max_claims):
+            raise ValueError("CODE_EXHAUSTED")
+        if int(credit_code.credits_minor) != int(order.credits_minor) and not confirm_mismatch:
+            raise ValueError("CODE_CREDITS_MISMATCH")
+
+        order.code_plain = normalized_code
+        order.status = "accepted"
+        order.admin_message = ""
+        order.resolved_by_email = admin_email.strip()[:255]
+        order.resolved_at = now
+        order.updated_at = now
+        session.flush()
+
+        repo.add_admin_audit_log(
+            admin_uid=admin_uid,
+            admin_email=admin_email.strip(),
+            action="credit_order_accept",
+            target_type="credit_order",
+            target_id=order_id,
+            reason=f"Accepted {order.plan_name} order and issued code {credit_code.code_preview}.",
+            metadata_json={
+                "plan_id": order.plan_id,
+                "credits_minor": int(order.credits_minor),
+                "price_minor": int(order.price_minor),
+                "code_preview": credit_code.code_preview,
+                "code_credits_minor": int(credit_code.credits_minor),
+                "mismatch_confirmed": bool(confirm_mismatch),
+            },
+            created_at=now,
+        )
+        return _credit_order_dict(repo, order)
+
+
+def refuse_credit_order(
+    order_id: str,
+    *,
+    reason: str,
+    admin_uid: str | None,
+    admin_email: str,
+) -> dict[str, Any]:
+    now = int(time.time())
+    normalized_reason = reason.strip()[:400]
+
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        order = repo.get_credit_order_for_update(order_id)
+        if order is None:
+            raise ValueError("ORDER_NOT_FOUND")
+        if str(order.status) != "pending":
+            raise ValueError("ORDER_NOT_PENDING")
+
+        order.status = "refused"
+        order.admin_message = normalized_reason
+        order.resolved_by_email = admin_email.strip()[:255]
+        order.resolved_at = now
+        order.updated_at = now
+        session.flush()
+
+        repo.add_admin_audit_log(
+            admin_uid=admin_uid,
+            admin_email=admin_email.strip(),
+            action="credit_order_refuse",
+            target_type="credit_order",
+            target_id=order_id,
+            reason=normalized_reason or f"Refused {order.plan_name} order.",
+            metadata_json={
+                "plan_id": order.plan_id,
+                "credits_minor": int(order.credits_minor),
+                "price_minor": int(order.price_minor),
+            },
+            created_at=now,
+        )
+        return _credit_order_dict(repo, order)
+
+
+def _credit_order_dict(repo: SecurityRepository, order: Any) -> dict[str, Any]:
+    proofs = repo.list_credit_order_proofs(str(order.id))
+    # The code is only meaningful once the order is accepted; a pending or refused
+    # order must never carry one out of the service layer.
+    code = str(order.code_plain or "") if str(order.status) == "accepted" else ""
+    return {
+        "id": str(order.id),
+        "uid": str(order.uid),
+        "planId": str(order.plan_id),
+        "planName": str(order.plan_name),
+        "credits": _minor_to_credits(int(order.credits_minor)),
+        "priceMinor": int(order.price_minor),
+        "currency": str(order.currency),
+        "paymentMethod": str(order.payment_method),
+        "note": str(order.note or ""),
+        "status": str(order.status),
+        "code": code,
+        "adminMessage": str(order.admin_message or ""),
+        "resolvedByEmail": str(order.resolved_by_email or ""),
+        "resolvedAt": int(order.resolved_at) if order.resolved_at is not None else None,
+        "seen": order.seen_at is not None,
+        "discordMessageId": str(order.discord_message_id or ""),
+        "createdAt": int(order.created_at),
+        "updatedAt": int(order.updated_at),
+        "proofFileIds": [str(proof.file_id) for proof in proofs],
+    }
+
+
 def adjust_credits(
     uid: str,
     delta: float,

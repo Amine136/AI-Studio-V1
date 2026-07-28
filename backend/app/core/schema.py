@@ -661,6 +661,99 @@ class FeedbackStatusUpdateRequest(BaseModel):
     status: Literal["new", "handled"]
 
 
+class CreditPlanResponse(BaseModel):
+    id: str
+    name: str
+    credits: float
+    priceMinor: int
+    currency: str = "TND"
+
+
+class PaymentMethodResponse(BaseModel):
+    """One rail the customer can send money through.
+
+    `primaryValue` is the single string they copy (account number / IBAN) and
+    `meta` is the supporting line beneath it. Blank values are hidden by the UI,
+    so a half-configured method degrades to just its name.
+    """
+    id: str
+    group: str
+    available: bool
+    label: str = ""
+    icon: str = ""
+    primaryLabel: str = ""
+    primaryValue: str = ""
+    meta: List[str] = Field(default_factory=list)
+
+
+class CheckoutConfigResponse(BaseModel):
+    plans: List[CreditPlanResponse]
+    methods: List[PaymentMethodResponse]
+    whatsappNumber: str = ""
+    maxProofFiles: int
+    maxProofBytes: int
+    noteMaxLength: int
+
+
+class CreditOrderResponse(BaseModel):
+    id: str
+    planId: str
+    planName: str
+    credits: float
+    priceMinor: int
+    currency: str = "TND"
+    paymentMethod: str
+    note: str = ""
+    status: str = "pending"
+    # Only ever populated for the order's own owner, and only once accepted.
+    code: str = ""
+    adminMessage: str = ""
+    # False only on the one response that first reveals a resolved order, which is
+    # what keeps it in the "Your orders" card for exactly that load.
+    seen: bool = False
+    createdAt: Optional[int] = None
+    updatedAt: Optional[int] = None
+    resolvedAt: Optional[int] = None
+
+
+class CreditOrderListResponse(BaseModel):
+    orders: List[CreditOrderResponse]
+
+
+class AdminCreditOrderResponse(CreditOrderResponse):
+    uid: str = ""
+    userEmail: str = ""
+    userDisplayName: str = ""
+    resolvedByEmail: str = ""
+    proofFileIds: List[str] = Field(default_factory=list)
+
+
+class AdminCreditOrderListResponse(BaseModel):
+    orders: List[AdminCreditOrderResponse]
+    total: int
+
+
+class AdminCreditOrderAcceptRequest(BaseModel):
+    code: str = Field(..., min_length=3, max_length=64)
+    # Set once the admin has seen the "this code is worth X, the order is worth Y"
+    # warning and still wants to proceed.
+    confirmMismatch: bool = False
+
+    @field_validator("code")
+    @classmethod
+    def normalize_code(cls, value: str) -> str:
+        return str(value or "").strip().upper()
+
+
+class AdminCreditOrderRefuseRequest(BaseModel):
+    reason: str = Field(default="", max_length=400)
+
+    @field_validator("reason")
+    @classmethod
+    def normalize_reason(cls, value: str) -> str:
+        return str(value or "").strip()
+
+
 class AdminAuthFailureSummaryItem(BaseModel):
     username: str
     isActive: bool = True

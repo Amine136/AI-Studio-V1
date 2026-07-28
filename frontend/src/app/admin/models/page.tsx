@@ -203,8 +203,8 @@ export default function AdminModelsPage() {
     }
 
     return (
-        <main className="flex-1 overflow-y-auto p-0 h-[calc(100vh-64px)] custom-scrollbar relative flex flex-col">
-            <div className="flex-1 p-6 lg:p-8 max-w-[1440px] mx-auto w-full">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden p-0 lg:h-[calc(100vh-64px)] custom-scrollbar relative flex flex-col">
+            <div className="flex-1 p-4 sm:p-6 lg:p-8 max-w-[1440px] mx-auto w-full">
                 {/* Hero Description */}
                 <div className="mb-8">
                     <h1 className="font-headline-lg text-headline-lg text-on-surface mb-2 font-bold tracking-tight">Model Availability</h1>
@@ -245,8 +245,8 @@ export default function AdminModelsPage() {
                 </div>
 
                 {/* Search & Global Action */}
-                <div className="flex flex-wrap items-center gap-6 mb-8 bg-surface-container-high/40 p-6 rounded-lg border border-outline-variant/50">
-                    <div className="relative flex-1 min-w-[300px]">
+                <div className="flex flex-wrap items-center gap-4 sm:gap-6 mb-8 bg-surface-container-high/40 p-4 sm:p-6 rounded-lg border border-outline-variant/50">
+                    <div className="relative flex-1 min-w-0 sm:min-w-[300px]">
                         <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline text-[20px]">search</span>
                         <input 
                             value={query}
@@ -270,8 +270,8 @@ export default function AdminModelsPage() {
                             
                             return (
                                 <section key={provider.id} className="glass-panel rounded-2xl overflow-hidden border border-outline-variant/40 hover:border-primary/30 transition-colors group">
-                                    <div className="p-6 bg-surface-container-highest/30 flex flex-col sm:flex-row sm:items-center justify-between border-b border-outline-variant/50 gap-4">
-                                        <div className="flex items-center gap-6">
+                                    <div className="p-4 sm:p-6 bg-surface-container-highest/30 flex flex-col sm:flex-row sm:items-center justify-between border-b border-outline-variant/50 gap-4">
+                                        <div className="flex flex-wrap items-center gap-3 sm:gap-6">
                                             <h2 className="font-title-md text-title-md font-bold text-on-surface">{provider.displayName}</h2>
                                             {providerDisabled ? (
                                                 <span className="bg-error-container/20 text-error px-3 py-1 rounded-full text-[10px] font-bold border border-error/30 uppercase tracking-widest">Provider disabled</span>
@@ -279,7 +279,7 @@ export default function AdminModelsPage() {
                                                 <span className="bg-tertiary-container/20 text-tertiary-fixed px-3 py-1 rounded-full text-[10px] font-bold border border-tertiary/30 uppercase tracking-widest">Provider enabled</span>
                                             )}
                                         </div>
-                                        <div className="flex items-center gap-4">
+                                        <div className="flex flex-wrap items-center gap-3 sm:gap-4">
                                             <span className="font-code-sm text-[12px] text-outline hidden sm:inline-block">{provider.models.length} matching models • {provider.disabled} disabled</span>
                                             <button 
                                                 onClick={() => toggleProvider(provider.id)}
@@ -295,7 +295,7 @@ export default function AdminModelsPage() {
                                             const disabled = modelDisabled || providerDisabled;
                                             
                                             return (
-                                                <div key={model.id} className={`p-6 flex items-start gap-6 transition-colors ${disabled ? 'bg-surface-container-lowest/50 opacity-70' : 'hover:bg-surface-variant/20'}`}>
+                                                <div key={model.id} className={`p-4 sm:p-6 flex items-start gap-4 sm:gap-6 transition-colors ${disabled ? 'bg-surface-container-lowest/50 opacity-70' : 'hover:bg-surface-variant/20'}`}>
                                                     <div className="pt-1">
                                                         <label className="relative inline-flex items-center cursor-pointer group">
                                                             <input 
