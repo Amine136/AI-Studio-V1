@@ -1757,14 +1757,23 @@ def _dodo_business_is_ours(payload: Dict[str, Any]) -> bool:
     staging predates the setting and must keep working until the env is
     provisioned.
     """
+    observed = str(payload.get("business_id") or "").strip()
     expected = str(settings.dodo_business_id or "").strip()
     if not expected:
+        # Log what we actually saw, so the value can be read straight out of the
+        # logs after the first delivery in a new environment. Test and live are
+        # separate Dodo environments and the live business_id cannot be known in
+        # advance from the test-mode one — so the safe bootstrap is: deploy with
+        # this unset, take one real payment, read the id from here, then set it.
+        # Guessing it instead would 401 every live delivery and leave paying
+        # customers with no credits.
         logger.warning(
             "[dodo] DODO_BUSINESS_ID is not configured — accepting this delivery without the "
-            "business pin. Set it on every environment before going live."
+            "business pin. Observed business_id=%s; set that in the environment to enable the pin.",
+            observed or "<missing>",
         )
         return True
-    return str(payload.get("business_id") or "").strip() == expected
+    return observed == expected
 
 
 def _dodo_cart_product_ids(data: Dict[str, Any]) -> set[str]:
