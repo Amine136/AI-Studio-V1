@@ -10,7 +10,7 @@ from sqlalchemy import case, delete, func, select, update
 from sqlalchemy.orm import Session, aliased
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from app.db.models import AdminAccount, AdminAuditLog, AdminSession, AnalyzeSession, ChatConversation, ChatMessage, CreditCode, CreditCodeClaim, CreditLedgerEntry, CreditLot, CreditLotAllocation, CreditOrder, CreditOrderProof, DashboardNewsItem, DeactivatedEmail, EmailSend, FeedbackItem, GenerationJob, HistoryEntry, ModerationRejection, PackSession, RateLimitBucket, User, UserFile
+from app.db.models import AdminAccount, AdminAuditLog, AdminSession, AnalyzeSession, ChatConversation, ChatMessage, CreditCode, CreditCodeClaim, CreditLedgerEntry, CreditLot, CreditLotAllocation, CreditOrder, CreditOrderProof, DashboardNewsItem, DeactivatedEmail, DodoCardPayment, EmailSend, FeedbackItem, GenerationJob, HistoryEntry, ModerationRejection, PackSession, RateLimitBucket, User, UserFile
 
 USERNAME_ALLOWED_RE = re.compile(r"[^a-z0-9._-]+")
 
@@ -328,6 +328,40 @@ class SecurityRepository:
         self.session.add(order)
         self.session.flush()
         return order
+
+    def create_dodo_card_payment(
+        self,
+        *,
+        id: str,
+        uid: str,
+        plan_id: str,
+        credits_minor: int,
+        price_minor: int,
+        currency: str,
+        dodo_payment_id: str,
+        created_at: int,
+    ) -> DodoCardPayment:
+        record = DodoCardPayment(
+            id=id,
+            uid=uid,
+            plan_id=plan_id,
+            credits_minor=credits_minor,
+            price_minor=price_minor,
+            currency=currency,
+            dodo_payment_id=dodo_payment_id,
+            created_at=created_at,
+        )
+        self.session.add(record)
+        # Explicit flush (autoflush is off, see session.py): this is what forces
+        # the unique constraint on dodo_payment_id to be checked NOW, before the
+        # caller goes on to grant credits for what might be a duplicate webhook
+        # delivery.
+        self.session.flush()
+        return record
+
+    def get_dodo_card_payment(self, dodo_payment_id: str) -> DodoCardPayment | None:
+        stmt = select(DodoCardPayment).where(DodoCardPayment.dodo_payment_id == dodo_payment_id)
+        return self.session.execute(stmt).scalar_one_or_none()
 
     def add_credit_order_proof(self, *, order_id: str, file_id: str) -> CreditOrderProof:
         proof = CreditOrderProof(

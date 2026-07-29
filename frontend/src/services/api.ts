@@ -441,6 +441,19 @@ export const api = {
     }
   },
 
+  createDodoCheckout: async (planId: string): Promise<{ checkoutUrl: string }> => {
+    try {
+      const res = await client.post('/credits/checkout/dodo', { planId });
+      return res.data;
+    } catch (error) {
+      const detail = extractErrorMessage(error);
+      if (detail) {
+        throw new Error(detail);
+      }
+      throw error;
+    }
+  },
+
   addHistoryEntry: async (payload: {
     imageUrl?: string;
     caption?: string;

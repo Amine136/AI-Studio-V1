@@ -42,6 +42,19 @@ CREDIT_PLANS = [
 
 CREDIT_PLANS_BY_ID = {plan["id"]: plan for plan in CREDIT_PLANS}
 
+# The same credit packs, priced in USD for the international card rail (Dodo
+# Payments). A SEPARATE list rather than a second currency on CREDIT_PLANS
+# because the two rails are sold at independently-set prices, not an FX
+# conversion of one another. `price_minor` here is CENTS (USD has 2 decimals),
+# not millimes — do not reuse the TND formatter on these.
+CREDIT_PLANS_USD = [
+    {"id": "starter", "name": "Starter", "credits": 10.0, "price_minor": 499, "currency": "USD"},
+    {"id": "pro", "name": "Pro", "credits": 35.0, "price_minor": 1299, "currency": "USD"},
+    {"id": "ultra", "name": "Ultra", "credits": 70.0, "price_minor": 2299, "currency": "USD"},
+]
+
+CREDIT_PLANS_USD_BY_ID = {plan["id"]: plan for plan in CREDIT_PLANS_USD}
+
 # ---------------------------------------------------------------------------
 # Where customers send the money.
 #
@@ -422,6 +435,28 @@ class Config:
         # decision, not a disk one: these files are customer bank receipts. 0
         # disables the sweep and restores the old keep-everything behaviour.
         self.payment_proof_retention_days = int(os.getenv("PAYMENT_PROOF_RETENTION_DAYS", "90"))
+
+        # International card checkout (Dodo Payments — a Merchant of Record, so
+        # no separate EU VAT registration is needed). Unlike the manual Tunisian
+        # rail this is fully automatic: a webhook credits the ledger the moment
+        # Dodo reports a successful payment, no admin review. The API key and
+        # product IDs are TEST-MODE values today; going live means swapping all
+        # four for their live-mode counterparts, never editing this file (unlike
+        # the Tunisian account details above, these came from a Dodo dashboard,
+        # not a business decision, so they belong in env only).
+        self.dodo_api_key = os.getenv("DODO_API_KEY", "").strip()
+        self.dodo_environment = os.getenv("DODO_ENVIRONMENT", "test_mode").strip() or "test_mode"
+        # Set once the webhook is registered in the Dodo dashboard (Developer >
+        # Webhooks) and its secret copied in. Left blank, the webhook endpoint
+        # refuses every delivery with 503 rather than accepting an unverifiable
+        # payload — this mints credits, so "no secret configured" must fail
+        # closed, unlike the no-op idiom used for Discord/email above.
+        self.dodo_webhook_secret = os.getenv("DODO_WEBHOOK_SECRET", "").strip()
+        self.dodo_product_ids = {
+            "starter": os.getenv("DODO_PRODUCT_ID_STARTER", "").strip(),
+            "pro": os.getenv("DODO_PRODUCT_ID_PRO", "").strip(),
+            "ultra": os.getenv("DODO_PRODUCT_ID_ULTRA", "").strip(),
+        }
 
         # System model settings used for the intent-analysis step.
         self.system_llm_provider = os.getenv("SYSTEM_LLM_PROVIDER", "google-gemini")

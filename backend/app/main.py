@@ -26,11 +26,13 @@ from app.config import (
     AVAILABLE_PAYMENT_METHOD_IDS,
     CREDIT_PLANS,
     CREDIT_PLANS_BY_ID,
+    CREDIT_PLANS_USD,
+    CREDIT_PLANS_USD_BY_ID,
     PAYMENT_METHODS,
     PAYMENT_WHATSAPP_NUMBER,
     settings,
 )
-from app.core.schema import AdminAuditLogListResponse, AdminAuthFailureSummaryResponse, AdminCreditCodeBatchListResponse, AdminCreditCodeListResponse, AdminCreditOrderAcceptRequest, AdminCreditOrderListResponse, AdminCreditOrderRefuseRequest, AdminCreditOrderResponse, AdminGenerationJobItem, AdminGenerationJobListResponse, AdminLoginRequest, AdminReasonRequest, AdminSessionResponse, AdminUserDetailResponse, AdminUserListResponse, CatalogUpdateNotification, CheckoutConfigResponse, CreditActivityListResponse, CreditLedgerListResponse, CreditOrderListResponse, CreditOrderResponse, CreditPlanResponse, PaymentMethodResponse, DashboardNewsItemResponse, DashboardNewsListResponse, DashboardNewsUpsertRequest, FeedbackItemResponse, FeedbackListResponse, FeedbackStatusUpdateRequest, FeedbackSubmitRequest, GenerateRequest, GenerationResult, PlainChatConversationCreateRequest, PlainChatConversationItem, PlainChatConversationListResponse, PlainChatConversationMessageCreateRequest, PlainChatConversationMessagesResponse, PlainChatConversationTurnResponse, PlainChatConversationUpdateRequest, PlainChatModelListResponse, SystemConfig, UserNotificationPreferencesUpdateRequest, UserProfileUpdateRequest, ProfileCompletionRequest, PackEstimateRequest, PackGenerateRequest, PackPlanRequest, PackSessionCreate, PackSessionUpdate
+from app.core.schema import AdminAuditLogListResponse, AdminAuthFailureSummaryResponse, AdminCreditCodeBatchListResponse, AdminCreditCodeListResponse, AdminCreditOrderAcceptRequest, AdminCreditOrderListResponse, AdminCreditOrderRefuseRequest, AdminCreditOrderResponse, AdminGenerationJobItem, AdminGenerationJobListResponse, AdminLoginRequest, AdminReasonRequest, AdminSessionResponse, AdminUserDetailResponse, AdminUserListResponse, CatalogUpdateNotification, CheckoutConfigResponse, CreditActivityListResponse, CreditLedgerListResponse, CreditOrderListResponse, CreditOrderResponse, CreditPlanResponse, DodoCheckoutRequest, DodoCheckoutResponse, PaymentMethodResponse, DashboardNewsItemResponse, DashboardNewsListResponse, DashboardNewsUpsertRequest, FeedbackItemResponse, FeedbackListResponse, FeedbackStatusUpdateRequest, FeedbackSubmitRequest, GenerateRequest, GenerationResult, PlainChatConversationCreateRequest, PlainChatConversationItem, PlainChatConversationListResponse, PlainChatConversationMessageCreateRequest, PlainChatConversationMessagesResponse, PlainChatConversationTurnResponse, PlainChatConversationUpdateRequest, PlainChatModelListResponse, SystemConfig, UserNotificationPreferencesUpdateRequest, UserProfileUpdateRequest, ProfileCompletionRequest, PackEstimateRequest, PackGenerateRequest, PackPlanRequest, PackSessionCreate, PackSessionUpdate
 from app.packs import catalog as packs_catalog, service as packs_service
 from app.db.session import session_scope
 from app.db.repositories.security import SecurityRepository
@@ -39,7 +41,7 @@ from app.services.admin_auth import AdminAuthRateLimitError, authenticate_admin,
 from app.services.apikeymanager_client import ApiKeyManagerProxyError, check_apikeymanager_ready
 from app.services.auth import format_suspension_detail, verify_admin_csrf, verify_admin_session, verify_api_key, verify_firebase_user
 from app.services.email_service import dispatch as dispatch_email
-from app.services import discord_orders
+from app.services import discord_orders, dodo_payments
 from app.services.catalog_store import catalog_store
 from app.services.model_visibility import filter_catalog, list_model_visibility, update_model_visibility, visible_model_catalog
 from app.services.chat_service import assemble_plain_chat_context, list_plain_chat_models, minimum_required_credits_for_plain_chat, normalize_plain_chat_system, prepare_plain_chat_conversation_request, preview_plain_chat_prompt, send_plain_chat, serialize_plain_chat_parts
@@ -64,6 +66,7 @@ from app.services.security_backend import (
     create_credit_code,
     create_credit_code_batch_with_title,
     create_credit_order,
+    credit_dodo_card_payment,
     list_user_credit_orders,
     list_admin_credit_orders,
     get_credit_order_proof_file_id,
@@ -1631,6 +1634,16 @@ def get_credit_checkout_config(request: Request, _: bool = Depends(verify_api_ke
             )
             for plan in CREDIT_PLANS
         ],
+        plansUsd=[
+            CreditPlanResponse(
+                id=str(plan["id"]),
+                name=str(plan["name"]),
+                credits=float(plan["credits"]),
+                priceMinor=int(plan["price_minor"]),
+                currency=str(plan["currency"]),
+            )
+            for plan in CREDIT_PLANS_USD
+        ],
         methods=[
             PaymentMethodResponse(
                 id=str(method["id"]),
@@ -1649,6 +1662,118 @@ def get_credit_checkout_config(request: Request, _: bool = Depends(verify_api_ke
         maxProofBytes=MAX_PROOF_BYTES,
         noteMaxLength=CREDIT_ORDER_NOTE_MAX_LENGTH,
     )
+
+
+@app.post(
+    "/credits/checkout/dodo",
+    response_model=DodoCheckoutResponse,
+    tags=["Configuration"],
+    summary="Create A Dodo Payments Checkout Session",
+)
+@limiter.limit("10/minute")
+def create_dodo_checkout(
+    request: Request,
+    payload: DodoCheckoutRequest,
+    user: Dict[str, Any] = Depends(verify_firebase_user),
+):
+    del request
+    plan = CREDIT_PLANS_USD_BY_ID.get(str(payload.planId).strip())
+    if plan is None:
+        raise HTTPException(status_code=400, detail="Unknown plan")
+
+    return_url = f"{settings.app_base_url}/credits/buy?step=card-return"
+    try:
+        checkout_url = dodo_payments.create_checkout_session(
+            uid=str(user["uid"]),
+            plan=plan,
+            return_url=return_url,
+        )
+    except dodo_payments.DodoNotConfiguredError as exc:
+        logger.warning("[dodo] checkout session requested but not configured: %s", exc)
+        raise HTTPException(status_code=503, detail="Card payment is not available right now") from exc
+    except Exception as exc:
+        logger.exception("[dodo] failed to create checkout session")
+        raise HTTPException(status_code=502, detail="Could not start card checkout") from exc
+
+    return DodoCheckoutResponse(checkoutUrl=checkout_url)
+
+
+@app.post(
+    "/webhooks/dodo",
+    tags=["Configuration"],
+    summary="Dodo Payments Webhook",
+    include_in_schema=False,
+)
+@limiter.limit("240/minute")
+async def handle_dodo_webhook(request: Request):
+    """Dodo's webhook for payment events. Unauthenticated by design — same
+    shape as /discord/interactions: the HMAC signature over the raw body IS
+    the authentication, so the body is read as raw bytes rather than through a
+    Pydantic model (re-serializing a parsed dict would change the bytes the
+    signature was computed over and every verification would fail).
+
+    A missing DODO_WEBHOOK_SECRET is NOT treated as "feature disabled, no-op"
+    the way a missing Discord token or email key is elsewhere in this
+    codebase — this endpoint mints credits, so an unconfigured secret means
+    every delivery is rejected with 503 rather than silently accepted.
+    """
+    body = await request.body()
+    if not settings.dodo_webhook_secret:
+        logger.error("[dodo] webhook received but DODO_WEBHOOK_SECRET is not configured; rejecting")
+        raise HTTPException(status_code=503, detail="Webhook is not configured")
+
+    try:
+        payload = dodo_payments.verify_webhook(body, dict(request.headers))
+    except dodo_payments.WebhookVerificationError as exc:
+        logger.warning("[dodo] webhook signature REJECTED: %s", exc)
+        raise HTTPException(status_code=401, detail="invalid webhook signature") from exc
+
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="malformed webhook payload")
+
+    event_type = str(payload.get("type") or "")
+    if event_type != "payment.succeeded":
+        # Every other subscribed event (payment.failed, etc.) is acknowledged
+        # and ignored: crediting only ever happens on a confirmed success.
+        return {"status": "ignored", "type": event_type}
+
+    data = payload.get("data") or {}
+    metadata = data.get("metadata") or {}
+    uid = str(metadata.get("uid") or "").strip()
+    plan_id = str(metadata.get("plan_id") or "").strip()
+    dodo_payment_id = str(data.get("payment_id") or "").strip()
+    plan = CREDIT_PLANS_USD_BY_ID.get(plan_id)
+
+    if not uid or not dodo_payment_id or plan is None:
+        logger.error(
+            "[dodo] payment.succeeded with unusable payload: uid=%s plan_id=%s payment_id=%s",
+            uid or "<missing>",
+            plan_id or "<missing>",
+            dodo_payment_id or "<missing>",
+        )
+        # 200, not 4xx: the signature was valid, so this is our metadata being
+        # wrong, not a request Dodo should retry forever.
+        return {"status": "unprocessable"}
+
+    # total_amount is what the customer was actually charged (currency's minor
+    # unit — cents for USD), including tax. Not `amount`: that field doesn't
+    # exist on Dodo's Payment object.
+    price_minor = int(data.get("total_amount") or plan["price_minor"])
+    currency = str(data.get("currency") or plan["currency"])
+    result = credit_dodo_card_payment(
+        dodo_payment_id=dodo_payment_id,
+        uid=uid,
+        plan_id=plan_id,
+        credits=float(plan["credits"]),
+        price_minor=price_minor,
+        currency=currency,
+    )
+    if not result.get("success"):
+        # NOT a duplicate — an unexplained failure while crediting a payment
+        # Dodo believes succeeded. 500 so Dodo's retry schedule keeps trying
+        # rather than treating this delivery as handled.
+        raise HTTPException(status_code=500, detail="Could not record this payment")
+    return {"status": "duplicate" if result.get("duplicate") else "credited"}
 
 
 @app.get(

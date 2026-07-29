@@ -688,11 +688,23 @@ class PaymentMethodResponse(BaseModel):
 
 class CheckoutConfigResponse(BaseModel):
     plans: List[CreditPlanResponse]
+    # Same packs, USD-priced for the Dodo Payments (international card) rail.
+    # A separate list rather than a currency field on `plans`: the two rails
+    # are independently priced, not one converted from the other.
+    plansUsd: List[CreditPlanResponse] = Field(default_factory=list)
     methods: List[PaymentMethodResponse]
     whatsappNumber: str = ""
     maxProofFiles: int
     maxProofBytes: int
     noteMaxLength: int
+
+
+class DodoCheckoutRequest(BaseModel):
+    planId: str
+
+
+class DodoCheckoutResponse(BaseModel):
+    checkoutUrl: str
 
 
 class CreditOrderResponse(BaseModel):

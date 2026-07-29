@@ -647,6 +647,39 @@ class CreditOrderProof(Base):
     )
 
 
+class DodoCardPayment(Base):
+    """One credited international-card payment via Dodo Payments.
+
+    Idempotency ledger for the webhook: the unique constraint on
+    `dodo_payment_id` is what stops an event retry (Dodo retries up to 8 times)
+    from crediting the same payment twice. The row is inserted and the credit
+    lot granted in the SAME transaction (see credit_dodo_card_payment), so an
+    IntegrityError here means the credits were never granted either — unlike
+    `credit_orders`, there is no admin review step; this table exists purely
+    for the idempotency guarantee and a paper trail of what was charged.
+    """
+
+    __tablename__ = "dodo_card_payments"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    uid: Mapped[str] = mapped_column(ForeignKey("users.uid", ondelete="CASCADE"), nullable=False)
+    plan_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    credits_minor: Mapped[int] = mapped_column(Integer, nullable=False)
+    # The amount actually paid, in Dodo's minor unit (USD cents). Not
+    # necessarily equal to the plan's current price if pricing changed between
+    # checkout creation and payment — this is what was charged, kept as a
+    # record, and never re-derived from the plan.
+    price_minor: Mapped[int] = mapped_column(Integer, nullable=False)
+    currency: Mapped[str] = mapped_column(String(8), default="USD", nullable=False)
+    dodo_payment_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+    __table_args__ = (
+        Index("ux_dodo_card_payments_payment_id", "dodo_payment_id", unique=True),
+        Index("ix_dodo_card_payments_uid", "uid"),
+    )
+
+
 class EmailSend(Base):
     """One row per automatic email we attempt to send.
 

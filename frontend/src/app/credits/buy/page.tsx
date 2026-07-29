@@ -22,7 +22,7 @@ const WIZARD_STEPS = [
   { key: "pay", label: "Confirm" },
 ] as const;
 
-const STEP_KEYS = ["rail", "card", ...WIZARD_STEPS.map((s) => s.key)] as string[];
+const STEP_KEYS = ["rail", "card", "card-return", ...WIZARD_STEPS.map((s) => s.key)] as string[];
 
 const PROOF_ACCEPT = "image/png,image/jpeg,image/webp,application/pdf";
 const PROOF_TYPES = ["image/png", "image/jpeg", "image/webp", "application/pdf"];
@@ -44,6 +44,12 @@ const formatRate = (rateMinor: number, currency: string) => {
   const text = (rateMinor / 1000).toFixed(2);
   return currency === "TND" ? `${text} DT` : `${text} ${currency}`;
 };
+
+// USD is a 2-decimal currency (cents, not millimes) — a SEPARATE pair of
+// formatters rather than branching formatPrice/formatRate, since those two
+// divide by 1000 unconditionally and would render $4.99 as "0.499 USD".
+const formatPriceUsd = (priceMinor: number) => `$${(priceMinor / 100).toFixed(2)}`;
+const formatRateUsd = (rateMinor: number) => `$${(rateMinor / 100).toFixed(2)}`;
 
 /* What a credit actually buys, taken from the live model catalogue rather than a
    marketing number that would drift the moment pricing changes. Each model is
@@ -261,6 +267,12 @@ function BuyCreditsWizard() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
+  // Card checkout has no separate "confirm" step — tapping a plan starts the
+  // Dodo session immediately, so the only local state it needs is which plan
+  // (for the spinner) and any error from starting the session.
+  const [payingPlanId, setPayingPlanId] = useState<string | null>(null);
+  const [cardError, setCardError] = useState("");
+
   /* "rail" is the landing screen — which family of payment you want — and it is
      also where anything unrecognised lands. Falling back to "plan" would have a
      hand-edited or stale ?step= silently skip the choice. */
@@ -366,6 +378,43 @@ function BuyCreditsWizard() {
   const maxCredits = useMemo(
     () => Math.max(1, ...(config?.plans ?? []).map((p) => p.credits)),
     [config],
+  );
+
+  // Same three derivations, off config.plansUsd — kept separate from the TND
+  // ones above rather than parameterised, since the two rails are priced
+  // independently and could diverge in count/credits later.
+  const worstRateUsd = useMemo(
+    () => Math.max(0, ...(config?.plansUsd ?? []).map(perCreditMinor)),
+    [config],
+  );
+  const soleBestRateUsd = useMemo(() => {
+    const rates = (config?.plansUsd ?? []).map(perCreditMinor).filter((r) => r > 0);
+    if (rates.length < 2) return null;
+    const best = Math.min(...rates);
+    return rates.filter((r) => r === best).length === 1 ? best : null;
+  }, [config]);
+  const maxCreditsUsd = useMemo(
+    () => Math.max(1, ...(config?.plansUsd ?? []).map((p) => p.credits)),
+    [config],
+  );
+
+  const payWithCard = useCallback(
+    async (plan: CreditPlan) => {
+      if (!user) {
+        router.push(`/auth?next=${encodeURIComponent("/credits/buy?step=card")}`);
+        return;
+      }
+      setCardError("");
+      setPayingPlanId(plan.id);
+      try {
+        const { checkoutUrl } = await api.createDodoCheckout(plan.id);
+        window.location.href = checkoutUrl;
+      } catch (err) {
+        setCardError(err instanceof Error ? err.message : t("Could not start checkout."));
+        setPayingPlanId(null);
+      }
+    },
+    [router, t, user],
   );
 
   const goTo = useCallback(
@@ -646,7 +695,7 @@ function BuyCreditsWizard() {
         <section className="mx-auto w-full max-w-3xl">
           <h2 className="text-lg font-bold text-white">{t("How do you want to pay?")}</h2>
           <p className="mb-5 mt-1 text-sm text-[#c2c6d6]">
-            {t("Tunisian methods are live today. Card payment is on the way.")}
+            {t("Both rails are live: Tunisian methods and international cards.")}
           </p>
 
           <div className="grid items-stretch gap-4 sm:grid-cols-2">
@@ -656,14 +705,10 @@ function BuyCreditsWizard() {
               body: t("Flouci, bank transfer. Pay, upload your receipt, and we review it manually."),
               onClick: () => goTo({ step: "plan" }),
             })}
-            {/* Pressable, unlike the locked row it replaces: the badge says the
-                rail isn't open, and the screen behind it says when and what to
-                do instead. A dead button answers neither. */}
             {railCard({
               icon: "credit_card",
               title: t("International cards"),
               body: t("Pay by card in USD, credited automatically."),
-              soon: true,
               onClick: () => goTo({ step: "card" }),
             })}
           </div>
@@ -675,42 +720,177 @@ function BuyCreditsWizard() {
 
       {/* ------------------------------------------------------- Cards: not yet */}
       {step === "card" && (
+        <section>
+          <h2 className="text-lg font-bold text-white">{t("Pay by card, in USD")}</h2>
+          <p className="mb-5 mt-1 text-sm text-[#c2c6d6]">
+            {t("Credits are added automatically once the payment goes through.")}
+          </p>
+
+          <div className="grid items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {(config.plansUsd ?? []).map((plan) => {
+              const isPopular = plan.id === "pro";
+              const rate = perCreditMinor(plan);
+              const savePct = worstRateUsd > 0 ? Math.round((1 - rate / worstRateUsd) * 100) : 0;
+              const isBestRate = soleBestRateUsd != null && rate === soleBestRateUsd;
+              const images = imageRate ? estimateImages(plan.credits, imageRate) : null;
+              const fill = Math.max(0.06, plan.credits / maxCreditsUsd);
+              const isPaying = payingPlanId === plan.id;
+              return (
+                <button
+                  key={plan.id}
+                  type="button"
+                  disabled={payingPlanId !== null}
+                  onClick={() => payWithCard(plan)}
+                  className={`group relative flex flex-col rounded-xl border p-4 text-start transition disabled:cursor-not-allowed disabled:opacity-60 sm:p-5 sm:hover:-translate-y-1 ${
+                    isPopular
+                      ? "border-[#adc6ff]/40 bg-[#adc6ff]/10 shadow-lg shadow-[#adc6ff]/10 lg:-translate-y-2"
+                      : "border-white/10 bg-[rgba(25,31,49,0.7)] hover:border-[#adc6ff]/30"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-3 sm:block">
+                    <span className="min-w-0">
+                      <span className="flex items-center gap-2 sm:min-h-[22px] sm:justify-between">
+                        <span className={EYEBROW_CLASS}>{plan.name}</span>
+                        {isPopular ? (
+                          <span className={CHIP_CLASS}>{t("Popular")}</span>
+                        ) : isBestRate ? (
+                          <span className={CHIP_CLASS}>{t("Best rate")}</span>
+                        ) : null}
+                      </span>
+
+                      <span className="mt-1.5 block text-3xl font-bold leading-none text-white sm:mt-4 sm:text-4xl">
+                        <span dir="ltr">
+                          {plan.credits.toFixed(0)}
+                          <span className="ms-1.5 text-base font-bold text-[#adc6ff] sm:text-lg">
+                            Cr
+                          </span>
+                        </span>
+                      </span>
+
+                      <span className="mt-1 block min-h-[18px] text-sm font-semibold text-[#adc6ff]">
+                        {images ? (
+                          <span dir="ltr">{t("~{n} images").replace("{n}", String(images))}</span>
+                        ) : (
+                          ""
+                        )}
+                      </span>
+                    </span>
+
+                    <span className="shrink-0 text-end sm:block sm:text-start">
+                      <span className="block text-xl font-bold text-white sm:mt-4">
+                        <span dir="ltr">{formatPriceUsd(plan.priceMinor)}</span>
+                      </span>
+
+                      <span className="mt-0.5 block text-[11px] tabular-nums text-[#93a0bd] sm:mt-1">
+                        <span dir="ltr">{formatRateUsd(rate)}</span> {t("per credit")}
+                      </span>
+
+                      <span className="mt-0.5 block text-xs font-bold text-[#adc6ff] sm:min-h-[16px]">
+                        {savePct >= 5 ? t("Save {n}%").replace("{n}", String(savePct)) : ""}
+                      </span>
+                    </span>
+
+                    <span className="shrink-0 sm:hidden">
+                      {isPaying ? (
+                        <span
+                          className="auth-loader"
+                          style={{ width: 16, height: 16, borderWidth: 2 }}
+                        />
+                      ) : (
+                        <span className="material-symbols-outlined text-[20px] text-[#adc6ff] rtl:rotate-180">
+                          arrow_forward
+                        </span>
+                      )}
+                    </span>
+                  </div>
+
+                  <span className="mt-3 mb-1 block h-2 overflow-hidden rounded-full bg-white/10 sm:mt-4 sm:mb-2">
+                    <span
+                      className="block h-full w-full rounded-full bg-[linear-gradient(90deg,#adc6ff,#4d8eff)] transition-transform duration-700 ease-out motion-reduce:transition-none"
+                      style={{
+                        transform: `scaleX(${barsIn ? fill : 0})`,
+                        transformOrigin: isRtl ? "right" : "left",
+                      }}
+                    />
+                  </span>
+
+                  <span className="mt-4 hidden items-center justify-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm font-bold text-[#adc6ff] transition group-hover:border-[#adc6ff]/30 group-hover:bg-white/10 sm:mt-auto sm:flex">
+                    {isPaying ? (
+                      <span
+                        className="auth-loader"
+                        style={{ width: 16, height: 16, borderWidth: 2 }}
+                      />
+                    ) : (
+                      <>
+                        {t("Pay with card")}
+                        <span className="material-symbols-outlined text-[16px] rtl:rotate-180">
+                          arrow_forward
+                        </span>
+                      </>
+                    )}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {cardError && (
+            <p className="mt-4 rounded-md border border-white/10 bg-[#93000a]/10 px-3 py-2 text-sm text-[#ffb4ab]">
+              {cardError}
+            </p>
+          )}
+
+          {imageRate && (
+            <p className="mt-3 text-xs text-[#93a0bd]">
+              <span dir="ltr">
+                {t("Typical image ≈ {n} Cr").replace("{n}", imageRate.toFixed(2))}
+              </span>{" "}
+              {t("Cost varies by model.")}{" "}
+              <Link
+                href="/pricing"
+                className="font-semibold text-[#adc6ff] underline-offset-4 hover:underline"
+              >
+                {t("See full pricing")}
+              </Link>
+            </p>
+          )}
+
+          <button
+            type="button"
+            onClick={() => goTo({ step: "rail" })}
+            className={`${SECONDARY_BUTTON_CLASS} mt-6`}
+          >
+            {t("Back")}
+          </button>
+
+          {whatsappNumber && <div className="mt-5">{helpCard}</div>}
+        </section>
+      )}
+
+      {/* ------------------------------------------------------ Card: returned */}
+      {step === "card-return" && (
         <section className="mx-auto w-full max-w-xl">
           <div className={`${CARD_PADDED} text-center`}>
             <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#adc6ff]/10">
               <span className="material-symbols-outlined text-[28px] text-[#adc6ff]">
-                credit_card
+                check_circle
               </span>
             </span>
-            <p className={`${EYEBROW_CLASS} mt-4`}>{t("Coming soon")}</p>
-            <h2 className="mt-2 text-xl font-bold text-white sm:text-2xl">
-              {t("International cards")}
+            <h2 className="mt-4 text-xl font-bold text-white sm:text-2xl">
+              {t("Thanks!")}
             </h2>
+            {/* Crediting happens off a webhook, not this redirect, so this can
+                arrive a few seconds before the balance actually updates — the
+                page says so rather than claiming a success it hasn't confirmed. */}
             <p className="mx-auto mt-2 max-w-md text-sm text-[#c2c6d6]">
               {t(
-                "We're building card payment in USD, with credits added automatically. Until then you can pay with a Tunisian method.",
+                "If your payment went through, your credits will appear within a minute or two.",
               )}
             </p>
-
-            <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-              <button
-                type="button"
-                onClick={() => goTo({ step: "plan" })}
-                className={PRIMARY_BUTTON_CLASS}
-              >
-                {t("Pay with a Tunisian method")}
-              </button>
-              <button
-                type="button"
-                onClick={() => goTo({ step: "rail" })}
-                className={SECONDARY_BUTTON_CLASS}
-              >
-                {t("Back")}
-              </button>
-            </div>
+            <Link href="/credits" className={`${PRIMARY_BUTTON_CLASS} mt-6 inline-block`}>
+              {t("Check my balance")}
+            </Link>
           </div>
-
-          {whatsappNumber && <div className="mt-5">{helpCard}</div>}
         </section>
       )}
 

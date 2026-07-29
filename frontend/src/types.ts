@@ -288,6 +288,9 @@ export interface PaymentMethodOption {
 
 export interface CheckoutConfig {
   plans: CreditPlan[];
+  /** Same packs, USD-priced for the Dodo Payments (international card) rail.
+   *  priceMinor here is CENTS, not millimes — do not reuse the TND formatter. */
+  plansUsd: CreditPlan[];
   methods: PaymentMethodOption[];
   whatsappNumber: string;
   maxProofFiles: number;

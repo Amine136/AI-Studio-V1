@@ -21,6 +21,7 @@ from app.services.postgres_security_store import (  # noqa: F401
     create_credit_code_batch,
     create_credit_code_batch_with_title,
     create_credit_order,
+    credit_dodo_card_payment,
     list_user_credit_orders,
     list_admin_credit_orders,
     get_credit_order_proof_file_id,

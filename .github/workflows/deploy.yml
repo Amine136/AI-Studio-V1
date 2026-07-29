@@ -49,6 +49,8 @@ jobs:
           fi
           pm2 restart vibecraft-frontend || pm2 start npm --name "vibecraft-frontend" -- run start
           cd ../backend
+          echo "Installing backend dependencies..."
+          .venv/bin/pip install -q -r requirements.txt
           echo "Running database migrations..."
           .venv/bin/alembic upgrade head
           pm2 restart vibecraft-backend || true
@@ -83,6 +85,8 @@ jobs:
           fi
           pm2 restart ai-studio-frontend || pm2 start npm --name "ai-studio-frontend" -- run start
           cd ../backend
+          echo "Installing backend dependencies..."
+          .venv/bin/pip install -q -r requirements.txt
           echo "Running database migrations..."
           .venv/bin/alembic upgrade head
           pm2 restart ai-studio-backend || true

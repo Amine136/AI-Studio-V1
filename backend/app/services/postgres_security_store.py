@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import secrets
 import time
 import uuid
@@ -13,6 +14,8 @@ from sqlalchemy.exc import IntegrityError
 from app.config import settings
 from app.db.repositories import SecurityRepository
 from app.db.session import session_scope
+
+logger = logging.getLogger(__name__)
 
 CREDIT_SCALE = 100
 _ALLOWED_UI_LANGUAGES = {"en", "fr", "ar"}
@@ -1670,6 +1673,99 @@ def redeem_credit_code(code: str, uid: str) -> dict[str, Any]:
             "expiresAt": gift_expires_at,
             "validitySeconds": validity_seconds,
         }
+
+
+def credit_dodo_card_payment(
+    *,
+    dodo_payment_id: str,
+    uid: str,
+    plan_id: str,
+    credits: float,
+    price_minor: int,
+    currency: str,
+) -> dict[str, Any]:
+    """Grant credits for a Dodo Payments checkout, exactly once per payment.
+
+    ``credits`` is whole credits (not minor units) — the caller must have read
+    it from CREDIT_PLANS_USD, never from anything Dodo/the request echoes back.
+
+    Called from the webhook, which Dodo may retry up to 8 times for the same
+    event. The user row must exist BEFORE the payment row is inserted: the
+    payment row's FK on `uid` would otherwise raise on the very first flush
+    for a uid that isn't in `users` yet, and that failure must not be
+    misread as "this payment was already credited". Once the user exists,
+    the payment row (flushed immediately, forcing its unique constraint on
+    `dodo_payment_id` to be checked) is what actually guarantees
+    exactly-once: a duplicate delivery raises IntegrityError there and the
+    whole transaction — payment row and ledger entry both — rolls back
+    untouched.
+
+    Source is "purchase" (a real-money lot that never expires), unlike the
+    Tunisian rail's redeemed codes which land as "gift" lots with a validity
+    window — this buyer paid Dodo directly, there is no code to attach.
+    """
+    now = int(time.time())
+    credits_minor = _credits_to_minor(credits)
+    try:
+        with session_scope() as session:
+            repo = SecurityRepository(session)
+
+            user = repo.get_user_for_update(uid)
+            if user is None:
+                user = repo.ensure_user(uid, "", "")
+            _sweep_user_lots(repo, user, now)
+
+            repo.create_dodo_card_payment(
+                id=str(uuid.uuid4()),
+                uid=uid,
+                plan_id=plan_id,
+                credits_minor=credits_minor,
+                price_minor=price_minor,
+                currency=currency,
+                dodo_payment_id=dodo_payment_id,
+                created_at=now,
+            )
+
+            lot = _credit_lot(repo, user, credits_minor, now, source="purchase", expires_at=None)
+            user.updated_at = now
+            repo.add_ledger_entry(
+                uid=uid,
+                delta_minor=credits_minor,
+                reason="card_purchase",
+                actor_uid=uid,
+                metadata_json=_with_activity_metadata(
+                    {
+                        "plan_id": plan_id,
+                        "lot_id": lot.id,
+                        "price_minor": price_minor,
+                        "currency": currency,
+                        "dodo_payment_id": dodo_payment_id,
+                    },
+                    activity_id=f"card_purchase:{dodo_payment_id}",
+                    activity_type="card_purchase",
+                    activity_label="Card Purchase",
+                ),
+                created_at=now,
+            )
+    except IntegrityError:
+        # The only constraint this transaction can still hit past this point
+        # is the uniqueness of dodo_payment_id (the FK on uid is satisfied by
+        # the ensure_user above) — but "assume duplicate" would silently eat
+        # a real failure, so confirm it by re-querying rather than guessing.
+        with session_scope() as verify_session:
+            existing = SecurityRepository(verify_session).get_dodo_card_payment(dodo_payment_id)
+        if existing is not None:
+            return {"success": True, "duplicate": True}
+        logger.error(
+            "[dodo] credit_dodo_card_payment failed for payment_id=%s uid=%s with an "
+            "IntegrityError that was NOT a duplicate dodo_payment_id — credits were "
+            "NOT granted for a payment Dodo believes succeeded.",
+            dodo_payment_id,
+            uid,
+            exc_info=True,
+        )
+        return {"success": False, "duplicate": False}
+    return {"success": True, "duplicate": False}
 
 
 def get_active_suspension(uid: str) -> dict[str, Any] | None:
