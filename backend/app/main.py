@@ -1732,9 +1732,23 @@ async def handle_dodo_webhook(request: Request):
         raise HTTPException(status_code=400, detail="malformed webhook payload")
 
     event_type = str(payload.get("type") or "")
+    if event_type in ("payment.failed", "payment.cancelled", "payment.processing"):
+        # Crediting only ever happens on a confirmed "payment.succeeded" -- these
+        # three are acknowledged and logged (not silently dropped) so a "I paid
+        # but got nothing" support case can be traced to what Dodo actually
+        # reported, without needing to grant credits for anything here.
+        data = payload.get("data") or {}
+        metadata = data.get("metadata") or {}
+        logger.info(
+            "[dodo] %s: uid=%s plan_id=%s payment_id=%s",
+            event_type,
+            metadata.get("uid") or "<missing>",
+            metadata.get("plan_id") or "<missing>",
+            data.get("payment_id") or "<missing>",
+        )
+        return {"status": "ignored", "type": event_type}
     if event_type != "payment.succeeded":
-        # Every other subscribed event (payment.failed, etc.) is acknowledged
-        # and ignored: crediting only ever happens on a confirmed success.
+        # Any other subscribed event we don't specifically act on.
         return {"status": "ignored", "type": event_type}
 
     data = payload.get("data") or {}

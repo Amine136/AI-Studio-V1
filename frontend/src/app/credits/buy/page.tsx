@@ -280,6 +280,14 @@ function BuyCreditsWizard() {
   const step = STEP_KEYS.includes(requestedStep) ? requestedStep : "rail";
   const planId = searchParams.get("plan") || "";
   const method = searchParams.get("method") || "";
+  /* Dodo appends its own `status` (and `payment_id`) to the return_url on
+     redirect -- see docs.dodopayments.com/developer-resources/checkout-session.
+     Anything other than "succeeded"/"active" means no charge went through, so
+     the return page must not show the same checkmark it shows on success. */
+  const dodoStatus = searchParams.get("status") || "";
+  const dodoFailed =
+    dodoStatus !== "" && dodoStatus !== "succeeded" && dodoStatus !== "active";
+  const dodoCancelled = dodoFailed && dodoStatus === "cancelled";
 
   useEffect(() => {
     let cancelled = false;
@@ -868,7 +876,35 @@ function BuyCreditsWizard() {
       )}
 
       {/* ------------------------------------------------------ Card: returned */}
-      {step === "card-return" && (
+      {step === "card-return" && dodoFailed && (
+        <section className="mx-auto w-full max-w-xl">
+          <div className={`${CARD_PADDED} text-center`}>
+            <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-red-500/10">
+              <span className="material-symbols-outlined text-[28px] text-red-400">
+                error
+              </span>
+            </span>
+            <h2 className="mt-4 text-xl font-bold text-white sm:text-2xl">
+              {dodoCancelled ? t("Checkout cancelled") : t("Payment failed")}
+            </h2>
+            <p className="mx-auto mt-2 max-w-md text-sm text-[#c2c6d6]">
+              {dodoCancelled
+                ? t("You cancelled before paying. No charge was made and no credits were added.")
+                : t("Your card was declined. No charge was made and no credits were added.")}
+            </p>
+            <button
+              type="button"
+              onClick={() => goTo({ step: "rail" })}
+              className={`${PRIMARY_BUTTON_CLASS} mt-6`}
+            >
+              {t("Try again")}
+            </button>
+            {whatsappNumber && <div className="mt-5">{helpCard}</div>}
+          </div>
+        </section>
+      )}
+
+      {step === "card-return" && !dodoFailed && (
         <section className="mx-auto w-full max-w-xl">
           <div className={`${CARD_PADDED} text-center`}>
             <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#adc6ff]/10">
