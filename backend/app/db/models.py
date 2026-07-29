@@ -48,6 +48,12 @@ class User(Base):
     # NULL = never prompted -> the card shows exactly once. Backfilled to the
     # migration time for pre-existing users so only new accounts see it.
     preferences_prompted_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    # Set while a card payment of theirs is disputed. Blocks SPENDING only — the
+    # account still signs in and browses, deliberately unlike is_suspended, which
+    # blocks at auth and is too blunt for someone who may yet win their dispute.
+    # NULL = no hold.
+    payment_hold_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    payment_hold_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     created_codes: Mapped[list["CreditCode"]] = relationship(
         back_populates="created_by_user",
@@ -672,11 +678,54 @@ class DodoCardPayment(Base):
     price_minor: Mapped[int] = mapped_column(Integer, nullable=False)
     currency: Mapped[str] = mapped_column(String(8), default="USD", nullable=False)
     dodo_payment_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    # The credit lot this payment created. A reversal debits THIS lot rather than
+    # going through the ordinary spend order, which is gift-first and would drain
+    # the user's welcome bonus while leaving the refunded purchase untouched.
+    # NULL only for rows written before the column existed.
+    lot_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     created_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
 
     __table_args__ = (
         Index("ux_dodo_card_payments_payment_id", "dodo_payment_id", unique=True),
         Index("ix_dodo_card_payments_uid", "uid"),
+    )
+
+
+class DodoCardReversal(Base):
+    """One row per reversal EVENT against a card payment — refund or dispute.
+
+    Keyed on the event's own id (`refund_id` / `dispute_id`), not on the payment
+    id, because one payment can be reversed more than once: Dodo refunds may be
+    partial and repeated. A `reversed_at` column on `dodo_card_payments` would
+    only ever describe the first one.
+
+    The unique index on `event_ref_id` is the idempotency guarantee, the same way
+    `ux_dodo_card_payments_payment_id` is for crediting — Dodo retries a webhook
+    up to 8 times, and a clawback must not run twice.
+    """
+
+    __tablename__ = "dodo_card_reversals"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    uid: Mapped[str] = mapped_column(ForeignKey("users.uid", ondelete="CASCADE"), nullable=False)
+    dodo_payment_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    # "refund" | "dispute"
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    event_ref_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    # Money reversed, in the payment's minor unit.
+    amount_minor: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Credits we actually recovered, and the part we could not because they had
+    # already been spent. The balance cannot go negative (see the CHECK on
+    # users.credits_minor), so a clawback floors at zero and the remainder is a
+    # real loss that is recorded rather than hidden.
+    credits_clawed_minor: Mapped[int] = mapped_column(Integer, nullable=False)
+    written_off_minor: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+    __table_args__ = (
+        Index("ux_dodo_card_reversals_event_ref", "event_ref_id", unique=True),
+        Index("ix_dodo_card_reversals_payment_id", "dodo_payment_id"),
+        Index("ix_dodo_card_reversals_uid", "uid"),
     )
 
 

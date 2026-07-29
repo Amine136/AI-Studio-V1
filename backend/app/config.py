@@ -457,6 +457,21 @@ class Config:
             "pro": os.getenv("DODO_PRODUCT_ID_PRO", "").strip(),
             "ultra": os.getenv("DODO_PRODUCT_ID_ULTRA", "").strip(),
         }
+        # Which Dodo business this instance belongs to. The webhook envelope
+        # carries `business_id` at the TOP level (beside `type`/`data`), so a
+        # delivery meant for another environment can be told apart from one of
+        # ours even though both verify against a correctly-configured secret.
+        # Left blank the check is skipped with a warning — staging predates this
+        # setting and must keep working until the env is provisioned. Set it on
+        # BOTH boxes before go-live: staging and prod share one Dodo account, and
+        # a copied DODO_WEBHOOK_SECRET would otherwise let a test-mode payment
+        # credit a real user.
+        self.dodo_business_id = os.getenv("DODO_BUSINESS_ID", "").strip()
+        # How many card checkout sessions one account may start per rolling 24h.
+        # The cap lives at session creation, not in the webhook: refusing to
+        # credit a payment the customer has already made is the wrong failure
+        # mode, so the brake goes in front of the money, not behind it.
+        self.max_card_checkouts_per_day = int(os.getenv("MAX_CARD_CHECKOUTS_PER_DAY", "5"))
 
         # System model settings used for the intent-analysis step.
         self.system_llm_provider = os.getenv("SYSTEM_LLM_PROVIDER", "google-gemini")

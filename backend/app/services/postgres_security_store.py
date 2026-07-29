@@ -1184,6 +1184,10 @@ def adjust_credits(
             _credit_lot(repo, user, delta_minor, now, source="admin_grant", expires_at=None)
             applied_delta_minor = delta_minor
         elif delta_minor < 0:
+            # A negative adjustment is a spend (plain-chat charges arrive here),
+            # so it is subject to the dispute hold. Positive ones are not — a
+            # refund or a grant must still land while a hold is in place.
+            _assert_no_payment_hold(user)
             debited, _funding = _debit_across_lots(
                 repo, user, -delta_minor, now, floor_at_zero=allow_negative
             )
@@ -1715,7 +1719,7 @@ def credit_dodo_card_payment(
                 user = repo.ensure_user(uid, "", "")
             _sweep_user_lots(repo, user, now)
 
-            repo.create_dodo_card_payment(
+            payment = repo.create_dodo_card_payment(
                 id=str(uuid.uuid4()),
                 uid=uid,
                 plan_id=plan_id,
@@ -1727,6 +1731,12 @@ def credit_dodo_card_payment(
             )
 
             lot = _credit_lot(repo, user, credits_minor, now, source="purchase", expires_at=None)
+            # Recorded on the payment, not only in the ledger metadata, so a
+            # later refund can debit THIS lot rather than the ordinary gift-first
+            # spend order. Set after the lot exists but inside the same
+            # transaction, so the unique check on dodo_payment_id still happens
+            # before any credits are granted.
+            payment.lot_id = lot.id
             user.updated_at = now
             repo.add_ledger_entry(
                 uid=uid,
@@ -1766,6 +1776,299 @@ def credit_dodo_card_payment(
         )
         return {"success": False, "duplicate": False}
     return {"success": True, "duplicate": False}
+
+
+def _assert_no_payment_hold(user: Any) -> None:
+    """Refuse to spend while a card payment of theirs is under dispute.
+
+    Raised as ValueError("PAYMENT_HOLD") to sit alongside INSUFFICIENT_CREDITS —
+    the callers already translate that family of errors into HTTP responses.
+    """
+    if getattr(user, "payment_hold_at", None) is not None:
+        raise ValueError("PAYMENT_HOLD")
+
+
+def reverse_dodo_card_payment(
+    *,
+    dodo_payment_id: str,
+    event_ref_id: str,
+    kind: str,
+    amount_minor: int | None = None,
+    reason_label: str = "",
+) -> dict[str, Any]:
+    """Claw back the credits granted for a card payment that was reversed.
+
+    ``event_ref_id`` is the refund's or dispute's OWN id, and it is the
+    idempotency key — not ``dodo_payment_id``. Dodo refunds may be partial and
+    repeated, so one payment can legitimately be reversed several times; keying
+    on the payment would collapse them into one.
+
+    ``amount_minor`` is the money reversed. ``None`` means "the whole payment".
+
+    Two things this deliberately does NOT do:
+
+    - It never calls ``_debit_across_lots``. That spends gift-first /
+      soonest-expiry-first, which would drain the buyer's welcome bonus and
+      redeemed codes while leaving the refunded purchase lot untouched. The
+      clawback targets the exact lot the payment created.
+    - It never drives the balance below zero — the CHECK constraints on
+      ``users.credits_minor`` and ``credit_lots.remaining_minor`` forbid it. What
+      cannot be recovered because it was already spent is recorded as
+      ``written_off_minor``: a real loss, made visible rather than hidden.
+    """
+    now = int(time.time())
+    try:
+        with session_scope() as session:
+            repo = SecurityRepository(session)
+
+            payment = repo.get_dodo_card_payment(dodo_payment_id)
+            if payment is None:
+                # A payment we never credited (created outside our checkout, or
+                # from another environment). Nothing to reverse, and nothing
+                # Dodo should retry.
+                logger.warning(
+                    "[dodo] %s %s targets payment_id=%s which we never credited; nothing to reverse",
+                    kind,
+                    event_ref_id,
+                    dodo_payment_id,
+                )
+                return {"success": True, "duplicate": False, "unknown_payment": True}
+
+            uid = str(payment.uid)
+            paid_minor = int(payment.price_minor or 0)
+            granted_minor = int(payment.credits_minor or 0)
+
+            # How many credits this particular reversal is for.
+            if amount_minor is None or paid_minor <= 0 or int(amount_minor) >= paid_minor:
+                target_minor = granted_minor
+            else:
+                target_minor = (granted_minor * int(amount_minor)) // paid_minor
+
+            # Never take more, across all reversals, than the payment granted.
+            already = repo.sum_reversed_credits_for_payment(dodo_payment_id)
+            target_minor = max(0, min(target_minor, granted_minor - already))
+
+            user = repo.get_user_for_update(uid)
+            if user is None:
+                logger.error("[dodo] cannot reverse %s: user %s does not exist", event_ref_id, uid)
+                return {"success": False, "duplicate": False}
+            _sweep_user_lots(repo, user, now)
+
+            lot = repo.get_lot_for_update(str(payment.lot_id)) if payment.lot_id else None
+            reserved_at_reversal = int(lot.reserved_minor or 0) if lot is not None else 0
+            available = int(lot.remaining_minor or 0) if lot is not None else 0
+            take = min(target_minor, available)
+            written_off = target_minor - take
+
+            if lot is not None and take > 0:
+                lot.remaining_minor = int(lot.remaining_minor) - take
+                user.credits_minor = int(user.credits_minor) - take
+
+            # Claim AFTER the arithmetic but BEFORE the transaction closes: the
+            # unique constraint on event_ref_id is what makes a retried delivery
+            # roll the whole thing back rather than debit twice.
+            repo.create_dodo_card_reversal(
+                id=str(uuid.uuid4()),
+                uid=uid,
+                dodo_payment_id=dodo_payment_id,
+                kind=kind,
+                event_ref_id=event_ref_id,
+                amount_minor=int(amount_minor) if amount_minor is not None else paid_minor,
+                credits_clawed_minor=take,
+                written_off_minor=written_off,
+                created_at=now,
+            )
+
+            # Only once the payment has been reversed IN FULL: expire the lot so
+            # that credits still held in reserved_minor by an in-flight
+            # generation are reclaimed by the ordinary sweeper when that job
+            # settles, instead of being handed back into a lot we just clawed
+            # back. Deliberately NOT done on a partial reversal — the sweeper
+            # zeroes remaining_minor on any past-expiry lot, which would delete
+            # the credits the customer legitimately still owns.
+            fully_reversed = (already + target_minor) >= granted_minor
+            if lot is not None and fully_reversed:
+                lot.expires_at = now
+
+            user.updated_at = now
+            repo.add_ledger_entry(
+                uid=uid,
+                delta_minor=-take,
+                reason="card_payment_reversed",
+                actor_uid=None,
+                metadata_json=_with_activity_metadata(
+                    {
+                        "plan_id": str(payment.plan_id),
+                        "lot_id": str(payment.lot_id or ""),
+                        "dodo_payment_id": dodo_payment_id,
+                        "kind": kind,
+                        "event_ref_id": event_ref_id,
+                        "amount_minor": int(amount_minor) if amount_minor is not None else paid_minor,
+                        "written_off_minor": written_off,
+                        "reserved_at_reversal_minor": reserved_at_reversal,
+                    },
+                    # A DISTINCT activity id. Reusing card_purchase:{payment_id}
+                    # would fold the reversal into the purchase row and net it to
+                    # zero, hiding the refund from the credits history entirely.
+                    activity_id=f"card_reversal:{event_ref_id}",
+                    activity_type="card_payment_reversed",
+                    activity_label="Payment Reversed",
+                ),
+                created_at=now,
+            )
+            repo.add_admin_audit_log(
+                admin_uid=None,
+                admin_email=SYSTEM_AUDIT_EMAIL,
+                action="card_payment_reversed",
+                target_type="user",
+                target_id=uid,
+                reason=(
+                    reason_label
+                    or f"Card payment {dodo_payment_id} reversed ({kind}); "
+                    f"clawed back {_minor_to_credits(take):.2f} credits."
+                ),
+                metadata_json={
+                    "uid": uid,
+                    "dodo_payment_id": dodo_payment_id,
+                    "kind": kind,
+                    "event_ref_id": event_ref_id,
+                    "clawed_credits": _minor_to_credits(take),
+                    "written_off_credits": _minor_to_credits(written_off),
+                    "reserved_at_reversal_credits": _minor_to_credits(reserved_at_reversal),
+                    "remaining_balance": _minor_to_credits(user.credits_minor),
+                },
+                created_at=now,
+            )
+    except IntegrityError:
+        # Past this point the only constraint left is the uniqueness of
+        # event_ref_id — but "assume duplicate" would silently eat a real
+        # failure, so confirm it by re-querying rather than guessing (same
+        # reasoning as credit_dodo_card_payment).
+        with session_scope() as verify_session:
+            existing = SecurityRepository(verify_session).get_dodo_card_reversal(event_ref_id)
+        if existing is not None:
+            return {"success": True, "duplicate": True}
+        logger.error(
+            "[dodo] reverse_dodo_card_payment failed for event_ref_id=%s payment_id=%s with an "
+            "IntegrityError that was NOT a duplicate event_ref_id — credits were NOT clawed "
+            "back for a payment Dodo reports as reversed.",
+            event_ref_id,
+            dodo_payment_id,
+            exc_info=True,
+        )
+        return {"success": False, "duplicate": False}
+    return {"success": True, "duplicate": False, "clawed_minor": take, "written_off_minor": written_off}
+
+
+def set_payment_hold(uid: str, *, reason: str) -> bool:
+    """Freeze SPENDING for ``uid`` while a card payment of theirs is disputed.
+
+    Deliberately not ``suspend_user``: suspension blocks the account at auth,
+    which is too blunt for someone who may yet win a legitimate billing dispute.
+    A hold leaves them able to sign in and see what happened, and only stops them
+    from spending credits that may be about to be clawed back.
+
+    Idempotent — re-applying an existing hold refreshes nothing and is not an
+    error, because Dodo can redeliver the same dispute event.
+    """
+    now = int(time.time())
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        user = repo.get_user_for_update(uid)
+        if user is None:
+            logger.warning("[dodo] cannot place a payment hold on unknown user %s", uid)
+            return False
+        if user.payment_hold_at is None:
+            user.payment_hold_at = now
+            user.payment_hold_reason = reason
+            user.updated_at = now
+            repo.add_admin_audit_log(
+                admin_uid=None,
+                admin_email=SYSTEM_AUDIT_EMAIL,
+                action="payment_hold_applied",
+                target_type="user",
+                target_id=uid,
+                reason=reason,
+                metadata_json={"uid": uid},
+                created_at=now,
+            )
+        return True
+
+
+def clear_payment_hold(uid: str, *, reason: str) -> bool:
+    """Lift a spending freeze.
+
+    A no-op when there is no hold: Dodo does not guarantee event ordering, so a
+    ``dispute.won`` can arrive without the matching ``dispute.opened`` ever
+    having been delivered, and that must not be an error.
+    """
+    now = int(time.time())
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        user = repo.get_user_for_update(uid)
+        if user is None:
+            return False
+        if user.payment_hold_at is None:
+            return True
+        user.payment_hold_at = None
+        user.payment_hold_reason = None
+        user.updated_at = now
+        repo.add_admin_audit_log(
+            admin_uid=None,
+            admin_email=SYSTEM_AUDIT_EMAIL,
+            action="payment_hold_cleared",
+            target_type="user",
+            target_id=uid,
+            reason=reason,
+            metadata_json={"uid": uid},
+            created_at=now,
+        )
+        return True
+
+
+def get_card_payment_uid(dodo_payment_id: str) -> str | None:
+    """Who a card payment belongs to, or None if we never credited it."""
+    with session_scope() as session:
+        payment = SecurityRepository(session).get_dodo_card_payment(dodo_payment_id)
+        return str(payment.uid) if payment is not None else None
+
+
+def count_recent_card_payments(uid: str, *, window_seconds: int) -> int:
+    """Successful card payments for ``uid`` inside a rolling window."""
+    since_ts = int(time.time()) - int(window_seconds)
+    with session_scope() as session:
+        return SecurityRepository(session).count_dodo_card_payments_since(uid, since_ts=since_ts)
+
+
+def record_card_payment_anomaly(
+    *,
+    uid: str,
+    dodo_payment_id: str,
+    action: str,
+    reason: str,
+    metadata: dict[str, Any] | None = None,
+) -> None:
+    """Note something odd about a card payment in the admin audit log.
+
+    For the cases where a signed, genuine Dodo delivery still does not line up
+    with what we expected to be paid for — a short payment, a product that is
+    not the one the plan maps to, a settlement in an unexpected currency. These
+    are not errors to raise on (the signature was valid and Dodo should not
+    retry), but they must not vanish either: the audit log is the one surface
+    where a human sees them, and it already renders system-authored entries on
+    the admin Logs page.
+    """
+    with session_scope() as session:
+        SecurityRepository(session).add_admin_audit_log(
+            admin_uid=None,
+            admin_email=SYSTEM_AUDIT_EMAIL,
+            action=action,
+            target_type="user",
+            target_id=uid,
+            reason=reason,
+            metadata_json={"uid": uid, "dodo_payment_id": dodo_payment_id, **(metadata or {})},
+            created_at=int(time.time()),
+        )
 
 
 def get_active_suspension(uid: str) -> dict[str, Any] | None:
@@ -2376,6 +2679,7 @@ def create_analyze_session_with_charge(uid: str, prompt: str, analysis_fee: floa
             user = repo.ensure_user(uid, "", "")
             session.flush()
         _sweep_user_lots(repo, user, now)
+        _assert_no_payment_hold(user)
         _enforce_pending_analyze_session_limit(repo, uid, now=now)
         _enforce_usage_cap(repo, user, projected_charge_minor=analysis_fee_minor, now=now)
 
@@ -3486,6 +3790,7 @@ def reserve_generation_credits(
 
         if reserved_minor < 0:
             raise ValueError("Estimated cost must be non-negative")
+        _assert_no_payment_hold(user)
         _enforce_usage_cap(repo, user, projected_charge_minor=reserved_minor, now=now)
         if user.credits_minor < reserved_minor:
             raise ValueError("INSUFFICIENT_CREDITS")
