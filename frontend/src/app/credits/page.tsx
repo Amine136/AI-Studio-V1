@@ -141,7 +141,11 @@ function mapActivityToUsageEvents(entries: CreditActivityEntry[]): UsageEvent[] 
       activity: g.activity,
       status: g.status || "COMPLETED",
       amount: `${amountStr} Cr`,
-      positive: g.deltaMinor >= 0,
+      // `positive`, not `>= 0`: a zero-delta row is not a gain and must not get
+      // the coloured badge. This matters most for a reversed card payment whose
+      // credits were already spent — nothing could be clawed back, so the delta
+      // is 0, and a green "0.00 Cr" pill would present a total loss as good news.
+      positive,
       rawCredits: credits,
       createdAt: g.createdAt || 0,
     };
