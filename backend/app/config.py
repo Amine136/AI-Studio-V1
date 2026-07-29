@@ -467,11 +467,24 @@ class Config:
         # a copied DODO_WEBHOOK_SECRET would otherwise let a test-mode payment
         # credit a real user.
         self.dodo_business_id = os.getenv("DODO_BUSINESS_ID", "").strip()
-        # How many card checkout sessions one account may start per rolling 24h.
-        # The cap lives at session creation, not in the webhook: refusing to
-        # credit a payment the customer has already made is the wrong failure
-        # mode, so the brake goes in front of the money, not behind it.
+        # Two different card brakes, both at checkout creation rather than in the
+        # webhook — refusing to credit a payment the customer has already made is
+        # the wrong failure mode, so the brake goes in front of the money.
+        #
+        # The PURCHASE cap bounds how much one account can buy in a day, and so
+        # how much chargeback exposure a single compromised account can create.
+        # It counts successful payments, which means a declined card does not
+        # consume it.
         self.max_card_checkouts_per_day = int(os.getenv("MAX_CARD_CHECKOUTS_PER_DAY", "5"))
+        # The ATTEMPT cap is the card-testing brake, and it is the one the
+        # purchase cap cannot be: someone running stolen cards never records a
+        # payment, so they would never trip a cap counting purchases. Counts
+        # every checkout session started, successful or not. Set well above the
+        # purchase cap — a customer whose first card is declined must still be
+        # able to try another.
+        self.max_card_checkout_attempts_per_day = int(
+            os.getenv("MAX_CARD_CHECKOUT_ATTEMPTS_PER_DAY", "15")
+        )
 
         # System model settings used for the intent-analysis step.
         self.system_llm_provider = os.getenv("SYSTEM_LLM_PROVIDER", "google-gemini")

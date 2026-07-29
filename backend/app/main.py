@@ -1695,10 +1695,28 @@ def create_dodo_checkout(
     if plan is None:
         raise HTTPException(status_code=400, detail="Unknown plan")
 
-    # Velocity brake, in front of the money rather than behind it. Card fraud is
-    # a velocity game, and this is the rail where a stolen instrument actually
-    # works — but refusing to CREDIT a payment the customer already made would be
-    # the wrong failure mode, so the cap sits at session creation instead.
+    # Two brakes, both here rather than in the webhook: refusing to CREDIT a
+    # payment the customer already made would be the wrong failure mode.
+    #
+    # Card testing is the threat this rail actually has, and it does not produce
+    # payments — a declined card records nothing. So the attempt cap, not the
+    # purchase cap, is what bounds someone working through a list of stolen
+    # cards. It is checked first and consumes a token per session started.
+    attempt_cap = int(settings.max_card_checkout_attempts_per_day)
+    if attempt_cap > 0 and not consume_rate_limit(
+        f"card:checkout:attempt:{user['uid']}", max_count=attempt_cap, window_seconds=24 * 60 * 60
+    ):
+        logger.warning("[dodo] uid=%s hit the daily card checkout ATTEMPT cap", user["uid"])
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                "Too many card payment attempts today. Please try again tomorrow, "
+                "or contact us on WhatsApp if you need help."
+            ),
+        )
+
+    # The purchase cap bounds how much one account can buy in a day, and with it
+    # how much chargeback exposure a single compromised account can create.
     daily_cap = int(settings.max_card_checkouts_per_day)
     if daily_cap > 0:
         recent = count_recent_card_payments(str(user["uid"]), window_seconds=24 * 60 * 60)
