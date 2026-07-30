@@ -276,6 +276,10 @@ class CreditActivityEntryResponse(BaseModel):
     activity: str
     status: str = "COMPLETED"
     delta_minor: int = Field(alias="deltaMinor")
+    # Provider transaction reference, when the row has one (card rows carry the
+    # Dodo payment id). None for everything else — this is a receipt detail, not
+    # a required field, and it must never carry a credit code.
+    reference: Optional[str] = None
 
     model_config = {"populate_by_name": True}
 

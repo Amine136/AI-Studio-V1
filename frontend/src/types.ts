@@ -259,6 +259,10 @@ export interface CreditActivityEntry {
   activity: string;
   status: string;
   deltaMinor: number;
+  /* Provider transaction reference (the Dodo payment id on card rows). A purchase
+     and the reversal that undid it share the same one. Absent on rows with no
+     external transaction. */
+  reference?: string | null;
 }
 
 export interface CreditActivityListResponse {

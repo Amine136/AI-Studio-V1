@@ -2353,6 +2353,11 @@ def list_credit_activity_entries(uid: str, max_items: int = 20) -> list[dict[str
 
         groups[activity_id]["deltaMinor"] += activity["deltaMinor"]
         groups[activity_id]["entryCount"] = int(groups[activity_id].get("entryCount") or 1) + 1
+        # Kept outside the newer-wins branch below: every entry in a group shares
+        # the same reference, so the only thing that can differ is whether a given
+        # entry carried one at all. Never overwrite a real reference with nothing.
+        if activity.get("reference") and not groups[activity_id].get("reference"):
+            groups[activity_id]["reference"] = activity["reference"]
         if activity["createdAt"] > groups[activity_id]["createdAt"]:
             groups[activity_id]["createdAt"] = activity["createdAt"]
             groups[activity_id]["activity"] = activity["activity"]
@@ -3580,6 +3585,16 @@ def _credit_activity_from_ledger_entry(entry: dict[str, Any]) -> dict[str, Any]:
         else:
             activity_label = (reason or "Credit Activity").replace("_", " ").title()
 
+    # A customer-facing transaction reference, where the row has one. The Dodo
+    # payment id is deliberately the choice for card rows: a purchase and its
+    # reversal carry the SAME one, which is exactly what lets someone match a
+    # refund to the charge it undid — otherwise two same-day, same-amount rows are
+    # indistinguishable. It is also what support quotes to look a charge up.
+    #
+    # Never a credit code or its hash. Those are bearer instruments, not
+    # references, and this field goes to the customer.
+    reference = str(metadata.get("dodo_payment_id") or "").strip()
+
     return {
         "id": activity_id,
         "createdAt": int(entry.get("createdAt") or 0),
@@ -3587,6 +3602,7 @@ def _credit_activity_from_ledger_entry(entry: dict[str, Any]) -> dict[str, Any]:
         "activity": activity_label,
         "status": "COMPLETED",
         "deltaMinor": int(entry.get("deltaMinor") or 0),
+        "reference": reference or None,
         "conversationId": str(metadata.get("conversation_id") or "").strip() or None,
         "entryCount": 1,
     }

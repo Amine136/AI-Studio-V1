@@ -83,6 +83,10 @@ type UsageEvent = {
      and carry the code for the copy button. */
   isOrder?: boolean;
   orderCode?: string;
+  /* Provider transaction id, on the rows that have one. A card purchase and the
+     reversal that undid it share the same reference — without it, two same-day
+     same-amount rows cannot be told apart, let alone paired. */
+  reference?: string;
 };
 
 
@@ -148,6 +152,7 @@ function mapActivityToUsageEvents(entries: CreditActivityEntry[]): UsageEvent[] 
       positive,
       rawCredits: credits,
       createdAt: g.createdAt || 0,
+      reference: g.reference || undefined,
     };
   });
 }
@@ -1018,6 +1023,12 @@ export default function CreditsPage() {
                             </>
                           ) : null}
                         </p>
+                        {event.reference ? (
+                          <p className="mt-1 text-xs text-[#c2c6d6]">
+                            {t("Transaction")}{" "}
+                            <span className="select-all font-mono">{event.reference}</span>
+                          </p>
+                        ) : null}
                       </td>
                       <td className="px-6 py-5 text-right">
                         <span className={getAmountBadgeClass(event.positive, event.rawCredits)}>
@@ -1046,6 +1057,12 @@ export default function CreditsPage() {
                     <div className="min-w-0">
                       <p className="font-medium text-white">{translateActivity(event.activity)}</p>
                       <p className="mt-1 text-xs text-[#c2c6d6]">{event.date}</p>
+                      {event.reference ? (
+                        <p className="mt-1 break-all text-xs text-[#c2c6d6]">
+                          {t("Transaction")}{" "}
+                          <span className="select-all font-mono">{event.reference}</span>
+                        </p>
+                      ) : null}
                     </div>
                     <div className="shrink-0">
                       <span className={getAmountBadgeClass(event.positive, event.rawCredits)}>
