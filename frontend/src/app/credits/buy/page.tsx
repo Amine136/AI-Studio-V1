@@ -6,6 +6,7 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { useAuth } from "../../../context/AuthContext";
 import { useLanguage } from "../../../context/LanguageContext";
 import { api } from "../../../services/api";
+import { trackInitiateCheckout } from "../../../lib/pixel";
 import type {
   CheckoutConfig,
   CreditPlan,
@@ -414,6 +415,7 @@ function BuyCreditsWizard() {
       }
       setCardError("");
       setPayingPlanId(plan.id);
+      trackInitiateCheckout(plan);
       try {
         const { checkoutUrl } = await api.createDodoCheckout(plan.id);
         window.location.href = checkoutUrl;
@@ -506,6 +508,7 @@ function BuyCreditsWizard() {
 
     setSubmitting(true);
     setError("");
+    trackInitiateCheckout(selectedPlan);
     try {
       const order = await api.placeCreditOrder({
         planId: selectedPlan.id,

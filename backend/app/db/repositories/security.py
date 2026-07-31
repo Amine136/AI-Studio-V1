@@ -309,6 +309,8 @@ class SecurityRepository:
         currency: str,
         payment_method: str,
         note: str,
+        fb_pixel_fbp: str | None = None,
+        fb_pixel_fbc: str | None = None,
     ) -> CreditOrder:
         now = int(time.time())
         order = CreditOrder(
@@ -321,6 +323,8 @@ class SecurityRepository:
             currency=currency,
             payment_method=payment_method,
             note=note,
+            fb_pixel_fbp=fb_pixel_fbp,
+            fb_pixel_fbc=fb_pixel_fbc,
             status="pending",
             created_at=now,
             updated_at=now,

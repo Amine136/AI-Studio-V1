@@ -42,20 +42,39 @@ def _get_client() -> DodoPayments:
     return _client
 
 
-def create_checkout_session(*, uid: str, plan: dict[str, Any], return_url: str) -> str:
+def create_checkout_session(
+    *,
+    uid: str,
+    plan: dict[str, Any],
+    return_url: str,
+    fbp: str | None = None,
+    fbc: str | None = None,
+) -> str:
     """Create a one-time-payment checkout session for ``plan`` and return its
     hosted checkout URL. ``uid`` and the plan id travel as metadata so the
     webhook can identify who to credit and with what, without trusting
-    anything the browser sends back on return."""
+    anything the browser sends back on return.
+
+    The buyer's Meta Pixel cookies ride along the same way, for the same reason:
+    the webhook fires a server-side Purchase, and by then the browser that held
+    them is gone. Both are short opaque strings (~50 chars), well inside the
+    per-value metadata limit, and are simply omitted when the visitor has no
+    Pixel cookies (blocked, or never touched an ad)."""
     product_id = settings.dodo_product_ids.get(str(plan["id"]))
     if not product_id:
         raise DodoNotConfiguredError(f"No Dodo product configured for plan '{plan['id']}'")
+
+    metadata = {"uid": uid, "plan_id": str(plan["id"])}
+    if fbp:
+        metadata["fbp"] = fbp
+    if fbc:
+        metadata["fbc"] = fbc
 
     client = _get_client()
     session = client.checkout_sessions.create(
         product_cart=[{"product_id": product_id, "quantity": 1}],
         return_url=return_url,
-        metadata={"uid": uid, "plan_id": str(plan["id"])},
+        metadata=metadata,
     )
     return session.checkout_url
 

@@ -41,7 +41,7 @@ from app.services.admin_auth import AdminAuthRateLimitError, authenticate_admin,
 from app.services.apikeymanager_client import ApiKeyManagerProxyError, check_apikeymanager_ready
 from app.services.auth import format_suspension_detail, verify_admin_csrf, verify_admin_session, verify_api_key, verify_firebase_user
 from app.services.email_service import dispatch as dispatch_email
-from app.services import discord_orders, dodo_payments
+from app.services import discord_orders, dodo_payments, meta_capi
 from app.services.catalog_store import catalog_store
 from app.services.model_visibility import filter_catalog, list_model_visibility, update_model_visibility, visible_model_catalog
 from app.services.chat_service import assemble_plain_chat_context, list_plain_chat_models, minimum_required_credits_for_plain_chat, normalize_plain_chat_system, prepare_plain_chat_conversation_request, preview_plain_chat_prompt, send_plain_chat, serialize_plain_chat_parts
@@ -1735,6 +1735,10 @@ def create_dodo_checkout(
             uid=str(user["uid"]),
             plan=plan,
             return_url=return_url,
+            # Ride along in the session metadata so the webhook can attribute the
+            # Purchase; by then this browser is gone.
+            fbp=request.cookies.get("_fbp"),
+            fbc=request.cookies.get("_fbc"),
         )
     except dodo_payments.DodoNotConfiguredError as exc:
         logger.warning("[dodo] checkout session requested but not configured: %s", exc)
@@ -2079,6 +2083,27 @@ async def handle_dodo_webhook(request: Request):
         # rather than treating this delivery as handled.
         raise HTTPException(status_code=500, detail="Could not record this payment")
 
+    # Report the sale to Meta on the delivery that actually credited. Dodo
+    # retries the same event up to 8 times, and `duplicate` is what tells those
+    # apart — event_id would dedupe them Meta-side anyway, this just avoids the
+    # pointless calls.
+    if not result.get("duplicate"):
+        try:
+            buyer_email = str(get_user(uid).get("email") or "")
+            meta_capi.send_purchase(
+                event_id=f"dodo_{dodo_payment_id}",
+                uid=uid,
+                email=buyer_email,
+                plan_id=plan_id,
+                plan_name=str(plan["name"]),
+                price_minor=price_minor,
+                currency=currency,
+                fbp=str(metadata.get("fbp") or "") or None,
+                fbc=str(metadata.get("fbc") or "") or None,
+            )
+        except Exception:
+            logger.exception("[dodo] Meta CAPI Purchase dispatch failed for %s", dodo_payment_id)
+
     # Flag the odd ones only on the delivery that actually credited, so a Dodo
     # retry does not pile up duplicate audit rows for the same payment.
     if not result.get("duplicate"):
@@ -2216,6 +2241,11 @@ async def place_credit_order(
             payment_method=str(payment_method).strip(),
             note=note,
             proof_file_ids=file_ids,
+            # Stored now, used much later: the Purchase event goes out when an
+            # admin accepts this order, with no buyer browser around to read
+            # cookies from.
+            fb_pixel_fbp=request.cookies.get("_fbp"),
+            fb_pixel_fbc=request.cookies.get("_fbc"),
         )
         # Announce it in the Discord review channel after the response is sent.
         # Deliberately fail-open and out-of-band: a Discord outage must never

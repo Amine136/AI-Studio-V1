@@ -37,11 +37,9 @@ export default function BuyCodesButton({
     </>
   );
 
-  const handleTrack = () => {
-    if (typeof window !== "undefined" && window.fbq) {
-      window.fbq("trackCustom", "ClickPurchase");
-    }
-  };
+  // No Pixel event on the click itself: this button's only destination is
+  // /credits/buy, whose ViewContent reports the same intent one step later and
+  // survives the user arriving there by any other route.
 
   // Locked: external payment platform not live yet. Non-clickable button with a
   // "Coming soon" remark underneath.
@@ -65,14 +63,14 @@ export default function BuyCodesButton({
 
   if (PAYMENT_LINK_IS_EXTERNAL) {
     return (
-      <a href={PAYMENT_LINK} target="_blank" rel="noopener noreferrer" className={className} onClick={handleTrack}>
+      <a href={PAYMENT_LINK} target="_blank" rel="noopener noreferrer" className={className}>
         {content}
       </a>
     );
   }
 
   return (
-    <Link href={PAYMENT_LINK} className={className} onClick={handleTrack}>
+    <Link href={PAYMENT_LINK} className={className}>
       {content}
     </Link>
   );

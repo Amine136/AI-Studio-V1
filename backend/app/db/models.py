@@ -611,6 +611,13 @@ class CreditOrder(Base):
     # whenever Discord is unconfigured or the post failed — the integration is
     # fail-open, so that is a normal state, not an error.
     discord_message_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # The buyer's Meta Pixel cookies, captured when they placed the order. The
+    # Purchase event is sent server-side days later, when an admin confirms the
+    # payment and the browser that held these is long gone — without them Meta
+    # can rarely tie the sale back to the ad click that caused it. Null is
+    # normal: no ad click, or the Pixel was blocked.
+    fb_pixel_fbp: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    fb_pixel_fbc: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
     updated_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
 

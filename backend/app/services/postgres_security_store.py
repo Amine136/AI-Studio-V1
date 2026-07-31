@@ -879,6 +879,8 @@ def create_credit_order(
     payment_method: str,
     note: str,
     proof_file_ids: list[str],
+    fb_pixel_fbp: str | None = None,
+    fb_pixel_fbc: str | None = None,
 ) -> dict[str, Any]:
     """Record a manual purchase awaiting review. Credits/price come from the caller,
     which must have read them from CREDIT_PLANS — never from the request body."""
@@ -908,6 +910,8 @@ def create_credit_order(
             currency=currency,
             payment_method=payment_method,
             note=note.strip()[:400],
+            fb_pixel_fbp=fb_pixel_fbp,
+            fb_pixel_fbc=fb_pixel_fbc,
         )
         for file_id in proof_file_ids:
             repo.add_credit_order_proof(order_id=order.id, file_id=file_id)
@@ -1084,7 +1088,30 @@ def accept_credit_order(
             },
             created_at=now,
         )
-        return _credit_order_dict(repo, order)
+        result = _credit_order_dict(repo, order)
+        buyer = repo.get_user(str(order.uid))
+        purchase = {
+            "event_id": f"order_{order_id}",
+            "uid": str(order.uid),
+            "email": str(buyer.email) if buyer is not None else "",
+            "plan_id": str(order.plan_id),
+            "plan_name": str(order.plan_name),
+            "price_minor": int(order.price_minor),
+            "currency": str(order.currency),
+            "fbp": order.fb_pixel_fbp,
+            "fbc": order.fb_pixel_fbc,
+        }
+
+    # Money confirmed: report the sale to Meta. Outside session_scope so it only
+    # fires on a transaction that actually committed, and fail-safe inside — an
+    # ad-reporting problem must never surface as a failed accept.
+    try:
+        from app.services.meta_capi import send_purchase
+
+        send_purchase(**purchase)
+    except Exception:
+        logger.exception("meta_capi: Purchase dispatch failed for order %s", order_id)
+    return result
 
 
 def refuse_credit_order(

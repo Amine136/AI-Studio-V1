@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { onAuthStateChanged, User } from "firebase/auth";
 import { auth } from "../lib/firebase";
-import { META_PIXEL_ID } from "../components/MetaPixel";
+import { META_PIXEL_ID, whenFbqReady } from "../lib/pixel";
 
 interface AuthContextType {
     user: User | null;
@@ -14,20 +14,6 @@ const AuthContext = createContext<AuthContextType>({
     user: null,
     loading: true,
 });
-
-// Run `cb` once window.fbq exists. The Pixel snippet defines fbq as a queuing
-// stub synchronously when its inline script runs, so this only bridges the gap
-// until that script executes; we poll briefly and give up if it never loads
-// (ad blocker) — in which case the server-side CAPI event is the safety net.
-function whenFbqReady(cb: (fbq: Window["fbq"]) => void, attempts = 0): void {
-    if (typeof window === "undefined") return;
-    if (window.fbq) {
-        cb(window.fbq);
-        return;
-    }
-    if (attempts >= 100) return; // ~20s (100 x 200ms) then stop waiting
-    window.setTimeout(() => whenFbqReady(cb, attempts + 1), 200);
-}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
