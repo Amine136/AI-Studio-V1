@@ -1690,7 +1690,7 @@ def create_dodo_checkout(
     payload: DodoCheckoutRequest,
     user: Dict[str, Any] = Depends(verify_firebase_user),
 ):
-    del request
+    # request is read below for the buyer's Meta Pixel cookies.
     plan = CREDIT_PLANS_USD_BY_ID.get(str(payload.planId).strip())
     if plan is None:
         raise HTTPException(status_code=400, detail="Unknown plan")
