@@ -203,7 +203,7 @@ export const translations = {
 
     // Pricing Page
     "Model Pricing": "Model Pricing",
-    "Buy Codes": "Buy Codes",
+    "Buy Codes": "Top Up",
     "Coming soon": "Coming soon",
     "Transparent, usage-based pricing. Pay only for the tokens you compute and the images you generate.": "Transparent, usage-based pricing. Pay only for the tokens you compute and the images you generate.",
     "All": "All",
@@ -913,7 +913,7 @@ export const translations = {
 
     // Pricing Page
     "Model Pricing": "Tarifs des Modèles",
-    "Buy Codes": "Acheter des codes",
+    "Buy Codes": "Recharger",
     "Coming soon": "Bientôt disponible",
     "Transparent, usage-based pricing. Pay only for the tokens you compute and the images you generate.": "Tarification transparente basée sur l'utilisation. Ne payez que pour les tokens que vous calculez et les images que vous générez.",
     "All": "Tous",
@@ -1733,7 +1733,7 @@ export const translations = {
 
     // Pricing Page
     "Model Pricing": "أسعار النماذج",
-    "Buy Codes": "شراء أكواد",
+    "Buy Codes": "شحن الرصيد",
     "Coming soon": "قريباً",
     "Transparent, usage-based pricing. Pay only for the tokens you compute and the images you generate.": "تسعير شفاف يعتمد على الاستخدام. ادفع فقط مقابل الوحدات التي تستهلكها والصور التي تولدها.",
     "All": "الكل",
