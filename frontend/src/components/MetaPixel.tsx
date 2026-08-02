@@ -7,18 +7,19 @@ import { META_PIXEL_ID, PIXEL_ENABLED, whenFbqReady } from "../lib/pixel";
 
 export { META_PIXEL_ID };
 
-/** Which event a route is worth reporting as, beyond its PageView.
+/** Which commercial surface a route reports as ViewContent, beyond its PageView.
  *
- * Standard events (ViewContent) are what Meta can optimise and score match
- * quality on, so anything with a standard equivalent uses one and carries a
- * content_name to keep the surfaces apart in Events Manager. EnterStudio stays
- * custom: "opened the generation tool" has no standard analogue, and forcing it
- * into ViewContent would only blur it with the commercial pages. */
-function routeEvent(pathname: string): { standard: boolean; name: string; contentName?: string } | null {
-  if (pathname === "/credits/buy") return { standard: true, name: "ViewContent", contentName: "Buy Credits" };
-  if (pathname === "/credits") return { standard: true, name: "ViewContent", contentName: "Credits" };
-  if (pathname === "/pricing") return { standard: true, name: "ViewContent", contentName: "Pricing" };
-  if (pathname === "/create" || pathname.startsWith("/packs")) return { standard: false, name: "EnterStudio" };
+ * ViewContent is a standard event, which is what Meta can optimise and score
+ * match quality on, so each of these carries a content_name to stay separable in
+ * Events Manager. All three are top of funnel and deliberately fire for
+ * anonymous visitors too.
+ *
+ * EnterStudio is not here. It has to mean "a signed-in user reached a generation
+ * surface", and a route table cannot see auth — see EnterStudioTracker. */
+function viewContentName(pathname: string): string | null {
+  if (pathname === "/credits/buy") return "Buy Credits";
+  if (pathname === "/credits") return "Credits";
+  if (pathname === "/pricing") return "Pricing";
   return null;
 }
 
@@ -37,13 +38,8 @@ export default function MetaPixel() {
     whenFbqReady((fbq) => {
       fbq("track", "PageView");
 
-      const event = routeEvent(pathname);
-      if (!event) return;
-      fbq(
-        event.standard ? "track" : "trackCustom",
-        event.name,
-        event.contentName ? { content_name: event.contentName } : undefined,
-      );
+      const contentName = viewContentName(pathname);
+      if (contentName) fbq("track", "ViewContent", { content_name: contentName });
     });
   }, [pathname, searchParams]);
 

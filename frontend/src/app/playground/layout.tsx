@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import AppSidebar from "../../components/app-shell/AppSidebar";
 import RequireActiveUser from "../../components/auth/RequireActiveUser";
+import EnterStudioTracker from "../../components/EnterStudioTracker";
 
 /**
  * Pins the chat shell to the *actually visible* viewport.
@@ -60,6 +61,9 @@ export default function PlaygroundLayout({ children }: { children: React.ReactNo
     // Playground is open for anonymous browsing; every operation (send, upload,
     // attach, history) is walled to /auth by the page itself.
     <RequireActiveUser allowAnonymous>
+      {/* Anonymous browsing is allowed here, so the tracker's own signed-in
+          check is what keeps EnterStudio honest on this route. */}
+      <EnterStudioTracker />
       {/* Height comes from --app-vh (the measured visible viewport); 100dvh is only
           the pre-hydration fallback. See useVisibleViewportHeight above. */}
       <div

@@ -6,6 +6,7 @@ import { useAuth } from "../../context/AuthContext";
 import AppSidebar from "../../components/app-shell/AppSidebar";
 import { getProfile } from "../../lib/credits";
 import RequireActiveUser from "../../components/auth/RequireActiveUser";
+import EnterStudioTracker from "../../components/EnterStudioTracker";
 import { Suspense } from "react";
 import { useLanguage } from "../../context/LanguageContext";
 
@@ -70,6 +71,9 @@ export default function StudioLayout({ children }: { children: React.ReactNode }
 
   return (
     <RequireActiveUser>
+      {/* Inside the guard: a logged-out visitor is redirected from here without
+          ever reporting that they entered the studio. */}
+      <EnterStudioTracker />
       <div className="vc-lightpage flex min-h-screen overflow-x-hidden bg-[#0c1324] text-[#dce1fb] selection:bg-[#4d8eff] selection:text-[#00285d]">
         <AppSidebar activePath={pathname} />
 
