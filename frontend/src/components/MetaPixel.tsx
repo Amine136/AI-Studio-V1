@@ -25,7 +25,9 @@ function viewContentName(pathname: string): string | null {
 
 export default function MetaPixel() {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
+  // Read but deliberately not depended on: the call keeps this component's
+  // Suspense behaviour as-is, while the effect below ignores query changes.
+  useSearchParams();
 
   useEffect(() => {
     if (!PIXEL_ENABLED || !pathname) return;
@@ -41,7 +43,13 @@ export default function MetaPixel() {
       const contentName = viewContentName(pathname);
       if (contentName) fbq("track", "ViewContent", { content_name: contentName });
     });
-  }, [pathname, searchParams]);
+    // Keyed on pathname alone, never the query string. /credits/buy is one page
+    // driven through its steps by ?step/?plan/?method, so depending on the query
+    // made a single checkout report three PageViews and three ViewContent "Buy
+    // Credits" — turning one shopper into three product-page views. This also
+    // keeps MetaPixel consistent with EnterStudioTracker, which already ignores
+    // query churn.
+  }, [pathname]);
 
   if (!PIXEL_ENABLED) return null;
 
