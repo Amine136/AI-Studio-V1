@@ -19,7 +19,7 @@ const policyLocales = {
     },
     effective: {
       label: "Effective",
-      date: "July 14, 2026",
+      date: "August 3, 2026",
       desc: "This policy applies to the current Vibecraft production workflow unless replaced by a later revision.",
     },
     support: {
@@ -54,15 +54,18 @@ const policyLocales = {
       },
       {
         title: "Credits, Billing, And Refund Rules",
-        summary: "How credits are consumed and when a charge should or should not happen.",
+        summary: "How credits are consumed, when a charge should or should not happen, and what is refundable.",
         items: [
           "Vibecraft charges credits based on the active billing logic of the selected workflow or model.",
           "If Vibecraft cannot deliver a usable result, the user should not be charged for that failed result unless otherwise stated in-product.",
           "If a request succeeds and provider cost is already incurred, the delivered result may still be charged even if the final account balance becomes slightly negative.",
           "Standard Vibecraft credits do not expire unless a specific promotional credit explicitly says otherwise.",
           "Credits are non-transferable and are not intended to be traded, resold, or pooled across accounts.",
-          "Credit purchases are billed in Tunisian Dinar (TND) through the local payment gateways offered in the product.",
-          "Refunds are handled in platform credits, not in local currency: the cost of a request is reserved before it runs, and if the result is not delivered the reserved credits are automatically returned to your balance — no charge is applied and nothing is refunded to your original payment method.",
+          "Credit purchases are billed either in Tunisian Dinar (TND) through the local payment gateways offered in the product, or in US Dollars (USD) by international card through our payment provider, which acts as merchant of record for that transaction.",
+          "Returning reserved credits is not a money refund: the cost of a request is reserved before it runs, and if the result is not delivered the reserved credits are automatically returned to your balance — no charge is applied.",
+          "A money refund covers only credits you have not used. Where a purchase is refundable, the amount refunded is the unconsumed share of that purchase — if you bought 70 credits and 30 remain unused, the refundable amount is 30/70 of the price paid. Credits already spent on delivered results are not refundable.",
+          "When a purchase is refunded, the corresponding credits are removed from your balance. The removal applies to the credits created by that specific purchase, and credits from it that you had already spent are not restored.",
+          "A payment disputed with your card issuer pauses spending on the account until the dispute is resolved.",
         ],
       },
       {
@@ -127,7 +130,7 @@ const policyLocales = {
     },
     effective: {
       label: "Date d'effet",
-      date: "18 Juin 2026",
+      date: "3 août 2026",
       desc: "Cette politique s'applique au workflow de production actuel de Vibecraft à moins d'être remplacée par une révision ultérieure.",
     },
     support: {
@@ -163,15 +166,18 @@ const policyLocales = {
       },
       {
         title: "Crédits, Facturation et Règles de Remboursement",
-        summary: "Comment les crédits sont consommés et quand des frais doivent ou ne doivent pas être appliqués.",
+        summary: "Comment les crédits sont consommés, quand des frais doivent ou ne doivent pas être appliqués, et ce qui est remboursable.",
         items: [
           "Vibecraft facture des crédits en fonction de la logique de facturation active du workflow ou du modèle sélectionné.",
           "Si Vibecraft ne peut pas fournir un résultat utilisable, l'utilisateur ne doit pas être facturé pour cet échec de génération, sauf indication contraire dans le produit.",
           "Si une demande réussit et qu'un coût fournisseur est déjà engagé, le résultat livré reste facturable même si le solde final du compte devient légèrement négatif.",
           "Les crédits Vibecraft standard n'expirent pas, à moins qu'un crédit promotionnel spécifique ne dise explicitement le contraire.",
           "Les crédits sont non transférables et ne sont pas destinés à être échangés, revendus ou mis en commun entre les comptes.",
-          "Les achats de crédits sont facturés en dinar tunisien (TND) via les passerelles de paiement locales proposées dans le produit.",
-          "Les remboursements se font en crédits de la plateforme, et non en monnaie locale : le coût d'une requête est réservé avant son exécution et, si le résultat n'est pas livré, les crédits réservés sont automatiquement restitués à votre solde — aucun montant n'est facturé et rien n'est remboursé sur votre moyen de paiement d'origine.",
+          "Les achats de crédits sont facturés soit en dinar tunisien (TND) via les passerelles de paiement locales proposées dans le produit, soit en dollars américains (USD) par carte bancaire internationale via notre prestataire de paiement, qui agit en tant que revendeur officiel (merchant of record) pour cette transaction.",
+          "La restitution des crédits réservés n'est pas un remboursement en argent : le coût d'une requête est réservé avant son exécution et, si le résultat n'est pas livré, les crédits réservés sont automatiquement restitués à votre solde — aucun montant n'est facturé.",
+          "Un remboursement en argent ne porte que sur les crédits que vous n'avez pas utilisés. Lorsqu'un achat est remboursable, le montant remboursé correspond à la part non consommée de cet achat : si vous avez acheté 70 crédits et qu'il en reste 30 inutilisés, le montant remboursable est de 30/70 du prix payé. Les crédits déjà dépensés sur des résultats livrés ne sont pas remboursables.",
+          "Lorsqu'un achat est remboursé, les crédits correspondants sont retirés de votre solde. Ce retrait porte sur les crédits créés par cet achat précis, et les crédits issus de cet achat que vous aviez déjà dépensés ne sont pas restitués.",
+          "Un paiement contesté auprès de votre banque émettrice suspend les dépenses sur le compte jusqu'à la résolution du litige.",
         ],
       },
       {
@@ -236,7 +242,7 @@ const policyLocales = {
     },
     effective: {
       label: "تاريخ السريان",
-      date: "18 يونيو 2026",
+      date: "3 أغسطس 2026",
       desc: "تنطبق هذه السياسة على سير عمل إنتاج Vibecraft الحالي ما لم يتم استبدالها بمراجعة لاحقة.",
     },
     support: {
@@ -272,15 +278,18 @@ const policyLocales = {
       },
       {
         title: "قواعد الأرصدة، الفوترة والاسترداد",
-        summary: "كيف يتم استهلاك الأرصدة ومتى يجب أو لا يجب أن يتم احتساب رسوم.",
+        summary: "كيف يتم استهلاك الأرصدة، ومتى يجب أو لا يجب احتساب رسوم، وما هو القابل للاسترداد.",
         items: [
           "يفرض Vibecraft رسومًا على الأرصدة بناءً على منطق الفوترة النشط لسير العمل أو النموذج المحدد.",
           "إذا لم يتمكن Vibecraft من تقديم نتيجة قابلة للاستخدام، فلا ينبغي فرض رسوم على المستخدم مقابل هذه النتيجة الفاشلة ما لم ينص على خلاف ذلك داخل المنتج.",
           "إذا نجح الطلب وتم تكبد تكلفة المزود بالفعل، فقد تظل النتيجة المسلمة مشحونة حتى إذا أصبح الرصيد النهائي للحساب سالبًا بشكل طفيف.",
           "لا تنتهي صلاحية أرصدة Vibecraft القياسية ما لم ينص رصيد ترويجي محدد صراحة على خلاف ذلك.",
           "الأرصدة غير قابلة للتحويل ولا يُقصد تداولها أو إعادة بيعها أو تجميعها عبر الحسابات.",
-          "تتم فوترة شراء الأرصدة بالدينار التونسي (TND) عبر بوابات الدفع المحلية المتوفرة داخل المنتج.",
-          "تتم عمليات الاسترداد بأرصدة المنصة وليس بالعملة المحلية: يتم حجز تكلفة الطلب قبل تنفيذه، وإذا لم تُسلَّم النتيجة تُعاد الأرصدة المحجوزة تلقائيًا إلى رصيدك — دون احتساب أي رسوم ودون رد أي مبلغ إلى وسيلة الدفع الأصلية.",
+          "تتم فوترة شراء الأرصدة إما بالدينار التونسي (TND) عبر بوابات الدفع المحلية المتوفرة داخل المنتج، أو بالدولار الأمريكي (USD) عبر بطاقة بنكية دولية من خلال مزود الدفع لدينا، الذي يعمل كبائع رسمي (merchant of record) لتلك المعاملة.",
+          "إعادة الأرصدة المحجوزة ليست استردادًا نقديًا: يتم حجز تكلفة الطلب قبل تنفيذه، وإذا لم تُسلَّم النتيجة تُعاد الأرصدة المحجوزة تلقائيًا إلى رصيدك — دون احتساب أي رسوم.",
+          "لا يشمل الاسترداد النقدي إلا الأرصدة التي لم تستخدمها. عندما تكون عملية الشراء قابلة للاسترداد، يكون المبلغ المسترد هو الحصة غير المستهلكة من تلك العملية: إذا اشتريت 70 رصيدًا وبقي 30 غير مستخدم، فإن المبلغ القابل للاسترداد هو 30/70 من السعر المدفوع. أما الأرصدة التي أُنفقت بالفعل على نتائج مُسلَّمة فهي غير قابلة للاسترداد.",
+          "عند استرداد عملية شراء، تُخصم الأرصدة المقابلة من رصيدك. ويستهدف هذا الخصم الأرصدة الناتجة عن عملية الشراء المحددة تلك، ولا تُعاد الأرصدة التي كنت قد أنفقتها بالفعل منها.",
+          "الاعتراض على عملية دفع لدى الجهة المُصدِرة لبطاقتك يوقف الإنفاق على الحساب مؤقتًا حتى تتم تسوية النزاع.",
         ],
       },
       {
