@@ -555,6 +555,9 @@ export interface CreditBreakdown {
   available: number;
   own: number;
   reserved: number;
+  /** Owed back after a reversed card payment. NOT subtracted from `available` —
+   *  it is taken off the top of the next purchase or redeemed code instead. */
+  debt: number;
   gifts: CreditGiftLot[];
 }
 

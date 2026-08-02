@@ -54,6 +54,12 @@ class User(Base):
     # NULL = no hold.
     payment_hold_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     payment_hold_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Credits owed back after a reversal that could not be fully clawed back
+    # because they had already been spent. Settled off the top of the next
+    # purchase or redeemed code, so buy -> consume -> refund stops being free.
+    # A SEPARATE counter rather than a negative credits_minor: every spend,
+    # reserve and sweep path assumes the balance is non-negative.
+    credit_debt_minor: Mapped[int] = mapped_column(Integer, default=0, nullable=False, server_default="0")
 
     created_codes: Mapped[list["CreditCode"]] = relationship(
         back_populates="created_by_user",
@@ -79,6 +85,7 @@ class User(Base):
     __table_args__ = (
         CheckConstraint("credits_minor >= 0", name="ck_users_credits_minor_nonnegative"),
         CheckConstraint("reserved_credits_minor >= 0", name="ck_users_reserved_credits_minor_nonnegative"),
+        CheckConstraint("credit_debt_minor >= 0", name="ck_users_credit_debt_minor_nonnegative"),
         Index("ix_users_email", "email"),
         Index("ix_users_last_seen_at", "last_seen_at"),
     )

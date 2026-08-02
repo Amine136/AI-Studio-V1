@@ -733,7 +733,7 @@ export default function CreditsPage() {
                 </span>
               )}
               <BalanceReadout nodeRef={balanceNodeRef} value={displayCredits} />
-            {breakdown && breakdown.gifts.length > 0 && (
+            {breakdown && (breakdown.gifts.length > 0 || breakdown.debt > 0) && (
               <div className="mt-3">
                 <button
                   type="button"
@@ -764,6 +764,22 @@ export default function CreditsPage() {
                       <div className="flex items-center justify-between border-t border-white/10 pt-1.5 text-[#8c909f]">
                         <span>{t("Reserved (in progress)")}</span>
                         <span>{breakdown.reserved.toFixed(2)} Cr</span>
+                      </div>
+                    )}
+                    {breakdown.debt > 0 && (
+                      <div className="border-t border-white/10 pt-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="flex items-center gap-1.5 text-[#ffb4a2]">
+                            <span className="material-symbols-outlined text-[15px]">error</span>
+                            {t("Balance owed")}
+                          </span>
+                          <span className="font-semibold text-[#ffb4a2]">-{breakdown.debt.toFixed(2)} Cr</span>
+                        </div>
+                        {/* Says WHY it exists and that it does not touch what they
+                            hold now — otherwise it reads as credits being taken. */}
+                        <p className="mt-1 text-xs leading-relaxed text-[#8c909f]">
+                          {t("From a refunded payment. Taken off your next top-up — your current balance is unaffected.")}
+                        </p>
                       </div>
                     )}
                   </div>

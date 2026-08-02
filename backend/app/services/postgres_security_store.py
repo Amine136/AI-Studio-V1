@@ -146,7 +146,7 @@ def get_credit_breakdown(uid: str) -> dict[str, Any]:
         repo = SecurityRepository(session)
         user = repo.get_user(uid)
         if user is None:
-            return {"available": 0.0, "own": 0.0, "reserved": 0.0, "gifts": []}
+            return {"available": 0.0, "own": 0.0, "reserved": 0.0, "debt": 0.0, "gifts": []}
         # Read-only unless something is actually due to expire (see get_user).
         if repo.has_due_expiry(uid, now):
             user = repo.get_user_for_update(uid)
@@ -171,6 +171,10 @@ def get_credit_breakdown(uid: str) -> dict[str, Any]:
             "available": _minor_to_credits(int(user.credits_minor)),
             "own": _minor_to_credits(own_minor),
             "reserved": _minor_to_credits(int(user.reserved_credits_minor)),
+            # Owed back after a reversed payment. Not subtracted from `available`
+            # — the credits they still hold are genuinely theirs to spend; this
+            # comes off their next top-up instead.
+            "debt": _minor_to_credits(int(getattr(user, "credit_debt_minor", 0) or 0)),
             "gifts": gifts,
         }
 
@@ -1652,10 +1656,20 @@ def redeem_credit_code(code: str, uid: str) -> dict[str, Any]:
         gift_expires_at = (now + int(validity_seconds)) if validity_seconds else None
 
         credit_code.claimed_count += 1
+        # Anything owed comes off the top, so redeeming a code cannot be used to
+        # walk away from a reversed card payment.
+        granted_minor = _settle_debt(
+            repo,
+            user,
+            int(credit_code.credits_minor),
+            now,
+            context={"ref": f"code:{code_hash}", "source": "credit_code_redeem"},
+        )
+        settled_minor = int(credit_code.credits_minor) - granted_minor
         lot = _credit_lot(
             repo,
             user,
-            credit_code.credits_minor,
+            granted_minor,
             now,
             source="gift",
             expires_at=gift_expires_at,
@@ -1690,8 +1704,20 @@ def redeem_credit_code(code: str, uid: str) -> dict[str, Any]:
         session.flush()
 
         credits = _minor_to_credits(credit_code.credits_minor)
-        message = f"+{credits:g} credit{'s' if credits != 1 else ''} added to your account!"
-        if validity_seconds:
+        added = _minor_to_credits(granted_minor)
+        settled = _minor_to_credits(settled_minor)
+        # The message must describe what actually landed. Saying "+20 credits
+        # added" when a debt swallowed them is a straight falsehood, and the
+        # credits page animates a refuel off this number.
+        if settled_minor > 0:
+            message = (
+                f"{credits:g} credit{'s' if credits != 1 else ''} redeemed — {settled:g} went to the "
+                f"balance owed on your account"
+            )
+            message += f", {added:g} added to your balance." if granted_minor > 0 else "."
+        else:
+            message = f"+{credits:g} credit{'s' if credits != 1 else ''} added to your account!"
+        if validity_seconds and granted_minor > 0:
             message += (
                 f" These gift credits are valid for {_format_duration(int(validity_seconds))}"
                 " — use them before they expire."
@@ -1700,6 +1726,8 @@ def redeem_credit_code(code: str, uid: str) -> dict[str, Any]:
             "success": True,
             "message": message,
             "credits": credits,
+            "creditsAdded": added,
+            "debtSettled": settled,
             "balance": _minor_to_credits(user.credits_minor),
             "expiresAt": gift_expires_at,
             "validitySeconds": validity_seconds,
@@ -1757,7 +1785,19 @@ def credit_dodo_card_payment(
                 created_at=now,
             )
 
-            lot = _credit_lot(repo, user, credits_minor, now, source="purchase", expires_at=None)
+            # Settle first, then bank the rest. The payment row keeps the FULL
+            # credits_minor it was sold for — a later reversal is measured
+            # against what was bought, not against what survived the debt, so
+            # refunding a payment that only cleared a debt correctly puts that
+            # debt back.
+            granted_minor = _settle_debt(
+                repo,
+                user,
+                credits_minor,
+                now,
+                context={"ref": f"payment:{dodo_payment_id}", "source": "card_purchase"},
+            )
+            lot = _credit_lot(repo, user, granted_minor, now, source="purchase", expires_at=None)
             # Recorded on the payment, not only in the ledger metadata, so a
             # later refund can debit THIS lot rather than the ordinary gift-first
             # spend order. Set after the lot exists but inside the same
@@ -1891,6 +1931,13 @@ def reverse_dodo_card_payment(
                 lot.remaining_minor = int(lot.remaining_minor) - take
                 user.credits_minor = int(user.credits_minor) - take
 
+            # What could not be recovered is carried as a debt rather than simply
+            # lost. It never blocks spending of credits they legitimately still
+            # hold; it comes off the top of their next purchase or redeemed code,
+            # so buy -> consume -> refund is no longer free to repeat.
+            if written_off > 0:
+                user.credit_debt_minor = int(getattr(user, "credit_debt_minor", 0) or 0) + written_off
+
             # Claim AFTER the arithmetic but BEFORE the transaction closes: the
             # unique constraint on event_ref_id is what makes a retried delivery
             # roll the whole thing back rather than debit twice.
@@ -1961,6 +2008,7 @@ def reverse_dodo_card_payment(
                     "event_ref_id": event_ref_id,
                     "clawed_credits": _minor_to_credits(take),
                     "written_off_credits": _minor_to_credits(written_off),
+                    "debt_after_credits": _minor_to_credits(int(getattr(user, "credit_debt_minor", 0) or 0)),
                     "reserved_at_reversal_credits": _minor_to_credits(reserved_at_reversal),
                     "remaining_balance": _minor_to_credits(user.credits_minor),
                 },
@@ -3052,6 +3100,46 @@ def _credit_lot(
     )
     user.credits_minor += amount_minor
     return lot
+
+
+def _settle_debt(repo: SecurityRepository, user: Any, amount_minor: int, now: int, *, context: dict[str, Any]) -> int:
+    """Take what this account owes off the top of an incoming grant.
+
+    Returns the amount that should actually reach a lot. Writes its own ledger
+    entry for the settled part so the balance still equals the sum of the ledger:
+    the caller records the grant at FULL face value, this records the negative,
+    and the lot is created for the difference.
+
+    That entry gets a DISTINCT activity id. Filing it under the purchase's or
+    redemption's id would make ``list_credit_activity_entries`` sum the two into
+    one row and the settlement would vanish from the user's history — the same
+    trap ``reverse_dodo_card_payment`` avoids.
+
+    Called only from the paths where a user ACQUIRES credits (card purchase,
+    redeemed code). Deliberately not from the analyze-session fee refund, which
+    hands back credits the user already owned, nor from an admin grant, which is
+    a deliberate human decision to give credits.
+    """
+    owed = int(getattr(user, "credit_debt_minor", 0) or 0)
+    if owed <= 0 or amount_minor <= 0:
+        return amount_minor
+
+    settled = min(owed, amount_minor)
+    user.credit_debt_minor = owed - settled
+    repo.add_ledger_entry(
+        uid=user.uid,
+        delta_minor=-settled,
+        reason="debt_settled",
+        actor_uid=None,
+        metadata_json=_with_activity_metadata(
+            {**context, "settled_minor": settled, "debt_remaining_minor": user.credit_debt_minor},
+            activity_id=f"debt_settled:{context.get('ref', '')}:{now}",
+            activity_type="debt_settled",
+            activity_label="Balance Owed Settled",
+        ),
+        created_at=now,
+    )
+    return amount_minor - settled
 
 
 def _grant_signup_bonus(repo: SecurityRepository, user: Any, now: int) -> None:
