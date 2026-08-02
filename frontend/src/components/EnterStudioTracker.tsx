@@ -1,9 +1,19 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { useAuth } from "../context/AuthContext";
 import { trackCustom } from "../lib/pixel";
+
+/** Last surface reported, held at module scope rather than in a ref.
+ *
+ * RequireActiveUser drops back to its loader — unmounting its children — on
+ * every pathname change AND whenever the Firebase user object changes identity,
+ * so this component is destroyed and rebuilt constantly. Per-instance state
+ * resets with it and would let one visit report several times; only state that
+ * outlives the mount can tell a real surface change from a remount. It resets
+ * on a full page load, which is correct: that is a genuine new entry. */
+let lastSurface: string | null = null;
 
 /** Which generation surface a route is, for the EnterStudio breakdown.
  *
@@ -32,17 +42,16 @@ function surfaceFor(pathname: string): string | null {
 export default function EnterStudioTracker() {
   const pathname = usePathname();
   const { user, loading } = useAuth();
-  // Keyed on the surface, not the path, so moving between a pack and its batch
-  // page does not re-report entering Packs.
-  const lastSurface = useRef<string | null>(null);
 
   useEffect(() => {
     if (loading || !user || !pathname) return;
 
+    // Keyed on the surface, not the path, so moving between a pack and its
+    // batch page does not re-report entering Packs.
     const surface = surfaceFor(pathname);
-    if (!surface || lastSurface.current === surface) return;
+    if (!surface || lastSurface === surface) return;
 
-    lastSurface.current = surface;
+    lastSurface = surface;
     trackCustom("EnterStudio", { content_name: surface });
   }, [pathname, user, loading]);
 
