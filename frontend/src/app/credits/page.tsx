@@ -778,7 +778,7 @@ export default function CreditsPage() {
                         {/* Says WHY it exists and that it does not touch what they
                             hold now — otherwise it reads as credits being taken. */}
                         <p className="mt-1 text-xs leading-relaxed text-[#8c909f]">
-                          {t("From a refunded payment. Taken off your next top-up — your current balance is unaffected.")}
+                          {t("From a refunded payment that your balance did not cover. Taken off your next top-up.")}
                         </p>
                       </div>
                     )}

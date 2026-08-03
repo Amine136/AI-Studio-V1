@@ -1872,16 +1872,23 @@ def reverse_dodo_card_payment(
 
     ``amount_minor`` is the money reversed. ``None`` means "the whole payment".
 
-    Two things this deliberately does NOT do:
+    Recovery happens in two stages:
 
-    - It never calls ``_debit_across_lots``. That spends gift-first /
-      soonest-expiry-first, which would drain the buyer's welcome bonus and
-      redeemed codes while leaving the refunded purchase lot untouched. The
-      clawback targets the exact lot the payment created.
-    - It never drives the balance below zero — the CHECK constraints on
-      ``users.credits_minor`` and ``credit_lots.remaining_minor`` forbid it. What
-      cannot be recovered because it was already spent is recorded as
-      ``written_off_minor``: a real loss, made visible rather than hidden.
+    1. Debit the exact lot the payment created (``payment.lot_id``), so a refund
+       hits the credits it actually paid for rather than the ordinary
+       gift-first spend order.
+    2. If that lot cannot cover the reversal — it was already partly spent —
+       take the shortfall from the REST of the balance, gift-first /
+       soonest-expiry-first. This reaches credits from other sources, including
+       redeemed codes and other card payments' lots. Deliberate: money going
+       back to the customer is recovered from whatever they still hold before
+       any of it is treated as owed.
+
+    Only what survives both stages becomes ``written_off_minor``, which is added
+    to ``users.credit_debt_minor`` and settled off the top of their next
+    purchase or redeemed code. The balance is never driven below zero — the
+    CHECK constraints on ``users.credits_minor`` and
+    ``credit_lots.remaining_minor`` forbid it.
     """
     now = int(time.time())
     try:
@@ -1925,16 +1932,31 @@ def reverse_dodo_card_payment(
             reserved_at_reversal = int(lot.reserved_minor or 0) if lot is not None else 0
             available = int(lot.remaining_minor or 0) if lot is not None else 0
             take = min(target_minor, available)
-            written_off = target_minor - take
 
             if lot is not None and take > 0:
                 lot.remaining_minor = int(lot.remaining_minor) - take
                 user.credits_minor = int(user.credits_minor) - take
 
-            # What could not be recovered is carried as a debt rather than simply
-            # lost. It never blocks spending of credits they legitimately still
-            # hold; it comes off the top of their next purchase or redeemed code,
-            # so buy -> consume -> refund is no longer free to repeat.
+            # Whatever the payment's own lot could not cover is taken from the
+            # rest of the balance before any of it becomes a debt. A shortfall
+            # only exists once that lot is at zero, so this can never
+            # double-debit it — list_spendable_lots_for_update filters on
+            # remaining_minor > 0.
+            #
+            # This DOES reach credits from other sources, including redeemed
+            # codes and other card payments' lots: refunding one payment can
+            # drain another's. That is the intended rule — money going back to
+            # the customer is recovered from whatever they still hold first.
+            shortfall = target_minor - take
+            swept = 0
+            if shortfall > 0:
+                swept, _funding = _debit_across_lots(repo, user, shortfall, now, floor_at_zero=True)
+
+            recovered = take + swept
+            # Only what is left after draining the balance becomes a debt. It
+            # comes off the top of their next purchase or redeemed code, so
+            # buy -> consume -> refund is not free to repeat.
+            written_off = shortfall - swept
             if written_off > 0:
                 user.credit_debt_minor = int(getattr(user, "credit_debt_minor", 0) or 0) + written_off
 
@@ -1948,7 +1970,7 @@ def reverse_dodo_card_payment(
                 kind=kind,
                 event_ref_id=event_ref_id,
                 amount_minor=int(amount_minor) if amount_minor is not None else paid_minor,
-                credits_clawed_minor=take,
+                credits_clawed_minor=recovered,
                 written_off_minor=written_off,
                 created_at=now,
             )
@@ -1967,7 +1989,7 @@ def reverse_dodo_card_payment(
             user.updated_at = now
             repo.add_ledger_entry(
                 uid=uid,
-                delta_minor=-take,
+                delta_minor=-recovered,
                 reason="card_payment_reversed",
                 actor_uid=None,
                 metadata_json=_with_activity_metadata(
@@ -1978,6 +2000,11 @@ def reverse_dodo_card_payment(
                         "kind": kind,
                         "event_ref_id": event_ref_id,
                         "amount_minor": int(amount_minor) if amount_minor is not None else paid_minor,
+                        # Broken out so the split is auditable: what came from the
+                        # payment's own lot vs. what had to be taken from the rest
+                        # of the balance vs. what is still owed.
+                        "clawed_from_payment_lot_minor": take,
+                        "swept_from_other_lots_minor": swept,
                         "written_off_minor": written_off,
                         "reserved_at_reversal_minor": reserved_at_reversal,
                     },
@@ -1999,14 +2026,16 @@ def reverse_dodo_card_payment(
                 reason=(
                     reason_label
                     or f"Card payment {dodo_payment_id} reversed ({kind}); "
-                    f"clawed back {_minor_to_credits(take):.2f} credits."
+                    f"recovered {_minor_to_credits(recovered):.2f} credits."
                 ),
                 metadata_json={
                     "uid": uid,
                     "dodo_payment_id": dodo_payment_id,
                     "kind": kind,
                     "event_ref_id": event_ref_id,
-                    "clawed_credits": _minor_to_credits(take),
+                    "clawed_credits": _minor_to_credits(recovered),
+                    "clawed_from_payment_lot_credits": _minor_to_credits(take),
+                    "swept_from_other_lots_credits": _minor_to_credits(swept),
                     "written_off_credits": _minor_to_credits(written_off),
                     "debt_after_credits": _minor_to_credits(int(getattr(user, "credit_debt_minor", 0) or 0)),
                     "reserved_at_reversal_credits": _minor_to_credits(reserved_at_reversal),
@@ -2032,7 +2061,14 @@ def reverse_dodo_card_payment(
             exc_info=True,
         )
         return {"success": False, "duplicate": False}
-    return {"success": True, "duplicate": False, "clawed_minor": take, "written_off_minor": written_off}
+    return {
+        "success": True,
+        "duplicate": False,
+        "clawed_minor": recovered,
+        "clawed_from_payment_lot_minor": take,
+        "swept_from_other_lots_minor": swept,
+        "written_off_minor": written_off,
+    }
 
 
 def set_payment_hold(uid: str, *, reason: str) -> bool:
