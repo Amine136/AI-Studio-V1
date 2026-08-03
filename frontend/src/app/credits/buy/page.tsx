@@ -866,6 +866,18 @@ function BuyCreditsWizard() {
             </p>
           )}
 
+          {/* Outside the imageRate guard: the refund terms apply to every
+              purchase, and this is the last screen before money moves. */}
+          <p className="mt-2 text-xs text-[#93a0bd]">
+            {t("Purchases are subject to our credit and refund rules.")}{" "}
+            <Link
+              href="/policy"
+              className="font-semibold text-[#adc6ff] underline-offset-4 hover:underline"
+            >
+              {t("Read the policy")}
+            </Link>
+          </p>
+
           <button
             type="button"
             onClick={() => goTo({ step: "rail" })}
@@ -1065,6 +1077,16 @@ function BuyCreditsWizard() {
               </Link>
             </p>
           )}
+
+          <p className="mt-2 text-xs text-[#93a0bd]">
+            {t("Purchases are subject to our credit and refund rules.")}{" "}
+            <Link
+              href="/policy"
+              className="font-semibold text-[#adc6ff] underline-offset-4 hover:underline"
+            >
+              {t("Read the policy")}
+            </Link>
+          </p>
 
           <HowItWorks />
 

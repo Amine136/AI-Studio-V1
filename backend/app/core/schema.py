@@ -444,6 +444,9 @@ class AdminUserListItem(BaseModel):
     credits: float
     reservedCredits: float = 0.0
     totalCredits: float = 0.0
+    # Owed after a reversal. In the LIST because an admin grant does NOT settle
+    # a debt — topping up an account that owes must be a choice, not an accident.
+    creditDebt: float = 0.0
     isSuspended: bool = False
     suspensionReason: str = ""
     activeSuspensionUntil: Optional[int] = None

@@ -3580,6 +3580,10 @@ def _user_dict_from_model(user: Any) -> dict[str, Any]:
         "credits": _minor_to_credits(int(user.credits_minor)),
         "reservedCredits": _minor_to_credits(int(user.reserved_credits_minor)),
         "totalCredits": _minor_to_credits(int(user.credits_minor + user.reserved_credits_minor)),
+        # Owed after a reversal the balance could not cover. Surfaced here so the
+        # admin user list can show it: an admin grant does NOT settle a debt, so
+        # granting credits to someone who owes has to be an informed decision.
+        "creditDebt": _minor_to_credits(int(getattr(user, "credit_debt_minor", 0) or 0)),
         "createdAt": user.created_at,
         "updatedAt": user.updated_at,
         "lastSeenAt": user.last_seen_at,

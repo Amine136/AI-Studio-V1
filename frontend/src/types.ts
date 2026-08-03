@@ -224,6 +224,8 @@ export interface CurrentUserProfile {
   credits?: number;
   reservedCredits?: number;
   totalCredits?: number;
+  /** Owed after a reversed payment. An admin grant does NOT settle it. */
+  creditDebt?: number;
   createdAt?: number | null;
   updatedAt?: number | null;
   lastSeenAt?: number | null;
@@ -515,6 +517,8 @@ export interface AdminUserListItem {
   credits: number;
   reservedCredits: number;
   totalCredits: number;
+  /** Owed after a reversed payment. An admin grant does NOT settle it. */
+  creditDebt?: number;
   isSuspended: boolean;
   suspensionReason: string;
   activeSuspensionUntil?: number | null;
