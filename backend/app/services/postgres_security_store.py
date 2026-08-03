@@ -171,9 +171,10 @@ def get_credit_breakdown(uid: str) -> dict[str, Any]:
             "available": _minor_to_credits(int(user.credits_minor)),
             "own": _minor_to_credits(own_minor),
             "reserved": _minor_to_credits(int(user.reserved_credits_minor)),
-            # Owed back after a reversed payment. Not subtracted from `available`
-            # — the credits they still hold are genuinely theirs to spend; this
-            # comes off their next top-up instead.
+            # Owed back after a reversed payment, once that reversal had already
+            # drained the balance to zero. Not subtracted from `available`: it is
+            # settled off the top of their next purchase or redeemed code, not
+            # against what they hold now.
             "debt": _minor_to_credits(int(getattr(user, "credit_debt_minor", 0) or 0)),
             "gifts": gifts,
         }

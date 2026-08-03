@@ -58,7 +58,7 @@ const policyLocales = {
         items: [
           "Vibecraft charges credits based on the active billing logic of the selected workflow or model.",
           "If Vibecraft cannot deliver a usable result, the user should not be charged for that failed result unless otherwise stated in-product.",
-          "If a request succeeds and provider cost is already incurred, the delivered result may still be charged even if the final account balance becomes slightly negative.",
+          "If a request succeeds and provider cost is already incurred, the delivered result may still be charged even when it costs more than was reserved for it. Such a charge is limited to the credits available on your account — your balance never goes below zero.",
           "Standard Vibecraft credits do not expire unless a specific promotional credit explicitly says otherwise.",
           "Credits are non-transferable and are not intended to be traded, resold, or pooled across accounts.",
           "Credit purchases are billed either in Tunisian Dinar (TND) through the local payment gateways offered in the product, or in US Dollars (USD) by international card through our payment provider, which acts as merchant of record for that transaction.",
@@ -171,7 +171,7 @@ const policyLocales = {
         items: [
           "Vibecraft facture des crédits en fonction de la logique de facturation active du workflow ou du modèle sélectionné.",
           "Si Vibecraft ne peut pas fournir un résultat utilisable, l'utilisateur ne doit pas être facturé pour cet échec de génération, sauf indication contraire dans le produit.",
-          "Si une demande réussit et qu'un coût fournisseur est déjà engagé, le résultat livré reste facturable même si le solde final du compte devient légèrement négatif.",
+          "Si une demande réussit et qu'un coût fournisseur est déjà engagé, le résultat livré reste facturable même s'il coûte plus que ce qui avait été réservé. Un tel prélèvement est limité aux crédits disponibles sur votre compte — votre solde ne devient jamais négatif.",
           "Les crédits Vibecraft standard n'expirent pas, à moins qu'un crédit promotionnel spécifique ne dise explicitement le contraire.",
           "Les crédits sont non transférables et ne sont pas destinés à être échangés, revendus ou mis en commun entre les comptes.",
           "Les achats de crédits sont facturés soit en dinar tunisien (TND) via les passerelles de paiement locales proposées dans le produit, soit en dollars américains (USD) par carte bancaire internationale via notre prestataire de paiement, qui agit en tant que revendeur officiel (merchant of record) pour cette transaction.",
@@ -284,7 +284,7 @@ const policyLocales = {
         items: [
           "يفرض Vibecraft رسومًا على الأرصدة بناءً على منطق الفوترة النشط لسير العمل أو النموذج المحدد.",
           "إذا لم يتمكن Vibecraft من تقديم نتيجة قابلة للاستخدام، فلا ينبغي فرض رسوم على المستخدم مقابل هذه النتيجة الفاشلة ما لم ينص على خلاف ذلك داخل المنتج.",
-          "إذا نجح الطلب وتم تكبد تكلفة المزود بالفعل، فقد تظل النتيجة المسلمة مشحونة حتى إذا أصبح الرصيد النهائي للحساب سالبًا بشكل طفيف.",
+          "إذا نجح الطلب وتم تكبد تكلفة المزود بالفعل، فقد تظل النتيجة المسلَّمة خاضعة للرسوم حتى إن تجاوزت تكلفتها ما تم حجزه لها. ويقتصر هذا الخصم على الأرصدة المتاحة في حسابك — ولا يصبح رصيدك سالبًا أبدًا.",
           "لا تنتهي صلاحية أرصدة Vibecraft القياسية ما لم ينص رصيد ترويجي محدد صراحة على خلاف ذلك.",
           "الأرصدة غير قابلة للتحويل ولا يُقصد تداولها أو إعادة بيعها أو تجميعها عبر الحسابات.",
           "تتم فوترة شراء الأرصدة إما بالدينار التونسي (TND) عبر بوابات الدفع المحلية المتوفرة داخل المنتج، أو بالدولار الأمريكي (USD) عبر بطاقة بنكية دولية من خلال مزود الدفع لدينا، الذي يعمل كبائع رسمي (merchant of record) لتلك المعاملة.",
