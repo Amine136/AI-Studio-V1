@@ -161,7 +161,8 @@ class Config:
         # Falls back to the catalog webhook secret if unset (back-compat), but a
         # separate value is recommended to isolate blast radius.
         self.internal_sweep_secret = os.getenv("INTERNAL_SWEEP_SECRET", "").strip()
-        self.firebase_project_id = os.getenv("FIREBASE_PROJECT_ID", "novanodetn").strip()
+        self.firebase_project_id = os.getenv("FIREBASE_PROJECT_ID", "portfolio-645a8").strip()
+
         self.firestore_project_id = os.getenv("FIRESTORE_PROJECT_ID", self.firebase_project_id).strip()
         self.firestore_database = os.getenv("FIRESTORE_DATABASE", "(default)").strip()
         self.firebase_credentials_path = os.getenv("FIREBASE_CREDENTIALS_PATH", "").strip()
