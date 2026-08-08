@@ -184,15 +184,15 @@ def _normalize_apikeymanager_generated_image_url(image_url: str) -> str:
 
 def private_file_id_from_url(image_url: str) -> str | None:
     normalized_url = str(image_url or "")
-    accepted_prefixes = (
-        private_file_url_prefix(),
-        # URLs produced before the Cloud Run route correction remain usable in
-        # existing conversations, but new URLs always use /files/.
-        f"{settings.public_backend_base_url}/api/files/",
-    )
-    if not any(normalized_url.startswith(prefix) for prefix in accepted_prefixes):
+    parsed = urlparse(normalized_url)
+    # Frontend deployments and previous Cloud Run revisions can retain a URL
+    # with an older hostname. The host is not an authorization boundary: the
+    # record is always loaded below with the authenticated owner's UID. Accept
+    # only our two exact file-route shapes, never an arbitrary URL/path.
+    match = re.fullmatch(r"/(?:api/)?files/([0-9a-f\-]{36})", parsed.path, re.IGNORECASE)
+    if not match:
         return None
-    file_id = Path(urlparse(normalized_url).path).name
+    file_id = match.group(1)
     if not SAFE_FILE_ID.match(file_id):
         return None
     return file_id

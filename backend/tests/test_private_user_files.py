@@ -37,6 +37,10 @@ def test_private_file_id_accepts_current_and_legacy_routes(monkeypatch):
 
     assert private_file_id_from_url(f"https://vibecraft.example.test/files/{file_id}") == file_id
     assert private_file_id_from_url(f"https://vibecraft.example.test/api/files/{file_id}") == file_id
+    # The authenticated owner check, not the frontend deployment hostname,
+    # authorizes a private file. This keeps browser-cached old URLs usable.
+    assert private_file_id_from_url(f"https://old-vibecraft.example.test/files/{file_id}") == file_id
+    assert private_file_id_from_url(f"https://example.test/not-files/{file_id}") is None
 
 
 def test_prepare_input_image_reads_private_uploaded_file(test_db, monkeypatch, tmp_path):
