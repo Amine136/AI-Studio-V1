@@ -111,7 +111,15 @@ def save_generated_output_for_owner(owner_uid: str, image_bytes: bytes) -> str:
         image_bytes = sanitize_svg_bytes(image_bytes)
     filename = f"{uuid.uuid4()}.{extension}"
     save_path = GENERATED_IMAGES_DIR / filename
-    save_path.write_bytes(image_bytes)
+    try:
+        save_path.write_bytes(image_bytes)
+    except Exception:
+        pass
+    
+    # Sync to Cloudflare R2
+    from app.services.r2_storage import upload_to_r2
+    upload_to_r2(image_bytes, f"generated_images/{filename}", mime_type)
+
     file_id = _create_user_file_record(
         owner_uid=owner_uid,
         storage_path=filename,
@@ -119,6 +127,7 @@ def save_generated_output_for_owner(owner_uid: str, image_bytes: bytes) -> str:
         mime_type=mime_type,
     )
     return private_file_url(file_id)
+
 
 
 def save_generated_output_base64_for_owner(owner_uid: str, image_base64: str) -> str:
