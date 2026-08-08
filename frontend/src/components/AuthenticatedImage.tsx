@@ -5,9 +5,30 @@ import { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useLanguage } from "../context/LanguageContext";
 
+const BACKEND_BASE = (process.env.NEXT_PUBLIC_API_URL || "https://vibecraft-kscatxqueq-ey.a.run.app").replace(/\/+$/, "");
+
 export function isPrivateFileUrl(url?: string): boolean {
   if (!url) return false;
-  return url.includes("/api/files/");
+  try {
+    const pathname = new URL(url, "https://vibecraft.ouni.space").pathname;
+    return pathname.startsWith("/api/files/") || pathname.startsWith("/files/");
+  } catch {
+    return false;
+  }
+}
+
+function resolvePrivateFileUrl(src: string): string {
+  try {
+    const url = new URL(src, "https://vibecraft.ouni.space");
+    // Legacy records use the Vercel-hosted /api/files URL, which has no proxy
+    // route. Fetch the authenticated Cloud Run endpoint instead.
+    if (url.pathname.startsWith("/api/files/")) {
+      return `${BACKEND_BASE}${url.pathname.slice(4)}${url.search}`;
+    }
+  } catch {
+    // The normal fetch path below will surface malformed URLs as an asset error.
+  }
+  return src;
 }
 
 export function isRenderableImageUrl(value?: string): boolean {
@@ -24,7 +45,7 @@ export async function fetchAuthenticatedAsset(user: { getIdToken: () => Promise<
     headers.Authorization = `Bearer ${await user.getIdToken()}`;
   }
 
-  const response = await fetch(src, { headers });
+  const response = await fetch(isPrivateFileUrl(src) ? resolvePrivateFileUrl(src) : src, { headers });
   if (!response.ok) {
     throw new Error(`Asset request failed with ${response.status}`);
   }
