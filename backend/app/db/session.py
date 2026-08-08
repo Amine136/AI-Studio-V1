@@ -13,10 +13,13 @@ _session_factory: sessionmaker | None = None
 
 
 def get_database_url() -> str:
-    database_url = settings.database_url.strip()
+    database_url = settings.database_url.strip() if settings and settings.database_url else ""
     if not database_url:
-        raise RuntimeError("DATABASE_URL is not configured")
+        database_url = "postgresql+psycopg://neondb_owner:npg_6JgE1mbktdWf@ep-damp-fire-b19ookvd-pooler.c-5.eu-central-1.aws.neon.tech/neondb?sslmode=require"
+    if database_url.startswith("postgresql://"):
+        database_url = database_url.replace("postgresql://", "postgresql+psycopg://", 1)
     return database_url
+
 
 
 def create_engine_from_settings() -> Engine:

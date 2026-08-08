@@ -147,7 +147,10 @@ class Config:
         # Load Prompts
         self.prompts = self._load_prompts()
 
-        self.apikeymanager_base_url = os.getenv("APIKEYMANAGER_BASE_URL", "http://127.0.0.1:3000").rstrip("/")
+        self.apikeymanager_base_url = os.getenv(
+            "APIKEYMANAGER_BASE_URL",
+            os.getenv("APIKEYMANAGER_URL", "https://akm-gateway-634345037897.europe-west3.run.app"),
+        ).rstrip("/")
         self.apikeymanager_public_base_url = os.getenv("APIKEYMANAGER_PUBLIC_BASE_URL", "").rstrip("/")
         self.apikeymanager_token = os.getenv("APIKEYMANAGER_TOKEN", "")
         self.apikeymanager_timeout = float(os.getenv("APIKEYMANAGER_TIMEOUT", "120"))
@@ -287,7 +290,12 @@ class Config:
         self.admin_login_deactivate_threshold = int(os.getenv("ADMIN_LOGIN_DEACTIVATE_THRESHOLD", "30"))
         self.admin_login_deactivate_window_seconds = int(os.getenv("ADMIN_LOGIN_DEACTIVATE_WINDOW_SECONDS", str(60 * 60)))
         self.admin_login_min_latency_seconds = float(os.getenv("ADMIN_LOGIN_MIN_LATENCY_SECONDS", "3"))
-        self.database_url = os.getenv("DATABASE_URL", "").strip()
+        
+        raw_db_url = os.getenv("DATABASE_URL", "postgresql+psycopg://neondb_owner:npg_6JgE1mbktdWf@ep-damp-fire-b19ookvd-pooler.c-5.eu-central-1.aws.neon.tech/neondb?sslmode=require").strip()
+        if raw_db_url.startswith("postgresql://"):
+            raw_db_url = raw_db_url.replace("postgresql://", "postgresql+psycopg://", 1)
+        self.database_url = raw_db_url
+
         self.database_echo = os.getenv("DATABASE_ECHO", "false").strip().lower() in {"1", "true", "yes", "on"}
         self.database_pool_size = int(os.getenv("DATABASE_POOL_SIZE", "5"))
         self.database_max_overflow = int(os.getenv("DATABASE_MAX_OVERFLOW", "10"))
