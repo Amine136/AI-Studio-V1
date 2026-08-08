@@ -151,7 +151,12 @@ class Config:
             "APIKEYMANAGER_BASE_URL",
             os.getenv("APIKEYMANAGER_URL", "https://akm-gateway-634345037897.europe-west3.run.app"),
         ).rstrip("/")
-        self.apikeymanager_public_base_url = os.getenv("APIKEYMANAGER_PUBLIC_BASE_URL", "").rstrip("/")
+        # The API gateway is public by design. Reuse its configured API URL when
+        # a separate public URL was not supplied, so generated-image URLs returned
+        # by AKM can always be retrieved and secured by this backend.
+        self.apikeymanager_public_base_url = os.getenv(
+            "APIKEYMANAGER_PUBLIC_BASE_URL", self.apikeymanager_base_url
+        ).rstrip("/")
         self.apikeymanager_token = os.getenv("APIKEYMANAGER_TOKEN", "")
         self.apikeymanager_timeout = float(os.getenv("APIKEYMANAGER_TIMEOUT", "120"))
         self.discord_webhook_url = os.getenv("DISCORD_WEBHOOK_URL", "").strip()

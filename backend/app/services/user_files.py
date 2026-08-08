@@ -139,7 +139,7 @@ def save_generated_output_base64_for_owner(owner_uid: str, image_base64: str) ->
 
 
 def privatize_generated_image_url(owner_uid: str, image_url: str) -> str:
-    normalized_url = str(image_url or "").strip()
+    normalized_url = _normalize_apikeymanager_generated_image_url(image_url)
     if not normalized_url:
         raise RuntimeError("Generated image URL was empty")
 
@@ -157,6 +157,26 @@ def privatize_generated_image_url(owner_uid: str, image_url: str) -> str:
         return save_generated_output_for_owner(owner_uid, downloaded_bytes)
 
     raise RuntimeError("Generated image file was not found")
+
+
+def _normalize_apikeymanager_generated_image_url(image_url: str) -> str:
+    """Replace AKM's local Cloud Run URL with its configured public gateway URL.
+
+    Older AKM revisions use ``http://127.0.0.1:<port>`` when PUBLIC_BASE_URL is
+    not configured. That address is valid only inside the AKM container, while
+    Vibecraft runs in a different Cloud Run container. Preserve the strict
+    generated-images path check and rewrite only that known legacy form.
+    """
+    normalized_url = str(image_url or "").strip()
+    parsed = urlparse(normalized_url)
+    if (
+        parsed.scheme in {"http", "https"}
+        and parsed.hostname in {"127.0.0.1", "localhost", "::1"}
+        and parsed.path.startswith("/generated-images/")
+        and settings.apikeymanager_public_base_url
+    ):
+        return f"{settings.apikeymanager_public_base_url}{parsed.path}"
+    return normalized_url
 
 
 def private_file_id_from_url(image_url: str) -> str | None:

@@ -9,7 +9,22 @@ from fastapi import HTTPException
 from app.db.repositories import SecurityRepository
 from app.db.session import session_scope
 from app.main import _is_valid_generated_image_result, _prepare_input_image, _prepare_input_images
-from app.services.user_files import load_private_user_file, save_generated_output_for_owner
+from app.services.user_files import (
+    _normalize_apikeymanager_generated_image_url,
+    load_private_user_file,
+    save_generated_output_for_owner,
+)
+
+
+def test_local_akm_generated_image_url_uses_public_gateway(monkeypatch):
+    monkeypatch.setattr(
+        "app.services.user_files.settings.apikeymanager_public_base_url",
+        "https://akm.example.test",
+    )
+
+    assert _normalize_apikeymanager_generated_image_url(
+        "http://127.0.0.1:3000/generated-images/123e4567-e89b-12d3-a456-426614174000.png"
+    ) == "https://akm.example.test/generated-images/123e4567-e89b-12d3-a456-426614174000.png"
 
 
 def test_prepare_input_image_reads_private_uploaded_file(test_db, monkeypatch, tmp_path):
