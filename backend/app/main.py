@@ -554,9 +554,10 @@ app.add_middleware(
     allow_origins=allowed_origins,
     allow_origin_regex=r"https://.*\.vercel\.app|https://.*\.ouni\.space",
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-API-Key", "X-CSRF-Token", "X-Requested-With"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
+
 
 
 
