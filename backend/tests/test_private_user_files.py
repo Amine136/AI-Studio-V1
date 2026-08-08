@@ -12,6 +12,7 @@ from app.main import _is_valid_generated_image_result, _prepare_input_image, _pr
 from app.services.user_files import (
     _normalize_apikeymanager_generated_image_url,
     load_private_user_file,
+    private_file_id_from_url,
     save_generated_output_for_owner,
 )
 
@@ -25,6 +26,17 @@ def test_local_akm_generated_image_url_uses_public_gateway(monkeypatch):
     assert _normalize_apikeymanager_generated_image_url(
         "http://127.0.0.1:3000/generated-images/123e4567-e89b-12d3-a456-426614174000.png"
     ) == "https://akm.example.test/generated-images/123e4567-e89b-12d3-a456-426614174000.png"
+
+
+def test_private_file_id_accepts_current_and_legacy_routes(monkeypatch):
+    monkeypatch.setattr(
+        "app.services.user_files.settings.public_backend_base_url",
+        "https://vibecraft.example.test",
+    )
+    file_id = "123e4567-e89b-12d3-a456-426614174000"
+
+    assert private_file_id_from_url(f"https://vibecraft.example.test/files/{file_id}") == file_id
+    assert private_file_id_from_url(f"https://vibecraft.example.test/api/files/{file_id}") == file_id
 
 
 def test_prepare_input_image_reads_private_uploaded_file(test_db, monkeypatch, tmp_path):

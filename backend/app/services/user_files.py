@@ -88,7 +88,10 @@ def sanitize_svg_bytes(image_bytes: bytes) -> bytes:
 
 
 def private_file_url_prefix() -> str:
-    return f"{settings.public_backend_base_url}/api/files/"
+    # The FastAPI file route is mounted at /files (not /api/files). Keep the
+    # canonical URL in one place so uploads, generated images, and chat image
+    # validation all agree on the same public path.
+    return f"{settings.public_backend_base_url}/files/"
 
 
 def private_file_url(file_id: str) -> str:
@@ -180,9 +183,16 @@ def _normalize_apikeymanager_generated_image_url(image_url: str) -> str:
 
 
 def private_file_id_from_url(image_url: str) -> str | None:
-    if not str(image_url or "").startswith(private_file_url_prefix()):
+    normalized_url = str(image_url or "")
+    accepted_prefixes = (
+        private_file_url_prefix(),
+        # URLs produced before the Cloud Run route correction remain usable in
+        # existing conversations, but new URLs always use /files/.
+        f"{settings.public_backend_base_url}/api/files/",
+    )
+    if not any(normalized_url.startswith(prefix) for prefix in accepted_prefixes):
         return None
-    file_id = Path(urlparse(image_url).path).name
+    file_id = Path(urlparse(normalized_url).path).name
     if not SAFE_FILE_ID.match(file_id):
         return None
     return file_id
