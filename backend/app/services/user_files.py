@@ -185,8 +185,9 @@ def load_private_user_file(
             raise HTTPException(status_code=404, detail="File not found")
         filepath = _filepath_for_record(str(entry.kind), str(entry.storage_path))
         if not filepath.exists():
-            repo.delete_user_file(entry)
-            raise HTTPException(status_code=404, detail="File not found")
+            if not _restore_file_from_r2(str(entry.kind), str(entry.storage_path), filepath):
+                # Cloud Run's filesystem is ephemeral; R2 is the canonical copy.
+                raise HTTPException(status_code=404, detail="File not found")
         return {
             "id": str(entry.id),
             "owner_uid": str(entry.owner_uid),
@@ -340,6 +341,31 @@ def _filepath_for_record(kind: str, storage_path: str) -> Path:
     if kind == "payment_proof":
         return PAYMENT_PROOFS_DIR / storage_path
     raise HTTPException(status_code=404, detail="File not found")
+
+
+def _restore_file_from_r2(kind: str, storage_path: str, filepath: Path) -> bool:
+    """Hydrate Cloud Run's local cache from the canonical R2 object store."""
+    if kind != "generated_output":
+        return False
+
+    from app.services.r2_storage import download_from_r2
+
+    image_bytes = download_from_r2(f"generated_images/{storage_path}")
+    if not image_bytes:
+        return False
+    try:
+        filepath.parent.mkdir(parents=True, exist_ok=True)
+        filepath.write_bytes(image_bytes)
+        return True
+    except OSError:
+        return False
+
+
+def restore_generated_image_from_r2(filename: str) -> bool:
+    """Restore a legacy public generated-image URL from R2 when needed."""
+    if not SAFE_GENERATED_FILENAME.match(filename):
+        return False
+    return _restore_file_from_r2("generated_output", filename, GENERATED_IMAGES_DIR / filename)
 
 
 def _looks_like_svg(image_bytes: bytes) -> bool:

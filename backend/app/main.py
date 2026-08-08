@@ -137,6 +137,7 @@ from app.services.user_files import (
     load_private_user_file,
     private_file_id_from_url,
     private_file_url,
+    restore_generated_image_from_r2,
 )
 
 def _configure_app_logging() -> None:
@@ -683,7 +684,7 @@ def get_image(filename: str):
         raise HTTPException(status_code=400, detail="Invalid filename")
 
     filepath = GENERATED_IMAGES_DIR / filename
-    if not filepath.exists():
+    if not filepath.exists() and not restore_generated_image_from_r2(filename):
         raise HTTPException(status_code=404, detail="Image not found")
     
     return FileResponse(

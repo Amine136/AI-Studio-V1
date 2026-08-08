@@ -41,3 +41,21 @@ def upload_to_r2(file_bytes: bytes, key: str, mime_type: str = "application/octe
     except Exception as exc:
         print(f"⚠️ R2 upload warning for {key}: {exc}")
         return None
+
+
+def download_from_r2(key: str) -> bytes | None:
+    """Return an object from R2 without exposing its public URL.
+
+    The application serves user files through authenticated API routes. Keeping
+    this read server-side preserves that ownership check when Cloud Run's local
+    filesystem has been discarded after an instance restart.
+    """
+    client = get_r2_client()
+    if not client:
+        return None
+    try:
+        response = client.get_object(Bucket=R2_BUCKET_NAME, Key=key)
+        return response["Body"].read()
+    except Exception as exc:
+        print(f"⚠️ R2 download warning for {key}: {exc}")
+        return None
