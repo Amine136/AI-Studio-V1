@@ -1824,15 +1824,22 @@ def get_credit_order_proof_signed(
     if get_credit_order_proof_file_id(order_id, file_id) is None:
         raise HTTPException(status_code=404, detail="Proof not found")
     file_record, filepath = load_payment_proof_file(file_id)
-    return FileResponse(
-        filepath,
-        media_type=str(file_record["mime_type"]),
-        headers={
-            "Cache-Control": "private, no-store",
-            "Content-Disposition": "inline",
-            **GENERATED_IMAGE_SAFE_HEADERS,
-        },
-    )
+    storage_path = str(file_record["storage_path"])
+    mime_type = str(file_record.get("mime_type") or "image/jpeg")
+
+    if filepath.exists():
+        return FileResponse(
+            filepath,
+            media_type=mime_type,
+            headers={
+                "Cache-Control": "private, no-store",
+                "Content-Disposition": "inline",
+                **GENERATED_IMAGE_SAFE_HEADERS,
+            },
+        )
+
+    r2_public_base = os.getenv("R2_PUBLIC_URL", "https://pub-64bf9ef2292c49f0a2053981c85e16d9.r2.dev").rstrip("/")
+    return RedirectResponse(url=f"{r2_public_base}/payment_proofs/{storage_path}", status_code=307)
 
 
 @app.post("/analyze-sessions/{session_id}/complete", tags=["Configuration"], summary="Complete Analyze Session")

@@ -104,8 +104,9 @@ def _sign_proof(order_id: str, file_id: str, expires_at: int) -> str:
 def signed_proof_url(order_id: str, file_id: str) -> str:
     expires_at = int(time.time()) + int(settings.discord_proof_link_ttl)
     signature = _sign_proof(order_id, file_id, expires_at)
+    base_url = (settings.public_backend_base_url or settings.app_base_url).rstrip("/")
     return (
-        f"{settings.app_base_url}/api/credits/orders/{order_id}/proof/{file_id}"
+        f"{base_url}/credits/orders/{order_id}/proof/{file_id}"
         f"?exp={expires_at}&sig={signature}"
     )
 
