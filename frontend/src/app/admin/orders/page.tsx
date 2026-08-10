@@ -445,7 +445,7 @@ export default function AdminOrdersPage() {
                                                 {order.proofFileIds.length > 0 ? (
                                                     <div className="flex flex-wrap gap-3 mb-1">
                                                         {order.proofFileIds.map((fileId, idx) => {
-                                                            const src = order.proofUrls?.[idx] || `${R2_PUBLIC_BASE}/payment_proofs/${fileId}`;
+                                                            const src = order.proofUrls?.[idx] || `${API_BASE}/admin/orders/${order.id}/proof/${fileId}`;
                                                             // A PDF proof can't render in <img>, so it falls back to a
                                                             // labelled tile that still opens the file in a tab.
                                                             const isFile = unrenderable.has(fileId);

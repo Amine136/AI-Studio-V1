@@ -2497,17 +2497,31 @@ def admin_get_credit_order_proof(
     file_id: str,
     _admin: Dict[str, Any] = Depends(verify_admin_session),
 ):
-    # /files/{id} is owner-scoped, so an admin cannot read a user's proof through
-    # it. This route is the admin-side equivalent, and it only serves a file that
-    # is actually attached to the order named in the path.
     del request
     if get_credit_order_proof_file_id(order_id, file_id) is None:
         raise HTTPException(status_code=404, detail="Proof not found")
     file_record, filepath = load_payment_proof_file(file_id)
     storage_path = str(file_record["storage_path"])
+    mime_type = str(file_record.get("mime_type") or "image/jpeg")
+
+    if filepath.exists():
+        try:
+            from app.services.r2_storage import upload_to_r2
+            upload_to_r2(filepath.read_bytes(), f"payment_proofs/{storage_path}", mime_type)
+        except Exception:
+            pass
+        return FileResponse(
+            filepath,
+            media_type=mime_type,
+            headers={
+                "Cache-Control": "private, max-age=3600",
+                "Content-Disposition": "inline",
+                **GENERATED_IMAGE_SAFE_HEADERS,
+            },
+        )
+
     r2_public_base = os.getenv("R2_PUBLIC_URL", "https://pub-64bf9ef2292c49f0a2053981c85e16d9.r2.dev").rstrip("/")
-    r2_url = f"{r2_public_base}/payment_proofs/{storage_path}"
-    return RedirectResponse(url=r2_url, status_code=307)
+    return RedirectResponse(url=f"{r2_public_base}/payment_proofs/{storage_path}", status_code=307)
 
 
 @app.post(
