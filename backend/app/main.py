@@ -569,8 +569,8 @@ def _set_admin_csrf_cookie(response: Response, token: str | None = None) -> str:
         key=settings.admin_csrf_cookie_name,
         value=csrf_token,
         httponly=False,
-        secure=settings.admin_cookie_secure,
-        samesite="lax",
+        secure=True,
+        samesite="none",
         max_age=settings.admin_session_ttl_seconds,
         path="/",
     )
@@ -1350,8 +1350,8 @@ def admin_login(request: Request, payload: AdminLoginRequest, response: Response
         key=settings.admin_session_cookie_name,
         value=token,
         httponly=True,
-        secure=settings.admin_cookie_secure,
-        samesite="lax",
+        secure=True,
+        samesite="none",
         max_age=settings.admin_session_ttl_seconds,
         path="/",
     )
@@ -1370,14 +1370,14 @@ def admin_logout(request: Request, response: Response, _csrf: None = Depends(ver
     response.delete_cookie(
         key=settings.admin_session_cookie_name,
         path="/",
-        secure=settings.admin_cookie_secure,
-        samesite="lax",
+        secure=True,
+        samesite="none",
     )
     response.delete_cookie(
         key=settings.admin_csrf_cookie_name,
         path="/",
-        secure=settings.admin_cookie_secure,
-        samesite="lax",
+        secure=True,
+        samesite="none",
     )
     return {"success": True}
 

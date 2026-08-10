@@ -141,6 +141,10 @@ async def verify_admin_session(request: Request, response: Response) -> Dict[str
     cookie_name = settings.admin_session_cookie_name
     token = request.cookies.get(cookie_name, "").strip()
     if not token:
+        auth_header = request.headers.get("Authorization", "").strip()
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:].strip()
+    if not token:
         raise HTTPException(status_code=401, detail="Admin authentication required")
 
     try:
@@ -155,8 +159,8 @@ async def verify_admin_session(request: Request, response: Response) -> Dict[str
         key=cookie_name,
         value=token,
         httponly=True,
-        secure=settings.admin_cookie_secure,
-        samesite="lax",
+        secure=True,
+        samesite="none",
         max_age=settings.admin_session_ttl_seconds,
         path="/",
     )
