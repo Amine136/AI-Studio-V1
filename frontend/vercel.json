@@ -1,3 +1,9 @@
 {
-  "framework": "nextjs"
+  "framework": "nextjs",
+  "rewrites": [
+    {
+      "source": "/api-proxy/:path*",
+      "destination": "https://vibecraft-kscatxqueq-ey.a.run.app/:path*"
+    }
+  ]
 }
