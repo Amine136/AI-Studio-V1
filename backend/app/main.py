@@ -1285,6 +1285,21 @@ def email_winback_sweep(request: Request, x_internal_secret: str | None = Header
     return {"status": "ok", **run_winback_sweep()}
 
 
+@app.post("/internal/email/test", tags=["Configuration"])
+def email_test_send(request: Request, target_email: str = "ounimed019@gmail.com", x_internal_secret: str | None = Header(default=None)):
+    del request
+    _verify_internal_secret(x_internal_secret)
+    from app.services.email_client import OutgoingEmail, send_email
+    msg = OutgoingEmail(
+        to_email=target_email,
+        to_name="Amine",
+        subject="Vibecraft Live Test Email",
+        html="<div style='font-family:sans-serif;padding:24px;background:#060e20;color:#ffffff;border-radius:8px;'><h2>🚀 Vibecraft Live Email Test</h2><p>Hello Amine,</p><p>This is a live test email sent directly from your <b>Cloud Run backend</b> via <b>noreply@ouni.space</b>.</p></div>",
+    )
+    result = send_email(msg)
+    return {"ok": result.ok, "message_id": result.message_id, "error": result.error, "dry_run": result.dry_run}
+
+
 @app.get("/admin/model-visibility", tags=["Configuration"], summary="Get Model Visibility For Admin")
 @limiter.limit("20/minute")
 def admin_get_model_visibility(request: Request, _admin: Dict[str, Any] = Depends(verify_admin_session)):
