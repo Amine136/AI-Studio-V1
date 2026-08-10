@@ -2,6 +2,14 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactCompiler: true,
+  async rewrites() {
+    return [
+      {
+        source: "/api-proxy/:path*",
+        destination: "https://vibecraft-kscatxqueq-ey.a.run.app/:path*",
+      },
+    ];
+  },
   async redirects() {
     return [
       { source: "/studio/create", destination: "/create", permanent: false },
