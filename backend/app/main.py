@@ -2504,15 +2504,10 @@ def admin_get_credit_order_proof(
     if get_credit_order_proof_file_id(order_id, file_id) is None:
         raise HTTPException(status_code=404, detail="Proof not found")
     file_record, filepath = load_payment_proof_file(file_id)
-    return FileResponse(
-        filepath,
-        media_type=str(file_record["mime_type"]),
-        headers={
-            "Cache-Control": "private, max-age=3600",
-            "Content-Disposition": "inline",
-            **GENERATED_IMAGE_SAFE_HEADERS,
-        },
-    )
+    storage_path = str(file_record["storage_path"])
+    r2_public_base = os.getenv("R2_PUBLIC_URL", "https://pub-64bf9ef2292c49f0a2053981c85e16d9.r2.dev").rstrip("/")
+    r2_url = f"{r2_public_base}/payment_proofs/{storage_path}"
+    return RedirectResponse(url=r2_url, status_code=307)
 
 
 @app.post(
