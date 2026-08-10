@@ -53,7 +53,7 @@ import { auth } from '../lib/firebase';
 import { signOutUser } from '../lib/auth';
 import { getAdminCsrfToken, isAdminHost } from '../lib/admin';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://vibecraft-kscatxqueq-ey.a.run.app';
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://vibecraft-kscatxqueq-ey.a.run.app';
 const ADMIN_TOKEN_STORAGE_KEY = 'vibecraft_admin_token';
 
 const NETWORK_ERROR_MESSAGE = 'Connection interrupted. Check your internet connection and try again.';

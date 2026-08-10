@@ -4125,6 +4125,11 @@ def _save_payment_proof_bytes(mime_type: str, file_bytes: bytes) -> str:
     save_path = PAYMENT_PROOFS_DIR / filename
     with open(save_path, "wb") as proof_file:
         proof_file.write(file_bytes)
+    try:
+        from app.services.r2_storage import upload_to_r2
+        upload_to_r2(file_bytes, f"payment_proofs/{filename}", mime_type)
+    except Exception as exc:
+        logger.warning("[R2] Failed to upload payment proof %s to R2: %s", filename, exc)
     return filename
 
 

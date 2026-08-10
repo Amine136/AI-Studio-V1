@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api } from "../../../services/api";
+import { api, API_BASE } from "../../../services/api";
 import type { AdminCreditOrder, CreditOrderStatus } from "../../../types";
 
 type StatusFilter = "all" | CreditOrderStatus;
@@ -445,7 +445,7 @@ export default function AdminOrdersPage() {
                                                 {order.proofFileIds.length > 0 ? (
                                                     <div className="flex flex-wrap gap-3 mb-1">
                                                         {order.proofFileIds.map((fileId) => {
-                                                            const src = `/api/admin/orders/${order.id}/proof/${fileId}`;
+                                                            const src = `${API_BASE}/admin/orders/${order.id}/proof/${fileId}`;
                                                             // A PDF proof can't render in <img>, so it falls back to a
                                                             // labelled tile that still opens the file in a tab.
                                                             const isFile = unrenderable.has(fileId);

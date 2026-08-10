@@ -375,17 +375,21 @@ def _filepath_for_record(kind: str, storage_path: str) -> Path:
 
 def _restore_file_from_r2(kind: str, storage_path: str, filepath: Path) -> bool:
     """Hydrate Cloud Run's local cache from the canonical R2 object store."""
-    if kind != "generated_output":
-        return False
-
     from app.services.r2_storage import download_from_r2
 
-    image_bytes = download_from_r2(f"generated_images/{storage_path}")
-    if not image_bytes:
+    if kind == "generated_output":
+        r2_key = f"generated_images/{storage_path}"
+    elif kind == "payment_proof":
+        r2_key = f"payment_proofs/{storage_path}"
+    else:
+        return False
+
+    file_bytes = download_from_r2(r2_key)
+    if not file_bytes:
         return False
     try:
         filepath.parent.mkdir(parents=True, exist_ok=True)
-        filepath.write_bytes(image_bytes)
+        filepath.write_bytes(file_bytes)
         return True
     except OSError:
         return False
