@@ -431,6 +431,7 @@ class AdminSessionResponse(BaseModel):
     createdAt: int
     expiresAt: int
     account: AdminSessionAccount
+    token: Optional[str] = None
 
 
 class AdminUserListItem(BaseModel):

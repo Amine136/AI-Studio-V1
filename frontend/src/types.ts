@@ -499,6 +499,7 @@ export interface AdminSession {
   createdAt: number;
   expiresAt: number;
   account: AdminSessionAccount;
+  token?: string;
 }
 
 export interface AdminUserListItem {

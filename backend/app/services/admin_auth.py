@@ -76,9 +76,9 @@ def _admin_account_dict(account: Any) -> dict[str, Any]:
     }
 
 
-def _admin_session_dict(entry: Any) -> dict[str, Any]:
+def _admin_session_dict(entry: Any, token: str | None = None) -> dict[str, Any]:
     account = entry.admin_account
-    return {
+    data = {
         "sessionId": str(entry.id),
         "username": str(account.username),
         "adminId": str(account.id),
@@ -86,6 +86,9 @@ def _admin_session_dict(entry: Any) -> dict[str, Any]:
         "expiresAt": int(entry.expires_at),
         "account": _admin_account_dict(account),
     }
+    if token:
+        data["token"] = token
+    return data
 
 
 def create_or_update_admin_account(username: str, password: str) -> dict[str, Any]:
@@ -266,7 +269,7 @@ def authenticate_admin(username: str, password: str, *, ip_address: str) -> tupl
             _send_discord_alert(
                 f":lock: [Vibecraft] Admin login\nAdmin: {account.username}\nIP: {ip_address.strip() or 'unknown'}"
             )
-            return token, _admin_session_dict(entry)
+            return token, _admin_session_dict(entry, token=token)
 
     if failure_error is not None:
         raise failure_error

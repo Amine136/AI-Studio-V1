@@ -103,6 +103,12 @@ client.interceptors.request.use(async (config) => {
     const token = await user.getIdToken();
     config.headers = config.headers ?? {};
     config.headers.Authorization = `Bearer ${token}`;
+  } else if (typeof window !== 'undefined') {
+    const adminToken = localStorage.getItem('vibecraft_admin_token');
+    if (adminToken) {
+      config.headers = config.headers ?? {};
+      config.headers.Authorization = `Bearer ${adminToken}`;
+    }
   }
   const method = (config.method || 'get').toLowerCase();
   if (isAdminHost() && !['get', 'head', 'options'].includes(method)) {
@@ -198,6 +204,9 @@ export const api = {
   adminLogin: async (username: string, password: string): Promise<AdminSession> => {
     try {
       const res = await client.post('/admin-auth/login', { username, password });
+      if (res.data?.token && typeof window !== 'undefined') {
+        localStorage.setItem('vibecraft_admin_token', res.data.token);
+      }
       return res.data;
     } catch (error) {
       const detail = extractErrorMessage(error);
@@ -209,8 +218,14 @@ export const api = {
   },
 
   adminLogout: async () => {
-    const res = await client.post('/admin-auth/logout');
-    return res.data;
+    try {
+      const res = await client.post('/admin-auth/logout');
+      return res.data;
+    } finally {
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('vibecraft_admin_token');
+      }
+    }
   },
 
   getAdminSession: async (): Promise<AdminSession> => {

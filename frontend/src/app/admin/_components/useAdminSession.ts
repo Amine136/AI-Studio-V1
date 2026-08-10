@@ -33,6 +33,9 @@ export function useAdminSession() {
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unable to verify admin access.";
       if (isAuthError(message)) {
+        if (typeof window !== "undefined") {
+          localStorage.removeItem("vibecraft_admin_token");
+        }
         setSession(null);
         router.replace("/admin/login");
         return null;
