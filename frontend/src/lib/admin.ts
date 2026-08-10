@@ -1,12 +1,20 @@
 import type { AdminSession } from "../types";
 
-export const ADMIN_HOST = (process.env.NEXT_PUBLIC_ADMIN_HOST || "adminvibecraft.ouni.space").toLowerCase();
+export const ADMIN_HOST = (process.env.NEXT_PUBLIC_ADMIN_HOST || "prodxvibecraft.ouni.space").toLowerCase();
 const STUDIO_URL = process.env.NEXT_PUBLIC_STUDIO_URL || "";
 export const ADMIN_CSRF_COOKIE = process.env.NEXT_PUBLIC_ADMIN_CSRF_COOKIE || "vibecraft_admin_csrf";
 
 export function isAdminHost(): boolean {
   if (typeof window === "undefined") return false;
-  return window.location.host.toLowerCase() === ADMIN_HOST;
+  const host = window.location.host.toLowerCase().split(":")[0];
+  const envAdmin = (process.env.NEXT_PUBLIC_ADMIN_HOST || "").toLowerCase();
+  return (
+    host === "prodxvibecraft.ouni.space" ||
+    host === "adminvibecraft.ouni.space" ||
+    host.startsWith("prodxvibecraft") ||
+    host.startsWith("adminvibecraft") ||
+    (envAdmin !== "" && host === envAdmin)
+  );
 }
 
 export function getStudioUrl(): string {
@@ -14,6 +22,9 @@ export function getStudioUrl(): string {
   if (typeof window === "undefined") return "https://vibecraft.ouni.space";
 
   const { protocol, host } = window.location;
+  if (host.toLowerCase().startsWith("prodxvibecraft.")) {
+    return `${protocol}//vibecraft.ouni.space`;
+  }
   if (host.toLowerCase().startsWith("admin.")) {
     return `${protocol}//${host.slice("admin.".length)}`;
   }
