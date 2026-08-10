@@ -287,6 +287,24 @@ class Config:
         self.admin_csrf_cookie_name = os.getenv("ADMIN_CSRF_COOKIE_NAME", "vibecraft_admin_csrf").strip() or "vibecraft_admin_csrf"
         self.admin_session_ttl_seconds = int(os.getenv("ADMIN_SESSION_TTL_SECONDS", str(15 * 60)))
         self.admin_cookie_secure = os.getenv("ADMIN_COOKIE_SECURE", "true").strip().lower() not in {"0", "false", "no", "off"}
+        self.admin_cookie_samesite = os.getenv("ADMIN_COOKIE_SAMESITE", "none").strip().lower() or "none"
+        if self.admin_cookie_samesite not in {"lax", "strict", "none"}:
+            raise ValueError("ADMIN_COOKIE_SAMESITE must be lax, strict, or none")
+        # Leave unset for a Cloud Run API. It cannot issue a cookie for the
+        # unrelated prodxvibecraft.ouni.space domain.
+        self.admin_cookie_domain = os.getenv("ADMIN_COOKIE_DOMAIN", "").strip().lstrip(".")
+        default_origins = (
+            "http://localhost:3000,http://localhost:3003,https://vibecraft.ouni.space,"
+            "https://testvibecraft.ouni.space,https://prodxvibecraft.ouni.space,"
+            "https://adminvibecraft.ouni.space,https://vibecraft.vercel.app"
+        )
+        required_origins = [origin.strip() for origin in default_origins.split(",") if origin.strip()]
+        configured_origins = [
+            origin.strip() for origin in os.getenv("ALLOWED_ORIGINS", "").split(",") if origin.strip()
+        ]
+        # Keep production admin origins enabled even if Cloud Run still has an
+        # older ALLOWED_ORIGINS value configured.
+        self.allowed_origins = list(dict.fromkeys([*required_origins, *configured_origins]))
         self.admin_login_username_limit = int(os.getenv("ADMIN_LOGIN_USERNAME_LIMIT", "5"))
         self.admin_login_ip_limit = int(os.getenv("ADMIN_LOGIN_IP_LIMIT", "10"))
         self.admin_login_username_ip_limit = int(os.getenv("ADMIN_LOGIN_USERNAME_IP_LIMIT", "5"))

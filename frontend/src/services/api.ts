@@ -54,6 +54,7 @@ import { signOutUser } from '../lib/auth';
 import { getAdminCsrfToken, isAdminHost } from '../lib/admin';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://vibecraft-kscatxqueq-ey.a.run.app';
+const ADMIN_TOKEN_STORAGE_KEY = 'vibecraft_admin_token';
 
 const NETWORK_ERROR_MESSAGE = 'Connection interrupted. Check your internet connection and try again.';
 
@@ -98,16 +99,21 @@ const client = axios.create({
 });
 
 client.interceptors.request.use(async (config) => {
-  const user = auth.currentUser;
-  if (user) {
-    const token = await user.getIdToken();
-    config.headers = config.headers ?? {};
-    config.headers.Authorization = `Bearer ${token}`;
-  } else if (typeof window !== 'undefined') {
-    const adminToken = localStorage.getItem('vibecraft_admin_token');
+  // Cloud Run is cross-site from the Vercel admin host. Its cookie can be
+  // blocked as third-party storage, so prefer the explicit admin bearer token.
+  // This also prevents a Firebase token from overwriting an admin session.
+  if (isAdminHost() && typeof window !== 'undefined') {
+    const adminToken = localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY);
     if (adminToken) {
       config.headers = config.headers ?? {};
       config.headers.Authorization = `Bearer ${adminToken}`;
+    }
+  } else {
+    const user = auth.currentUser;
+    if (user) {
+      const token = await user.getIdToken();
+      config.headers = config.headers ?? {};
+      config.headers.Authorization = `Bearer ${token}`;
     }
   }
   const method = (config.method || 'get').toLowerCase();
@@ -204,8 +210,11 @@ export const api = {
   adminLogin: async (username: string, password: string): Promise<AdminSession> => {
     try {
       const res = await client.post('/admin-auth/login', { username, password });
-      if (res.data?.token && typeof window !== 'undefined') {
-        localStorage.setItem('vibecraft_admin_token', res.data.token);
+      if (!res.data?.token || typeof res.data.token !== 'string') {
+        throw new Error('The server did not return an admin session token. Please contact support.');
+      }
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(ADMIN_TOKEN_STORAGE_KEY, res.data.token);
       }
       return res.data;
     } catch (error) {
@@ -223,7 +232,7 @@ export const api = {
       return res.data;
     } finally {
       if (typeof window !== 'undefined') {
-        localStorage.removeItem('vibecraft_admin_token');
+        localStorage.removeItem(ADMIN_TOKEN_STORAGE_KEY);
       }
     }
   },

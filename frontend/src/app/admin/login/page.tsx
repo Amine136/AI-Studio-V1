@@ -59,12 +59,11 @@ export default function AdminLoginPage() {
         setLoading(true);
         setError("");
         try {
-            await api.adminLogin(username, password);
-            // Full-document navigation (not client-side router): the admin
-            // layout's useAdminSession runs only once on mount, so a client-side
-            // router.replace after login reuses the pre-login "no session" result
-            // and shows an infinite loader until a manual refresh. A real navigation
-            // re-mounts the layout and re-checks the now-set admin cookie.
+            const session = await api.adminLogin(username, password);
+            if (!session.token) {
+                throw new Error("Unable to establish the admin session.");
+            }
+            // Remount the protected layout with the saved bearer token.
             window.location.replace("/admin");
         } catch (err) {
             setError(err instanceof Error ? err.message : "Login failed.");

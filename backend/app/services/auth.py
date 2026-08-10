@@ -139,11 +139,11 @@ async def verify_firebase_user(
 
 async def verify_admin_session(request: Request, response: Response) -> Dict[str, Any]:
     cookie_name = settings.admin_session_cookie_name
-    token = request.cookies.get(cookie_name, "").strip()
-    if not token:
-        auth_header = request.headers.get("Authorization", "").strip()
-        if auth_header.startswith("Bearer "):
-            token = auth_header[7:].strip()
+    auth_header = request.headers.get("Authorization", "").strip()
+    bearer_token = auth_header[7:].strip() if auth_header.startswith("Bearer ") else ""
+    # Bearer auth remains usable when the Cloud Run cookie is blocked as
+    # third-party storage; the cookie is still a fallback.
+    token = bearer_token or request.cookies.get(cookie_name, "").strip()
     if not token:
         raise HTTPException(status_code=401, detail="Admin authentication required")
 
@@ -155,15 +155,17 @@ async def verify_admin_session(request: Request, response: Response) -> Dict[str
     if not session:
         raise HTTPException(status_code=401, detail="Invalid or expired admin session")
 
-    response.set_cookie(
-        key=cookie_name,
-        value=token,
-        httponly=True,
-        secure=True,
-        samesite="none",
-        max_age=settings.admin_session_ttl_seconds,
-        path="/",
-    )
+    if not bearer_token:
+        response.set_cookie(
+            key=cookie_name,
+            value=token,
+            httponly=True,
+            secure=settings.admin_cookie_secure,
+            samesite=settings.admin_cookie_samesite,
+            max_age=settings.admin_session_ttl_seconds,
+            path="/",
+            domain=settings.admin_cookie_domain or None,
+        )
 
     return {
         "uid": None,
@@ -172,11 +174,17 @@ async def verify_admin_session(request: Request, response: Response) -> Dict[str
         "session_id": session["sessionId"],
         "admin_id": session["adminId"],
         "session": session,
+        "token": token,
+        "auth_source": "bearer" if bearer_token else "cookie",
         "is_admin": True,
     }
 
 
 async def verify_admin_csrf(request: Request) -> None:
+    # Bearer credentials are not attached automatically by the browser; only
+    # cookie-authenticated requests need CSRF protection.
+    if request.headers.get("Authorization", "").strip().startswith("Bearer "):
+        return
     expected = request.cookies.get(settings.admin_csrf_cookie_name, "").strip()
     provided = request.headers.get("X-CSRF-Token", "").strip()
     if not expected or not provided or expected != provided:

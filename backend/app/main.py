@@ -548,12 +548,11 @@ for social media marketing.
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-allowed_origins = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:3003,https://vibecraft.ouni.space,https://testvibecraft.ouni.space,https://vibecraft.vercel.app").split(",") if o.strip()]
+allowed_origins = settings.allowed_origins
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
-    allow_origin_regex=r"https://.*\.vercel\.app|https://.*\.ouni\.space",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -569,10 +568,11 @@ def _set_admin_csrf_cookie(response: Response, token: str | None = None) -> str:
         key=settings.admin_csrf_cookie_name,
         value=csrf_token,
         httponly=False,
-        secure=True,
-        samesite="none",
+        secure=settings.admin_cookie_secure,
+        samesite=settings.admin_cookie_samesite,
         max_age=settings.admin_session_ttl_seconds,
         path="/",
+        domain=settings.admin_cookie_domain or None,
     )
     return csrf_token
 
@@ -1350,18 +1350,19 @@ def admin_login(request: Request, payload: AdminLoginRequest, response: Response
         key=settings.admin_session_cookie_name,
         value=token,
         httponly=True,
-        secure=True,
-        samesite="none",
+        secure=settings.admin_cookie_secure,
+        samesite=settings.admin_cookie_samesite,
         max_age=settings.admin_session_ttl_seconds,
         path="/",
+        domain=settings.admin_cookie_domain or None,
     )
     _set_admin_csrf_cookie(response)
     return session
 
 
 @app.post("/admin-auth/logout", tags=["Admin Authentication"], summary="Logout From Admin Portal")
-def admin_logout(request: Request, response: Response, _csrf: None = Depends(verify_admin_csrf)):
-    token = request.cookies.get(settings.admin_session_cookie_name, "").strip()
+def admin_logout(request: Request, response: Response, admin: Dict[str, Any] = Depends(verify_admin_session), _csrf: None = Depends(verify_admin_csrf)):
+    token = admin["token"]
     if token:
         try:
             revoke_admin_session(token)
@@ -1370,14 +1371,16 @@ def admin_logout(request: Request, response: Response, _csrf: None = Depends(ver
     response.delete_cookie(
         key=settings.admin_session_cookie_name,
         path="/",
-        secure=True,
-        samesite="none",
+        secure=settings.admin_cookie_secure,
+        samesite=settings.admin_cookie_samesite,
+        domain=settings.admin_cookie_domain or None,
     )
     response.delete_cookie(
         key=settings.admin_csrf_cookie_name,
         path="/",
-        secure=True,
-        samesite="none",
+        secure=settings.admin_cookie_secure,
+        samesite=settings.admin_cookie_samesite,
+        domain=settings.admin_cookie_domain or None,
     )
     return {"success": True}
 
