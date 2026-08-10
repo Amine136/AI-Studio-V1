@@ -2,32 +2,6 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactCompiler: true,
-  async rewrites() {
-    return {
-      beforeFiles: [
-        {
-          source: "/",
-          has: [
-            {
-              type: "host",
-              value: "prodxvibecraft.ouni.space",
-            },
-          ],
-          destination: "/admin",
-        },
-        {
-          source: "/:path((?!admin|_next|api|favicon.ico).*)",
-          has: [
-            {
-              type: "host",
-              value: "prodxvibecraft.ouni.space",
-            },
-          ],
-          destination: "/admin/:path*",
-        },
-      ],
-    };
-  },
   async redirects() {
     return [
       { source: "/studio/create", destination: "/create", permanent: false },
