@@ -1131,6 +1131,12 @@ def _credit_order_dict(repo: SecurityRepository, order: Any) -> dict[str, Any]:
     # The code is only meaningful once the order is accepted; a pending or refused
     # order must never carry one out of the service layer.
     code = str(order.code_plain or "") if str(order.status) == "accepted" else ""
+    r2_public_base = os.getenv("R2_PUBLIC_URL", "https://pub-64bf9ef2292c49f0a2053981c85e16d9.r2.dev").rstrip("/")
+    proof_urls = []
+    for proof in proofs:
+        file_entry = repo.get_user_file(str(proof.file_id))
+        storage_path = file_entry.storage_path if file_entry and file_entry.storage_path else str(proof.file_id)
+        proof_urls.append(f"{r2_public_base}/payment_proofs/{storage_path}")
     return {
         "id": str(order.id),
         "uid": str(order.uid),
@@ -1151,6 +1157,7 @@ def _credit_order_dict(repo: SecurityRepository, order: Any) -> dict[str, Any]:
         "createdAt": int(order.created_at),
         "updatedAt": int(order.updated_at),
         "proofFileIds": [str(proof.file_id) for proof in proofs],
+        "proofUrls": proof_urls,
     }
 
 

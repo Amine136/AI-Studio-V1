@@ -334,6 +334,7 @@ export interface AdminCreditOrder extends CreditOrder {
   userDisplayName: string;
   resolvedByEmail: string;
   proofFileIds: string[];
+  proofUrls?: string[];
   /** Admin-only: the buyer's own CreditOrder never carries this. */
   duplicateProofs: DuplicateProofRef[];
 }

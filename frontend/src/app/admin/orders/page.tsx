@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, API_BASE } from "../../../services/api";
+import { api, API_BASE, R2_PUBLIC_BASE } from "../../../services/api";
 import type { AdminCreditOrder, CreditOrderStatus } from "../../../types";
 
 type StatusFilter = "all" | CreditOrderStatus;
@@ -444,8 +444,8 @@ export default function AdminOrdersPage() {
                                                     lightbox rather than costing a tab round trip. */}
                                                 {order.proofFileIds.length > 0 ? (
                                                     <div className="flex flex-wrap gap-3 mb-1">
-                                                        {order.proofFileIds.map((fileId) => {
-                                                            const src = `${API_BASE}/admin/orders/${order.id}/proof/${fileId}`;
+                                                        {order.proofFileIds.map((fileId, idx) => {
+                                                            const src = order.proofUrls?.[idx] || `${R2_PUBLIC_BASE}/payment_proofs/${fileId}`;
                                                             // A PDF proof can't render in <img>, so it falls back to a
                                                             // labelled tile that still opens the file in a tab.
                                                             const isFile = unrenderable.has(fileId);

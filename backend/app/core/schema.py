@@ -735,6 +735,7 @@ class AdminCreditOrderResponse(CreditOrderResponse):
     userDisplayName: str = ""
     resolvedByEmail: str = ""
     proofFileIds: List[str] = Field(default_factory=list)
+    proofUrls: List[str] = Field(default_factory=list)
     # Admin-only, like every other field added here: the buyer's own
     # CreditOrderResponse does not declare it, so Pydantic drops it from their
     # response and a buyer never learns their receipt was recognised.
