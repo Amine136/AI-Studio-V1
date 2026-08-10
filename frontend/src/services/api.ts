@@ -53,7 +53,7 @@ import { auth } from '../lib/firebase';
 import { signOutUser } from '../lib/auth';
 import { getAdminCsrfToken, isAdminHost } from '../lib/admin';
 
-export const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://vibecraft-kscatxqueq-ey.a.run.app';
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL || '/api-proxy';
 export const R2_PUBLIC_BASE = process.env.NEXT_PUBLIC_R2_PUBLIC_URL || 'https://pub-64bf9ef2292c49f0a2053981c85e16d9.r2.dev';
 const ADMIN_TOKEN_STORAGE_KEY = 'vibecraft_admin_token';
 
