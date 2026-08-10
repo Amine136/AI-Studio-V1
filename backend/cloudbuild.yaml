@@ -1,0 +1,36 @@
+steps:
+  # Step 1: Build the Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - 'gcr.io/free-496600/github.com/amine136/ai-studio-v1:$COMMIT_SHA'
+      - '-f'
+      - 'Dockerfile'
+      - '.'
+    dir: 'backend'
+
+  # Step 2: Push the Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'gcr.io/free-496600/github.com/amine136/ai-studio-v1:$COMMIT_SHA'
+
+  # Step 3: Deploy to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'gcloud'
+    args:
+      - 'run'
+      - 'services'
+      - 'update'
+      - 'vibecraft'
+      - '--image=gcr.io/free-496600/github.com/amine136/ai-studio-v1:$COMMIT_SHA'
+      - '--region=europe-west3'
+      - '--project=free-496600'
+
+images:
+  - 'gcr.io/free-496600/github.com/amine136/ai-studio-v1:$COMMIT_SHA'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  substitutionOption: ALLOW_LOOSE
