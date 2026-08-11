@@ -16,7 +16,7 @@ from urllib.parse import urlparse
 
 from fastapi import FastAPI, HTTPException, Request, Depends, UploadFile, File, Form, Header, Response, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
