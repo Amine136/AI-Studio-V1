@@ -35,6 +35,7 @@ CREATE_FLOW_TEXT_PARAM_KEYS = {
 # tampered request can never make an admin approve a number the user invented.
 # `price_minor` is millimes (TND has 3 decimals): 15000 = 15.000 DT.
 CREDIT_PLANS = [
+    {"id": "nano", "name": "Nano", "credits": 2.0, "price_minor": 3000, "currency": "TND"},
     {"id": "starter", "name": "Starter", "credits": 10.0, "price_minor": 15000, "currency": "TND"},
     {"id": "pro", "name": "Pro", "credits": 35.0, "price_minor": 39000, "currency": "TND"},
     {"id": "ultra", "name": "Ultra", "credits": 70.0, "price_minor": 69000, "currency": "TND"},
@@ -48,6 +49,7 @@ CREDIT_PLANS_BY_ID = {plan["id"]: plan for plan in CREDIT_PLANS}
 # conversion of one another. `price_minor` here is CENTS (USD has 2 decimals),
 # not millimes — do not reuse the TND formatter on these.
 CREDIT_PLANS_USD = [
+    {"id": "nano", "name": "Nano", "credits": 2.0, "price_minor": 100, "currency": "USD"},
     {"id": "starter", "name": "Starter", "credits": 10.0, "price_minor": 499, "currency": "USD"},
     {"id": "pro", "name": "Pro", "credits": 35.0, "price_minor": 1299, "currency": "USD"},
     {"id": "ultra", "name": "Ultra", "credits": 70.0, "price_minor": 2299, "currency": "USD"},
@@ -485,6 +487,7 @@ class Config:
         # closed, unlike the no-op idiom used for Discord/email above.
         self.dodo_webhook_secret = os.getenv("DODO_WEBHOOK_SECRET", "").strip()
         self.dodo_product_ids = {
+            "nano": os.getenv("DODO_PRODUCT_ID_NANO", "").strip(),
             "starter": os.getenv("DODO_PRODUCT_ID_STARTER", "").strip(),
             "pro": os.getenv("DODO_PRODUCT_ID_PRO", "").strip(),
             "ultra": os.getenv("DODO_PRODUCT_ID_ULTRA", "").strip(),
