@@ -257,6 +257,18 @@ export default function AdminUsersPage() {
                                         </td>
                                         <td className="px-6 py-4">
                                             <CreditTierBadge value={user.credits || 0} />
+                                            {/* A grant does NOT settle a debt, so an admin topping
+                                                this account up has to see that it owes first. Only
+                                                rendered when there is one — no row shift otherwise. */}
+                                            {(user.creditDebt || 0) > 0 && (
+                                                <span
+                                                    className="mt-1 flex items-center gap-1 text-error font-code-sm text-xs"
+                                                    title="Owed from a reversed payment. Settled off the next purchase or redeemed code — an admin grant does not clear it."
+                                                >
+                                                    <span className="material-symbols-outlined text-[14px]">error</span>
+                                                    owes {(user.creditDebt || 0).toFixed(2)}
+                                                </span>
+                                            )}
                                         </td>
                                         <td className="px-6 py-4 text-on-surface-variant font-code-sm">
                                             {(user.reservedCredits || 0).toFixed(2)}

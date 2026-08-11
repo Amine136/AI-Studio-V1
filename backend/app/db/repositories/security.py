@@ -10,7 +10,7 @@ from sqlalchemy import case, delete, func, select, update
 from sqlalchemy.orm import Session, aliased
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from app.db.models import AdminAccount, AdminAuditLog, AdminSession, AnalyzeSession, ChatConversation, ChatMessage, CreditCode, CreditCodeClaim, CreditLedgerEntry, CreditLot, CreditLotAllocation, CreditOrder, CreditOrderProof, DashboardNewsItem, DeactivatedEmail, EmailSend, FeedbackItem, GenerationJob, HistoryEntry, ModerationRejection, PackSession, RateLimitBucket, User, UserFile
+from app.db.models import AdminAccount, AdminAuditLog, AdminSession, AnalyzeSession, ChatConversation, ChatMessage, CreditCode, CreditCodeClaim, CreditLedgerEntry, CreditLot, CreditLotAllocation, CreditOrder, CreditOrderProof, DashboardNewsItem, DeactivatedEmail, DodoCardPayment, DodoCardReversal, EmailSend, FeedbackItem, GenerationJob, HistoryEntry, ModerationRejection, PackSession, RateLimitBucket, User, UserFile
 
 USERNAME_ALLOWED_RE = re.compile(r"[^a-z0-9._-]+")
 
@@ -309,6 +309,8 @@ class SecurityRepository:
         currency: str,
         payment_method: str,
         note: str,
+        fb_pixel_fbp: str | None = None,
+        fb_pixel_fbc: str | None = None,
     ) -> CreditOrder:
         now = int(time.time())
         order = CreditOrder(
@@ -321,6 +323,8 @@ class SecurityRepository:
             currency=currency,
             payment_method=payment_method,
             note=note,
+            fb_pixel_fbp=fb_pixel_fbp,
+            fb_pixel_fbc=fb_pixel_fbc,
             status="pending",
             created_at=now,
             updated_at=now,
@@ -328,6 +332,109 @@ class SecurityRepository:
         self.session.add(order)
         self.session.flush()
         return order
+
+    def create_dodo_card_payment(
+        self,
+        *,
+        id: str,
+        uid: str,
+        plan_id: str,
+        credits_minor: int,
+        price_minor: int,
+        currency: str,
+        dodo_payment_id: str,
+        created_at: int,
+        lot_id: str | None = None,
+    ) -> DodoCardPayment:
+        record = DodoCardPayment(
+            id=id,
+            uid=uid,
+            plan_id=plan_id,
+            credits_minor=credits_minor,
+            price_minor=price_minor,
+            currency=currency,
+            dodo_payment_id=dodo_payment_id,
+            lot_id=lot_id,
+            created_at=created_at,
+        )
+        self.session.add(record)
+        # Explicit flush (autoflush is off, see session.py): this is what forces
+        # the unique constraint on dodo_payment_id to be checked NOW, before the
+        # caller goes on to grant credits for what might be a duplicate webhook
+        # delivery.
+        self.session.flush()
+        return record
+
+    def get_dodo_card_payment(self, dodo_payment_id: str) -> DodoCardPayment | None:
+        stmt = select(DodoCardPayment).where(DodoCardPayment.dodo_payment_id == dodo_payment_id)
+        return self.session.execute(stmt).scalar_one_or_none()
+
+    def create_dodo_card_reversal(
+        self,
+        *,
+        id: str,
+        uid: str,
+        dodo_payment_id: str,
+        kind: str,
+        event_ref_id: str,
+        amount_minor: int,
+        credits_clawed_minor: int,
+        written_off_minor: int,
+        created_at: int,
+    ) -> DodoCardReversal:
+        record = DodoCardReversal(
+            id=id,
+            uid=uid,
+            dodo_payment_id=dodo_payment_id,
+            kind=kind,
+            event_ref_id=event_ref_id,
+            amount_minor=amount_minor,
+            credits_clawed_minor=credits_clawed_minor,
+            written_off_minor=written_off_minor,
+            created_at=created_at,
+        )
+        self.session.add(record)
+        # Same reason as create_dodo_card_payment: flush now so the unique
+        # constraint on event_ref_id is checked BEFORE the caller debits anything.
+        self.session.flush()
+        return record
+
+    def get_dodo_card_reversal(self, event_ref_id: str) -> DodoCardReversal | None:
+        stmt = select(DodoCardReversal).where(DodoCardReversal.event_ref_id == event_ref_id)
+        return self.session.execute(stmt).scalar_one_or_none()
+
+    def sum_reversed_credits_for_payment(self, dodo_payment_id: str) -> int:
+        """Credits already targeted by earlier reversals of this payment.
+
+        Sums what we MEANT to claw back (recovered + written off), not just what
+        we recovered: a second partial refund must not try to take again the part
+        an earlier one already wrote off.
+        """
+        stmt = (
+            select(
+                func.coalesce(
+                    func.sum(DodoCardReversal.credits_clawed_minor + DodoCardReversal.written_off_minor),
+                    0,
+                )
+            )
+            .select_from(DodoCardReversal)
+            .where(DodoCardReversal.dodo_payment_id == dodo_payment_id)
+        )
+        return int(self.session.execute(stmt).scalar_one())
+
+    def count_dodo_card_payments_since(self, uid: str, *, since_ts: int) -> int:
+        """Successful card payments this account made in the window.
+
+        Counts payments rather than attempted checkouts: an abandoned or declined
+        checkout costs us nothing, and counting those would lock out a customer
+        whose first card simply failed.
+        """
+        stmt = (
+            select(func.count())
+            .select_from(DodoCardPayment)
+            .where(DodoCardPayment.uid == uid, DodoCardPayment.created_at >= since_ts)
+        )
+        return int(self.session.execute(stmt).scalar_one())
 
     def add_credit_order_proof(self, *, order_id: str, file_id: str) -> CreditOrderProof:
         proof = CreditOrderProof(

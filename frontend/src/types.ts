@@ -224,6 +224,8 @@ export interface CurrentUserProfile {
   credits?: number;
   reservedCredits?: number;
   totalCredits?: number;
+  /** Owed after a reversed payment. An admin grant does NOT settle it. */
+  creditDebt?: number;
   createdAt?: number | null;
   updatedAt?: number | null;
   lastSeenAt?: number | null;
@@ -259,6 +261,10 @@ export interface CreditActivityEntry {
   activity: string;
   status: string;
   deltaMinor: number;
+  /* Provider transaction reference (the Dodo payment id on card rows). A purchase
+     and the reversal that undid it share the same one. Absent on rows with no
+     external transaction. */
+  reference?: string | null;
 }
 
 export interface CreditActivityListResponse {
@@ -288,6 +294,9 @@ export interface PaymentMethodOption {
 
 export interface CheckoutConfig {
   plans: CreditPlan[];
+  /** Same packs, USD-priced for the Dodo Payments (international card) rail.
+   *  priceMinor here is CENTS, not millimes — do not reuse the TND formatter. */
+  plansUsd: CreditPlan[];
   methods: PaymentMethodOption[];
   whatsappNumber: string;
   maxProofFiles: number;
@@ -510,6 +519,8 @@ export interface AdminUserListItem {
   credits: number;
   reservedCredits: number;
   totalCredits: number;
+  /** Owed after a reversed payment. An admin grant does NOT settle it. */
+  creditDebt?: number;
   isSuspended: boolean;
   suspensionReason: string;
   activeSuspensionUntil?: number | null;
@@ -550,6 +561,9 @@ export interface CreditBreakdown {
   available: number;
   own: number;
   reserved: number;
+  /** Owed back after a reversed card payment. NOT subtracted from `available` —
+   *  it is taken off the top of the next purchase or redeemed code instead. */
+  debt: number;
   gifts: CreditGiftLot[];
 }
 

@@ -26,11 +26,13 @@ from app.config import (
     AVAILABLE_PAYMENT_METHOD_IDS,
     CREDIT_PLANS,
     CREDIT_PLANS_BY_ID,
+    CREDIT_PLANS_USD,
+    CREDIT_PLANS_USD_BY_ID,
     PAYMENT_METHODS,
     PAYMENT_WHATSAPP_NUMBER,
     settings,
 )
-from app.core.schema import AdminAuditLogListResponse, AdminAuthFailureSummaryResponse, AdminCreditCodeBatchListResponse, AdminCreditCodeListResponse, AdminCreditOrderAcceptRequest, AdminCreditOrderListResponse, AdminCreditOrderRefuseRequest, AdminCreditOrderResponse, AdminGenerationJobItem, AdminGenerationJobListResponse, AdminLoginRequest, AdminReasonRequest, AdminSessionResponse, AdminUserDetailResponse, AdminUserListResponse, CatalogUpdateNotification, CheckoutConfigResponse, CreditActivityListResponse, CreditLedgerListResponse, CreditOrderListResponse, CreditOrderResponse, CreditPlanResponse, PaymentMethodResponse, DashboardNewsItemResponse, DashboardNewsListResponse, DashboardNewsUpsertRequest, FeedbackItemResponse, FeedbackListResponse, FeedbackStatusUpdateRequest, FeedbackSubmitRequest, GenerateRequest, GenerationResult, PlainChatConversationCreateRequest, PlainChatConversationItem, PlainChatConversationListResponse, PlainChatConversationMessageCreateRequest, PlainChatConversationMessagesResponse, PlainChatConversationTurnResponse, PlainChatConversationUpdateRequest, PlainChatModelListResponse, SystemConfig, UserNotificationPreferencesUpdateRequest, UserProfileUpdateRequest, ProfileCompletionRequest, PackEstimateRequest, PackGenerateRequest, PackPlanRequest, PackSessionCreate, PackSessionUpdate
+from app.core.schema import AdminAuditLogListResponse, AdminAuthFailureSummaryResponse, AdminCreditCodeBatchListResponse, AdminCreditCodeListResponse, AdminCreditOrderAcceptRequest, AdminCreditOrderListResponse, AdminCreditOrderRefuseRequest, AdminCreditOrderResponse, AdminGenerationJobItem, AdminGenerationJobListResponse, AdminLoginRequest, AdminReasonRequest, AdminSessionResponse, AdminUserDetailResponse, AdminUserListResponse, CatalogUpdateNotification, CheckoutConfigResponse, CreditActivityListResponse, CreditLedgerListResponse, CreditOrderListResponse, CreditOrderResponse, CreditPlanResponse, DodoCheckoutRequest, DodoCheckoutResponse, PaymentMethodResponse, DashboardNewsItemResponse, DashboardNewsListResponse, DashboardNewsUpsertRequest, FeedbackItemResponse, FeedbackListResponse, FeedbackStatusUpdateRequest, FeedbackSubmitRequest, GenerateRequest, GenerationResult, PlainChatConversationCreateRequest, PlainChatConversationItem, PlainChatConversationListResponse, PlainChatConversationMessageCreateRequest, PlainChatConversationMessagesResponse, PlainChatConversationTurnResponse, PlainChatConversationUpdateRequest, PlainChatModelListResponse, SystemConfig, UserNotificationPreferencesUpdateRequest, UserProfileUpdateRequest, ProfileCompletionRequest, PackEstimateRequest, PackGenerateRequest, PackPlanRequest, PackSessionCreate, PackSessionUpdate
 from app.packs import catalog as packs_catalog, service as packs_service
 from app.db.session import session_scope
 from app.db.repositories.security import SecurityRepository
@@ -39,7 +41,7 @@ from app.services.admin_auth import AdminAuthRateLimitError, authenticate_admin,
 from app.services.apikeymanager_client import ApiKeyManagerProxyError, check_apikeymanager_ready
 from app.services.auth import format_suspension_detail, verify_admin_csrf, verify_admin_session, verify_api_key, verify_firebase_user
 from app.services.email_service import dispatch as dispatch_email
-from app.services import discord_orders
+from app.services import discord_orders, dodo_payments, meta_capi
 from app.services.catalog_store import catalog_store
 from app.services.model_visibility import filter_catalog, list_model_visibility, update_model_visibility, visible_model_catalog
 from app.services.chat_service import assemble_plain_chat_context, list_plain_chat_models, minimum_required_credits_for_plain_chat, normalize_plain_chat_system, prepare_plain_chat_conversation_request, preview_plain_chat_prompt, send_plain_chat, serialize_plain_chat_parts
@@ -64,6 +66,13 @@ from app.services.security_backend import (
     create_credit_code,
     create_credit_code_batch_with_title,
     create_credit_order,
+    credit_dodo_card_payment,
+    count_recent_card_payments,
+    record_card_payment_anomaly,
+    reverse_dodo_card_payment,
+    get_card_payment_uid,
+    set_payment_hold,
+    clear_payment_hold,
     list_user_credit_orders,
     list_admin_credit_orders,
     get_credit_order_proof_file_id,
@@ -137,7 +146,6 @@ from app.services.user_files import (
     load_private_user_file,
     private_file_id_from_url,
     private_file_url,
-    restore_generated_image_from_r2,
 )
 
 def _configure_app_logging() -> None:
@@ -492,6 +500,14 @@ MAX_PROOF_FILES = 3
 PROOF_CONTENT_TYPES = {"image/png", "image/jpeg", "image/webp", "application/pdf"}
 CREDIT_ORDER_NOTE_MAX_LENGTH = 400
 
+# Shown when spending is frozen because a card payment on the account is under
+# dispute (see set_payment_hold). Deliberately says what happened and that it is
+# temporary — a hold is not an accusation, and most disputes resolve.
+PAYMENT_HOLD_MESSAGE = (
+    "Spending is paused while a card payment on this account is being disputed. "
+    "It will be restored when the dispute is resolved — contact us if you think this is a mistake."
+)
+
 # OpenAPI Tags for endpoint grouping
 tags_metadata = [
     {
@@ -548,18 +564,15 @@ for social media marketing.
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-allowed_origins = settings.allowed_origins
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-API-Key", "X-CSRF-Token"],
 )
-
-
-
 
 
 def _set_admin_csrf_cookie(response: Response, token: str | None = None) -> str:
@@ -569,10 +582,9 @@ def _set_admin_csrf_cookie(response: Response, token: str | None = None) -> str:
         value=csrf_token,
         httponly=False,
         secure=settings.admin_cookie_secure,
-        samesite=settings.admin_cookie_samesite,
+        samesite="lax",
         max_age=settings.admin_session_ttl_seconds,
         path="/",
-        domain=settings.admin_cookie_domain or None,
     )
     return csrf_token
 
@@ -639,6 +651,21 @@ def dependency_health_check():
 
 @app.on_event("startup")
 def cleanup_uploaded_images_on_startup():
+    try:
+        from alembic.config import Config as AlembicConfig
+        from alembic import command
+        from app.db.session import get_database_url
+        alembic_ini_path = Path(__file__).resolve().parent.parent / "alembic.ini"
+        alembic_dir_path = Path(__file__).resolve().parent.parent / "alembic"
+        if alembic_ini_path.exists():
+            alembic_cfg = AlembicConfig(str(alembic_ini_path))
+            alembic_cfg.set_main_option("script_location", str(alembic_dir_path))
+            alembic_cfg.set_main_option("sqlalchemy.url", get_database_url())
+            command.upgrade(alembic_cfg, "head")
+            logger.info("[alembic] Automatic DB migration upgrade head succeeded.")
+    except Exception as exc:
+        logger.warning("[alembic] Auto DB migration on startup skipped/failed: %s", exc)
+
     _cleanup_expired_uploaded_images()
     _cleanup_expired_payment_proofs()
     catalog_store.initialize()
@@ -684,7 +711,7 @@ def get_image(filename: str):
         raise HTTPException(status_code=400, detail="Invalid filename")
 
     filepath = GENERATED_IMAGES_DIR / filename
-    if not filepath.exists() and not restore_generated_image_from_r2(filename):
+    if not filepath.exists():
         raise HTTPException(status_code=404, detail="Image not found")
     
     return FileResponse(
@@ -1084,7 +1111,7 @@ def create_plain_chat_conversation_message(
         raise
     except ValueError as exc:
         detail = _plain_chat_error_message(str(exc))
-        status_code = 402 if str(exc) == "INSUFFICIENT_CREDITS" else 400
+        status_code = 402 if str(exc) in {"INSUFFICIENT_CREDITS", "PAYMENT_HOLD"} else 400
         if str(exc) in {"CHAT_REQUEST_TOO_LARGE"}:
             status_code = 413
         if str(exc).startswith("CHAT_BAD_PARAM:"):
@@ -1285,21 +1312,6 @@ def email_winback_sweep(request: Request, x_internal_secret: str | None = Header
     return {"status": "ok", **run_winback_sweep()}
 
 
-@app.post("/internal/email/test", tags=["Configuration"])
-def email_test_send(request: Request, target_email: str = "ounimed019@gmail.com", x_internal_secret: str | None = Header(default=None)):
-    del request
-    _verify_internal_secret(x_internal_secret)
-    from app.services.email_client import OutgoingEmail, send_email
-    msg = OutgoingEmail(
-        to_email=target_email,
-        to_name="Amine",
-        subject="Vibecraft Live Test Email",
-        html="<div style='font-family:sans-serif;padding:24px;background:#060e20;color:#ffffff;border-radius:8px;'><h2>🚀 Vibecraft Live Email Test</h2><p>Hello Amine,</p><p>This is a live test email sent directly from your <b>Cloud Run backend</b> via <b>noreply@ouni.space</b>.</p></div>",
-    )
-    result = send_email(msg)
-    return {"ok": result.ok, "message_id": result.message_id, "error": result.error, "dry_run": result.dry_run}
-
-
 @app.get("/admin/model-visibility", tags=["Configuration"], summary="Get Model Visibility For Admin")
 @limiter.limit("20/minute")
 def admin_get_model_visibility(request: Request, _admin: Dict[str, Any] = Depends(verify_admin_session)):
@@ -1366,18 +1378,17 @@ def admin_login(request: Request, payload: AdminLoginRequest, response: Response
         value=token,
         httponly=True,
         secure=settings.admin_cookie_secure,
-        samesite=settings.admin_cookie_samesite,
+        samesite="lax",
         max_age=settings.admin_session_ttl_seconds,
         path="/",
-        domain=settings.admin_cookie_domain or None,
     )
     _set_admin_csrf_cookie(response)
     return session
 
 
 @app.post("/admin-auth/logout", tags=["Admin Authentication"], summary="Logout From Admin Portal")
-def admin_logout(request: Request, response: Response, admin: Dict[str, Any] = Depends(verify_admin_session), _csrf: None = Depends(verify_admin_csrf)):
-    token = admin["token"]
+def admin_logout(request: Request, response: Response, _csrf: None = Depends(verify_admin_csrf)):
+    token = request.cookies.get(settings.admin_session_cookie_name, "").strip()
     if token:
         try:
             revoke_admin_session(token)
@@ -1387,15 +1398,13 @@ def admin_logout(request: Request, response: Response, admin: Dict[str, Any] = D
         key=settings.admin_session_cookie_name,
         path="/",
         secure=settings.admin_cookie_secure,
-        samesite=settings.admin_cookie_samesite,
-        domain=settings.admin_cookie_domain or None,
+        samesite="lax",
     )
     response.delete_cookie(
         key=settings.admin_csrf_cookie_name,
         path="/",
         secure=settings.admin_cookie_secure,
-        samesite=settings.admin_cookie_samesite,
-        domain=settings.admin_cookie_domain or None,
+        samesite="lax",
     )
     return {"success": True}
 
@@ -1654,6 +1663,16 @@ def get_credit_checkout_config(request: Request, _: bool = Depends(verify_api_ke
             )
             for plan in CREDIT_PLANS
         ],
+        plansUsd=[
+            CreditPlanResponse(
+                id=str(plan["id"]),
+                name=str(plan["name"]),
+                credits=float(plan["credits"]),
+                priceMinor=int(plan["price_minor"]),
+                currency=str(plan["currency"]),
+            )
+            for plan in CREDIT_PLANS_USD
+        ],
         methods=[
             PaymentMethodResponse(
                 id=str(method["id"]),
@@ -1672,6 +1691,478 @@ def get_credit_checkout_config(request: Request, _: bool = Depends(verify_api_ke
         maxProofBytes=MAX_PROOF_BYTES,
         noteMaxLength=CREDIT_ORDER_NOTE_MAX_LENGTH,
     )
+
+
+@app.post(
+    "/credits/checkout/dodo",
+    response_model=DodoCheckoutResponse,
+    tags=["Configuration"],
+    summary="Create A Dodo Payments Checkout Session",
+)
+@limiter.limit("10/minute")
+def create_dodo_checkout(
+    request: Request,
+    payload: DodoCheckoutRequest,
+    user: Dict[str, Any] = Depends(verify_firebase_user),
+):
+    # request is read below for the buyer's Meta Pixel cookies.
+    plan = CREDIT_PLANS_USD_BY_ID.get(str(payload.planId).strip())
+    if plan is None:
+        raise HTTPException(status_code=400, detail="Unknown plan")
+
+    # Two brakes, both here rather than in the webhook: refusing to CREDIT a
+    # payment the customer already made would be the wrong failure mode.
+    #
+    # Card testing is the threat this rail actually has, and it does not produce
+    # payments — a declined card records nothing. So the attempt cap, not the
+    # purchase cap, is what bounds someone working through a list of stolen
+    # cards. It is checked first and consumes a token per session started.
+    attempt_cap = int(settings.max_card_checkout_attempts_per_day)
+    if attempt_cap > 0 and not consume_rate_limit(
+        f"card:checkout:attempt:{user['uid']}", max_count=attempt_cap, window_seconds=24 * 60 * 60
+    ):
+        logger.warning("[dodo] uid=%s hit the daily card checkout ATTEMPT cap", user["uid"])
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                "Too many card payment attempts today. Please try again tomorrow, "
+                "or contact us on WhatsApp if you need help."
+            ),
+        )
+
+    # The purchase cap bounds how much one account can buy in a day, and with it
+    # how much chargeback exposure a single compromised account can create.
+    daily_cap = int(settings.max_card_checkouts_per_day)
+    if daily_cap > 0:
+        recent = count_recent_card_payments(str(user["uid"]), window_seconds=24 * 60 * 60)
+        if recent >= daily_cap:
+            raise HTTPException(
+                status_code=429,
+                detail=(
+                    f"You have reached the limit of {daily_cap} card purchases per day. "
+                    "Please try again tomorrow, or contact us on WhatsApp if you need more."
+                ),
+            )
+
+    return_url = f"{settings.app_base_url}/credits/buy?step=card-return"
+    try:
+        checkout_url = dodo_payments.create_checkout_session(
+            uid=str(user["uid"]),
+            plan=plan,
+            return_url=return_url,
+            # Ride along in the session metadata so the webhook can attribute the
+            # Purchase; by then this browser is gone.
+            fbp=request.cookies.get("_fbp"),
+            fbc=request.cookies.get("_fbc"),
+        )
+    except dodo_payments.DodoNotConfiguredError as exc:
+        logger.warning("[dodo] checkout session requested but not configured: %s", exc)
+        raise HTTPException(status_code=503, detail="Card payment is not available right now") from exc
+    except Exception as exc:
+        logger.exception("[dodo] failed to create checkout session")
+        raise HTTPException(status_code=502, detail="Could not start card checkout") from exc
+
+    return DodoCheckoutResponse(checkoutUrl=checkout_url)
+
+
+def _dodo_business_is_ours(payload: Dict[str, Any]) -> bool:
+    """Does this delivery belong to the Dodo business this instance serves?
+
+    ``business_id`` sits on the webhook ENVELOPE, beside ``type`` and ``data`` —
+    not inside ``data``. A valid signature only proves the sender holds the
+    secret; staging and production share one Dodo account, so a copied
+    DODO_WEBHOOK_SECRET would otherwise let a test-mode payment credit a real
+    user. Unset, the check is skipped with a warning rather than failing closed:
+    staging predates the setting and must keep working until the env is
+    provisioned.
+    """
+    observed = str(payload.get("business_id") or "").strip()
+    expected = str(settings.dodo_business_id or "").strip()
+    if not expected:
+        # Log what we actually saw, so the value can be read straight out of the
+        # logs after the first delivery in a new environment. Test and live are
+        # separate Dodo environments and the live business_id cannot be known in
+        # advance from the test-mode one — so the safe bootstrap is: deploy with
+        # this unset, take one real payment, read the id from here, then set it.
+        # Guessing it instead would 401 every live delivery and leave paying
+        # customers with no credits.
+        logger.warning(
+            "[dodo] DODO_BUSINESS_ID is not configured — accepting this delivery without the "
+            "business pin. Observed business_id=%s; set that in the environment to enable the pin.",
+            observed or "<missing>",
+        )
+        return True
+    return observed == expected
+
+
+def _dodo_cart_product_ids(data: Dict[str, Any]) -> set[str]:
+    """Product ids on a Payment payload. Empty when Dodo did not send a cart —
+    ``product_cart`` is Optional, so absent means 'cannot verify', not 'wrong'."""
+    ids: set[str] = set()
+    for item in data.get("product_cart") or []:
+        if isinstance(item, dict):
+            product_id = str(item.get("product_id") or "").strip()
+            if product_id:
+                ids.add(product_id)
+    return ids
+
+
+def _dodo_uid_for_payment(dodo_payment_id: str) -> str:
+    """The account a card payment belongs to, or "" if we never credited it.
+
+    A dispute can arrive for a payment made outside our checkout, or from the
+    other environment sharing this Dodo account — neither is ours to freeze.
+    """
+    uid = get_card_payment_uid(dodo_payment_id)
+    if not uid:
+        logger.warning("[dodo] no card payment on record for payment_id=%s; ignoring", dodo_payment_id)
+        return ""
+    return str(uid)
+
+
+def _dodo_dispute_amount_minor(data: Dict[str, Any]) -> int | None:
+    """Dispute.amount is a STRING on Dodo's model, unlike Payment.total_amount
+    and Refund.amount which are ints. Returns None when it cannot be parsed, and
+    None means 'reverse the whole payment'."""
+    raw = data.get("amount")
+    if raw is None:
+        return None
+    try:
+        return int(str(raw).strip())
+    except (TypeError, ValueError):
+        logger.warning("[dodo] could not parse dispute amount %r; treating as a full reversal", raw)
+        return None
+
+
+def _handle_dodo_reversal_event(event_type: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Refund and dispute events — the half of the card rail that takes credits
+    back.
+
+    Disputes are a lifecycle, not a moment, so they are handled in two stages:
+    `dispute.opened` freezes spending while the outcome is unknown, and only
+    `dispute.lost` actually debits. `dispute.won`/`dispute.cancelled` lift the
+    freeze without ever having taken anything, which is the point — a customer
+    who wins a legitimate billing dispute should not have been punished for
+    raising it.
+
+    Refunds are unconditional: the money has already gone back.
+    """
+    data = payload.get("data") or {}
+    dodo_payment_id = str(data.get("payment_id") or "").strip()
+
+    if not dodo_payment_id:
+        logger.error("[dodo] %s with no payment_id; cannot act", event_type)
+        return {"status": "unprocessable", "type": event_type}
+
+    # Mid-lifecycle dispute events and failed refunds change nothing about the
+    # money. Logged rather than dropped so a support case can be traced.
+    if event_type in ("dispute.accepted", "dispute.challenged", "dispute.expired", "refund.failed"):
+        logger.info("[dodo] %s for payment_id=%s (no ledger effect)", event_type, dodo_payment_id)
+        return {"status": "ignored", "type": event_type}
+
+    if event_type == "dispute.opened":
+        uid = _dodo_uid_for_payment(dodo_payment_id)
+        if not uid:
+            return {"status": "unknown_payment", "type": event_type}
+        set_payment_hold(
+            uid,
+            reason=f"A card payment ({dodo_payment_id}) is being disputed. Spending is paused until it resolves.",
+        )
+        logger.warning("[dodo] dispute OPENED on payment_id=%s; spending frozen for uid=%s", dodo_payment_id, uid)
+        return {"status": "hold_applied", "type": event_type}
+
+    if event_type in ("dispute.won", "dispute.cancelled"):
+        uid = _dodo_uid_for_payment(dodo_payment_id)
+        if not uid:
+            return {"status": "unknown_payment", "type": event_type}
+        # No debit ever happened for these, so there is nothing to give back —
+        # only the freeze to lift. Safe even if dispute.opened never arrived.
+        clear_payment_hold(uid, reason=f"Dispute on card payment {dodo_payment_id} resolved in our favour.")
+        logger.info("[dodo] %s on payment_id=%s; spending unfrozen for uid=%s", event_type, dodo_payment_id, uid)
+        return {"status": "hold_cleared", "type": event_type}
+
+    if event_type == "refund.succeeded":
+        event_ref_id = str(data.get("refund_id") or "").strip()
+        amount_minor = data.get("amount")
+        # A partial refund reverses only part of the credits; is_partial is
+        # authoritative, but a missing amount still means "all of it".
+        if not bool(data.get("is_partial")) or amount_minor is None:
+            amount_minor = None
+        else:
+            amount_minor = int(amount_minor)
+        kind = "refund"
+        reason_label = f"Refund {event_ref_id} on card payment {dodo_payment_id}."
+    elif event_type == "dispute.lost":
+        event_ref_id = str(data.get("dispute_id") or "").strip()
+        amount_minor = _dodo_dispute_amount_minor(data)
+        kind = "dispute"
+        reason_label = f"Chargeback lost on card payment {dodo_payment_id}."
+    else:
+        logger.info("[dodo] %s for payment_id=%s; no action defined", event_type, dodo_payment_id)
+        return {"status": "ignored", "type": event_type}
+
+    if not event_ref_id:
+        logger.error("[dodo] %s for payment_id=%s has no event id; cannot dedupe, refusing to act",
+                     event_type, dodo_payment_id)
+        return {"status": "unprocessable", "type": event_type}
+
+    result = reverse_dodo_card_payment(
+        dodo_payment_id=dodo_payment_id,
+        event_ref_id=event_ref_id,
+        kind=kind,
+        amount_minor=amount_minor,
+        reason_label=reason_label,
+    )
+    if not result.get("success"):
+        # 500 so Dodo keeps retrying: money has left our side and the credits
+        # are still with the user.
+        raise HTTPException(status_code=500, detail="Could not record this reversal")
+    if result.get("duplicate"):
+        return {"status": "duplicate", "type": event_type}
+    if result.get("unknown_payment"):
+        return {"status": "unknown_payment", "type": event_type}
+    logger.warning(
+        "[dodo] %s reversed payment_id=%s: clawed %s minor, wrote off %s minor",
+        event_type,
+        dodo_payment_id,
+        result.get("clawed_minor"),
+        result.get("written_off_minor"),
+    )
+    return {"status": "reversed", "type": event_type}
+
+
+@app.post(
+    "/webhooks/dodo",
+    tags=["Configuration"],
+    summary="Dodo Payments Webhook",
+    include_in_schema=False,
+)
+@limiter.limit("240/minute")
+async def handle_dodo_webhook(request: Request):
+    """Dodo's webhook for payment events. Unauthenticated by design — same
+    shape as /discord/interactions: the HMAC signature over the raw body IS
+    the authentication, so the body is read as raw bytes rather than through a
+    Pydantic model (re-serializing a parsed dict would change the bytes the
+    signature was computed over and every verification would fail).
+
+    A missing DODO_WEBHOOK_SECRET is NOT treated as "feature disabled, no-op"
+    the way a missing Discord token or email key is elsewhere in this
+    codebase — this endpoint mints credits, so an unconfigured secret means
+    every delivery is rejected with 503 rather than silently accepted.
+    """
+    body = await request.body()
+    if not settings.dodo_webhook_secret:
+        logger.error("[dodo] webhook received but DODO_WEBHOOK_SECRET is not configured; rejecting")
+        raise HTTPException(status_code=503, detail="Webhook is not configured")
+
+    try:
+        payload = dodo_payments.verify_webhook(body, dict(request.headers))
+    except dodo_payments.WebhookVerificationError as exc:
+        logger.warning("[dodo] webhook signature REJECTED: %s", exc)
+        raise HTTPException(status_code=401, detail="invalid webhook signature") from exc
+
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="malformed webhook payload")
+
+    if not _dodo_business_is_ours(payload):
+        logger.error(
+            "[dodo] delivery for business_id=%s, which is not ours; rejecting",
+            payload.get("business_id") or "<missing>",
+        )
+        raise HTTPException(status_code=401, detail="unexpected business")
+
+    event_type = str(payload.get("type") or "")
+    if event_type in ("payment.failed", "payment.cancelled", "payment.processing"):
+        # Crediting only ever happens on a confirmed "payment.succeeded" -- these
+        # three are acknowledged and logged (not silently dropped) so a "I paid
+        # but got nothing" support case can be traced to what Dodo actually
+        # reported, without needing to grant credits for anything here.
+        data = payload.get("data") or {}
+        metadata = data.get("metadata") or {}
+        logger.info(
+            "[dodo] %s: uid=%s plan_id=%s payment_id=%s",
+            event_type,
+            metadata.get("uid") or "<missing>",
+            metadata.get("plan_id") or "<missing>",
+            data.get("payment_id") or "<missing>",
+        )
+        return {"status": "ignored", "type": event_type}
+
+    if event_type.startswith("refund.") or event_type.startswith("dispute."):
+        return _handle_dodo_reversal_event(event_type, payload)
+
+    if event_type != "payment.succeeded":
+        # Any other subscribed event we don't specifically act on.
+        return {"status": "ignored", "type": event_type}
+
+    data = payload.get("data") or {}
+    metadata = data.get("metadata") or {}
+    uid = str(metadata.get("uid") or "").strip()
+    plan_id = str(metadata.get("plan_id") or "").strip()
+    dodo_payment_id = str(data.get("payment_id") or "").strip()
+    plan = CREDIT_PLANS_USD_BY_ID.get(plan_id)
+
+    if not uid or not dodo_payment_id or plan is None:
+        logger.error(
+            "[dodo] payment.succeeded with unusable payload: uid=%s plan_id=%s payment_id=%s",
+            uid or "<missing>",
+            plan_id or "<missing>",
+            dodo_payment_id or "<missing>",
+        )
+        # 200, not 4xx: the signature was valid, so this is our metadata being
+        # wrong, not a request Dodo should retry forever.
+        return {"status": "unprocessable"}
+
+    # The product the customer actually paid for must be the one this plan maps
+    # to. Without this, `metadata.plan_id` alone decides how many credits are
+    # granted — safe only as long as create_checkout_session stays the sole
+    # writer of that metadata, which is a property of today's call sites rather
+    # than an enforced invariant. A payment link or a dashboard-created payment
+    # carrying plan_id="ultra" would otherwise mint 70 credits for anything.
+    cart_product_ids = _dodo_cart_product_ids(data)
+    expected_product_id = str(settings.dodo_product_ids.get(plan_id) or "").strip()
+    if cart_product_ids and expected_product_id and expected_product_id not in cart_product_ids:
+        logger.error(
+            "[dodo] payment.succeeded for plan_id=%s but the cart holds %s, not %s; refusing to credit",
+            plan_id,
+            sorted(cart_product_ids),
+            expected_product_id,
+        )
+        record_card_payment_anomaly(
+            uid=uid,
+            dodo_payment_id=dodo_payment_id,
+            action="card_payment_product_mismatch",
+            reason=f"Refused to credit: plan '{plan_id}' does not match the product paid for.",
+            metadata={
+                "plan_id": plan_id,
+                "expected_product_id": expected_product_id,
+                "cart_product_ids": sorted(cart_product_ids),
+            },
+        )
+        return {"status": "product_mismatch"}
+
+    # total_amount is what the customer was actually charged (currency's minor
+    # unit — cents for USD), including tax. Not `amount`: that field doesn't
+    # exist on Dodo's Payment object.
+    #
+    # `is not None` rather than `or`: total_amount is a required int on Dodo's
+    # Payment model, so a zero-amount payment is a real value, not a missing
+    # one. `or` would substitute the full plan price and record a free purchase
+    # as if it had been paid for — erasing the only local evidence it happened.
+    raw_total_amount = data.get("total_amount")
+    price_minor = int(raw_total_amount) if raw_total_amount is not None else int(plan["price_minor"])
+    currency = str(data.get("currency") or plan["currency"])
+
+    # Nothing upstream guarantees the customer paid the plan price. Dodo checkout
+    # accepts up to 20 stacked discount codes on its hosted page, so a code
+    # created in the dashboard can reduce the charge without us ever seeing it.
+    # Grant credits in proportion to what was actually collected rather than
+    # refusing outright: a promo then degrades to "fewer credits for less money"
+    # instead of taking the customer's money and silently giving them nothing.
+    expected_minor = int(plan["price_minor"])
+    plan_credits_minor = int(round(float(plan["credits"]) * 100))
+    same_currency = currency.strip().upper() == str(plan["currency"]).strip().upper()
+    granted_credits_minor = plan_credits_minor
+    underpaid = False
+
+    if same_currency and price_minor < expected_minor:
+        if price_minor <= 0:
+            logger.error(
+                "[dodo] payment.succeeded collected %s %s for plan %s; refusing to credit",
+                price_minor,
+                currency,
+                plan_id,
+            )
+            record_card_payment_anomaly(
+                uid=uid,
+                dodo_payment_id=dodo_payment_id,
+                action="card_payment_unpaid",
+                reason="Refused to credit: the payment collected nothing.",
+                metadata={"plan_id": plan_id, "expected_minor": expected_minor, "currency": currency},
+            )
+            return {"status": "unpaid"}
+        granted_credits_minor = (plan_credits_minor * price_minor) // expected_minor
+        underpaid = True
+
+    result = credit_dodo_card_payment(
+        dodo_payment_id=dodo_payment_id,
+        uid=uid,
+        plan_id=plan_id,
+        credits=granted_credits_minor / 100,
+        price_minor=price_minor,
+        currency=currency,
+    )
+    if not result.get("success"):
+        # NOT a duplicate — an unexplained failure while crediting a payment
+        # Dodo believes succeeded. 500 so Dodo's retry schedule keeps trying
+        # rather than treating this delivery as handled.
+        raise HTTPException(status_code=500, detail="Could not record this payment")
+
+    # Report the sale to Meta on the delivery that actually credited. Dodo
+    # retries the same event up to 8 times, and `duplicate` is what tells those
+    # apart — event_id would dedupe them Meta-side anyway, this just avoids the
+    # pointless calls.
+    if not result.get("duplicate"):
+        try:
+            buyer_email = str(get_user(uid).get("email") or "")
+            meta_capi.send_purchase(
+                event_id=f"dodo_{dodo_payment_id}",
+                uid=uid,
+                email=buyer_email,
+                plan_id=plan_id,
+                plan_name=str(plan["name"]),
+                price_minor=price_minor,
+                currency=currency,
+                fbp=str(metadata.get("fbp") or "") or None,
+                fbc=str(metadata.get("fbc") or "") or None,
+            )
+        except Exception:
+            logger.exception("[dodo] Meta CAPI Purchase dispatch failed for %s", dodo_payment_id)
+
+    # Flag the odd ones only on the delivery that actually credited, so a Dodo
+    # retry does not pile up duplicate audit rows for the same payment.
+    if not result.get("duplicate"):
+        if underpaid:
+            record_card_payment_anomaly(
+                uid=uid,
+                dodo_payment_id=dodo_payment_id,
+                action="card_payment_underpaid",
+                reason=(
+                    f"Collected {price_minor} of {expected_minor} {currency} for plan "
+                    f"'{plan_id}'; credited {granted_credits_minor / 100:.2f} instead of "
+                    f"{plan_credits_minor / 100:.2f}."
+                ),
+                metadata={
+                    "plan_id": plan_id,
+                    "collected_minor": price_minor,
+                    "expected_minor": expected_minor,
+                    "currency": currency,
+                    "granted_credits": granted_credits_minor / 100,
+                    "plan_credits": plan_credits_minor / 100,
+                },
+            )
+        elif not same_currency:
+            # Adaptive pricing settled in another currency. Credited in full —
+            # comparing cents against paise would be nonsense — but a human
+            # should see it, because it is also what a mispriced product looks
+            # like.
+            record_card_payment_anomaly(
+                uid=uid,
+                dodo_payment_id=dodo_payment_id,
+                action="card_payment_currency_mismatch",
+                reason=(
+                    f"Settled in {currency}, but plan '{plan_id}' is priced in "
+                    f"{plan['currency']}. Credited in full without an amount check."
+                ),
+                metadata={
+                    "plan_id": plan_id,
+                    "collected_minor": price_minor,
+                    "settled_currency": currency,
+                    "plan_currency": str(plan["currency"]),
+                },
+            )
+
+    return {"status": "duplicate" if result.get("duplicate") else "credited"}
 
 
 @app.get(
@@ -1765,6 +2256,11 @@ async def place_credit_order(
             payment_method=str(payment_method).strip(),
             note=note,
             proof_file_ids=file_ids,
+            # Stored now, used much later: the Purchase event goes out when an
+            # admin accepts this order, with no buyer browser around to read
+            # cookies from.
+            fb_pixel_fbp=request.cookies.get("_fbp"),
+            fb_pixel_fbc=request.cookies.get("_fbc"),
         )
         # Announce it in the Discord review channel after the response is sent.
         # Deliberately fail-open and out-of-band: a Discord outage must never
@@ -2504,6 +3000,9 @@ def admin_get_credit_order_proof(
     file_id: str,
     _admin: Dict[str, Any] = Depends(verify_admin_session),
 ):
+    # /files/{id} is owner-scoped, so an admin cannot read a user's proof through
+    # it. This route is the admin-side equivalent, and it only serves a file that
+    # is actually attached to the order named in the path.
     del request
     if get_credit_order_proof_file_id(order_id, file_id) is None:
         raise HTTPException(status_code=404, detail="Proof not found")
@@ -2766,6 +3265,8 @@ def _generate_content_impl(request: Request, payload: GenerateRequest, user: Dic
                         status_code=429,
                         detail="This account reached its daily usage limit of 30 credits. Please try again later.",
                     ) from exc
+                if str(exc) == "PAYMENT_HOLD":
+                    raise HTTPException(status_code=402, detail=PAYMENT_HOLD_MESSAGE) from exc
                 if str(exc) == "INSUFFICIENT_CREDITS":
                     raise HTTPException(status_code=402, detail="Insufficient credits") from exc
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -2820,6 +3321,8 @@ def _generate_content_impl(request: Request, payload: GenerateRequest, user: Dic
                         status_code=429,
                         detail="This account reached its daily usage limit of 30 credits. Please try again later.",
                     ) from exc
+                if str(exc) == "PAYMENT_HOLD":
+                    raise HTTPException(status_code=402, detail=PAYMENT_HOLD_MESSAGE) from exc
                 if str(exc) == "INSUFFICIENT_CREDITS":
                     raise HTTPException(
                         status_code=402,
@@ -2989,6 +3492,8 @@ def _generate_content_impl(request: Request, payload: GenerateRequest, user: Dic
                 status_code=429,
                 detail="This account reached its daily usage limit of 30 credits. Please try again later.",
             ) from exc
+        if str(exc) == "PAYMENT_HOLD":
+            raise HTTPException(status_code=402, detail=PAYMENT_HOLD_MESSAGE) from exc
         if str(exc) == "INSUFFICIENT_CREDITS":
             raise HTTPException(status_code=402, detail="Insufficient credits") from exc
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -3153,6 +3658,8 @@ def _plain_chat_error_message(error_code: str) -> str:
         return f"Bad params: {label} is invalid for this model."
     if error_code == "INSUFFICIENT_CREDITS":
         return "Insufficient credits"
+    if error_code == "PAYMENT_HOLD":
+        return PAYMENT_HOLD_MESSAGE
     if error_code == "CHAT_MODEL_REQUIRED":
         return "A chat model is required."
     if error_code == "CHAT_MODEL_NOT_FOUND":

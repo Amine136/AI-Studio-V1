@@ -100,9 +100,6 @@ const client = axios.create({
 });
 
 client.interceptors.request.use(async (config) => {
-  // Cloud Run is cross-site from the Vercel admin host. Its cookie can be
-  // blocked as third-party storage, so prefer the explicit admin bearer token.
-  // This also prevents a Firebase token from overwriting an admin session.
   if (isAdminHost() && typeof window !== 'undefined') {
     const adminToken = localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY);
     if (adminToken) {
@@ -464,6 +461,19 @@ export const api = {
     } catch (error) {
       if (shouldLogApiError(error)) console.error("Order Error:", error);
       throw normalizeApiError(error);
+    }
+  },
+
+  createDodoCheckout: async (planId: string): Promise<{ checkoutUrl: string }> => {
+    try {
+      const res = await client.post('/credits/checkout/dodo', { planId });
+      return res.data;
+    } catch (error) {
+      const detail = extractErrorMessage(error);
+      if (detail) {
+        throw new Error(detail);
+      }
+      throw error;
     }
   },
 

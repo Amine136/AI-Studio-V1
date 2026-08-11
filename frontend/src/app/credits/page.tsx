@@ -83,6 +83,10 @@ type UsageEvent = {
      and carry the code for the copy button. */
   isOrder?: boolean;
   orderCode?: string;
+  /* Provider transaction id, on the rows that have one. A card purchase and the
+     reversal that undid it share the same reference — without it, two same-day
+     same-amount rows cannot be told apart, let alone paired. */
+  reference?: string;
 };
 
 
@@ -141,9 +145,14 @@ function mapActivityToUsageEvents(entries: CreditActivityEntry[]): UsageEvent[] 
       activity: g.activity,
       status: g.status || "COMPLETED",
       amount: `${amountStr} Cr`,
-      positive: g.deltaMinor >= 0,
+      // `positive`, not `>= 0`: a zero-delta row is not a gain and must not get
+      // the coloured badge. This matters most for a reversed card payment whose
+      // credits were already spent — nothing could be clawed back, so the delta
+      // is 0, and a green "0.00 Cr" pill would present a total loss as good news.
+      positive,
       rawCredits: credits,
       createdAt: g.createdAt || 0,
+      reference: g.reference || undefined,
     };
   });
 }
@@ -724,7 +733,7 @@ export default function CreditsPage() {
                 </span>
               )}
               <BalanceReadout nodeRef={balanceNodeRef} value={displayCredits} />
-            {breakdown && breakdown.gifts.length > 0 && (
+            {breakdown && (breakdown.gifts.length > 0 || breakdown.debt > 0) && (
               <div className="mt-3">
                 <button
                   type="button"
@@ -755,6 +764,22 @@ export default function CreditsPage() {
                       <div className="flex items-center justify-between border-t border-white/10 pt-1.5 text-[#8c909f]">
                         <span>{t("Reserved (in progress)")}</span>
                         <span>{breakdown.reserved.toFixed(2)} Cr</span>
+                      </div>
+                    )}
+                    {breakdown.debt > 0 && (
+                      <div className="border-t border-white/10 pt-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="flex items-center gap-1.5 text-[#ffb4a2]">
+                            <span className="material-symbols-outlined text-[15px]">error</span>
+                            {t("Balance owed")}
+                          </span>
+                          <span className="font-semibold text-[#ffb4a2]">-{breakdown.debt.toFixed(2)} Cr</span>
+                        </div>
+                        {/* Says WHY it exists and that it does not touch what they
+                            hold now — otherwise it reads as credits being taken. */}
+                        <p className="mt-1 text-xs leading-relaxed text-[#8c909f]">
+                          {t("From a refunded payment that your balance did not cover. Taken off your next top-up.")}
+                        </p>
                       </div>
                     )}
                   </div>
@@ -1014,6 +1039,12 @@ export default function CreditsPage() {
                             </>
                           ) : null}
                         </p>
+                        {event.reference ? (
+                          <p className="mt-1 text-xs text-[#c2c6d6]">
+                            {t("Transaction")}{" "}
+                            <span className="select-all font-mono">{event.reference}</span>
+                          </p>
+                        ) : null}
                       </td>
                       <td className="px-6 py-5 text-right">
                         <span className={getAmountBadgeClass(event.positive, event.rawCredits)}>
@@ -1042,6 +1073,12 @@ export default function CreditsPage() {
                     <div className="min-w-0">
                       <p className="font-medium text-white">{translateActivity(event.activity)}</p>
                       <p className="mt-1 text-xs text-[#c2c6d6]">{event.date}</p>
+                      {event.reference ? (
+                        <p className="mt-1 break-all text-xs text-[#c2c6d6]">
+                          {t("Transaction")}{" "}
+                          <span className="select-all font-mono">{event.reference}</span>
+                        </p>
+                      ) : null}
                     </div>
                     <div className="shrink-0">
                       <span className={getAmountBadgeClass(event.positive, event.rawCredits)}>

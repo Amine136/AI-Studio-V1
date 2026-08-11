@@ -276,6 +276,10 @@ class CreditActivityEntryResponse(BaseModel):
     activity: str
     status: str = "COMPLETED"
     delta_minor: int = Field(alias="deltaMinor")
+    # Provider transaction reference, when the row has one (card rows carry the
+    # Dodo payment id). None for everything else — this is a receipt detail, not
+    # a required field, and it must never carry a credit code.
+    reference: Optional[str] = None
 
     model_config = {"populate_by_name": True}
 
@@ -441,6 +445,9 @@ class AdminUserListItem(BaseModel):
     credits: float
     reservedCredits: float = 0.0
     totalCredits: float = 0.0
+    # Owed after a reversal. In the LIST because an admin grant does NOT settle
+    # a debt — topping up an account that owes must be a choice, not an accident.
+    creditDebt: float = 0.0
     isSuspended: bool = False
     suspensionReason: str = ""
     activeSuspensionUntil: Optional[int] = None
@@ -689,11 +696,23 @@ class PaymentMethodResponse(BaseModel):
 
 class CheckoutConfigResponse(BaseModel):
     plans: List[CreditPlanResponse]
+    # Same packs, USD-priced for the Dodo Payments (international card) rail.
+    # A separate list rather than a currency field on `plans`: the two rails
+    # are independently priced, not one converted from the other.
+    plansUsd: List[CreditPlanResponse] = Field(default_factory=list)
     methods: List[PaymentMethodResponse]
     whatsappNumber: str = ""
     maxProofFiles: int
     maxProofBytes: int
     noteMaxLength: int
+
+
+class DodoCheckoutRequest(BaseModel):
+    planId: str
+
+
+class DodoCheckoutResponse(BaseModel):
+    checkoutUrl: str
 
 
 class CreditOrderResponse(BaseModel):

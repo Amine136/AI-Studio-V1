@@ -48,6 +48,18 @@ class User(Base):
     # NULL = never prompted -> the card shows exactly once. Backfilled to the
     # migration time for pre-existing users so only new accounts see it.
     preferences_prompted_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    # Set while a card payment of theirs is disputed. Blocks SPENDING only — the
+    # account still signs in and browses, deliberately unlike is_suspended, which
+    # blocks at auth and is too blunt for someone who may yet win their dispute.
+    # NULL = no hold.
+    payment_hold_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    payment_hold_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Credits owed back after a reversal that could not be fully clawed back
+    # because they had already been spent. Settled off the top of the next
+    # purchase or redeemed code, so buy -> consume -> refund stops being free.
+    # A SEPARATE counter rather than a negative credits_minor: every spend,
+    # reserve and sweep path assumes the balance is non-negative.
+    credit_debt_minor: Mapped[int] = mapped_column(Integer, default=0, nullable=False, server_default="0")
 
     created_codes: Mapped[list["CreditCode"]] = relationship(
         back_populates="created_by_user",
@@ -73,6 +85,7 @@ class User(Base):
     __table_args__ = (
         CheckConstraint("credits_minor >= 0", name="ck_users_credits_minor_nonnegative"),
         CheckConstraint("reserved_credits_minor >= 0", name="ck_users_reserved_credits_minor_nonnegative"),
+        CheckConstraint("credit_debt_minor >= 0", name="ck_users_credit_debt_minor_nonnegative"),
         Index("ix_users_email", "email"),
         Index("ix_users_last_seen_at", "last_seen_at"),
     )
@@ -605,6 +618,13 @@ class CreditOrder(Base):
     # whenever Discord is unconfigured or the post failed — the integration is
     # fail-open, so that is a normal state, not an error.
     discord_message_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # The buyer's Meta Pixel cookies, captured when they placed the order. The
+    # Purchase event is sent server-side days later, when an admin confirms the
+    # payment and the browser that held these is long gone — without them Meta
+    # can rarely tie the sale back to the ad click that caused it. Null is
+    # normal: no ad click, or the Pixel was blocked.
+    fb_pixel_fbp: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    fb_pixel_fbc: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
     updated_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
 
@@ -644,6 +664,82 @@ class CreditOrderProof(Base):
 
     __table_args__ = (
         Index("ix_credit_order_proofs_order_id", "order_id"),
+    )
+
+
+class DodoCardPayment(Base):
+    """One credited international-card payment via Dodo Payments.
+
+    Idempotency ledger for the webhook: the unique constraint on
+    `dodo_payment_id` is what stops an event retry (Dodo retries up to 8 times)
+    from crediting the same payment twice. The row is inserted and the credit
+    lot granted in the SAME transaction (see credit_dodo_card_payment), so an
+    IntegrityError here means the credits were never granted either — unlike
+    `credit_orders`, there is no admin review step; this table exists purely
+    for the idempotency guarantee and a paper trail of what was charged.
+    """
+
+    __tablename__ = "dodo_card_payments"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    uid: Mapped[str] = mapped_column(ForeignKey("users.uid", ondelete="CASCADE"), nullable=False)
+    plan_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    credits_minor: Mapped[int] = mapped_column(Integer, nullable=False)
+    # The amount actually paid, in Dodo's minor unit (USD cents). Not
+    # necessarily equal to the plan's current price if pricing changed between
+    # checkout creation and payment — this is what was charged, kept as a
+    # record, and never re-derived from the plan.
+    price_minor: Mapped[int] = mapped_column(Integer, nullable=False)
+    currency: Mapped[str] = mapped_column(String(8), default="USD", nullable=False)
+    dodo_payment_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    # The credit lot this payment created. A reversal debits THIS lot rather than
+    # going through the ordinary spend order, which is gift-first and would drain
+    # the user's welcome bonus while leaving the refunded purchase untouched.
+    # NULL only for rows written before the column existed.
+    lot_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    created_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+    __table_args__ = (
+        Index("ux_dodo_card_payments_payment_id", "dodo_payment_id", unique=True),
+        Index("ix_dodo_card_payments_uid", "uid"),
+    )
+
+
+class DodoCardReversal(Base):
+    """One row per reversal EVENT against a card payment — refund or dispute.
+
+    Keyed on the event's own id (`refund_id` / `dispute_id`), not on the payment
+    id, because one payment can be reversed more than once: Dodo refunds may be
+    partial and repeated. A `reversed_at` column on `dodo_card_payments` would
+    only ever describe the first one.
+
+    The unique index on `event_ref_id` is the idempotency guarantee, the same way
+    `ux_dodo_card_payments_payment_id` is for crediting — Dodo retries a webhook
+    up to 8 times, and a clawback must not run twice.
+    """
+
+    __tablename__ = "dodo_card_reversals"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    uid: Mapped[str] = mapped_column(ForeignKey("users.uid", ondelete="CASCADE"), nullable=False)
+    dodo_payment_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    # "refund" | "dispute"
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    event_ref_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    # Money reversed, in the payment's minor unit.
+    amount_minor: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Credits we actually recovered, and the part we could not because they had
+    # already been spent. The balance cannot go negative (see the CHECK on
+    # users.credits_minor), so a clawback floors at zero and the remainder is a
+    # real loss that is recorded rather than hidden.
+    credits_clawed_minor: Mapped[int] = mapped_column(Integer, nullable=False)
+    written_off_minor: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+    __table_args__ = (
+        Index("ux_dodo_card_reversals_event_ref", "event_ref_id", unique=True),
+        Index("ix_dodo_card_reversals_payment_id", "dodo_payment_id"),
+        Index("ix_dodo_card_reversals_uid", "uid"),
     )
 
 

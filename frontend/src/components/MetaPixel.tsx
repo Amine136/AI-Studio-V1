@@ -3,33 +3,55 @@
 import { useEffect } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import Script from "next/script";
+import { META_PIXEL_ID, PIXEL_ENABLED, whenFbqReady } from "../lib/pixel";
 
-export const META_PIXEL_ID = "1370764631891853";
+export { META_PIXEL_ID };
 
-declare global {
-  interface Window {
-    fbq: any;
-  }
+/** Which commercial surface a route reports as ViewContent, beyond its PageView.
+ *
+ * ViewContent is a standard event, which is what Meta can optimise and score
+ * match quality on, so each of these carries a content_name to stay separable in
+ * Events Manager. All three are top of funnel and deliberately fire for
+ * anonymous visitors too.
+ *
+ * EnterStudio is not here. It has to mean "a signed-in user reached a generation
+ * surface", and a route table cannot see auth — see EnterStudioTracker. */
+function viewContentName(pathname: string): string | null {
+  if (pathname === "/credits/buy") return "Buy Credits";
+  if (pathname === "/credits") return "Credits";
+  if (pathname === "/pricing") return "Pricing";
+  return null;
 }
 
 export default function MetaPixel() {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
+  // Read but deliberately not depended on: the call keeps this component's
+  // Suspense behaviour as-is, while the effect below ignores query changes.
+  useSearchParams();
 
   useEffect(() => {
-    if (typeof window !== "undefined" && window.fbq) {
-      // Fire PageView on every route change
-      window.fbq("track", "PageView");
+    if (!PIXEL_ENABLED || !pathname) return;
+    // Every PageView is fired from here — including the first one. The inline
+    // snippet below deliberately only init()s: while it also tracked a PageView,
+    // this effect fired a second one on mount, so every full page load counted
+    // twice. whenFbqReady covers the case where the snippet (loaded
+    // afterInteractive) has not executed by the time this effect runs, so owning
+    // the event here loses nothing on a slow load.
+    whenFbqReady((fbq) => {
+      fbq("track", "PageView");
 
-      if (pathname === "/credits") {
-        window.fbq("trackCustom", "ViewCredits");
-      } else if (pathname === "/pricing") {
-        window.fbq("trackCustom", "ViewPricing");
-      } else if (pathname === "/create" || pathname?.startsWith("/packs")) {
-        window.fbq("trackCustom", "EnterStudio");
-      }
-    }
-  }, [pathname, searchParams]);
+      const contentName = viewContentName(pathname);
+      if (contentName) fbq("track", "ViewContent", { content_name: contentName });
+    });
+    // Keyed on pathname alone, never the query string. /credits/buy is one page
+    // driven through its steps by ?step/?plan/?method, so depending on the query
+    // made a single checkout report three PageViews and three ViewContent "Buy
+    // Credits" — turning one shopper into three product-page views. This also
+    // keeps MetaPixel consistent with EnterStudioTracker, which already ignores
+    // query churn.
+  }, [pathname]);
+
+  if (!PIXEL_ENABLED) return null;
 
   return (
     <>
@@ -44,13 +66,12 @@ export default function MetaPixel() {
           s.parentNode.insertBefore(t,s)}(window, document,'script',
           'https://connect.facebook.net/en_US/fbevents.js');
           fbq('init', '${META_PIXEL_ID}');
-          fbq('track', 'PageView');
         `}
       </Script>
       <noscript>
-        <img 
-          height="1" 
-          width="1" 
+        <img
+          height="1"
+          width="1"
           style={{ display: "none" }}
           src={`https://www.facebook.com/tr?id=${META_PIXEL_ID}&ev=PageView&noscript=1`}
           alt=""

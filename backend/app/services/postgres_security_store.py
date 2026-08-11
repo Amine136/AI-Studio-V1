@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import hashlib
-import os
+import logging
 import secrets
 import time
 import uuid
@@ -14,6 +14,8 @@ from sqlalchemy.exc import IntegrityError
 from app.config import settings
 from app.db.repositories import SecurityRepository
 from app.db.session import session_scope
+
+logger = logging.getLogger(__name__)
 
 CREDIT_SCALE = 100
 _ALLOWED_UI_LANGUAGES = {"en", "fr", "ar"}
@@ -144,7 +146,7 @@ def get_credit_breakdown(uid: str) -> dict[str, Any]:
         repo = SecurityRepository(session)
         user = repo.get_user(uid)
         if user is None:
-            return {"available": 0.0, "own": 0.0, "reserved": 0.0, "gifts": []}
+            return {"available": 0.0, "own": 0.0, "reserved": 0.0, "debt": 0.0, "gifts": []}
         # Read-only unless something is actually due to expire (see get_user).
         if repo.has_due_expiry(uid, now):
             user = repo.get_user_for_update(uid)
@@ -169,6 +171,11 @@ def get_credit_breakdown(uid: str) -> dict[str, Any]:
             "available": _minor_to_credits(int(user.credits_minor)),
             "own": _minor_to_credits(own_minor),
             "reserved": _minor_to_credits(int(user.reserved_credits_minor)),
+            # Owed back after a reversed payment, once that reversal had already
+            # drained the balance to zero. Not subtracted from `available`: it is
+            # settled off the top of their next purchase or redeemed code, not
+            # against what they hold now.
+            "debt": _minor_to_credits(int(getattr(user, "credit_debt_minor", 0) or 0)),
             "gifts": gifts,
         }
 
@@ -877,6 +884,8 @@ def create_credit_order(
     payment_method: str,
     note: str,
     proof_file_ids: list[str],
+    fb_pixel_fbp: str | None = None,
+    fb_pixel_fbc: str | None = None,
 ) -> dict[str, Any]:
     """Record a manual purchase awaiting review. Credits/price come from the caller,
     which must have read them from CREDIT_PLANS — never from the request body."""
@@ -906,6 +915,8 @@ def create_credit_order(
             currency=currency,
             payment_method=payment_method,
             note=note.strip()[:400],
+            fb_pixel_fbp=fb_pixel_fbp,
+            fb_pixel_fbc=fb_pixel_fbc,
         )
         for file_id in proof_file_ids:
             repo.add_credit_order_proof(order_id=order.id, file_id=file_id)
@@ -1082,7 +1093,30 @@ def accept_credit_order(
             },
             created_at=now,
         )
-        return _credit_order_dict(repo, order)
+        result = _credit_order_dict(repo, order)
+        buyer = repo.get_user(str(order.uid))
+        purchase = {
+            "event_id": f"order_{order_id}",
+            "uid": str(order.uid),
+            "email": str(buyer.email) if buyer is not None else "",
+            "plan_id": str(order.plan_id),
+            "plan_name": str(order.plan_name),
+            "price_minor": int(order.price_minor),
+            "currency": str(order.currency),
+            "fbp": order.fb_pixel_fbp,
+            "fbc": order.fb_pixel_fbc,
+        }
+
+    # Money confirmed: report the sale to Meta. Outside session_scope so it only
+    # fires on a transaction that actually committed, and fail-safe inside — an
+    # ad-reporting problem must never surface as a failed accept.
+    try:
+        from app.services.meta_capi import send_purchase
+
+        send_purchase(**purchase)
+    except Exception:
+        logger.exception("meta_capi: Purchase dispatch failed for order %s", order_id)
+    return result
 
 
 def refuse_credit_order(
@@ -1131,7 +1165,6 @@ def _credit_order_dict(repo: SecurityRepository, order: Any) -> dict[str, Any]:
     proofs = repo.list_credit_order_proofs(str(order.id))
     # The code is only meaningful once the order is accepted; a pending or refused
     # order must never carry one out of the service layer.
-    code = str(order.code_plain or "") if str(order.status) == "accepted" else ""
     r2_public_base = os.getenv("R2_PUBLIC_URL", "https://pub-64bf9ef2292c49f0a2053981c85e16d9.r2.dev").rstrip("/")
     proof_urls = []
     for proof in proofs:
@@ -1189,6 +1222,10 @@ def adjust_credits(
             _credit_lot(repo, user, delta_minor, now, source="admin_grant", expires_at=None)
             applied_delta_minor = delta_minor
         elif delta_minor < 0:
+            # A negative adjustment is a spend (plain-chat charges arrive here),
+            # so it is subject to the dispute hold. Positive ones are not — a
+            # refund or a grant must still land while a hold is in place.
+            _assert_no_payment_hold(user)
             debited, _funding = _debit_across_lots(
                 repo, user, -delta_minor, now, floor_at_zero=allow_negative
             )
@@ -1626,10 +1663,20 @@ def redeem_credit_code(code: str, uid: str) -> dict[str, Any]:
         gift_expires_at = (now + int(validity_seconds)) if validity_seconds else None
 
         credit_code.claimed_count += 1
+        # Anything owed comes off the top, so redeeming a code cannot be used to
+        # walk away from a reversed card payment.
+        granted_minor = _settle_debt(
+            repo,
+            user,
+            int(credit_code.credits_minor),
+            now,
+            context={"ref": f"code:{code_hash}", "source": "credit_code_redeem"},
+        )
+        settled_minor = int(credit_code.credits_minor) - granted_minor
         lot = _credit_lot(
             repo,
             user,
-            credit_code.credits_minor,
+            granted_minor,
             now,
             source="gift",
             expires_at=gift_expires_at,
@@ -1664,8 +1711,20 @@ def redeem_credit_code(code: str, uid: str) -> dict[str, Any]:
         session.flush()
 
         credits = _minor_to_credits(credit_code.credits_minor)
-        message = f"+{credits:g} credit{'s' if credits != 1 else ''} added to your account!"
-        if validity_seconds:
+        added = _minor_to_credits(granted_minor)
+        settled = _minor_to_credits(settled_minor)
+        # The message must describe what actually landed. Saying "+20 credits
+        # added" when a debt swallowed them is a straight falsehood, and the
+        # credits page animates a refuel off this number.
+        if settled_minor > 0:
+            message = (
+                f"{credits:g} credit{'s' if credits != 1 else ''} redeemed — {settled:g} went to the "
+                f"balance owed on your account"
+            )
+            message += f", {added:g} added to your balance." if granted_minor > 0 else "."
+        else:
+            message = f"+{credits:g} credit{'s' if credits != 1 else ''} added to your account!"
+        if validity_seconds and granted_minor > 0:
             message += (
                 f" These gift credits are valid for {_format_duration(int(validity_seconds))}"
                 " — use them before they expire."
@@ -1674,10 +1733,460 @@ def redeem_credit_code(code: str, uid: str) -> dict[str, Any]:
             "success": True,
             "message": message,
             "credits": credits,
+            "creditsAdded": added,
+            "debtSettled": settled,
             "balance": _minor_to_credits(user.credits_minor),
             "expiresAt": gift_expires_at,
             "validitySeconds": validity_seconds,
         }
+
+
+def credit_dodo_card_payment(
+    *,
+    dodo_payment_id: str,
+    uid: str,
+    plan_id: str,
+    credits: float,
+    price_minor: int,
+    currency: str,
+) -> dict[str, Any]:
+    """Grant credits for a Dodo Payments checkout, exactly once per payment.
+
+    ``credits`` is whole credits (not minor units) — the caller must have read
+    it from CREDIT_PLANS_USD, never from anything Dodo/the request echoes back.
+
+    Called from the webhook, which Dodo may retry up to 8 times for the same
+    event. The user row must exist BEFORE the payment row is inserted: the
+    payment row's FK on `uid` would otherwise raise on the very first flush
+    for a uid that isn't in `users` yet, and that failure must not be
+    misread as "this payment was already credited". Once the user exists,
+    the payment row (flushed immediately, forcing its unique constraint on
+    `dodo_payment_id` to be checked) is what actually guarantees
+    exactly-once: a duplicate delivery raises IntegrityError there and the
+    whole transaction — payment row and ledger entry both — rolls back
+    untouched.
+
+    Source is "purchase" (a real-money lot that never expires), unlike the
+    Tunisian rail's redeemed codes which land as "gift" lots with a validity
+    window — this buyer paid Dodo directly, there is no code to attach.
+    """
+    now = int(time.time())
+    credits_minor = _credits_to_minor(credits)
+    try:
+        with session_scope() as session:
+            repo = SecurityRepository(session)
+
+            user = repo.get_user_for_update(uid)
+            if user is None:
+                user = repo.ensure_user(uid, "", "")
+            _sweep_user_lots(repo, user, now)
+
+            payment = repo.create_dodo_card_payment(
+                id=str(uuid.uuid4()),
+                uid=uid,
+                plan_id=plan_id,
+                credits_minor=credits_minor,
+                price_minor=price_minor,
+                currency=currency,
+                dodo_payment_id=dodo_payment_id,
+                created_at=now,
+            )
+
+            # Settle first, then bank the rest. The payment row keeps the FULL
+            # credits_minor it was sold for — a later reversal is measured
+            # against what was bought, not against what survived the debt, so
+            # refunding a payment that only cleared a debt correctly puts that
+            # debt back.
+            granted_minor = _settle_debt(
+                repo,
+                user,
+                credits_minor,
+                now,
+                context={"ref": f"payment:{dodo_payment_id}", "source": "card_purchase"},
+            )
+            lot = _credit_lot(repo, user, granted_minor, now, source="purchase", expires_at=None)
+            # Recorded on the payment, not only in the ledger metadata, so a
+            # later refund can debit THIS lot rather than the ordinary gift-first
+            # spend order. Set after the lot exists but inside the same
+            # transaction, so the unique check on dodo_payment_id still happens
+            # before any credits are granted.
+            payment.lot_id = lot.id
+            user.updated_at = now
+            repo.add_ledger_entry(
+                uid=uid,
+                delta_minor=credits_minor,
+                reason="card_purchase",
+                actor_uid=uid,
+                metadata_json=_with_activity_metadata(
+                    {
+                        "plan_id": plan_id,
+                        "lot_id": lot.id,
+                        "price_minor": price_minor,
+                        "currency": currency,
+                        "dodo_payment_id": dodo_payment_id,
+                    },
+                    activity_id=f"card_purchase:{dodo_payment_id}",
+                    activity_type="card_purchase",
+                    activity_label="Card Purchase",
+                ),
+                created_at=now,
+            )
+    except IntegrityError:
+        # The only constraint this transaction can still hit past this point
+        # is the uniqueness of dodo_payment_id (the FK on uid is satisfied by
+        # the ensure_user above) — but "assume duplicate" would silently eat
+        # a real failure, so confirm it by re-querying rather than guessing.
+        with session_scope() as verify_session:
+            existing = SecurityRepository(verify_session).get_dodo_card_payment(dodo_payment_id)
+        if existing is not None:
+            return {"success": True, "duplicate": True}
+        logger.error(
+            "[dodo] credit_dodo_card_payment failed for payment_id=%s uid=%s with an "
+            "IntegrityError that was NOT a duplicate dodo_payment_id — credits were "
+            "NOT granted for a payment Dodo believes succeeded.",
+            dodo_payment_id,
+            uid,
+            exc_info=True,
+        )
+        return {"success": False, "duplicate": False}
+    return {"success": True, "duplicate": False}
+
+
+def _assert_no_payment_hold(user: Any) -> None:
+    """Refuse to spend while a card payment of theirs is under dispute.
+
+    Raised as ValueError("PAYMENT_HOLD") to sit alongside INSUFFICIENT_CREDITS —
+    the callers already translate that family of errors into HTTP responses.
+    """
+    if getattr(user, "payment_hold_at", None) is not None:
+        raise ValueError("PAYMENT_HOLD")
+
+
+def reverse_dodo_card_payment(
+    *,
+    dodo_payment_id: str,
+    event_ref_id: str,
+    kind: str,
+    amount_minor: int | None = None,
+    reason_label: str = "",
+) -> dict[str, Any]:
+    """Claw back the credits granted for a card payment that was reversed.
+
+    ``event_ref_id`` is the refund's or dispute's OWN id, and it is the
+    idempotency key — not ``dodo_payment_id``. Dodo refunds may be partial and
+    repeated, so one payment can legitimately be reversed several times; keying
+    on the payment would collapse them into one.
+
+    ``amount_minor`` is the money reversed. ``None`` means "the whole payment".
+
+    Recovery happens in two stages:
+
+    1. Debit the exact lot the payment created (``payment.lot_id``), so a refund
+       hits the credits it actually paid for rather than the ordinary
+       gift-first spend order.
+    2. If that lot cannot cover the reversal — it was already partly spent —
+       take the shortfall from the REST of the balance, gift-first /
+       soonest-expiry-first. This reaches credits from other sources, including
+       redeemed codes and other card payments' lots. Deliberate: money going
+       back to the customer is recovered from whatever they still hold before
+       any of it is treated as owed.
+
+    Only what survives both stages becomes ``written_off_minor``, which is added
+    to ``users.credit_debt_minor`` and settled off the top of their next
+    purchase or redeemed code. The balance is never driven below zero — the
+    CHECK constraints on ``users.credits_minor`` and
+    ``credit_lots.remaining_minor`` forbid it.
+    """
+    now = int(time.time())
+    try:
+        with session_scope() as session:
+            repo = SecurityRepository(session)
+
+            payment = repo.get_dodo_card_payment(dodo_payment_id)
+            if payment is None:
+                # A payment we never credited (created outside our checkout, or
+                # from another environment). Nothing to reverse, and nothing
+                # Dodo should retry.
+                logger.warning(
+                    "[dodo] %s %s targets payment_id=%s which we never credited; nothing to reverse",
+                    kind,
+                    event_ref_id,
+                    dodo_payment_id,
+                )
+                return {"success": True, "duplicate": False, "unknown_payment": True}
+
+            uid = str(payment.uid)
+            paid_minor = int(payment.price_minor or 0)
+            granted_minor = int(payment.credits_minor or 0)
+
+            # How many credits this particular reversal is for.
+            if amount_minor is None or paid_minor <= 0 or int(amount_minor) >= paid_minor:
+                target_minor = granted_minor
+            else:
+                target_minor = (granted_minor * int(amount_minor)) // paid_minor
+
+            # Never take more, across all reversals, than the payment granted.
+            already = repo.sum_reversed_credits_for_payment(dodo_payment_id)
+            target_minor = max(0, min(target_minor, granted_minor - already))
+
+            user = repo.get_user_for_update(uid)
+            if user is None:
+                logger.error("[dodo] cannot reverse %s: user %s does not exist", event_ref_id, uid)
+                return {"success": False, "duplicate": False}
+            _sweep_user_lots(repo, user, now)
+
+            lot = repo.get_lot_for_update(str(payment.lot_id)) if payment.lot_id else None
+            reserved_at_reversal = int(lot.reserved_minor or 0) if lot is not None else 0
+            available = int(lot.remaining_minor or 0) if lot is not None else 0
+            take = min(target_minor, available)
+
+            if lot is not None and take > 0:
+                lot.remaining_minor = int(lot.remaining_minor) - take
+                user.credits_minor = int(user.credits_minor) - take
+
+            # Whatever the payment's own lot could not cover is taken from the
+            # rest of the balance before any of it becomes a debt. A shortfall
+            # only exists once that lot is at zero, so this can never
+            # double-debit it — list_spendable_lots_for_update filters on
+            # remaining_minor > 0.
+            #
+            # This DOES reach credits from other sources, including redeemed
+            # codes and other card payments' lots: refunding one payment can
+            # drain another's. That is the intended rule — money going back to
+            # the customer is recovered from whatever they still hold first.
+            shortfall = target_minor - take
+            swept = 0
+            if shortfall > 0:
+                swept, _funding = _debit_across_lots(repo, user, shortfall, now, floor_at_zero=True)
+
+            recovered = take + swept
+            # Only what is left after draining the balance becomes a debt. It
+            # comes off the top of their next purchase or redeemed code, so
+            # buy -> consume -> refund is not free to repeat.
+            written_off = shortfall - swept
+            if written_off > 0:
+                user.credit_debt_minor = int(getattr(user, "credit_debt_minor", 0) or 0) + written_off
+
+            # Claim AFTER the arithmetic but BEFORE the transaction closes: the
+            # unique constraint on event_ref_id is what makes a retried delivery
+            # roll the whole thing back rather than debit twice.
+            repo.create_dodo_card_reversal(
+                id=str(uuid.uuid4()),
+                uid=uid,
+                dodo_payment_id=dodo_payment_id,
+                kind=kind,
+                event_ref_id=event_ref_id,
+                amount_minor=int(amount_minor) if amount_minor is not None else paid_minor,
+                credits_clawed_minor=recovered,
+                written_off_minor=written_off,
+                created_at=now,
+            )
+
+            # Only once the payment has been reversed IN FULL: expire the lot so
+            # that credits still held in reserved_minor by an in-flight
+            # generation are reclaimed by the ordinary sweeper when that job
+            # settles, instead of being handed back into a lot we just clawed
+            # back. Deliberately NOT done on a partial reversal — the sweeper
+            # zeroes remaining_minor on any past-expiry lot, which would delete
+            # the credits the customer legitimately still owns.
+            fully_reversed = (already + target_minor) >= granted_minor
+            if lot is not None and fully_reversed:
+                lot.expires_at = now
+
+            user.updated_at = now
+            repo.add_ledger_entry(
+                uid=uid,
+                delta_minor=-recovered,
+                reason="card_payment_reversed",
+                actor_uid=None,
+                metadata_json=_with_activity_metadata(
+                    {
+                        "plan_id": str(payment.plan_id),
+                        "lot_id": str(payment.lot_id or ""),
+                        "dodo_payment_id": dodo_payment_id,
+                        "kind": kind,
+                        "event_ref_id": event_ref_id,
+                        "amount_minor": int(amount_minor) if amount_minor is not None else paid_minor,
+                        # Broken out so the split is auditable: what came from the
+                        # payment's own lot vs. what had to be taken from the rest
+                        # of the balance vs. what is still owed.
+                        "clawed_from_payment_lot_minor": take,
+                        "swept_from_other_lots_minor": swept,
+                        "written_off_minor": written_off,
+                        "reserved_at_reversal_minor": reserved_at_reversal,
+                    },
+                    # A DISTINCT activity id. Reusing card_purchase:{payment_id}
+                    # would fold the reversal into the purchase row and net it to
+                    # zero, hiding the refund from the credits history entirely.
+                    activity_id=f"card_reversal:{event_ref_id}",
+                    activity_type="card_payment_reversed",
+                    activity_label="Payment Reversed",
+                ),
+                created_at=now,
+            )
+            repo.add_admin_audit_log(
+                admin_uid=None,
+                admin_email=SYSTEM_AUDIT_EMAIL,
+                action="card_payment_reversed",
+                target_type="user",
+                target_id=uid,
+                reason=(
+                    reason_label
+                    or f"Card payment {dodo_payment_id} reversed ({kind}); "
+                    f"recovered {_minor_to_credits(recovered):.2f} credits."
+                ),
+                metadata_json={
+                    "uid": uid,
+                    "dodo_payment_id": dodo_payment_id,
+                    "kind": kind,
+                    "event_ref_id": event_ref_id,
+                    "clawed_credits": _minor_to_credits(recovered),
+                    "clawed_from_payment_lot_credits": _minor_to_credits(take),
+                    "swept_from_other_lots_credits": _minor_to_credits(swept),
+                    "written_off_credits": _minor_to_credits(written_off),
+                    "debt_after_credits": _minor_to_credits(int(getattr(user, "credit_debt_minor", 0) or 0)),
+                    "reserved_at_reversal_credits": _minor_to_credits(reserved_at_reversal),
+                    "remaining_balance": _minor_to_credits(user.credits_minor),
+                },
+                created_at=now,
+            )
+    except IntegrityError:
+        # Past this point the only constraint left is the uniqueness of
+        # event_ref_id — but "assume duplicate" would silently eat a real
+        # failure, so confirm it by re-querying rather than guessing (same
+        # reasoning as credit_dodo_card_payment).
+        with session_scope() as verify_session:
+            existing = SecurityRepository(verify_session).get_dodo_card_reversal(event_ref_id)
+        if existing is not None:
+            return {"success": True, "duplicate": True}
+        logger.error(
+            "[dodo] reverse_dodo_card_payment failed for event_ref_id=%s payment_id=%s with an "
+            "IntegrityError that was NOT a duplicate event_ref_id — credits were NOT clawed "
+            "back for a payment Dodo reports as reversed.",
+            event_ref_id,
+            dodo_payment_id,
+            exc_info=True,
+        )
+        return {"success": False, "duplicate": False}
+    return {
+        "success": True,
+        "duplicate": False,
+        "clawed_minor": recovered,
+        "clawed_from_payment_lot_minor": take,
+        "swept_from_other_lots_minor": swept,
+        "written_off_minor": written_off,
+    }
+
+
+def set_payment_hold(uid: str, *, reason: str) -> bool:
+    """Freeze SPENDING for ``uid`` while a card payment of theirs is disputed.
+
+    Deliberately not ``suspend_user``: suspension blocks the account at auth,
+    which is too blunt for someone who may yet win a legitimate billing dispute.
+    A hold leaves them able to sign in and see what happened, and only stops them
+    from spending credits that may be about to be clawed back.
+
+    Idempotent — re-applying an existing hold refreshes nothing and is not an
+    error, because Dodo can redeliver the same dispute event.
+    """
+    now = int(time.time())
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        user = repo.get_user_for_update(uid)
+        if user is None:
+            logger.warning("[dodo] cannot place a payment hold on unknown user %s", uid)
+            return False
+        if user.payment_hold_at is None:
+            user.payment_hold_at = now
+            user.payment_hold_reason = reason
+            user.updated_at = now
+            repo.add_admin_audit_log(
+                admin_uid=None,
+                admin_email=SYSTEM_AUDIT_EMAIL,
+                action="payment_hold_applied",
+                target_type="user",
+                target_id=uid,
+                reason=reason,
+                metadata_json={"uid": uid},
+                created_at=now,
+            )
+        return True
+
+
+def clear_payment_hold(uid: str, *, reason: str) -> bool:
+    """Lift a spending freeze.
+
+    A no-op when there is no hold: Dodo does not guarantee event ordering, so a
+    ``dispute.won`` can arrive without the matching ``dispute.opened`` ever
+    having been delivered, and that must not be an error.
+    """
+    now = int(time.time())
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        user = repo.get_user_for_update(uid)
+        if user is None:
+            return False
+        if user.payment_hold_at is None:
+            return True
+        user.payment_hold_at = None
+        user.payment_hold_reason = None
+        user.updated_at = now
+        repo.add_admin_audit_log(
+            admin_uid=None,
+            admin_email=SYSTEM_AUDIT_EMAIL,
+            action="payment_hold_cleared",
+            target_type="user",
+            target_id=uid,
+            reason=reason,
+            metadata_json={"uid": uid},
+            created_at=now,
+        )
+        return True
+
+
+def get_card_payment_uid(dodo_payment_id: str) -> str | None:
+    """Who a card payment belongs to, or None if we never credited it."""
+    with session_scope() as session:
+        payment = SecurityRepository(session).get_dodo_card_payment(dodo_payment_id)
+        return str(payment.uid) if payment is not None else None
+
+
+def count_recent_card_payments(uid: str, *, window_seconds: int) -> int:
+    """Successful card payments for ``uid`` inside a rolling window."""
+    since_ts = int(time.time()) - int(window_seconds)
+    with session_scope() as session:
+        return SecurityRepository(session).count_dodo_card_payments_since(uid, since_ts=since_ts)
+
+
+def record_card_payment_anomaly(
+    *,
+    uid: str,
+    dodo_payment_id: str,
+    action: str,
+    reason: str,
+    metadata: dict[str, Any] | None = None,
+) -> None:
+    """Note something odd about a card payment in the admin audit log.
+
+    For the cases where a signed, genuine Dodo delivery still does not line up
+    with what we expected to be paid for — a short payment, a product that is
+    not the one the plan maps to, a settlement in an unexpected currency. These
+    are not errors to raise on (the signature was valid and Dodo should not
+    retry), but they must not vanish either: the audit log is the one surface
+    where a human sees them, and it already renders system-authored entries on
+    the admin Logs page.
+    """
+    with session_scope() as session:
+        SecurityRepository(session).add_admin_audit_log(
+            admin_uid=None,
+            admin_email=SYSTEM_AUDIT_EMAIL,
+            action=action,
+            target_type="user",
+            target_id=uid,
+            reason=reason,
+            metadata_json={"uid": uid, "dodo_payment_id": dodo_payment_id, **(metadata or {})},
+            created_at=int(time.time()),
+        )
 
 
 def get_active_suspension(uid: str) -> dict[str, Any] | None:
@@ -1962,6 +2471,11 @@ def list_credit_activity_entries(uid: str, max_items: int = 20) -> list[dict[str
 
         groups[activity_id]["deltaMinor"] += activity["deltaMinor"]
         groups[activity_id]["entryCount"] = int(groups[activity_id].get("entryCount") or 1) + 1
+        # Kept outside the newer-wins branch below: every entry in a group shares
+        # the same reference, so the only thing that can differ is whether a given
+        # entry carried one at all. Never overwrite a real reference with nothing.
+        if activity.get("reference") and not groups[activity_id].get("reference"):
+            groups[activity_id]["reference"] = activity["reference"]
         if activity["createdAt"] > groups[activity_id]["createdAt"]:
             groups[activity_id]["createdAt"] = activity["createdAt"]
             groups[activity_id]["activity"] = activity["activity"]
@@ -2288,6 +2802,7 @@ def create_analyze_session_with_charge(uid: str, prompt: str, analysis_fee: floa
             user = repo.ensure_user(uid, "", "")
             session.flush()
         _sweep_user_lots(repo, user, now)
+        _assert_no_payment_hold(user)
         _enforce_pending_analyze_session_limit(repo, uid, now=now)
         _enforce_usage_cap(repo, user, projected_charge_minor=analysis_fee_minor, now=now)
 
@@ -2628,6 +3143,46 @@ def _credit_lot(
     )
     user.credits_minor += amount_minor
     return lot
+
+
+def _settle_debt(repo: SecurityRepository, user: Any, amount_minor: int, now: int, *, context: dict[str, Any]) -> int:
+    """Take what this account owes off the top of an incoming grant.
+
+    Returns the amount that should actually reach a lot. Writes its own ledger
+    entry for the settled part so the balance still equals the sum of the ledger:
+    the caller records the grant at FULL face value, this records the negative,
+    and the lot is created for the difference.
+
+    That entry gets a DISTINCT activity id. Filing it under the purchase's or
+    redemption's id would make ``list_credit_activity_entries`` sum the two into
+    one row and the settlement would vanish from the user's history — the same
+    trap ``reverse_dodo_card_payment`` avoids.
+
+    Called only from the paths where a user ACQUIRES credits (card purchase,
+    redeemed code). Deliberately not from the analyze-session fee refund, which
+    hands back credits the user already owned, nor from an admin grant, which is
+    a deliberate human decision to give credits.
+    """
+    owed = int(getattr(user, "credit_debt_minor", 0) or 0)
+    if owed <= 0 or amount_minor <= 0:
+        return amount_minor
+
+    settled = min(owed, amount_minor)
+    user.credit_debt_minor = owed - settled
+    repo.add_ledger_entry(
+        uid=user.uid,
+        delta_minor=-settled,
+        reason="debt_settled",
+        actor_uid=None,
+        metadata_json=_with_activity_metadata(
+            {**context, "settled_minor": settled, "debt_remaining_minor": user.credit_debt_minor},
+            activity_id=f"debt_settled:{context.get('ref', '')}:{now}",
+            activity_type="debt_settled",
+            activity_label="Balance Owed Settled",
+        ),
+        created_at=now,
+    )
+    return amount_minor - settled
 
 
 def _grant_signup_bonus(repo: SecurityRepository, user: Any, now: int) -> None:
@@ -3031,6 +3586,10 @@ def _user_dict_from_model(user: Any) -> dict[str, Any]:
         "credits": _minor_to_credits(int(user.credits_minor)),
         "reservedCredits": _minor_to_credits(int(user.reserved_credits_minor)),
         "totalCredits": _minor_to_credits(int(user.credits_minor + user.reserved_credits_minor)),
+        # Owed after a reversal the balance could not cover. Surfaced here so the
+        # admin user list can show it: an admin grant does NOT settle a debt, so
+        # granting credits to someone who owes has to be an informed decision.
+        "creditDebt": _minor_to_credits(int(getattr(user, "credit_debt_minor", 0) or 0)),
         "createdAt": user.created_at,
         "updatedAt": user.updated_at,
         "lastSeenAt": user.last_seen_at,
@@ -3188,6 +3747,16 @@ def _credit_activity_from_ledger_entry(entry: dict[str, Any]) -> dict[str, Any]:
         else:
             activity_label = (reason or "Credit Activity").replace("_", " ").title()
 
+    # A customer-facing transaction reference, where the row has one. The Dodo
+    # payment id is deliberately the choice for card rows: a purchase and its
+    # reversal carry the SAME one, which is exactly what lets someone match a
+    # refund to the charge it undid — otherwise two same-day, same-amount rows are
+    # indistinguishable. It is also what support quotes to look a charge up.
+    #
+    # Never a credit code or its hash. Those are bearer instruments, not
+    # references, and this field goes to the customer.
+    reference = str(metadata.get("dodo_payment_id") or "").strip()
+
     return {
         "id": activity_id,
         "createdAt": int(entry.get("createdAt") or 0),
@@ -3195,6 +3764,7 @@ def _credit_activity_from_ledger_entry(entry: dict[str, Any]) -> dict[str, Any]:
         "activity": activity_label,
         "status": "COMPLETED",
         "deltaMinor": int(entry.get("deltaMinor") or 0),
+        "reference": reference or None,
         "conversationId": str(metadata.get("conversation_id") or "").strip() or None,
         "entryCount": 1,
     }
@@ -3398,6 +3968,7 @@ def reserve_generation_credits(
 
         if reserved_minor < 0:
             raise ValueError("Estimated cost must be non-negative")
+        _assert_no_payment_hold(user)
         _enforce_usage_cap(repo, user, projected_charge_minor=reserved_minor, now=now)
         if user.credits_minor < reserved_minor:
             raise ValueError("INSUFFICIENT_CREDITS")

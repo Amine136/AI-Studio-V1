@@ -6,6 +6,7 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { useAuth } from "../../../context/AuthContext";
 import { useLanguage } from "../../../context/LanguageContext";
 import { api } from "../../../services/api";
+import { trackInitiateCheckout } from "../../../lib/pixel";
 import type {
   CheckoutConfig,
   CreditPlan,
@@ -13,11 +14,16 @@ import type {
   SystemConfig,
 } from "../../../types";
 
+/* The progress bar covers the checkout itself. The two screens before it — the
+   Tunisian/international choice and the card "coming soon" panel — are not steps
+   of a purchase, so they render without the bar. */
 const WIZARD_STEPS = [
   { key: "plan", label: "Plan" },
   { key: "method", label: "Payment" },
   { key: "pay", label: "Confirm" },
 ] as const;
+
+const STEP_KEYS = ["rail", "card", "card-return", ...WIZARD_STEPS.map((s) => s.key)] as string[];
 
 const PROOF_ACCEPT = "image/png,image/jpeg,image/webp,application/pdf";
 const PROOF_TYPES = ["image/png", "image/jpeg", "image/webp", "application/pdf"];
@@ -39,6 +45,12 @@ const formatRate = (rateMinor: number, currency: string) => {
   const text = (rateMinor / 1000).toFixed(2);
   return currency === "TND" ? `${text} DT` : `${text} ${currency}`;
 };
+
+// USD is a 2-decimal currency (cents, not millimes) — a SEPARATE pair of
+// formatters rather than branching formatPrice/formatRate, since those two
+// divide by 1000 unconditionally and would render $4.99 as "0.499 USD".
+const formatPriceUsd = (priceMinor: number) => `$${(priceMinor / 100).toFixed(2)}`;
+const formatRateUsd = (rateMinor: number) => `$${(rateMinor / 100).toFixed(2)}`;
 
 /* What a credit actually buys, taken from the live model catalogue rather than a
    marketing number that would drift the moment pricing changes. Each model is
@@ -256,9 +268,27 @@ function BuyCreditsWizard() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
-  const step = searchParams.get("step") || "plan";
+  // Card checkout has no separate "confirm" step — tapping a plan starts the
+  // Dodo session immediately, so the only local state it needs is which plan
+  // (for the spinner) and any error from starting the session.
+  const [payingPlanId, setPayingPlanId] = useState<string | null>(null);
+  const [cardError, setCardError] = useState("");
+
+  /* "rail" is the landing screen — which family of payment you want — and it is
+     also where anything unrecognised lands. Falling back to "plan" would have a
+     hand-edited or stale ?step= silently skip the choice. */
+  const requestedStep = searchParams.get("step") || "rail";
+  const step = STEP_KEYS.includes(requestedStep) ? requestedStep : "rail";
   const planId = searchParams.get("plan") || "";
   const method = searchParams.get("method") || "";
+  /* Dodo appends its own `status` (and `payment_id`) to the return_url on
+     redirect -- see docs.dodopayments.com/developer-resources/checkout-session.
+     Anything other than "succeeded"/"active" means no charge went through, so
+     the return page must not show the same checkmark it shows on success. */
+  const dodoStatus = searchParams.get("status") || "";
+  const dodoFailed =
+    dodoStatus !== "" && dodoStatus !== "succeeded" && dodoStatus !== "active";
+  const dodoCancelled = dodoFailed && dodoStatus === "cancelled";
 
   useEffect(() => {
     let cancelled = false;
@@ -328,14 +358,11 @@ function BuyCreditsWizard() {
   // A placeholder like "+216 XXXXXXXX" has too few real digits to dial.
   const whatsappDialable = whatsappNumber.replace(/[^0-9]/g, "").length >= 8;
 
+  /* Step 2 is now reached only from the Tunisian branch, so it lists Tunisian
+     rails and nothing else. International cards are answered one screen earlier,
+     where they are a branch rather than a row you can't press. */
   const tunisianMethods = useMemo<PaymentMethodOption[]>(
     () => (config?.methods ?? []).filter((m) => m.group === "tunisia"),
-    [config],
-  );
-  // Anything not on a Tunisian rail (today: international cards) is listed after
-  // them, straight from the server config rather than hardcoded in the page.
-  const otherMethods = useMemo<PaymentMethodOption[]>(
-    () => (config?.methods ?? []).filter((m) => m.group !== "tunisia"),
     [config],
   );
 
@@ -360,6 +387,44 @@ function BuyCreditsWizard() {
   const maxCredits = useMemo(
     () => Math.max(1, ...(config?.plans ?? []).map((p) => p.credits)),
     [config],
+  );
+
+  // Same three derivations, off config.plansUsd — kept separate from the TND
+  // ones above rather than parameterised, since the two rails are priced
+  // independently and could diverge in count/credits later.
+  const worstRateUsd = useMemo(
+    () => Math.max(0, ...(config?.plansUsd ?? []).map(perCreditMinor)),
+    [config],
+  );
+  const soleBestRateUsd = useMemo(() => {
+    const rates = (config?.plansUsd ?? []).map(perCreditMinor).filter((r) => r > 0);
+    if (rates.length < 2) return null;
+    const best = Math.min(...rates);
+    return rates.filter((r) => r === best).length === 1 ? best : null;
+  }, [config]);
+  const maxCreditsUsd = useMemo(
+    () => Math.max(1, ...(config?.plansUsd ?? []).map((p) => p.credits)),
+    [config],
+  );
+
+  const payWithCard = useCallback(
+    async (plan: CreditPlan) => {
+      if (!user) {
+        router.push(`/auth?next=${encodeURIComponent("/credits/buy?step=card")}`);
+        return;
+      }
+      setCardError("");
+      setPayingPlanId(plan.id);
+      trackInitiateCheckout(plan);
+      try {
+        const { checkoutUrl } = await api.createDodoCheckout(plan.id);
+        window.location.href = checkoutUrl;
+      } catch (err) {
+        setCardError(err instanceof Error ? err.message : t("Could not start checkout."));
+        setPayingPlanId(null);
+      }
+    },
+    [router, t, user],
   );
 
   const goTo = useCallback(
@@ -443,6 +508,7 @@ function BuyCreditsWizard() {
 
     setSubmitting(true);
     setError("");
+    trackInitiateCheckout(selectedPlan);
     try {
       const order = await api.placeCreditOrder({
         planId: selectedPlan.id,
@@ -512,6 +578,55 @@ function BuyCreditsWizard() {
     </div>
   ) : null;
 
+  /* The two branches on the landing screen. A tall card rather than a method
+     row: this is the choice that decides how the whole purchase works, so each
+     branch gets room to say what paying that way is actually like, and the two
+     sit side by side as a fork rather than a list you scan. */
+  const railCard = ({
+    icon,
+    title,
+    body,
+    soon,
+    onClick,
+  }: {
+    icon: string;
+    title: string;
+    body: string;
+    soon?: boolean;
+    onClick: () => void;
+  }) => (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex flex-col rounded-xl border p-5 text-start transition sm:p-6 ${
+        soon
+          ? "border-white/10 bg-[rgba(25,31,49,0.7)] hover:border-white/20 hover:bg-white/5"
+          : "border-[#adc6ff]/40 bg-[#adc6ff]/10 shadow-lg shadow-[#adc6ff]/10 hover:border-[#adc6ff]/60"
+      }`}
+    >
+      <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#adc6ff]/10">
+        <span className="material-symbols-outlined text-[22px] text-[#adc6ff]">{icon}</span>
+      </span>
+      <span className="mt-4 block text-lg font-bold text-white">{title}</span>
+      {/* flex-1 so the footer line sits on the same baseline in both cards
+          however long the description runs. */}
+      <span className="mt-2 block flex-1 text-sm text-[#c2c6d6]">{body}</span>
+      {soon ? (
+        <span className="mt-5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#93a0bd]">
+          <span className="material-symbols-outlined text-[15px]">lock</span>
+          {t("Coming soon")}
+        </span>
+      ) : (
+        <span className="mt-5 flex items-center gap-1.5 text-sm font-bold text-[#adc6ff]">
+          {t("Choose")}
+          <span className="material-symbols-outlined text-[16px] rtl:rotate-180">
+            arrow_forward
+          </span>
+        </span>
+      )}
+    </button>
+  );
+
   const methodRow = (option: PaymentMethodOption) => {
     const isLocked = !option.available;
     // Highlight only what the URL actually carries. `selectedMethod` falls back to
@@ -538,15 +653,10 @@ function BuyCreditsWizard() {
             {isLocked ? "lock" : option.icon || "payments"}
           </span>
         </span>
+        {/* Only the rail's own name: a locked row carries the "Coming soon"
+            badge, which says everything a subtitle would. */}
         <span className="min-w-0 flex-1">
           <span className="block font-bold text-white">{t(option.label)}</span>
-          {/* Only say something the row's own name doesn't already say. A locked
-              Tunisian rail carries the "Coming soon" badge and nothing else. */}
-          {isLocked && option.group !== "tunisia" && (
-            <span className="mt-0.5 block text-xs text-[#c2c6d6]">
-              {t("Pay by card in USD, credited automatically.")}
-            </span>
-          )}
         </span>
         {isLocked ? (
           <span className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#93a0bd]">
@@ -578,10 +688,262 @@ function BuyCreditsWizard() {
         </h1>
       </div>
 
-      <CheckoutSteps
-        current={step}
-        onJump={(key) => goTo(key === "plan" ? { step: "plan" } : { step: key, plan: planId })}
-      />
+      {/* Only over the checkout itself. CheckoutSteps clamps an unknown step to
+          index 0, so rendering it on "rail" or "card" would light up PLAN on a
+          screen that is not Plan. */}
+      {WIZARD_STEPS.some((s) => s.key === step) && (
+        <CheckoutSteps
+          current={step}
+          onJump={(key) => goTo(key === "plan" ? { step: "plan" } : { step: key, plan: planId })}
+        />
+      )}
+
+      {/* ---------------------------------------------------------------- Rail */}
+      {step === "rail" && (
+        /* Narrower than the wizard behind it: two cards stretched across the
+           full 5xl read as a half-empty page, and a fork is easier to answer
+           when both options are in one glance. */
+        <section className="mx-auto w-full max-w-3xl">
+          <h2 className="text-lg font-bold text-white">{t("How do you want to pay?")}</h2>
+          <p className="mb-5 mt-1 text-sm text-[#c2c6d6]">
+            {t("Both rails are live: Tunisian methods and international cards.")}
+          </p>
+
+          <div className="grid items-stretch gap-4 sm:grid-cols-2">
+            {railCard({
+              icon: "account_balance_wallet",
+              title: t("Tunisian methods"),
+              body: t("Flouci, bank transfer. Pay, upload your receipt, and we review it manually."),
+              onClick: () => goTo({ step: "plan" }),
+            })}
+            {railCard({
+              icon: "credit_card",
+              title: t("International cards"),
+              body: t("Pay by card in USD, credited automatically."),
+              onClick: () => goTo({ step: "card" }),
+            })}
+          </div>
+          {/* No "How it works" here: it describes the manual Tunisian flow —
+              pay, upload, wait for review — which is only one of these two
+              branches. It belongs after the branch is chosen. */}
+        </section>
+      )}
+
+      {/* ------------------------------------------------------- Cards: not yet */}
+      {step === "card" && (
+        <section>
+          <h2 className="text-lg font-bold text-white">{t("Pay by card, in USD")}</h2>
+          <p className="mb-5 mt-1 text-sm text-[#c2c6d6]">
+            {t("Credits are added automatically once the payment goes through.")}
+          </p>
+
+          <div className="grid items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {(config.plansUsd ?? []).map((plan) => {
+              const isPopular = plan.id === "pro";
+              const rate = perCreditMinor(plan);
+              const savePct = worstRateUsd > 0 ? Math.round((1 - rate / worstRateUsd) * 100) : 0;
+              const isBestRate = soleBestRateUsd != null && rate === soleBestRateUsd;
+              const images = imageRate ? estimateImages(plan.credits, imageRate) : null;
+              const fill = Math.max(0.06, plan.credits / maxCreditsUsd);
+              const isPaying = payingPlanId === plan.id;
+              return (
+                <button
+                  key={plan.id}
+                  type="button"
+                  disabled={payingPlanId !== null}
+                  onClick={() => payWithCard(plan)}
+                  className={`group relative flex flex-col rounded-xl border p-4 text-start transition disabled:cursor-not-allowed disabled:opacity-60 sm:p-5 sm:hover:-translate-y-1 ${
+                    isPopular
+                      ? "border-[#adc6ff]/40 bg-[#adc6ff]/10 shadow-lg shadow-[#adc6ff]/10 lg:-translate-y-2"
+                      : "border-white/10 bg-[rgba(25,31,49,0.7)] hover:border-[#adc6ff]/30"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-3 sm:block">
+                    <span className="min-w-0">
+                      <span className="flex items-center gap-2 sm:min-h-[22px] sm:justify-between">
+                        <span className={EYEBROW_CLASS}>{plan.name}</span>
+                        {isPopular ? (
+                          <span className={CHIP_CLASS}>{t("Popular")}</span>
+                        ) : isBestRate ? (
+                          <span className={CHIP_CLASS}>{t("Best rate")}</span>
+                        ) : null}
+                      </span>
+
+                      <span className="mt-1.5 block text-3xl font-bold leading-none text-white sm:mt-4 sm:text-4xl">
+                        <span dir="ltr">
+                          {plan.credits.toFixed(0)}
+                          <span className="ms-1.5 text-base font-bold text-[#adc6ff] sm:text-lg">
+                            Cr
+                          </span>
+                        </span>
+                      </span>
+
+                      <span className="mt-1 block min-h-[18px] text-sm font-semibold text-[#adc6ff]">
+                        {images ? (
+                          <span dir="ltr">{t("~{n} images").replace("{n}", String(images))}</span>
+                        ) : (
+                          ""
+                        )}
+                      </span>
+                    </span>
+
+                    <span className="shrink-0 text-end sm:block sm:text-start">
+                      <span className="block text-xl font-bold text-white sm:mt-4">
+                        <span dir="ltr">{formatPriceUsd(plan.priceMinor)}</span>
+                      </span>
+
+                      <span className="mt-0.5 block text-[11px] tabular-nums text-[#93a0bd] sm:mt-1">
+                        <span dir="ltr">{formatRateUsd(rate)}</span> {t("per credit")}
+                      </span>
+
+                      <span className="mt-0.5 block text-xs font-bold text-[#adc6ff] sm:min-h-[16px]">
+                        {savePct >= 5 ? t("Save {n}%").replace("{n}", String(savePct)) : ""}
+                      </span>
+                    </span>
+
+                    <span className="shrink-0 sm:hidden">
+                      {isPaying ? (
+                        <span
+                          className="auth-loader"
+                          style={{ width: 16, height: 16, borderWidth: 2 }}
+                        />
+                      ) : (
+                        <span className="material-symbols-outlined text-[20px] text-[#adc6ff] rtl:rotate-180">
+                          arrow_forward
+                        </span>
+                      )}
+                    </span>
+                  </div>
+
+                  <span className="mt-3 mb-1 block h-2 overflow-hidden rounded-full bg-white/10 sm:mt-4 sm:mb-2">
+                    <span
+                      className="block h-full w-full rounded-full bg-[linear-gradient(90deg,#adc6ff,#4d8eff)] transition-transform duration-700 ease-out motion-reduce:transition-none"
+                      style={{
+                        transform: `scaleX(${barsIn ? fill : 0})`,
+                        transformOrigin: isRtl ? "right" : "left",
+                      }}
+                    />
+                  </span>
+
+                  <span className="mt-4 hidden items-center justify-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm font-bold text-[#adc6ff] transition group-hover:border-[#adc6ff]/30 group-hover:bg-white/10 sm:mt-auto sm:flex">
+                    {isPaying ? (
+                      <span
+                        className="auth-loader"
+                        style={{ width: 16, height: 16, borderWidth: 2 }}
+                      />
+                    ) : (
+                      <>
+                        {t("Pay with card")}
+                        <span className="material-symbols-outlined text-[16px] rtl:rotate-180">
+                          arrow_forward
+                        </span>
+                      </>
+                    )}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {cardError && (
+            <p className="mt-4 rounded-md border border-white/10 bg-[#93000a]/10 px-3 py-2 text-sm text-[#ffb4ab]">
+              {cardError}
+            </p>
+          )}
+
+          {imageRate && (
+            <p className="mt-3 text-xs text-[#93a0bd]">
+              <span dir="ltr">
+                {t("Typical image ≈ {n} Cr").replace("{n}", imageRate.toFixed(2))}
+              </span>{" "}
+              {t("Cost varies by model.")}{" "}
+              <Link
+                href="/pricing"
+                className="font-semibold text-[#adc6ff] underline-offset-4 hover:underline"
+              >
+                {t("See full pricing")}
+              </Link>
+            </p>
+          )}
+
+          {/* Outside the imageRate guard: the refund terms apply to every
+              purchase, and this is the last screen before money moves. */}
+          <p className="mt-2 text-xs text-[#93a0bd]">
+            {t("Purchases are subject to our credit and refund rules.")}{" "}
+            <Link
+              href="/policy"
+              className="font-semibold text-[#adc6ff] underline-offset-4 hover:underline"
+            >
+              {t("Read the policy")}
+            </Link>
+          </p>
+
+          <button
+            type="button"
+            onClick={() => goTo({ step: "rail" })}
+            className={`${SECONDARY_BUTTON_CLASS} mt-6`}
+          >
+            {t("Back")}
+          </button>
+
+          {whatsappNumber && <div className="mt-5">{helpCard}</div>}
+        </section>
+      )}
+
+      {/* ------------------------------------------------------ Card: returned */}
+      {step === "card-return" && dodoFailed && (
+        <section className="mx-auto w-full max-w-xl">
+          <div className={`${CARD_PADDED} text-center`}>
+            <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-red-500/10">
+              <span className="material-symbols-outlined text-[28px] text-red-400">
+                error
+              </span>
+            </span>
+            <h2 className="mt-4 text-xl font-bold text-white sm:text-2xl">
+              {dodoCancelled ? t("Checkout cancelled") : t("Payment failed")}
+            </h2>
+            <p className="mx-auto mt-2 max-w-md text-sm text-[#c2c6d6]">
+              {dodoCancelled
+                ? t("You cancelled before paying. No charge was made and no credits were added.")
+                : t("Your card was declined. No charge was made and no credits were added.")}
+            </p>
+            <button
+              type="button"
+              onClick={() => goTo({ step: "rail" })}
+              className={`${PRIMARY_BUTTON_CLASS} mt-6`}
+            >
+              {t("Try again")}
+            </button>
+            {whatsappNumber && <div className="mt-5">{helpCard}</div>}
+          </div>
+        </section>
+      )}
+
+      {step === "card-return" && !dodoFailed && (
+        <section className="mx-auto w-full max-w-xl">
+          <div className={`${CARD_PADDED} text-center`}>
+            <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#adc6ff]/10">
+              <span className="material-symbols-outlined text-[28px] text-[#adc6ff]">
+                check_circle
+              </span>
+            </span>
+            <h2 className="mt-4 text-xl font-bold text-white sm:text-2xl">
+              {t("Thanks!")}
+            </h2>
+            {/* Crediting happens off a webhook, not this redirect, so this can
+                arrive a few seconds before the balance actually updates — the
+                page says so rather than claiming a success it hasn't confirmed. */}
+            <p className="mx-auto mt-2 max-w-md text-sm text-[#c2c6d6]">
+              {t(
+                "If your payment went through, your credits will appear within a minute or two.",
+              )}
+            </p>
+            <Link href="/credits" className={`${PRIMARY_BUTTON_CLASS} mt-6 inline-block`}>
+              {t("Check my balance")}
+            </Link>
+          </div>
+        </section>
+      )}
 
       {/* ---------------------------------------------------------------- Step 1 */}
       {step === "plan" && (
@@ -716,7 +1078,27 @@ function BuyCreditsWizard() {
             </p>
           )}
 
+          <p className="mt-2 text-xs text-[#93a0bd]">
+            {t("Purchases are subject to our credit and refund rules.")}{" "}
+            <Link
+              href="/policy"
+              className="font-semibold text-[#adc6ff] underline-offset-4 hover:underline"
+            >
+              {t("Read the policy")}
+            </Link>
+          </p>
+
           <HowItWorks />
+
+          {/* Step 1 is no longer the first screen, so it needs the same way back
+              the later steps have. */}
+          <button
+            type="button"
+            onClick={() => goTo({ step: "rail" })}
+            className={`${SECONDARY_BUTTON_CLASS} mt-6`}
+          >
+            {t("Back")}
+          </button>
         </section>
       )}
 
@@ -752,12 +1134,7 @@ function BuyCreditsWizard() {
             </span>
           </div>
 
-          {/* One grid, config order: the lock badge already says which rails are
-              open, so a Tunisia/International split would only add a heading that
-              repeats the row beneath it. */}
-          <div className="grid gap-3 sm:grid-cols-2">
-            {[...tunisianMethods, ...otherMethods].map(methodRow)}
-          </div>
+          <div className="grid gap-3 sm:grid-cols-2">{tunisianMethods.map(methodRow)}</div>
 
           <button
             type="button"
