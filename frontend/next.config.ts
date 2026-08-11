@@ -8,6 +8,14 @@ const nextConfig: NextConfig = {
         source: "/api-proxy/:path*",
         destination: "https://vibecraft-kscatxqueq-ey.a.run.app/:path*",
       },
+      {
+        source: "/webhooks/:path*",
+        destination: "https://vibecraft-kscatxqueq-ey.a.run.app/webhooks/:path*",
+      },
+      {
+        source: "/api/webhooks/:path*",
+        destination: "https://vibecraft-kscatxqueq-ey.a.run.app/webhooks/:path*",
+      },
     ];
   },
   async redirects() {
