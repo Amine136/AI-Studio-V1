@@ -10,6 +10,7 @@
   "grok-imagine-image-quality-editing":  {"fidelity": "highest",  "text": "weak",   "output": "raster", "photoreal": "high",   "multi_image": true,  "notes": "higher-quality grok edit, ≤3 refs"},
 
   "gemini-2.5-flash-image":         {"fidelity": "high",    "text": "ok",     "output": "raster", "photoreal": "high", "multi_image": true, "notes": "Nano Banana - excellent editor/compositor, strong character/identity consistency"},
+  "gemini-3.1-flash-lite-image":    {"fidelity": "high",    "text": "strong", "output": "raster", "photoreal": "high", "multi_image": true, "notes": "Nano Banana 2 Lite - fast/lightweight image generation"},
   "gemini-3.1-flash-image-preview": {"fidelity": "highest",    "text": "strong", "output": "raster", "photoreal": "high", "multi_image": true, "notes": "Nano Banana 2 - hi-res tiers, better text"},
   "gemini-3-pro-image-preview":     {"fidelity": "highest", "text": "strong", "output": "raster", "photoreal": "high", "multi_image": true, "notes": "Nano Banana Pro - premium edit/combine, top fidelity"},
 

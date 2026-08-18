@@ -553,8 +553,12 @@ function modelIdeaCategory(model: ChatModelOption | null): ModelIdeaCategory {
 
 // Image-output models are surfaced first within a provider (e.g. Nano Banana Pro
 // above Gemini 2.5 Flash), text-only models fall to the bottom.
+// Gemini native-image models (Nano Banana variants) always contain "-image" in
+// their model id; AKM may omit IMAGE from output_modalities so we also match on
+// the id convention to keep them in the Google Gemini section.
 function outputsImage(model: ChatModelOption): boolean {
-  return model.outputModalities.some((value) => value.toUpperCase() === "IMAGE");
+  if (model.outputModalities.some((value) => value.toUpperCase() === "IMAGE")) return true;
+  return model.provider.toLowerCase().includes("gemini") && model.id.includes("-image");
 }
 
 // Latency budgets live in the shared lib so pricing + chat stay in sync.

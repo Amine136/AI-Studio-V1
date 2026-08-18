@@ -1166,6 +1166,7 @@ def _credit_order_dict(repo: SecurityRepository, order: Any) -> dict[str, Any]:
     proofs = repo.list_credit_order_proofs(str(order.id))
     # The code is only meaningful once the order is accepted; a pending or refused
     # order must never carry one out of the service layer.
+    code = str(order.code_plain or "") if str(order.status) == "accepted" else ""
     r2_public_base = os.getenv("R2_PUBLIC_URL", "https://pub-64bf9ef2292c49f0a2053981c85e16d9.r2.dev").rstrip("/")
     proof_urls = []
     for proof in proofs:

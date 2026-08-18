@@ -78,17 +78,43 @@ def list_plain_chat_models() -> list[dict[str, Any]]:
         for model_name, model_entry in task_models.items():
             if not isinstance(model_entry, dict) or not is_model_enabled(model_name, model_entry):
                 continue
+            new_input = _normalize_modalities(model_entry.get("input_modalities"))
+            new_output = _normalize_modalities(model_entry.get("output_modalities"))
+            existing = models.get(model_name)
+            if existing:
+                # Merge modalities across catalog tasks (caption / image) so a
+                # model present in both buckets keeps TEXT *and* IMAGE.
+                merged_input = list(dict.fromkeys(existing["inputModalities"] + new_input))
+                merged_output = list(dict.fromkeys(existing["outputModalities"] + new_output))
+                existing["inputModalities"] = merged_input
+                existing["outputModalities"] = merged_output
+                if not existing["supportsImageInput"]:
+                    existing["supportsImageInput"] = _supports_image_input(model_entry)
+                continue
             models[model_name] = {
                 "id": model_name,
                 "displayName": str(model_entry.get("display_name") or model_name),
                 "description": str(model_entry.get("description") or ""),
                 "provider": str(model_entry.get("provider") or ""),
                 "supportsImageInput": _supports_image_input(model_entry),
-                "inputModalities": _normalize_modalities(model_entry.get("input_modalities")),
-                "outputModalities": _normalize_modalities(model_entry.get("output_modalities")),
+                "inputModalities": new_input,
+                "outputModalities": new_output,
                 "parameterSchema": settings.get_model_parameter_schema(model_name, model_entry),
                 "pricing": _derive_plain_chat_model_pricing_summary(model_entry),
             }
+
+    # Gemini native-image models (Nano Banana variants) are identified by "-image"
+    # in their model id.  AKM sometimes registers them only under the "text" bucket
+    # which leaves IMAGE out of output_modalities — fix that up so the frontend
+    # correctly groups them under Google Gemini instead of "Text models".
+    for model in models.values():
+        provider = str(model.get("provider") or "").lower()
+        model_id = str(model.get("id") or "").lower()
+        if provider == "google-gemini" and "-image" in model_id:
+            if "IMAGE" not in model["outputModalities"]:
+                model["outputModalities"].append("IMAGE")
+            if "TEXT" not in model["outputModalities"]:
+                model["outputModalities"].append("TEXT")
 
     return sorted(
         models.values(),
