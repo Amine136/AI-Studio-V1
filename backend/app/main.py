@@ -4417,12 +4417,18 @@ def _save_uploaded_input_image_bytes(mime_type: str, image_bytes: bytes) -> str:
     extension = _extension_for_mime_type(mime_type)
     filename = f"{os.urandom(16).hex()}.{extension}"
     save_path = UPLOADED_IMAGES_DIR / filename
-    with open(save_path, "wb") as image_file:
-        image_file.write(image_bytes)
+    try:
+        with open(save_path, "wb") as image_file:
+            image_file.write(image_bytes)
+    except Exception:
+        pass
+    from app.services.r2_storage import upload_to_r2
+    upload_to_r2(image_bytes, f"uploaded_images/{filename}", mime_type)
     return filename
 
 def _cleanup_expired_uploaded_images() -> None:
     cutoff = int(time.time() - UPLOAD_RETENTION_SECONDS)
+    from app.services.r2_storage import delete_from_r2
     with session_scope() as session:
         repo = SecurityRepository(session)
         for entry in repo.list_user_files_before(kind="uploaded_input", created_before=cutoff):
@@ -4431,6 +4437,7 @@ def _cleanup_expired_uploaded_images() -> None:
                 filepath.unlink(missing_ok=True)
             except OSError:
                 pass
+            delete_from_r2(f"uploaded_images/{entry.storage_path}")
             repo.delete_user_file(entry)
 
 

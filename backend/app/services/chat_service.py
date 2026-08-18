@@ -400,6 +400,9 @@ def _serialize_part(part: ChatMessagePart) -> dict[str, Any]:
     return {"type": "image_url", "url": str(part.url or "").strip()}
 
 
+EXPIRED_IMAGE_PLACEHOLDER_TEXT = "[Attached image has expired and was removed per the 30-day retention policy]"
+
+
 def _request_part(part: ChatMessagePart, *, user_uid: str) -> dict[str, Any]:
     if part.type == "text":
         return {"type": "text", "text": (part.text or "").strip()}
@@ -407,8 +410,11 @@ def _request_part(part: ChatMessagePart, *, user_uid: str) -> dict[str, Any]:
     image_url = str(part.url or "").strip()
     file_id = _private_file_id_from_url(image_url)
     if file_id:
-        mime_type, encoded_image = _load_private_uploaded_image_data(file_id, user_uid=user_uid)
-        return {"type": "image", "mimeType": mime_type, "data": encoded_image}
+        loaded = _load_private_uploaded_image_data(file_id, user_uid=user_uid)
+        if loaded is not None:
+            mime_type, encoded_image = loaded
+            return {"type": "image", "mimeType": mime_type, "data": encoded_image}
+        return {"type": "text", "text": EXPIRED_IMAGE_PLACEHOLDER_TEXT}
     return {"type": "image_url", "url": image_url}
 
 
@@ -543,26 +549,26 @@ def _private_file_id_from_url(image_url: str) -> str | None:
     return private_file_id_from_url(image_url)
 
 
-def _load_private_uploaded_image_data(file_id: str, *, user_uid: str) -> tuple[str, str]:
+def _load_private_uploaded_image_data(file_id: str, *, user_uid: str) -> tuple[str, str] | None:
     try:
         file_record, storage_path = load_private_user_file(
             file_id,
             user_uid,
             allowed_kinds={"uploaded_input", "generated_output"},
         )
-    except Exception as exc:
-        raise ValueError("CHAT_IMAGE_URL_INVALID") from exc
-    image_bytes = storage_path.read_bytes()
-    # Server-side backstop: shrink oversized uploads so the base64 body stays
-    # under the AKM gateway's 1 MiB limit even if the browser-side resize was
-    # skipped (e.g. a non-browser client). Budget for a full image set so several
-    # references still fit. In-spec images (already small from the client) pass
-    # through unchanged.
-    mime_type = str(file_record["mime_type"] or "")
-    image_bytes, mime_type = downscale_image_for_provider(
-        image_bytes, mime_type, output_cap=per_image_output_cap(MAX_CHAT_INPUT_IMAGES)
-    )
-    return mime_type, base64.b64encode(image_bytes).decode("ascii")
+        image_bytes = storage_path.read_bytes()
+        # Server-side backstop: shrink oversized uploads so the base64 body stays
+        # under the AKM gateway's 1 MiB limit even if the browser-side resize was
+        # skipped (e.g. a non-browser client). Budget for a full image set so several
+        # references still fit. In-spec images (already small from the client) pass
+        # through unchanged.
+        mime_type = str(file_record["mime_type"] or "")
+        image_bytes, mime_type = downscale_image_for_provider(
+            image_bytes, mime_type, output_cap=per_image_output_cap(MAX_CHAT_INPUT_IMAGES)
+        )
+        return mime_type, base64.b64encode(image_bytes).decode("ascii")
+    except Exception:
+        return None
 
 
 def _supports_image_input(model_entry: dict[str, Any]) -> bool:

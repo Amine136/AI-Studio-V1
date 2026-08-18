@@ -59,3 +59,17 @@ def download_from_r2(key: str) -> bytes | None:
     except Exception as exc:
         print(f"⚠️ R2 download warning for {key}: {exc}")
         return None
+
+
+def delete_from_r2(key: str) -> bool:
+    """Delete an object from Cloudflare R2 bucket."""
+    client = get_r2_client()
+    if not client:
+        return False
+    try:
+        client.delete_object(Bucket=R2_BUCKET_NAME, Key=key)
+        return True
+    except Exception as exc:
+        print(f"⚠️ R2 delete warning for {key}: {exc}")
+        return False
+

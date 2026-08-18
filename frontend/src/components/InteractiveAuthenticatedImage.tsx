@@ -4,6 +4,7 @@ import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { useAuth } from "../context/AuthContext";
+import { useLanguage } from "../context/LanguageContext";
 import { fetchAuthenticatedAsset, isPrivateFileUrl, isRenderableImageUrl } from "./AuthenticatedImage";
 
 function inferExtensionFromType(mimeType?: string | null): string {
@@ -51,6 +52,7 @@ export default function InteractiveAuthenticatedImage({
   zoomOnClick?: boolean;
 }) {
   const { user } = useAuth();
+  const { t } = useLanguage();
   const isRenderable = isRenderableImageUrl(src);
   const isPrivate = isPrivateFileUrl(src);
   const [resolvedSrc, setResolvedSrc] = useState<string | null>(isPrivate ? null : isRenderable ? src : null);
@@ -145,8 +147,9 @@ export default function InteractiveAuthenticatedImage({
 
   if (status === "error") {
     return (
-      <div className={errorClassName || "flex min-h-40 min-w-40 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 py-6 text-xs text-white/60"}>
-        Private image unavailable
+      <div className={errorClassName || "flex min-h-40 min-w-40 flex-col items-center justify-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-4 py-6 text-center text-xs text-white/50"}>
+        <span className="material-symbols-outlined text-[20px] text-white/40">schedule</span>
+        <span>{t("Image expired (stored for 30 days)")}</span>
       </div>
     );
   }

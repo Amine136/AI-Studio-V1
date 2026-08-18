@@ -270,6 +270,7 @@ export const translations = {
     "Generate something in the studio first. Once a result is saved, it will appear here automatically.": "Generate something in the studio first. Once a result is saved, it will appear here automatically.",
     "Open Studio": "Open Studio",
     "Private image unavailable": "Private image unavailable",
+    "Image expired (stored for 30 days)": "Image expired (stored for 30 days)",
     "Loading image...": "Loading image...",
 
     // Dashboard Page
@@ -987,6 +988,7 @@ export const translations = {
     "Generate something in the studio first. Once a result is saved, it will appear here automatically.": "Générez d'abord quelque chose dans le studio. Une fois un résultat enregistré, il apparaîtra ici automatiquement.",
     "Open Studio": "Ouvrir le Studio",
     "Private image unavailable": "Image privée indisponible",
+    "Image expired (stored for 30 days)": "Image expirée (conservée pendant 30 jours)",
     "Loading image...": "Chargement de l'image...",
 
     // Dashboard Page
@@ -1814,6 +1816,7 @@ export const translations = {
     "Generate something in the studio first. Once a result is saved, it will appear here automatically.": "أنشئ شيئاً في الاستوديو أولاً. بمجرد حفظ النتيجة، ستظهر هنا تلقائياً.",
     "Open Studio": "فتح الاستوديو",
     "Private image unavailable": "الصورة الخاصة غير متاحة",
+    "Image expired (stored for 30 days)": "انتهت صلاحية الصورة (تُحفظ لمدة 30 يومًا)",
     "Loading image...": "جاري تحميل الصورة...",
 
     // Dashboard Page

@@ -124,8 +124,9 @@ export default function AuthenticatedImage({
 
   if (status === "error") {
     return (
-      <div className="flex min-h-40 items-center justify-center rounded-xl border border-white/10 bg-white/5 px-4 py-6 text-xs text-white/60">
-        {t("Private image unavailable")}
+      <div className="flex min-h-40 items-center justify-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-4 py-6 text-center text-xs text-white/50">
+        <span className="material-symbols-outlined text-[18px] text-white/40">schedule</span>
+        <span>{t("Image expired (stored for 30 days)")}</span>
       </div>
     );
   }

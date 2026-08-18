@@ -259,6 +259,13 @@ def delete_private_user_file_by_id(file_id: str) -> None:
             filepath.unlink(missing_ok=True)
         except OSError:
             pass
+        from app.services.r2_storage import delete_from_r2
+        if str(entry.kind) == "uploaded_input":
+            delete_from_r2(f"uploaded_images/{entry.storage_path}")
+        elif str(entry.kind) == "generated_output":
+            delete_from_r2(f"generated_images/{entry.storage_path}")
+        elif str(entry.kind) == "payment_proof":
+            delete_from_r2(f"payment_proofs/{entry.storage_path}")
         repo.delete_user_file(entry)
 
 
@@ -379,6 +386,8 @@ def _restore_file_from_r2(kind: str, storage_path: str, filepath: Path) -> bool:
 
     if kind == "generated_output":
         r2_key = f"generated_images/{storage_path}"
+    elif kind == "uploaded_input":
+        r2_key = f"uploaded_images/{storage_path}"
     elif kind == "payment_proof":
         r2_key = f"payment_proofs/{storage_path}"
     else:
