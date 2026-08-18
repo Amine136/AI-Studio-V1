@@ -215,14 +215,11 @@ def _send_discord_alert(message: str) -> None:
     webhook_url = getattr(settings, 'discord_webhook_url', None)
     if not webhook_url:
         return
-    import threading
     import httpx
-    def target():
-        try:
-            httpx.post(webhook_url, json={'content': message}, timeout=5.0)
-        except Exception:
-            pass
-    threading.Thread(target=target, daemon=True).start()
+    try:
+        httpx.post(webhook_url, json={'content': message}, timeout=3.0)
+    except Exception as exc:
+        logger.warning("[discord_alert] Failed to post alert: %s", exc)
 
 
 def authenticate_admin(username: str, password: str, *, ip_address: str) -> tuple[str, dict[str, Any]]:
