@@ -220,20 +220,19 @@ def rate_limit_key(request: Request) -> str:
 
 
 def _get_client_ip(request: Request) -> str:
-    # Trust X-Real-IP first: nginx sets it from $remote_addr, so clients cannot
-    # forge it. X-Forwarded-For is built with $proxy_add_x_forwarded_for, which
-    # APPENDS the real IP to any client-supplied value — taking its first entry
-    # would let a caller mint a fresh rate-limit bucket per request.
+    cf_ip = request.headers.get("cf-connecting-ip", "").strip()
+    if cf_ip:
+        return cf_ip
     real_ip = request.headers.get("x-real-ip", "").strip()
     if real_ip:
         return real_ip
 
     forwarded_for = request.headers.get("x-forwarded-for", "")
     if forwarded_for:
-        # Last entry is the one appended by our own proxy hop.
-        last_ip = forwarded_for.rsplit(",", 1)[-1].strip()
-        if last_ip:
-            return last_ip
+        # First entry is the client's original IP before any proxies/CDNs
+        first_ip = forwarded_for.split(",", 1)[0].strip()
+        if first_ip:
+            return first_ip
 
     return get_remote_address(request)
 
@@ -792,7 +791,7 @@ async def upload_input_image(
     summary="Get System Configuration",
     description="Retrieve the available field options and model catalog for Vibecraft."
 )
-@limiter.limit("30/minute")
+@limiter.limit("120/minute")
 def get_system_config(request: Request, _=Depends(verify_api_key)):
     """
     Fetch the current system configuration including:
@@ -817,7 +816,7 @@ def get_system_config(request: Request, _=Depends(verify_api_key)):
     summary="List Plain Chat Models",
     description="Return available catalog models for the dedicated plain-chat flow.",
 )
-@limiter.limit("30/minute")
+@limiter.limit("120/minute")
 def list_plain_chat_model_options(request: Request):
     # Public, no auth: the catalogue is non-sensitive (ids, providers, modalities,
     # pricing summary already shown on /pricing) and carries no per-user data. This
@@ -834,7 +833,7 @@ def list_plain_chat_model_options(request: Request):
     summary="List Plain Chat Conversations",
     description="Return stored plain-chat conversations for the current user.",
 )
-@limiter.limit("30/minute")
+@limiter.limit("120/minute")
 def list_plain_chat_conversation_items(
     request: Request,
     limit: int = 20,
@@ -885,7 +884,7 @@ def create_plain_chat_conversation(
     summary="Update Plain Chat Conversation",
     description="Update metadata for a stored plain-chat conversation.",
 )
-@limiter.limit("30/minute")
+@limiter.limit("60/minute")
 def update_plain_chat_conversation_item(
     request: Request,
     conversation_id: str,
@@ -946,7 +945,7 @@ def delete_plain_chat_conversation_item(
     summary="Get Plain Chat Messages",
     description="Return the stored messages for one plain-chat conversation.",
 )
-@limiter.limit("30/minute")
+@limiter.limit("120/minute")
 def get_plain_chat_conversation_messages(
     request: Request,
     conversation_id: str,
@@ -1417,7 +1416,7 @@ def admin_current_session(request: Request, response: Response, admin: Dict[str,
 
 
 @app.get("/me", tags=["Configuration"], summary="Get Current User Profile")
-@limiter.limit("30/minute")
+@limiter.limit("120/minute")
 def get_current_user_profile(request: Request, user: Dict[str, Any] = Depends(verify_firebase_user)):
     profile = get_user(user["uid"])
     profile.update(get_profile_change_status(user["uid"]))

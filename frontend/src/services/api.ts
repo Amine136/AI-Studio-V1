@@ -93,6 +93,7 @@ export const MODERATION_UNAVAILABLE_MESSAGE =
 const client = axios.create({
   baseURL: API_BASE,
   withCredentials: true,
+  timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
     'X-API-Key': process.env.NEXT_PUBLIC_API_KEY || '',

@@ -1086,7 +1086,9 @@ export default function StudioChatPage() {
   const requestedModelParam = searchParams?.get("model") || "";
   const requestedPromptParam = searchParams?.get("prompt") || "";
   const requestedConversationIsActive =
-    Boolean(requestedConversationId) && requestedConversationId !== deletedConversationIdRef.current;
+    Boolean(requestedConversationId) &&
+    requestedConversationId !== deletedConversationIdRef.current &&
+    requestedConversationId !== failedConversationLoadRef.current;
   const isBootstrappingRequestedConversation = requestedConversationIsActive && requestedConversationId !== conversationId;
 
   // Model Controls used to be a docked right rail that auto-opened on large
@@ -1482,6 +1484,11 @@ export default function StudioChatPage() {
         setConversationCostTotal(0);
         setLastUsage(null);
         setLastBillingMeta(null);
+        if (typeof window !== "undefined") {
+          const url = new URL(window.location.href);
+          url.searchParams.delete("conversation");
+          window.history.replaceState({}, "", url.toString());
+        }
       } finally {
         if (!cancelled) {
           setLoadingConversation(false);
