@@ -2207,23 +2207,21 @@ export default function StudioChatPage() {
     void fetchHistory(next);
   }
 
-  // Open a stored conversation by routing through ?conversation=<id>, the same
-  // path deep-links use. Going through the router (not a bare setConversationId)
-  // updates useSearchParams so the bootstrap effect can't bounce back to a stale
-  // requested id, mirroring handleNewChat.
   function handleOpenConversation(id: string) {
     if (!id || id === conversationId) return;
     deletedConversationIdRef.current = "";
     failedConversationLoadRef.current = "";
     hasBootstrappedChatRef.current = true;
-    // If the router already points at this id (e.g. a prior load failed and left
-    // the URL here while conversationId was cleared), router.replace is a no-op
-    // and the bootstrap effect won't re-fire — drive the load directly instead.
-    if (requestedConversationId === id) {
-      setConversationId(id);
-      return;
+    setMessages([]);
+    setSelectedModel("");
+    setLockedModelId("");
+    setConversationId(id);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("new");
+      url.searchParams.set("conversation", id);
+      window.history.replaceState({}, "", url.toString());
     }
-    router.replace(`/playground?conversation=${encodeURIComponent(id)}`);
   }
 
   async function handleSaveConversationTitle() {
