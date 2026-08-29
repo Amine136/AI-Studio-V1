@@ -1062,6 +1062,9 @@ export default function StudioChatPage() {
   const hasBootstrappedChatRef = useRef(false);
   const deletedConversationIdRef = useRef("");
   const failedConversationLoadRef = useRef("");
+  // Last id adopted from ?conversation=. Guards the bootstrap effect against
+  // re-adopting a stale URL value on runs triggered by a conversationId change.
+  const adoptedRequestedConversationIdRef = useRef("");
   const inputImagesRef = useRef<UploadedImageState[]>([]);
   const deepLinkAppliedRef = useRef(false);
   // Model an anonymous visitor had selected before the auth wall; applied once the
@@ -1141,6 +1144,13 @@ export default function StudioChatPage() {
   }, [loadingReply, messages.length]);
 
   useEffect(() => {
+    // No ?conversation= in the URL means any previously adopted id is spent, so
+    // re-opening that same id later (deep link pasted twice in one session) is
+    // allowed to adopt again.
+    if (!requestedConversationId) {
+      adoptedRequestedConversationIdRef.current = "";
+    }
+
     if (forceNewSession) {
       hasBootstrappedChatRef.current = true;
       sessionStorage.removeItem(STORAGE_KEY);
@@ -1162,12 +1172,25 @@ export default function StudioChatPage() {
       return;
     }
 
+    // Adopt the id from ?conversation= only when the URL brings one we have not
+    // adopted yet (deep link, back/forward, first load).
+    //
+    // This effect also re-runs on every conversationId change, and at that moment
+    // useSearchParams() can still report the PREVIOUS id — the URL-sync effect
+    // below has not written the new one yet. Without the adopted-id guard, that
+    // run would call setConversationId(<previous id>) and undo the switch the user
+    // just made; the sync effect would then write the new id back into the URL,
+    // and the two values swapped indefinitely instead of converging. Each swap
+    // refetched messages, which is the render loop that hammered
+    // /chat/conversations/{id}/messages (~5 req/s per id, two ids alternating).
     if (
       requestedConversationId &&
       requestedConversationId !== deletedConversationIdRef.current &&
-      requestedConversationId !== failedConversationLoadRef.current
+      requestedConversationId !== failedConversationLoadRef.current &&
+      requestedConversationId !== adoptedRequestedConversationIdRef.current
     ) {
       hasBootstrappedChatRef.current = true;
+      adoptedRequestedConversationIdRef.current = requestedConversationId;
       if (requestedConversationId === conversationId) {
         return;
       }
