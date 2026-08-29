@@ -82,6 +82,31 @@ export function isNetworkError(error: unknown): boolean {
   return error instanceof Error && error.message === NETWORK_ERROR_MESSAGE;
 }
 
+// The response interceptor normalizes every failure into a plain Error, which
+// loses the HTTP status. Callers that must distinguish "this resource is gone"
+// (404/403 — stop, clear state) from "the server is busy or unreachable"
+// (429/5xx/no response — retry) need the status, so carry it through.
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status?: number,
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
+// Transient: worth retrying. A 429 here is usually Cloud Run's own
+// "no available instance" abort or a slowapi burst rejection, not a permanent
+// refusal; 5xx and connection drops are likewise momentary.
+export function isRetryableApiError(error: unknown): boolean {
+  if (isNetworkError(error)) return true;
+  if (error instanceof ApiError) {
+    return error.status === 429 || error.status === undefined || error.status >= 500;
+  }
+  return false;
+}
+
 // Sentinel for requests blocked because the moderation backend was unreachable
 // (HTTP 503 detail.error.code === 'MODERATION_UNAVAILABLE'). This is NOT a user
 // violation — show a neutral, transient "try again" message, never the
@@ -150,11 +175,12 @@ function normalizeApiError(error: unknown): Error {
   ) {
     return new ContentBlockedError();
   }
+  const status = axios.isAxiosError(error) ? error.response?.status : undefined;
   const detail = extractErrorMessage(error);
-  if (detail) return new Error(detail);
-  if (error instanceof TypeError) return new Error(NETWORK_ERROR_MESSAGE);
+  if (detail) return new ApiError(detail, status);
+  if (error instanceof TypeError) return new ApiError(NETWORK_ERROR_MESSAGE);
   if (error instanceof Error) return error;
-  return new Error('Request failed. Please try again.');
+  return new ApiError('Request failed. Please try again.', status);
 }
 
 // A suspended/deactivated account gets a 403 with a plain-string `detail` from the

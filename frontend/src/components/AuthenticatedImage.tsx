@@ -4,8 +4,13 @@ import { useEffect, useState } from "react";
 
 import { useAuth } from "../context/AuthContext";
 import { useLanguage } from "../context/LanguageContext";
+import { API_BASE } from "../services/api";
 
-const BACKEND_BASE = (process.env.NEXT_PUBLIC_API_URL || "https://vibecraft-kscatxqueq-ey.a.run.app").replace(/\/+$/, "");
+// Share the single API base with the rest of the app. This used to hardcode the
+// Cloud Run URL as its fallback, which meant these image fetches bypassed the
+// /api-proxy same-origin rewrite (and paid a CORS preflight) even when
+// NEXT_PUBLIC_API_URL pointed at the proxy.
+const BACKEND_BASE = API_BASE.replace(/\/+$/, "");
 
 export function isPrivateFileUrl(url?: string): boolean {
   if (!url) return false;
@@ -21,9 +26,15 @@ function resolvePrivateFileUrl(src: string): string {
   try {
     const url = new URL(src, "https://vibecraft.ouni.space");
     // Legacy records use the Vercel-hosted /api/files URL, which has no proxy
-    // route. Fetch the authenticated Cloud Run endpoint instead.
+    // route. Fetch the authenticated backend endpoint instead.
     if (url.pathname.startsWith("/api/files/")) {
       return `${BACKEND_BASE}${url.pathname.slice(4)}${url.search}`;
+    }
+    // Stored records are absolute against PUBLIC_BACKEND_BASE_URL (the Cloud Run
+    // host), so honouring them verbatim would keep every image fetch
+    // cross-origin no matter what API_BASE is. Re-point at the configured base.
+    if (url.pathname.startsWith("/files/")) {
+      return `${BACKEND_BASE}${url.pathname}${url.search}`;
     }
   } catch {
     // The normal fetch path below will surface malformed URLs as an asset error.

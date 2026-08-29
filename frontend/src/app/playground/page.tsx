@@ -12,7 +12,7 @@ import { useLanguage } from "../../context/LanguageContext";
 import InteractiveAuthenticatedImage from "../../components/InteractiveAuthenticatedImage";
 import { isRenderableImageUrl, fetchAuthenticatedAsset } from "../../components/AuthenticatedImage";
 import { ColorPickerPopover } from "../../components/ColorPickerPopover";
-import { api, CONTENT_BLOCKED_MESSAGE, MODERATION_UNAVAILABLE_MESSAGE } from "../../services/api";
+import { api, CONTENT_BLOCKED_MESSAGE, MODERATION_UNAVAILABLE_MESSAGE, isRetryableApiError } from "../../services/api";
 import { addHistoryEntry } from "../../lib/history";
 import { getUploadConstraints, maxInputImagesForModelId, preferredOutputType, providerLabelForModelId, readImageDimensions, type UploadImageConstraints } from "../../lib/imageInputConstraints";
 import { LATENCY_FALLBACK_SECONDS, latencyBudgetForModel } from "../../lib/modelLatency";
@@ -1227,18 +1227,33 @@ export default function StudioChatPage() {
     );
   }, [conversationId, conversationTitle, isBootstrappingRequestedConversation, lockedModelId, messages, parameterValues, selectedModel]);
 
+  // Single writer for ?conversation= in the URL. Nothing else may call
+  // replaceState for this param: Next patches history.replaceState to dispatch
+  // ACTION_RESTORE, which refreshes useSearchParams() and so feeds
+  // requestedConversationId straight back into this effect. A second writer
+  // (e.g. handleOpenConversation also setting the param) lets the two values
+  // trade places instead of converging, and the loader effect below refetches on
+  // every conversationId change — that is the render loop that produced ~400
+  // req/s against /chat/conversations/{id}/messages.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const url = new URL(window.location.href);
-    const effectiveConversationId =
-      conversationId || (requestedConversationId !== deletedConversationIdRef.current ? requestedConversationId || "" : "");
+    // Mirror requestedConversationIsActive: a requested id that was deleted, or
+    // that permanently failed to load, must not be reflected back into the URL.
+    const requestedIsUsable =
+      requestedConversationId !== deletedConversationIdRef.current &&
+      requestedConversationId !== failedConversationLoadRef.current;
+    const effectiveConversationId = conversationId || (requestedIsUsable ? requestedConversationId || "" : "");
     url.searchParams.delete("new");
     if (effectiveConversationId) {
       url.searchParams.set("conversation", effectiveConversationId);
     } else {
       url.searchParams.delete("conversation");
     }
-    window.history.replaceState({}, "", url.toString());
+    // No-op writes still dispatch ACTION_RESTORE and re-render, so skip them.
+    const next = url.toString();
+    if (next === window.location.href) return;
+    window.history.replaceState({}, "", next);
   }, [conversationId, requestedConversationId]);
 
   useEffect(() => {
@@ -1445,8 +1460,25 @@ export default function StudioChatPage() {
 
       try {
         setLoadingConversation(true);
-        const response = await api.getPlainChatConversationMessages(conversationId, 100);
-        if (cancelled) return;
+        // A cold start (both Cloud Run services scale to zero) or a burst can
+        // make the first attempt time out or come back as a Cloud Run
+        // "no available instance" abort. Those are transient, so give them two
+        // more tries with a backoff instead of discarding the thread. A 404/403
+        // is permanent and falls straight through to the catch.
+        let response: Awaited<ReturnType<typeof api.getPlainChatConversationMessages>> | undefined;
+        const backoffMs = [1500, 4000];
+        for (let attempt = 0; ; attempt += 1) {
+          try {
+            response = await api.getPlainChatConversationMessages(conversationId, 100);
+            break;
+          } catch (err) {
+            if (cancelled) return;
+            if (attempt >= backoffMs.length || !isRetryableApiError(err)) throw err;
+            await new Promise((resolve) => setTimeout(resolve, backoffMs[attempt]));
+            if (cancelled) return;
+          }
+        }
+        if (cancelled || !response) return;
         const fetchedMessages = response.messages.map((message) => ({
           id: message.id,
           role: message.role,
@@ -1472,8 +1504,17 @@ export default function StudioChatPage() {
         setLastBillingMeta(null);
       } catch (err) {
         if (cancelled) return;
-        failedConversationLoadRef.current = conversationId;
         setError(err instanceof Error ? err.message : t("Could not load chat history."));
+
+        // Still unreachable after the retries: keep conversationId and the URL
+        // param intact so the thread is recoverable (retry button / refresh).
+        // Tearing all of it down on a transient failure is what made one blip
+        // lose the open conversation.
+        if (isRetryableApiError(err)) return;
+
+        // Permanent (404 gone, 403 forbidden): the id is not loadable, so clear
+        // it and drop the param to stop the bootstrap effect re-requesting it.
+        failedConversationLoadRef.current = conversationId;
         setConversationId("");
         setConversationTitle(DEFAULT_CONVERSATION_TITLE);
         setConversationTitleDraft(DEFAULT_CONVERSATION_TITLE);
@@ -1484,11 +1525,6 @@ export default function StudioChatPage() {
         setConversationCostTotal(0);
         setLastUsage(null);
         setLastBillingMeta(null);
-        if (typeof window !== "undefined") {
-          const url = new URL(window.location.href);
-          url.searchParams.delete("conversation");
-          window.history.replaceState({}, "", url.toString());
-        }
       } finally {
         if (!cancelled) {
           setLoadingConversation(false);
@@ -1915,8 +1951,8 @@ export default function StudioChatPage() {
 
     // Same bookkeeping as handleNewChat: mark the thread we're leaving so the
     // bootstrap effect won't see a stale ?conversation= and pull us straight back
-    // into it, and go through the router (a raw history.replaceState leaves
-    // useSearchParams() still reporting the old id).
+    // into it. router.replace (not a param write) is used here because this is a
+    // real navigation back to a bare /playground.
     suppressEmptyConversationLoadRef.current = true;
     hasBootstrappedChatRef.current = true;
     if (conversationId) {
@@ -2207,6 +2243,10 @@ export default function StudioChatPage() {
     void fetchHistory(next);
   }
 
+  // Open a stored conversation. Sets state only — the URL-sync effect is the sole
+  // writer of ?conversation=. Writing the param here too made this function and
+  // that effect two competing writers for the same value (the 5d6983e
+  // regression), which is what looped.
   function handleOpenConversation(id: string) {
     if (!id || id === conversationId) return;
     deletedConversationIdRef.current = "";
@@ -2216,12 +2256,6 @@ export default function StudioChatPage() {
     setSelectedModel("");
     setLockedModelId("");
     setConversationId(id);
-    if (typeof window !== "undefined") {
-      const url = new URL(window.location.href);
-      url.searchParams.delete("new");
-      url.searchParams.set("conversation", id);
-      window.history.replaceState({}, "", url.toString());
-    }
   }
 
   async function handleSaveConversationTitle() {
