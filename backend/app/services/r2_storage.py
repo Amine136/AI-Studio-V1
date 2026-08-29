@@ -2,9 +2,13 @@ import os
 import boto3
 from botocore.config import Config
 
-R2_S3_ENDPOINT = os.getenv("R2_S3_ENDPOINT", "https://7d4afa7795d8e35f6bc191e1727db897.r2.cloudflarestorage.com")
-R2_ACCESS_KEY_ID = os.getenv("R2_ACCESS_KEY_ID", "f7e44a1393b6847c71d61bd76c75c4f7")
-R2_SECRET_ACCESS_KEY = os.getenv("R2_SECRET_ACCESS_KEY", "422e4693b08acec2d50bb80f05dd8f73007f4be7d1dd8b7c75a46d368fa07cdd")
+# Credentials come from the environment only. Literal fallbacks were removed:
+# they were live R2 keys committed to the repo. get_r2_client() already returns
+# None when any of these is empty, so the storage paths degrade rather than crash.
+R2_S3_ENDPOINT = os.getenv("R2_S3_ENDPOINT", "")
+R2_ACCESS_KEY_ID = os.getenv("R2_ACCESS_KEY_ID", "")
+R2_SECRET_ACCESS_KEY = os.getenv("R2_SECRET_ACCESS_KEY", "")
+# Non-secret: bucket name and the public CDN host are safe as defaults.
 R2_BUCKET_NAME = os.getenv("R2_BUCKET_NAME", "vibecraft-media")
 R2_PUBLIC_URL = os.getenv("R2_PUBLIC_URL", "https://pub-64bf9ef2292c49f0a2053981c85e16d9.r2.dev")
 

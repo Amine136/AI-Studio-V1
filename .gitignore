@@ -65,6 +65,9 @@ backend/.secrets/
 # Secret backups and per-environment runtime state — never track
 backend/.env.bak-token-*
 backend/.env.*
+# ...except the credential-free template that documents required vars.
+!backend/.env.example
+
 backend/.env.bak*
 
 backend/app/data/model_visibility.json

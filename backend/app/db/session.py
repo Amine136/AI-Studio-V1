@@ -15,7 +15,13 @@ _session_factory: sessionmaker | None = None
 def get_database_url() -> str:
     database_url = settings.database_url.strip() if settings and settings.database_url else ""
     if not database_url:
-        database_url = "postgresql+psycopg://neondb_owner:npg_6JgE1mbktdWf@ep-damp-fire-b19ookvd-pooler.c-5.eu-central-1.aws.neon.tech/neondb?sslmode=require"
+        # Fail loudly instead of falling back to a committed connection string.
+        # The previous literal default meant a missing DATABASE_URL silently
+        # connected to production, and put a live Neon password in the repo.
+        raise RuntimeError(
+            "DATABASE_URL is not configured. Set it in the environment "
+            "(Cloud Run env var, or backend/.env for local development)."
+        )
     if database_url.startswith("postgresql://"):
         database_url = database_url.replace("postgresql://", "postgresql+psycopg://", 1)
     return database_url
