@@ -825,3 +825,60 @@ def test_get_chat_conversation_with_messages_uses_one_session(test_db, monkeypat
 
     assert separate_sessions == 2
     assert combined_sessions == 1
+
+
+def test_signup_bonus_grants_credits_to_a_brand_new_account(test_db, monkeypatch):
+    """The conftest fixture zeroes signup_bonus_credits so balance assertions
+    elsewhere mean what they say. These tests opt back in, so the bonus itself
+    stays covered."""
+    monkeypatch.setattr(store.settings, "signup_bonus_credits", 1.0)
+    monkeypatch.setattr(store.settings, "signup_bonus_validity_seconds", 7 * 24 * 60 * 60)
+
+    profile = store.ensure_user("bonus-user", "bonus@example.com", "Bonus User")
+
+    assert profile["credits"] == 1.0
+    assert profile["_isNewlyCreated"] is True
+
+
+def test_signup_bonus_is_granted_only_once(test_db, monkeypatch):
+    monkeypatch.setattr(store.settings, "signup_bonus_credits", 1.0)
+    monkeypatch.setattr(store.settings, "signup_bonus_validity_seconds", 7 * 24 * 60 * 60)
+
+    store.ensure_user("bonus-once", "bonus-once@example.com", "Bonus Once")
+    for _ in range(4):
+        profile = store.ensure_user("bonus-once", "bonus-once@example.com", "Bonus Once")
+
+    assert profile["credits"] == 1.0
+    assert profile["_isNewlyCreated"] is False
+
+
+def test_signup_bonus_is_skipped_when_disabled(test_db, monkeypatch):
+    monkeypatch.setattr(store.settings, "signup_bonus_credits", 0.0)
+
+    profile = store.ensure_user("bonus-off", "bonus-off@example.com", "Bonus Off")
+
+    assert profile["credits"] == 0.0
+
+
+def test_signup_bonus_lands_in_the_ledger_as_an_expiring_gift_lot(test_db, monkeypatch):
+    monkeypatch.setattr(store.settings, "signup_bonus_credits", 1.0)
+    monkeypatch.setattr(store.settings, "signup_bonus_validity_seconds", 7 * 24 * 60 * 60)
+
+    before = int(time.time())
+    store.ensure_user("bonus-ledger", "bonus-ledger@example.com", "Bonus Ledger")
+
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        entries = [
+            entry
+            for entry in repo.list_credit_ledger_entries("bonus-ledger", 50)
+            if entry.reason == "signup_bonus"
+        ]
+        assert len(entries) == 1
+        entry = entries[0]
+        assert entry.delta_minor == store._credits_to_minor(1.0)
+        metadata = entry.metadata_json or {}
+        assert metadata.get("activity_type") == "signup_bonus"
+        # Expiring gift lot, not permanent credit.
+        assert metadata.get("expires_at") is not None
+        assert metadata["expires_at"] >= before + (7 * 24 * 60 * 60)
