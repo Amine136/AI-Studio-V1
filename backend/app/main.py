@@ -95,6 +95,7 @@ from app.services.security_backend import (
     get_admin_generation_job,
     get_admin_user_detail,
     get_chat_conversation,
+    get_chat_conversation_with_messages,
     get_chat_messages,
     get_history,
     count_history,
@@ -954,11 +955,14 @@ def get_plain_chat_conversation_messages(
 ):
     del request
     bounded_limit = min(max(int(limit), 1), 200)
-    conversation = get_chat_conversation(user["uid"], conversation_id)
-    if conversation is None:
+    # One session for both reads: the conversation lookup doubles as the
+    # ownership check, so a combined query avoids a second connection checkout
+    # and a redundant re-read of the same row.
+    loaded = get_chat_conversation_with_messages(user["uid"], conversation_id, bounded_limit)
+    if loaded is None:
         raise HTTPException(status_code=404, detail="Chat conversation not found")
 
-    messages = get_chat_messages(user["uid"], conversation_id, bounded_limit)
+    conversation, messages = loaded
     return PlainChatConversationMessagesResponse(
         conversation=PlainChatConversationItem.model_validate(conversation),
         messages=messages,

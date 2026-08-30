@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from contextlib import contextmanager
 
 import pytest
 from sqlalchemy import select
@@ -717,3 +718,110 @@ def test_list_admin_generation_jobs_filters_by_status(test_db):
     assert failed_job is not None
     assert failed_job["id"] == failed["id"]
     assert failed_job["status"] == "failed"
+
+
+def test_get_chat_conversation_with_messages_matches_separate_calls(test_db):
+    uid = "chat-combined-user"
+    store.ensure_user(uid, "chat-combined@example.com", "Chat Combined")
+    conversation = store.create_chat_conversation(uid, "gemini-2.5-flash", [])
+    store.add_chat_turn(
+        uid,
+        conversation["id"],
+        user_parts=[{"type": "text", "text": "hello"}],
+        assistant_parts=[{"type": "text", "text": "hi"}],
+        charged_cost=0.0,
+    )
+
+    expected_conversation = store.get_chat_conversation(uid, conversation["id"])
+    expected_messages = store.get_chat_messages(uid, conversation["id"], 100)
+
+    loaded = store.get_chat_conversation_with_messages(uid, conversation["id"], 100)
+
+    assert loaded is not None
+    got_conversation, got_messages = loaded
+    assert got_conversation == expected_conversation
+    assert got_messages == expected_messages
+
+
+def test_get_chat_conversation_with_messages_returns_none_for_missing(test_db):
+    store.ensure_user("chat-missing-user", "chat-missing@example.com", "Chat Missing")
+
+    assert store.get_chat_conversation_with_messages("chat-missing-user", "nope", 100) is None
+
+
+def test_get_chat_conversation_with_messages_rejects_other_users(test_db):
+    """The combined read must enforce ownership exactly like the two-call path."""
+    owner = "chat-owner-user"
+    intruder = "chat-intruder-user"
+    store.ensure_user(owner, "chat-owner@example.com", "Chat Owner")
+    store.ensure_user(intruder, "chat-intruder@example.com", "Chat Intruder")
+    conversation = store.create_chat_conversation(owner, "gemini-2.5-flash", [])
+    store.add_chat_turn(
+        owner,
+        conversation["id"],
+        user_parts=[{"type": "text", "text": "private"}],
+        assistant_parts=[{"type": "text", "text": "secret"}],
+        charged_cost=0.0,
+    )
+
+    assert store.get_chat_conversation_with_messages(intruder, conversation["id"], 100) is None
+
+
+def test_get_chat_conversation_with_messages_honours_limit(test_db):
+    uid = "chat-limit-user"
+    store.ensure_user(uid, "chat-limit@example.com", "Chat Limit")
+    conversation = store.create_chat_conversation(uid, "gemini-2.5-flash", [])
+    for index in range(3):
+        store.add_chat_turn(
+            uid,
+            conversation["id"],
+            user_parts=[{"type": "text", "text": f"q{index}"}],
+            assistant_parts=[{"type": "text", "text": f"a{index}"}],
+            charged_cost=0.0,
+        )
+
+    loaded = store.get_chat_conversation_with_messages(uid, conversation["id"], 2)
+
+    assert loaded is not None
+    _conversation, messages = loaded
+    assert len(messages) == 2
+    assert messages == store.get_chat_messages(uid, conversation["id"], 2)
+
+
+def test_get_chat_conversation_with_messages_uses_one_session(test_db, monkeypatch):
+    """Guards the actual point of the change: one connection checkout, not two."""
+    from app.services import postgres_security_store as store_module
+
+    real_session_scope = store_module.session_scope
+    calls = {"count": 0}
+
+    @contextmanager
+    def counting_session_scope():
+        calls["count"] += 1
+        with real_session_scope() as session:
+            yield session
+
+    uid = "chat-session-count-user"
+    store.ensure_user(uid, "chat-session-count@example.com", "Chat Session Count")
+    conversation = store.create_chat_conversation(uid, "gemini-2.5-flash", [])
+    store.add_chat_turn(
+        uid,
+        conversation["id"],
+        user_parts=[{"type": "text", "text": "hello"}],
+        assistant_parts=[{"type": "text", "text": "hi"}],
+        charged_cost=0.0,
+    )
+
+    monkeypatch.setattr(store_module, "session_scope", counting_session_scope)
+
+    calls["count"] = 0
+    store.get_chat_conversation(uid, conversation["id"])
+    store.get_chat_messages(uid, conversation["id"], 100)
+    separate_sessions = calls["count"]
+
+    calls["count"] = 0
+    store.get_chat_conversation_with_messages(uid, conversation["id"], 100)
+    combined_sessions = calls["count"]
+
+    assert separate_sessions == 2
+    assert combined_sessions == 1

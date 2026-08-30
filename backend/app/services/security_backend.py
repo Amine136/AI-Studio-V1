@@ -52,6 +52,7 @@ from app.services.postgres_security_store import (  # noqa: F401
     ensure_user,
     get_active_suspension,
     get_chat_conversation,
+    get_chat_conversation_with_messages,
     get_chat_messages,
     list_credit_ledger_entries,
     get_credit_code,

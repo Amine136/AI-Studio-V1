@@ -2735,6 +2735,35 @@ def get_chat_messages(uid: str, conversation_id: str, max_items: int = 100) -> l
         return [_chat_message_dict_from_model(entry) for entry in repo.get_chat_messages(uid, conversation_id, max_items)]
 
 
+def get_chat_conversation_with_messages(
+    uid: str, conversation_id: str, max_items: int = 100
+) -> tuple[dict[str, Any], list[dict[str, Any]]] | None:
+    """Load one conversation and its messages over a single pooled connection.
+
+    Calling get_chat_conversation() then get_chat_messages() checks out two
+    connections and runs three queries, because get_chat_messages re-reads the
+    conversation row to re-verify ownership. Both reads serve one request, so
+    sharing a session drops that to one connection and two queries.
+
+    It also makes the pair consistent: the returned messages are read in the
+    same transaction as the conversation snapshot they are returned with, so a
+    concurrent write can no longer land between the two reads.
+
+    Returns None when the conversation does not exist or is not owned by uid,
+    keeping the ownership check identical to the two-call version.
+    """
+    with session_scope() as session:
+        repo = SecurityRepository(session)
+        conversation = repo.get_chat_conversation(uid, conversation_id)
+        if conversation is None:
+            return None
+        messages = [
+            _chat_message_dict_from_model(entry)
+            for entry in repo.get_chat_messages(uid, conversation_id, max_items)
+        ]
+        return _chat_conversation_dict_from_model(conversation), messages
+
+
 def _expire_stale_pending_analyze_sessions(repo: SecurityRepository, uid: str, *, now: int) -> int:
     ttl_seconds = max(int(settings.pending_analyze_session_ttl_seconds), 0)
     if ttl_seconds <= 0:
