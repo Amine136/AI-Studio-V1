@@ -482,9 +482,13 @@ def _record_usage_limit_audit_event(*, uid: str, ip: str, mode: str, phase: str,
 limiter = Limiter(key_func=rate_limit_key)
 
 # Bounded-concurrency admission control for /generate (Finding #10).
-# Caps in-flight generations PER WORKER so slow provider calls cannot exhaust
-# the shared anyio threadpool and starve other sync endpoints. Per-worker, so
-# the effective global cap is GENERATION_MAX_CONCURRENCY x gunicorn workers.
+# Caps in-flight generations so slow provider calls cannot exhaust the shared
+# anyio threadpool and starve other sync endpoints.
+#
+# The Dockerfile runs `exec uvicorn` with no --workers, so this is a single
+# process: GENERATION_MAX_CONCURRENCY is the effective per-instance global cap,
+# not a per-worker one. (gunicorn is pinned in requirements.txt but never used.)
+# Under Cloud Run the true global is this x the number of live instances.
 GENERATION_MAX_CONCURRENCY = max(1, int(os.getenv("GENERATION_MAX_CONCURRENCY", "12")))
 _GENERATION_GATE = threading.BoundedSemaphore(GENERATION_MAX_CONCURRENCY)
 

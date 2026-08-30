@@ -442,7 +442,7 @@ class Config:
         # Gift-credit expiry. A reservation will not draw from a gift lot that
         # would expire within this safety window (so a long-running generation
         # can't be caught mid-flight by expiry). Should be >= the maximum
-        # generation lifetime (gunicorn --timeout 300).
+        # generation lifetime, which is the Cloud Run request timeout (300s).
         self.gift_reserve_safety_window_seconds = int(os.getenv("GIFT_RESERVE_SAFETY_WINDOW_SECONDS", "300"))
         # Default validity (seconds) applied to redeemed gift credits when a code
         # does not specify its own. 0 = redeemed credits never expire by default.
