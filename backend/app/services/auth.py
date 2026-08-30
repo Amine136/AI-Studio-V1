@@ -9,12 +9,17 @@ from google.oauth2 import id_token
 
 from app.config import settings
 from app.services.admin_auth import get_admin_session
+from app.services.google_certs_cache import CachingTransportRequest, verify_with_cert_retry
 from app.services.security_backend import ensure_user, get_active_suspension, is_email_deactivated
 
 # Header name the client must send
 API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
 BEARER_AUTH = HTTPBearer(auto_error=False)
-GOOGLE_REQUEST = GoogleRequest()
+# verify_firebase_token re-fetches Google's signing certs on EVERY call. Wrapping
+# the transport keeps them in-process for the TTL Google advertises, removing one
+# outbound HTTPS round-trip from every authenticated request. Verification itself
+# is unchanged: signature, aud, iss and exp are still checked per request.
+GOOGLE_REQUEST = CachingTransportRequest(GoogleRequest())
 
 
 def format_suspension_detail(reason: str | None, until: Any | None) -> str:
@@ -44,6 +49,32 @@ async def verify_api_key(api_key: str = Security(API_KEY_HEADER)):
         raise HTTPException(status_code=403, detail="Invalid or missing API key")
 
 
+def _verify_firebase_token_with_cert_retry(token: str) -> Dict[str, Any]:
+    """Verify a Firebase ID token, retrying once against freshly fetched certs.
+
+    Because certs are now cached, a token signed with a key Google published
+    *after* our cache was populated would fail with "Certificate for key id ...
+    not found". That is the one new failure mode the cache introduces, and it is
+    fully recoverable: drop the cache and verify again against live certs.
+
+    The retry policy itself lives in ``google_certs_cache.verify_with_cert_retry``
+    so it can be tested without the google-auth import chain. Two properties
+    matter and are covered by ``tests/test_firebase_cert_retry.py``: only
+    unknown-key-id errors may trigger a refresh, and refreshes are throttled —
+    without both, a forged token would buy an attacker an outbound HTTPS fetch
+    plus a cache flush for every request they send.
+    """
+
+    def _verify() -> Dict[str, Any]:
+        return id_token.verify_firebase_token(
+            token,
+            GOOGLE_REQUEST,
+            audience=settings.firebase_project_id,
+        )
+
+    return verify_with_cert_retry(_verify, GOOGLE_REQUEST)
+
+
 async def verify_firebase_user(
     request: Request,
     credentials: HTTPAuthorizationCredentials = Security(BEARER_AUTH),
@@ -53,11 +84,7 @@ async def verify_firebase_user(
 
     token = credentials.credentials
     try:
-        claims = id_token.verify_firebase_token(
-            token,
-            GOOGLE_REQUEST,
-            audience=settings.firebase_project_id,
-        )
+        claims = _verify_firebase_token_with_cert_retry(token)
     except Exception as exc:
         raise HTTPException(status_code=401, detail="Invalid Firebase token") from exc
 
