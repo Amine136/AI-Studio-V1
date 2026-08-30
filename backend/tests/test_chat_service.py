@@ -46,13 +46,19 @@ def test_plain_chat_validation_rejects_more_than_four_images(monkeypatch):
     monkeypatch.setattr(chat_service.settings, "plain_chat_max_message_chars", 12000)
     monkeypatch.setattr(chat_service.settings, "plain_chat_context_char_limit", 24000)
 
+    # Must be real 36-char UUIDs: _validate_uploaded_image_url runs per part, so
+    # a placeholder like /api/files/0 raises CHAT_IMAGE_URL_INVALID on the first
+    # part and the count check never gets to fire.
     payload = PlainChatRequest(
         model="nano-banana-2",
         messages=[
             ChatMessage(
                 role="user",
                 parts=[
-                    ChatMessagePart(type="image_url", url=f"/api/files/{index}")
+                    ChatMessagePart(
+                        type="image_url",
+                        url=f"/api/files/0000000{index}-0000-4000-8000-000000000000",
+                    )
                     for index in range(5)
                 ],
             ),
@@ -61,6 +67,52 @@ def test_plain_chat_validation_rejects_more_than_four_images(monkeypatch):
 
     with pytest.raises(ValueError, match="CHAT_TOO_MANY_IMAGES"):
         chat_service._validate_plain_chat_request(payload, {"input_modalities": ["TEXT", "IMAGE"]})
+
+
+def test_plain_chat_validation_allows_exactly_four_images(monkeypatch):
+    """Guards the boundary, so the limit cannot silently drift to 3 or 5."""
+    monkeypatch.setattr(chat_service.settings, "plain_chat_max_text_chars_per_part", 4000)
+    monkeypatch.setattr(chat_service.settings, "plain_chat_max_message_chars", 12000)
+    monkeypatch.setattr(chat_service.settings, "plain_chat_context_char_limit", 24000)
+
+    payload = PlainChatRequest(
+        model="nano-banana-2",
+        messages=[
+            ChatMessage(
+                role="user",
+                parts=[
+                    ChatMessagePart(
+                        type="image_url",
+                        url=f"/api/files/0000000{index}-0000-4000-8000-000000000000",
+                    )
+                    for index in range(4)
+                ],
+            ),
+        ],
+    )
+
+    chat_service._validate_plain_chat_request(payload, {"input_modalities": ["TEXT", "IMAGE"]})
+
+
+def test_plain_chat_validation_rejects_a_malformed_image_url(monkeypatch):
+    """The error the previous fixture was hitting by accident, asserted on purpose."""
+    monkeypatch.setattr(chat_service.settings, "plain_chat_max_text_chars_per_part", 4000)
+    monkeypatch.setattr(chat_service.settings, "plain_chat_max_message_chars", 12000)
+    monkeypatch.setattr(chat_service.settings, "plain_chat_context_char_limit", 24000)
+
+    payload = PlainChatRequest(
+        model="nano-banana-2",
+        messages=[
+            ChatMessage(
+                role="user",
+                parts=[ChatMessagePart(type="image_url", url="/api/files/0")],
+            ),
+        ],
+    )
+
+    with pytest.raises(ValueError, match="CHAT_IMAGE_URL_INVALID"):
+        chat_service._validate_plain_chat_request(payload, {"input_modalities": ["TEXT", "IMAGE"]})
+
 
 def test_plain_chat_model_list_and_resolution_include_non_text_outputs(monkeypatch):
     monkeypatch.setattr(chat_service.settings, "model_catalog", {
