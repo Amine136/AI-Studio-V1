@@ -341,6 +341,11 @@ class Config:
         self.database_max_overflow = int(os.getenv("DATABASE_MAX_OVERFLOW", "10"))
         self.database_pool_pre_ping = os.getenv("DATABASE_POOL_PRE_PING", "true").strip().lower() not in {"0", "false", "no", "off"}
         self.database_connect_timeout = int(os.getenv("DATABASE_CONNECT_TIMEOUT", "10"))
+        # Neon's pooler drops idle connections after ~5 minutes. Recycling at 240s
+        # keeps us strictly under that, so the pool retires a connection itself
+        # instead of handing out one the server has already closed. pool_pre_ping
+        # catches those too, but only by paying a failed round-trip first.
+        self.database_pool_recycle = int(os.getenv("DATABASE_POOL_RECYCLE", "240"))
         self.security_db_path = os.getenv(
             "SECURITY_DB_PATH",
             str(self.DATA_DIR / "security.sqlite3"),
