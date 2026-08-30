@@ -472,6 +472,20 @@ def test_generation_release_returns_reserved_credits(test_db, monkeypatch):
     assert profile["reservedCredits"] == 0.0
 
 
+@pytest.mark.xfail(
+    reason=(
+        "Asserts a feature that no longer exists. c5a84be ('Update staging smart "
+        "workflow and usage limits', 2026-05-19) deleted the first-24h branch from "
+        "_current_usage_cap_minor, so every account is now metered against a single "
+        "rolling 24h daily_usage_cap and settings.new_account_usage_cap_first_24h is "
+        "read nowhere in app/. The monkeypatch on line below therefore has no effect "
+        "and 1.0 + 0.1 stays under the 5.0 daily cap, so nothing raises. "
+        "Left xfail rather than deleted because whether new accounts should have a "
+        "tighter first-day cap is a product decision, not a test bug: either "
+        "reinstate the branch and this passes, or drop the test and the dead setting."
+    ),
+    strict=True,
+)
 def test_new_account_first_day_usage_cap_blocks_additional_charge(test_db, monkeypatch):
     monkeypatch.setattr(store.settings, "new_account_usage_cap_first_24h", 1.0)
     monkeypatch.setattr(store.settings, "daily_usage_cap", 5.0)
