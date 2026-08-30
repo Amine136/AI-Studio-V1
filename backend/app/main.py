@@ -488,6 +488,20 @@ limiter = Limiter(key_func=rate_limit_key)
 GENERATION_MAX_CONCURRENCY = max(1, int(os.getenv("GENERATION_MAX_CONCURRENCY", "12")))
 _GENERATION_GATE = threading.BoundedSemaphore(GENERATION_MAX_CONCURRENCY)
 
+# Same admission control for the persisted plain-chat turn route. It has the same
+# shape as /generate — a sync endpoint that blocks an anyio worker thread for the
+# full duration of an upstream provider call — so without a gate a burst of slow
+# chat turns can saturate the threadpool and stall every other sync endpoint,
+# including auth and health. The rate limiter does not prevent this: 20/minute is
+# per user, and it caps arrival rate, not the number of requests in flight.
+#
+# Separate semaphore rather than a shared one so a chat burst cannot consume the
+# whole generation budget or vice versa; each subsystem degrades on its own.
+# Lower default than generation because a chat turn is cheaper to retry and the
+# route is the more likely target of an accidental client retry loop.
+CHAT_MAX_CONCURRENCY = max(1, int(os.getenv("CHAT_MAX_CONCURRENCY", "8")))
+_CHAT_GATE = threading.BoundedSemaphore(CHAT_MAX_CONCURRENCY)
+
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 MAX_UPLOAD_PIXELS = 16_000_000
 MAX_UPLOAD_DIMENSION = 8192
@@ -986,6 +1000,16 @@ def create_plain_chat_conversation_message(
     charged_cost = 0.0
     model_name = ""
 
+    # Acquired before the try so a rejected request never reaches the release in
+    # finally. Non-blocking: shedding immediately with Retry-After is better than
+    # queueing a request that is already holding a thread.
+    if not _CHAT_GATE.acquire(blocking=False):
+        raise HTTPException(
+            status_code=503,
+            detail="The chat service is busy right now. Please retry in a few seconds.",
+            headers={"Retry-After": "5"},
+        )
+
     try:
         catalog_store.get_catalog()
         _enforce_plain_chat_request_size(request)
@@ -1160,6 +1184,8 @@ def create_plain_chat_conversation_message(
         )
     except Exception:
         raise HTTPException(status_code=500, detail="An internal error occurred. Please try again later.")
+    finally:
+        _CHAT_GATE.release()
 
 
 def _enforce_plain_chat_request_size(request: Request) -> None:
