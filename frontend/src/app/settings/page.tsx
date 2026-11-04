@@ -16,6 +16,7 @@ import {
 } from "../../lib/accentColor";
 import { setTheme, useThemeMode } from "../../lib/theme";
 import FeedbackModal from "../../components/FeedbackModal";
+import WakeUpLoader from "../../components/WakeUpLoader";
 
 const PROFILE_SAVE_COOLDOWN_MS = 1200;
 
@@ -124,7 +125,7 @@ export default function SettingsPage() {
   if (loading) {
     return (
       <main className="flex min-h-screen items-center justify-center">
-        <div className="auth-loader" />
+        <WakeUpLoader />
       </main>
     );
   }

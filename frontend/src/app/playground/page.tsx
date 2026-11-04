@@ -18,6 +18,7 @@ import { getUploadConstraints, maxInputImagesForModelId, preferredOutputType, pr
 import { LATENCY_FALLBACK_SECONDS, latencyBudgetForModel } from "../../lib/modelLatency";
 import ModelPickerPopover, { type PickerGroup } from "./ModelPickerPopover";
 import AspectShapePicker from "../(studio)/packs/AspectShapePicker";
+import WakeUpLoader from "../../components/WakeUpLoader";
 import type { BillingBreakdown, BillingUsage, ModelPricingSummary, PlainChatConversationItem, PlainChatModelItem, PlainChatParameterSchemaEntry, PlainChatPart, PlainChatTurnMeta, UploadedImageResult } from "../../types";
 import HistoryPopover from "./HistoryPopover";
 
@@ -2850,6 +2851,12 @@ export default function StudioChatPage() {
                       >
                         <span className="material-symbols-outlined text-[16px]">close</span>
                       </button>
+                    </div>
+                  ) : null}
+
+                  {loadingConfig ? (
+                    <div className="mb-2.5 flex justify-center">
+                      <WakeUpLoader variant="inline" />
                     </div>
                   ) : null}
 

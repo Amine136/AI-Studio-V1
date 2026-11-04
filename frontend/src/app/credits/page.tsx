@@ -8,6 +8,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useLanguage } from "../../context/LanguageContext";
 import { api } from "../../services/api";
 import BuyCodesButton from "../../components/BuyCodesButton";
+import WakeUpLoader from "../../components/WakeUpLoader";
 import type { CreditActivityEntry, CreditBreakdown, CreditOrder } from "../../types";
 
 
@@ -667,7 +668,7 @@ export default function CreditsPage() {
   if (loading) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#0c1324]">
-        <div className="auth-loader" />
+        <WakeUpLoader />
       </main>
     );
   }

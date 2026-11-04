@@ -687,7 +687,10 @@ export const translations = {
     "Bank transfer / RIB": "Bank transfer / RIB",
     "Number": "Number",
     "Flouci": "Flouci",
-    "WhatsApp": "WhatsApp"
+    "WhatsApp": "WhatsApp",
+    "Waking up the studio…": "Waking up the studio…",
+    "Spinning up your creative workspace, just a sec.": "Spinning up your creative workspace, just a sec.",
+    "Almost ready — warming up the AI engines…": "Almost ready — warming up the AI engines…"
   },
   fr: {
     "Welcome to Vibecraft": "Bienvenue sur Vibecraft",
@@ -1515,7 +1518,10 @@ export const translations = {
     "Bank transfer / RIB": "Virement bancaire / RIB",
     "Number": "Numéro",
     "Flouci": "Flouci",
-    "WhatsApp": "WhatsApp"
+    "WhatsApp": "WhatsApp",
+    "Waking up the studio…": "Réveil du studio en cours…",
+    "Spinning up your creative workspace, just a sec.": "Préparation de votre espace créatif, un instant.",
+    "Almost ready — warming up the AI engines…": "Presque prêt — démarrage des moteurs IA…"
   },
   ar: {
     "Welcome to Vibecraft": "مرحباً بك في Vibecraft",
@@ -2344,6 +2350,9 @@ export const translations = {
     "Bank transfer / RIB": "تحويل بنكي / RIB",
     "Number": "الرقم",
     "Flouci": "فلوسي",
-    "WhatsApp": "WhatsApp"
+    "WhatsApp": "WhatsApp",
+    "Waking up the studio…": "جارٍ تشغيل الاستوديو…",
+    "Spinning up your creative workspace, just a sec.": "نُجهّز مساحة عملك الإبداعية، لحظة من فضلك.",
+    "Almost ready — warming up the AI engines…": "أوشكنا على الانتهاء — جارٍ تحمية محركات الذكاء الاصطناعي…"
   }
 };

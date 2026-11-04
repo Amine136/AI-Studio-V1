@@ -7,6 +7,7 @@ import { signOutUser } from "../../lib/auth";
 import { api } from "../../services/api";
 import type { CurrentUserProfile } from "../../types";
 import FirstRunPreferencesModal from "../FirstRunPreferencesModal";
+import WakeUpLoader from "../WakeUpLoader";
 
 function resolveInactiveReason(profile?: CurrentUserProfile | null, error?: unknown): "deactivated" | "suspended" | "unauthorized" {
   if (profile?.isDeactivated) return "deactivated";
@@ -113,7 +114,7 @@ export default function RequireActiveUser({
   if (authLoading || validating || !allowed) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#0c1324]">
-        <div className="auth-loader" />
+        <WakeUpLoader />
       </main>
     );
   }

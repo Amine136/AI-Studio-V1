@@ -14,6 +14,7 @@ import StepIndicator from "../../../components/StepIndicator";
 import ReviewCard from "../../../components/ReviewCard";
 import ResultCard from "../../../components/ResultCard";
 import LoadingSpinner from "../../../components/LoadingSpinner";
+import WakeUpLoader from "../../../components/WakeUpLoader";
 import CreditsDisplay from "../../../components/CreditsDisplay";
 import InteractiveAuthenticatedImage from "../../../components/InteractiveAuthenticatedImage";
 import { ColorPickerPopover } from "../../../components/ColorPickerPopover";
@@ -1686,7 +1687,7 @@ export default function Home() {
   if (authLoading || !user) {
     return (
       <main className="min-h-screen flex items-center justify-center">
-        <div className="auth-loader" />
+        <WakeUpLoader />
       </main>
     );
   }
@@ -1694,7 +1695,7 @@ export default function Home() {
   if (!accountReady) {
     return (
       <main className="min-h-screen flex items-center justify-center">
-        <div className="auth-loader" />
+        <WakeUpLoader />
       </main>
     );
   }

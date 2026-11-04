@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "../../context/AuthContext";
 import { useLanguage } from "../../context/LanguageContext";
 import { api } from "../../services/api";
+import WakeUpLoader from "../../components/WakeUpLoader";
 
 const USERNAME_RE = /[^a-z0-9._-]+/g;
 
@@ -97,7 +98,7 @@ function OnboardingContent() {
   if (authLoading || !ready) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#0c1324]">
-        <div className="auth-loader" />
+        <WakeUpLoader />
       </main>
     );
   }

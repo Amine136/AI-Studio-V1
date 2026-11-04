@@ -14,6 +14,7 @@ import {
 import { useAuth } from "@/context/AuthContext";
 import { useLanguage } from "@/context/LanguageContext";
 import { api } from "@/services/api";
+import WakeUpLoader from "../WakeUpLoader";
 
 function mapAuthErrorMessage(error: unknown): string {
   const rawMessage =
@@ -264,7 +265,7 @@ export default function AuthPanel({ className = "w-full max-w-md" }: AuthPanelPr
   if (authLoading || completingLink || (user && validatingSession)) {
     return (
       <div className={`flex min-h-[360px] items-center justify-center ${className}`}>
-        <div className="auth-loader" />
+        <WakeUpLoader />
       </div>
     );
   }
